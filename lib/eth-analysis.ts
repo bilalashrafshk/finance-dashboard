@@ -64,7 +64,7 @@ export interface RiskMetrics {
 
 export async function fetchEthHistoricalData(): Promise<ProcessedData[]> {
   const fetchBinanceKlines = async (symbol: string, startDate: Date): Promise<any[]> => {
-    const url = "https://api.binance.com/api/v3/klines"
+    const url = "https://binance.com/api/v3/klines"
     const startTimestamp = startDate.getTime()
     const allData: any[] = []
     let currentStart = startTimestamp
