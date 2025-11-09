@@ -222,17 +222,17 @@ export function SValChart({ riskMetrics, hoveredDate, onHoverDate, cutoffDate = 
           </div>
           <div className="mt-4 space-y-2">
             <Label htmlFor="sval-cutoff" className="text-xs">{METRIC_NAMES.sVal.short} Cutoff Date (Optional)</Label>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Input
                 id="sval-cutoff"
                 type="date"
                 value={cutoffDate}
                 onChange={(e) => onCutoffDateChange?.(e.target.value)}
-                className="text-xs"
+                className="text-xs flex-1"
                 placeholder="Leave empty to use all historical data"
               />
               {onRecalculate && (
-                <Button onClick={onRecalculate} size="sm" variant="outline">
+                <Button onClick={onRecalculate} size="sm" variant="outline" className="w-full sm:w-auto">
                   Update
                 </Button>
               )}
@@ -243,7 +243,7 @@ export function SValChart({ riskMetrics, hoveredDate, onHoverDate, cutoffDate = 
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-64">
+          <div className="h-56 sm:h-64 md:h-72">
             <Line ref={chartRef} data={chartData} options={options} />
           </div>
         </CardContent>

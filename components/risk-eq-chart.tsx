@@ -211,7 +211,7 @@ export function RiskEqChart({ riskMetrics, hoveredDate, onHoverDate }: RiskEqCha
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-64">
+          <div className="h-56 sm:h-64 md:h-72">
             <Line ref={chartRef} data={chartData} options={options} />
           </div>
         </CardContent>

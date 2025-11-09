@@ -179,7 +179,6 @@ export function InverseRiskCalculator({
 
       setResults(newResults)
     } catch (error) {
-      console.error("Error calculating inverse risk:", error)
       alert("Error calculating inverse risk. Please check your inputs.")
     } finally {
       setCalculating(false)
@@ -262,11 +261,11 @@ export function InverseRiskCalculator({
         {results.length > 0 && (
           <div className="space-y-2">
             <h4 className="font-semibold text-sm">Results</h4>
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Risk Level</TableHead>
+                    <TableHead className="sticky left-0 bg-background z-10">Risk Level</TableHead>
                     <TableHead>ETH/USD Price</TableHead>
                     <TableHead>{METRIC_NAMES.sVal.short}</TableHead>
                     <TableHead>{METRIC_NAMES.sRel.short}</TableHead>
@@ -281,7 +280,7 @@ export function InverseRiskCalculator({
                       key={i}
                       className={result.isCurrent ? "bg-muted/50 font-semibold" : ""}
                     >
-                      <TableCell>
+                      <TableCell className="sticky left-0 bg-background z-10">
                         <div className="flex items-center gap-2">
                           <Badge variant={result.targetRisk >= 0.7 ? "destructive" : result.targetRisk >= 0.3 ? "secondary" : "default"}>
                             {Math.abs(result.targetRisk % 0.1) < 0.001 ? result.targetRisk.toFixed(1) : result.targetRisk.toFixed(2)}
@@ -293,16 +292,16 @@ export function InverseRiskCalculator({
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="font-mono">
+                      <TableCell className="font-mono whitespace-nowrap">
                         ${result.ethUsdPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       </TableCell>
-                      <TableCell className="font-mono">{result.sVal.toFixed(3)}</TableCell>
-                      <TableCell className="font-mono">{result.sRel.toFixed(3)}</TableCell>
-                      <TableCell className="font-mono">{result.riskEq.toFixed(3)}</TableCell>
-                      <TableCell className="font-mono">
+                      <TableCell className="font-mono whitespace-nowrap">{result.sVal.toFixed(3)}</TableCell>
+                      <TableCell className="font-mono whitespace-nowrap">{result.sRel.toFixed(3)}</TableCell>
+                      <TableCell className="font-mono whitespace-nowrap">{result.riskEq.toFixed(3)}</TableCell>
+                      <TableCell className="font-mono whitespace-nowrap">
                         ${result.fairValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       </TableCell>
-                      <TableCell className="font-mono">{result.ethBtcRatio.toFixed(6)}</TableCell>
+                      <TableCell className="font-mono whitespace-nowrap">{result.ethBtcRatio.toFixed(6)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

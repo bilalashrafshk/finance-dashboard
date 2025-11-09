@@ -361,7 +361,7 @@ export function HeatMapChart({ riskMetrics, hoveredDate, onHoverDate }: HeatMapC
           </p>
         </CardHeader>
         <CardContent>
-          <div className="h-96">
+          <div className="h-64 sm:h-80 md:h-96">
             <Line ref={chartRef} data={chartData} options={options} />
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">

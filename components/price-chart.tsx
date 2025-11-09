@@ -206,7 +206,7 @@ export function PriceChart({ riskMetrics, hoveredDate, onHoverDate }: PriceChart
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-96">
+          <div className="h-64 sm:h-80 md:h-96">
             <Line ref={chartRef} data={chartData} options={options} />
           </div>
         </CardContent>

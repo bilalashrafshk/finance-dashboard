@@ -217,15 +217,17 @@ export function ChartExplanationDialog({ open, onOpenChange, chartType }: ChartE
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto w-[95vw] sm:w-full">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
             {explanation.icon}
             {explanation.title}
           </DialogTitle>
-          <DialogDescription>{explanation.description}</DialogDescription>
+          <DialogDescription className="text-xs sm:text-sm">{explanation.description}</DialogDescription>
         </DialogHeader>
-        {explanation.content}
+        <div className="text-sm sm:text-base">
+          {explanation.content}
+        </div>
       </DialogContent>
     </Dialog>
   )

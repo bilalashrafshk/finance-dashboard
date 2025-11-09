@@ -18,7 +18,7 @@ import { RiskEqChart } from "./risk-eq-chart"
 import { HeatMapChart } from "./heat-map-chart"
 import { ThemeToggle } from "./theme-toggle"
 import { InverseRiskCalculator } from "./inverse-risk-calculator"
-import { calculateRiskMetrics, type RiskMetrics, type RiskWeights } from "@/lib/eth-analysis"
+import { type RiskMetrics, type RiskWeights } from "@/lib/eth-analysis"
 import {
   DEFAULT_FAIR_VALUE_BAND_PARAMS,
   DEFAULT_RISK_WEIGHTS,
@@ -51,15 +51,40 @@ export function EthRiskDashboard() {
       // Determine cutoff date: use user input if provided, otherwise use default (last date of 2024)
       const cutoffDate = sValCutoffDate || defaultCutoffDate ? new Date(sValCutoffDate || defaultCutoffDate) : null
       
-      // Add timeout wrapper (2 minute timeout)
+      // Build API request URL with parameters
+      const params = new URLSearchParams()
+      params.set('bandParams', JSON.stringify(bandParams))
+      if (cutoffDate) {
+        params.set('cutoffDate', cutoffDate.toISOString())
+      }
+      params.set('riskWeights', JSON.stringify(riskWeights))
+
+      // Add timeout wrapper (3 minute timeout - increased for first load)
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("Request timeout: Data fetching took too long")), 120000)
+        setTimeout(() => reject(new Error("Request timeout: Data fetching took too long. This may happen on first load when fetching historical data from Binance.")), 180000)
       })
       
-      const metrics = await Promise.race([
-        calculateRiskMetrics(bandParams, cutoffDate, riskWeights),
+      // Call API route instead of direct calculation
+      const response = await Promise.race([
+        fetch(`/api/risk-metrics?${params}`),
         timeoutPromise,
       ])
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || `API error: ${response.status} ${response.statusText}`)
+      }
+
+      const data = await response.json()
+
+      // Deserialize dates from ISO strings back to Date objects
+      const metrics: RiskMetrics = {
+        ...data,
+        dates: data.dates.map((dateStr: string) => new Date(dateStr)),
+        currentState: {
+          ...data.currentState,
+        },
+      }
 
       // Set default cutoff date to last date of configured year if not already set
       if (!defaultCutoffDate && metrics.dates.length > 0) {
@@ -75,7 +100,6 @@ export function EthRiskDashboard() {
 
       setRiskMetrics(metrics)
     } catch (err) {
-      console.error("[v0] Error fetching data:", err)
       setError(err instanceof Error ? err.message : "Failed to fetch data")
     } finally {
       setLoading(false)
@@ -98,10 +122,13 @@ export function EthRiskDashboard() {
           <div className="space-y-2">
             <p className="text-lg font-medium">Loading Ethereum Risk Dashboard</p>
             <p className="text-sm text-muted-foreground">
-              Fetching historical data from Binance API...
+              Loading risk metrics...
             </p>
             <p className="text-xs text-muted-foreground">
-              This may take up to 2 minutes on first load
+              First load: Fetching ~3,500 historical records from Binance API
+            </p>
+            <p className="text-xs text-muted-foreground">
+              This may take 30-90 seconds. Subsequent loads will be much faster (cached).
             </p>
           </div>
         </div>
@@ -139,18 +166,18 @@ export function EthRiskDashboard() {
   }
 
   return (
-    <div className="container mx-auto p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
+    <div className="container mx-auto p-3 sm:p-4 md:p-6 lg:p-8 space-y-4 sm:space-y-6 md:space-y-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-2 border-b">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 pb-2 border-b">
         <div className="space-y-1">
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Ethereum Risk Dashboard</h1>
-          <p className="text-muted-foreground text-sm md:text-base">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">Ethereum Risk Dashboard</h1>
+          <p className="text-muted-foreground text-xs sm:text-sm md:text-base">
             Real-time risk metrics and valuation analysis by Bilal Ashraf
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <ThemeToggle />
-          <Button onClick={fetchData} disabled={loading} variant="outline" size="sm">
+          <Button onClick={fetchData} disabled={loading} variant="outline" size="sm" className="flex-1 sm:flex-initial">
             {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
             Refresh
           </Button>
@@ -160,18 +187,20 @@ export function EthRiskDashboard() {
       {/* Main Content */}
       <Tabs defaultValue="risk" className="space-y-4">
         <div className="flex items-center justify-between">
-          <TabsList className="grid w-full max-w-4xl grid-cols-6">
-            <TabsTrigger value="risk">Risk Analysis</TabsTrigger>
-            <TabsTrigger value="price-valuation">Price & Valuation</TabsTrigger>
-            <TabsTrigger value="relative">Relative Risk to Bitcoin</TabsTrigger>
-            <TabsTrigger value="heatmap">Heat Map</TabsTrigger>
-            <TabsTrigger value="inverse-calculator">
-              <Calculator className="h-4 w-4 mr-2" />
-              Inverse Calculator
+          <TabsList className="flex flex-wrap w-full max-w-4xl gap-1">
+            <TabsTrigger value="risk" className="text-xs sm:text-sm flex-1 min-w-[120px]">Risk Analysis</TabsTrigger>
+            <TabsTrigger value="price-valuation" className="text-xs sm:text-sm flex-1 min-w-[120px]">Price & Valuation</TabsTrigger>
+            <TabsTrigger value="relative" className="text-xs sm:text-sm flex-1 min-w-[120px]">Relative Risk to Bitcoin</TabsTrigger>
+            <TabsTrigger value="heatmap" className="text-xs sm:text-sm flex-1 min-w-[120px]">Heat Map</TabsTrigger>
+            <TabsTrigger value="inverse-calculator" className="text-xs sm:text-sm flex-1 min-w-[120px]">
+              <Calculator className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Inverse Calculator</span>
+              <span className="sm:hidden">Calculator</span>
             </TabsTrigger>
-            <TabsTrigger value="parameters">
-              <Settings2 className="h-4 w-4 mr-2" />
-              Parameters
+            <TabsTrigger value="parameters" className="text-xs sm:text-sm flex-1 min-w-[120px]">
+              <Settings2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Parameters</span>
+              <span className="sm:hidden">Params</span>
             </TabsTrigger>
           </TabsList>
         </div>
@@ -445,9 +474,10 @@ export function EthRiskDashboard() {
                   />
                 </div>
               </div>
-              <div className="pt-4 flex gap-2">
+              <div className="pt-4 flex flex-col sm:flex-row gap-2">
                 <Button onClick={handleParameterUpdate} className="flex-1">
-                  Update Parameters & Recalculate
+                  <span className="hidden sm:inline">Update Parameters & Recalculate</span>
+                  <span className="sm:hidden">Update & Recalculate</span>
                 </Button>
                 <Button
                   variant="outline"
@@ -511,9 +541,10 @@ export function EthRiskDashboard() {
                   </p>
                 </div>
               </div>
-              <div className="pt-4 flex gap-2">
+              <div className="pt-4 flex flex-col sm:flex-row gap-2">
                 <Button onClick={handleParameterUpdate} className="flex-1">
-                  Update Weights & Recalculate
+                  <span className="hidden sm:inline">Update Weights & Recalculate</span>
+                  <span className="sm:hidden">Update & Recalculate</span>
                 </Button>
                 <Button
                   variant="outline"

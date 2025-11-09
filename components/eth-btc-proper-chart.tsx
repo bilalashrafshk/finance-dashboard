@@ -277,7 +277,7 @@ export function EthBtcProperChart({ riskMetrics, hoveredDate, onHoverDate }: Eth
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-96">
+          <div className="h-64 sm:h-80 md:h-96">
             <canvas ref={chartRef} />
           </div>
         </CardContent>
