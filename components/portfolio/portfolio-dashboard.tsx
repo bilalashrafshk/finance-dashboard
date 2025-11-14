@@ -18,7 +18,7 @@ import { USEquityPortfolioChart } from "./us-equity-portfolio-chart"
 import { MetalsPortfolioChart } from "./metals-portfolio-chart"
 import { PortfolioUpdateSection } from "./portfolio-update-section"
 import type { Holding } from "@/lib/portfolio/types"
-import { loadPortfolio, addHolding, updateHolding, deleteHolding } from "@/lib/portfolio/portfolio-storage"
+import { loadPortfolio, addHolding, updateHolding, deleteHolding } from "@/lib/portfolio/portfolio-db-storage"
 import { 
   calculatePortfolioSummary, 
   calculateAssetAllocation,
@@ -27,8 +27,12 @@ import {
   calculateUnifiedAssetAllocation
 } from "@/lib/portfolio/portfolio-utils"
 import { parseSymbolToBinance } from "@/lib/portfolio/binance-api"
+import { useAuth } from "@/lib/auth/auth-context"
+import { LoginDialog } from "@/components/auth/login-dialog"
+import { RegisterDialog } from "@/components/auth/register-dialog"
 
 export function PortfolioDashboard() {
+  const { user, loading: authLoading } = useAuth()
   const [holdings, setHoldings] = useState<Holding[]>([])
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingHolding, setEditingHolding] = useState<Holding | null>(null)
@@ -37,22 +41,35 @@ export function PortfolioDashboard() {
   const [viewMode, setViewMode] = useState<'unified' | 'segregated'>('segregated')
 
   useEffect(() => {
-    loadHoldings()
-  }, [])
+    if (!authLoading && user) {
+      loadHoldings()
+    }
+  }, [authLoading, user])
 
-  const loadHoldings = () => {
-    const portfolio = loadPortfolio()
-    setHoldings(portfolio.holdings)
+  const loadHoldings = async () => {
+    try {
+      const portfolio = await loadPortfolio()
+      setHoldings(portfolio.holdings)
+    } catch (error) {
+      console.error('Error loading holdings:', error)
+      // Fallback to empty portfolio if not authenticated
+      setHoldings([])
+    }
   }
 
-  const handleAddHolding = (holdingData: Omit<Holding, 'id' | 'createdAt' | 'updatedAt'>) => {
-    if (editingHolding) {
-      updateHolding(editingHolding.id, holdingData)
-    } else {
-      addHolding(holdingData)
+  const handleAddHolding = async (holdingData: Omit<Holding, 'id' | 'createdAt' | 'updatedAt'>) => {
+    try {
+      if (editingHolding) {
+        await updateHolding(editingHolding.id, holdingData)
+      } else {
+        await addHolding(holdingData)
+      }
+      await loadHoldings()
+      setEditingHolding(null)
+    } catch (error: any) {
+      console.error('Error saving holding:', error)
+      throw error // Re-throw to let the dialog handle it
     }
-    loadHoldings()
-    setEditingHolding(null)
   }
 
   const handleEditHolding = (holding: Holding) => {
@@ -60,9 +77,13 @@ export function PortfolioDashboard() {
     setIsAddDialogOpen(true)
   }
 
-  const handleDeleteHolding = (id: string) => {
-    deleteHolding(id)
-    loadHoldings()
+  const handleDeleteHolding = async (id: string) => {
+    try {
+      await deleteHolding(id)
+      await loadHoldings()
+    } catch (error) {
+      console.error('Error deleting holding:', error)
+    }
   }
 
   const handleOpenAddDialog = () => {
@@ -193,6 +214,50 @@ export function PortfolioDashboard() {
       newRates.delete(currency)
     }
     setExchangeRates(newRates)
+  }
+
+  // Show loading state while checking authentication
+  if (authLoading) {
+    return (
+      <div className="container mx-auto p-6">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Show login prompt if not authenticated
+  if (!user) {
+    return (
+      <div className="container mx-auto p-6 space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Portfolio Tracker</CardTitle>
+            <CardDescription>
+              Please login or create an account to track your portfolio
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Your portfolio holdings and trades are stored securely and synced across all your devices.
+            </p>
+            <div className="flex gap-2">
+              <LoginDialog>
+                <Button>Login</Button>
+              </LoginDialog>
+              <RegisterDialog>
+                <Button variant="outline">Create Account</Button>
+              </RegisterDialog>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (

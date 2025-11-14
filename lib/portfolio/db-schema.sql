@@ -45,3 +45,57 @@ CREATE TABLE IF NOT EXISTS historical_data_metadata (
 
 CREATE INDEX IF NOT EXISTS idx_metadata_asset_symbol ON historical_data_metadata(asset_type, symbol);
 
+-- Users table for authentication
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  name VARCHAR(255),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+-- User holdings table (replaces localStorage)
+CREATE TABLE IF NOT EXISTS user_holdings (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  asset_type VARCHAR(50) NOT NULL,
+  symbol VARCHAR(50) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  quantity DECIMAL(20, 8) NOT NULL,
+  purchase_price DECIMAL(20, 8) NOT NULL,
+  purchase_date DATE NOT NULL,
+  current_price DECIMAL(20, 8) NOT NULL,
+  currency VARCHAR(10) NOT NULL DEFAULT 'USD',
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_holdings_user_id ON user_holdings(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_holdings_user_asset ON user_holdings(user_id, asset_type, symbol);
+
+-- User trades table (transaction history)
+CREATE TABLE IF NOT EXISTS user_trades (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  holding_id INTEGER REFERENCES user_holdings(id) ON DELETE SET NULL,
+  trade_type VARCHAR(20) NOT NULL, -- 'buy', 'sell', 'add', 'remove'
+  asset_type VARCHAR(50) NOT NULL,
+  symbol VARCHAR(50) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  quantity DECIMAL(20, 8) NOT NULL,
+  price DECIMAL(20, 8) NOT NULL,
+  total_amount DECIMAL(20, 8) NOT NULL,
+  currency VARCHAR(10) NOT NULL DEFAULT 'USD',
+  trade_date DATE NOT NULL,
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_trades_user_id ON user_trades(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_trades_user_date ON user_trades(user_id, trade_date DESC);
+CREATE INDEX IF NOT EXISTS idx_user_trades_holding_id ON user_trades(holding_id);
+
