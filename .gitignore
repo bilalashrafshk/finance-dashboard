@@ -40,3 +40,8 @@ next-env.d.ts
 *.swo
 *~
 
+# Data files
+data/
+*.parquet
+
+

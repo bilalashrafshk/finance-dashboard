@@ -79,3 +79,4 @@ export function getGridColor(value: number, isReferenceLine: boolean = false): s
   return isReferenceLine ? colors.gridStrong : colors.grid
 }
 
+

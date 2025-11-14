@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -42,9 +42,50 @@ export function EthRiskDashboard() {
   // Default S_val cutoff to last date of 2024 in data
   const [defaultCutoffDate, setDefaultCutoffDate] = useState<string>("")
 
+  // Prevent duplicate API calls
+  const fetchInProgressRef = useRef(false)
+  const requestIdRef = useRef(0)
+  const apiCallLogRef = useRef<Array<{ id: number; timestamp: string; action: string; params?: string }>>([])
+
+  const logApiCall = (action: string, params?: string) => {
+    const id = ++requestIdRef.current
+    const timestamp = new Date().toISOString()
+    const logEntry = { id, timestamp, action, params }
+    apiCallLogRef.current.push(logEntry)
+    
+    // Keep only last 50 entries
+    if (apiCallLogRef.current.length > 50) {
+      apiCallLogRef.current.shift()
+    }
+    
+    // Log to console
+    console.log(`[API Call #${id}] ${timestamp} - ${action}`, params ? `Params: ${params.substring(0, 100)}...` : '')
+    
+    // Also log to window for easy access
+    if (typeof window !== 'undefined') {
+      (window as any).__apiCallLog = apiCallLogRef.current
+      // Helper function to view logs
+      ;(window as any).getApiCallLog = () => {
+        console.table(apiCallLogRef.current)
+        return apiCallLogRef.current
+      }
+      ;(window as any).clearApiCallLog = () => {
+        apiCallLogRef.current = []
+        requestIdRef.current = 0
+        console.log('API call log cleared')
+      }
+    }
+  }
 
   const fetchData = async () => {
+    // Prevent duplicate calls
+    if (fetchInProgressRef.current) {
+      logApiCall('BLOCKED - Request already in progress')
+      return
+    }
+
     try {
+      fetchInProgressRef.current = true
       setLoading(true)
       setError(null)
 
@@ -59,16 +100,25 @@ export function EthRiskDashboard() {
       }
       params.set('riskWeights', JSON.stringify(riskWeights))
 
+      const requestUrl = `/api/risk-metrics?${params}`
+      logApiCall('STARTING', requestUrl)
+
       // Add timeout wrapper (3 minute timeout - increased for first load)
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error("Request timeout: Data fetching took too long. This may happen on first load when fetching historical data from Binance.")), 180000)
       })
       
+      const startTime = Date.now()
+      
       // Call API route instead of direct calculation
       const response = await Promise.race([
-        fetch(`/api/risk-metrics?${params}`),
+        fetch(requestUrl),
         timeoutPromise,
       ])
+
+      const fetchTime = Date.now() - startTime
+      const cacheStatus = response.headers.get('X-Cache')
+      logApiCall(`COMPLETED in ${fetchTime}ms`, `Cache: ${cacheStatus || 'unknown'}`)
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
@@ -99,15 +149,21 @@ export function EthRiskDashboard() {
       }
 
       setRiskMetrics(metrics)
+      logApiCall('SUCCESS - Data loaded')
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch data")
+      const errorMessage = err instanceof Error ? err.message : "Failed to fetch data"
+      logApiCall(`ERROR - ${errorMessage}`)
+      setError(errorMessage)
     } finally {
+      fetchInProgressRef.current = false
       setLoading(false)
     }
   }
 
   useEffect(() => {
+    logApiCall('COMPONENT MOUNTED - useEffect triggered')
     fetchData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleParameterUpdate = () => {

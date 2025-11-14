@@ -1,28 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { calculateRiskMetrics, type RiskMetrics, type BandParams, type RiskWeights } from '@/lib/eth-analysis'
 import { DEFAULT_FAIR_VALUE_BAND_PARAMS, DEFAULT_RISK_WEIGHTS } from '@/lib/config/app.config'
-
-// In-memory cache with TTL
-interface CacheEntry {
-  data: RiskMetrics
-  timestamp: number
-}
-
-// Cache storage: key -> cache entry
-const cache = new Map<string, CacheEntry>()
-
-// Cache TTL: 5 minutes
-const CACHE_TTL = 5 * 60 * 1000 // 5 minutes in milliseconds
-
-// Clean up old cache entries periodically (every 10 minutes)
-setInterval(() => {
-  const now = Date.now()
-  for (const [key, entry] of cache.entries()) {
-    if (now - entry.timestamp > CACHE_TTL) {
-      cache.delete(key)
-    }
-  }
-}, 10 * 60 * 1000) // Run cleanup every 10 minutes
+import { cacheManager } from '@/lib/cache/cache-manager'
+import { generateRiskMetricsCacheKey } from '@/lib/cache/cache-utils'
 
 /**
  * Generate cache key from request parameters
@@ -32,20 +12,7 @@ function generateCacheKey(
   cutoffDate: string | null,
   riskWeights: RiskWeights
 ): string {
-  // Create a unique key from all parameters that affect the result
-  const params = {
-    bandParams: JSON.stringify(bandParams),
-    cutoffDate: cutoffDate || 'null',
-    riskWeights: JSON.stringify(riskWeights),
-  }
-  return JSON.stringify(params)
-}
-
-/**
- * Check if cache entry is still valid
- */
-function isCacheValid(entry: CacheEntry): boolean {
-  return Date.now() - entry.timestamp < CACHE_TTL
+  return generateRiskMetricsCacheKey(bandParams, cutoffDate, riskWeights)
 }
 
 /**
@@ -59,7 +26,41 @@ function serializeRiskMetrics(metrics: RiskMetrics): any {
   }
 }
 
+// Track API calls for logging
+let apiRequestCounter = 0
+const apiRequestLog: Array<{ id: number; timestamp: string; cacheKey: string; cacheStatus: string }> = []
+
+function logApiRequest(cacheKey: string, cacheStatus: string) {
+  const id = ++apiRequestCounter
+  const timestamp = new Date().toISOString()
+  const logEntry = { id, timestamp, cacheKey: cacheKey.substring(0, 100), cacheStatus }
+  apiRequestLog.push(logEntry)
+  
+  // Keep only last 50 entries
+  if (apiRequestLog.length > 50) {
+    apiRequestLog.shift()
+  }
+  
+  console.log(`[API Route #${id}] ${timestamp} - Cache: ${cacheStatus} | Key: ${cacheKey.substring(0, 80)}...`)
+  
+  // Make log accessible globally for debugging
+  if (typeof global !== 'undefined') {
+    (global as any).__apiRequestLog = apiRequestLog
+    // Helper function to view logs
+    ;(global as any).getApiRequestLog = () => {
+      console.table(apiRequestLog)
+      return apiRequestLog
+    }
+    ;(global as any).clearApiRequestLog = () => {
+      apiRequestLog.length = 0
+      apiRequestCounter = 0
+      console.log('API request log cleared')
+    }
+  }
+}
+
 export async function GET(request: NextRequest) {
+  const requestStartTime = Date.now()
   try {
     const { searchParams } = new URL(request.url)
 
@@ -84,34 +85,35 @@ export async function GET(request: NextRequest) {
       riskWeights
     )
 
-    // Check cache
-    const cachedEntry = cache.get(cacheKey)
-    if (cachedEntry && isCacheValid(cachedEntry)) {
-      return NextResponse.json(serializeRiskMetrics(cachedEntry.data), {
-        headers: {
-          'X-Cache': 'HIT',
-          'X-Cache-Age': Math.floor((Date.now() - cachedEntry.timestamp) / 1000).toString(),
-          'Cache-Control': 'public, max-age=300',
-        },
-      })
-    }
+    // Check cache using centralized cache manager
+    const cacheContext = { refresh: false }
+    const { data: metrics, fromCache } = await cacheManager.getOrSet(
+      cacheKey,
+      async () => {
+        console.log(`[API Route #${apiRequestCounter + 1}] Cache MISS - Fetching from Binance...`)
+        const fetchStartTime = Date.now()
+        const result = await calculateRiskMetrics(bandParams, cutoffDate, riskWeights)
+        const fetchTime = Date.now() - fetchStartTime
+        console.log(`[API Route #${apiRequestCounter}] Data fetched in ${fetchTime}ms`)
+        return result
+      },
+      'risk-metrics',
+      cacheContext
+    )
 
-    // Cache miss or expired - fetch fresh data
-    const metrics = await calculateRiskMetrics(bandParams, cutoffDate, riskWeights)
-
-    // Store in cache
-    cache.set(cacheKey, {
-      data: metrics,
-      timestamp: Date.now(),
-    })
+    const responseTime = Date.now() - requestStartTime
+    logApiRequest(cacheKey, fromCache ? `HIT (${responseTime}ms)` : `MISS (${responseTime}ms)`)
 
     return NextResponse.json(serializeRiskMetrics(metrics), {
       headers: {
-        'X-Cache': 'MISS',
+        'X-Cache': fromCache ? 'HIT' : 'MISS',
+        'X-Request-Id': apiRequestCounter.toString(),
         'Cache-Control': 'public, max-age=300',
       },
     })
   } catch (error) {
+    const errorTime = Date.now() - requestStartTime
+    console.error(`[API Route #${apiRequestCounter}] ERROR after ${errorTime}ms:`, error)
     return NextResponse.json(
       {
         error: 'Failed to fetch risk metrics',
