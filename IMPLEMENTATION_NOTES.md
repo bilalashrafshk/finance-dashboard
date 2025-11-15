@@ -109,3 +109,4 @@ GET /api/risk-metrics?bandParams={...}&cutoffDate={ISO}&riskWeights={...}
 - **Scalability**: With 10,000 concurrent users, only 1-2 Binance API calls per 5 minutes instead of 40,000-80,000
 
 
+

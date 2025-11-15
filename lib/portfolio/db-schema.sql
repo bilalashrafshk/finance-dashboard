@@ -99,3 +99,22 @@ CREATE INDEX IF NOT EXISTS idx_user_trades_user_id ON user_trades(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_trades_user_date ON user_trades(user_id, trade_date DESC);
 CREATE INDEX IF NOT EXISTS idx_user_trades_holding_id ON user_trades(holding_id);
 
+-- User tracked assets table (for asset screener)
+CREATE TABLE IF NOT EXISTS user_tracked_assets (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  asset_type VARCHAR(50) NOT NULL,
+  symbol VARCHAR(50) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  currency VARCHAR(10) NOT NULL DEFAULT 'USD',
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  
+  -- Prevent duplicate tracking of same asset by same user
+  UNIQUE(user_id, asset_type, symbol)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_tracked_assets_user_id ON user_tracked_assets(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_tracked_assets_user_asset ON user_tracked_assets(user_id, asset_type, symbol);
+

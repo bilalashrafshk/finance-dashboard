@@ -103,3 +103,4 @@ export function getHolding(id: string): Holding | null {
   return portfolio.holdings.find((h) => h.id === id) || null
 }
 
+

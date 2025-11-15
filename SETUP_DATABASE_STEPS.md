@@ -200,3 +200,4 @@ If you're stuck:
 3. Verify `.env.local` file exists and has correct connection string
 4. Make sure SQL schema was run successfully
 
+

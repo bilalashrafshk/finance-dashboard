@@ -254,3 +254,4 @@ interface StoredHistoricalData {
 - Upgrade to IndexedDB if needed (if storage fills up)
 - Implement incrementally (one chart at a time)
 
+

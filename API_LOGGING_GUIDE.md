@@ -107,3 +107,4 @@ To send logs for debugging:
 - ✅ **Cache Status**: Shows if cache was HIT or MISS
 - ✅ **Easy Access**: Logs available via `window.__apiCallLog` and `global.__apiRequestLog`
 
+

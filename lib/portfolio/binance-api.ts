@@ -180,3 +180,4 @@ export function parseSymbolToBinance(symbol: string): string {
   return symbol.toUpperCase().replace(/[-_/]/g, '').replace('USDT', '') + 'USDT'
 }
 
+

@@ -15,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { BarChart3, Wallet, User, LogOut } from "lucide-react"
+import { BarChart3, Wallet, User, LogOut, Search } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 
 export function Navigation() {
@@ -61,6 +61,16 @@ export function Navigation() {
               <Link href="/portfolio">
                 <Wallet className="mr-2 h-4 w-4" />
                 Portfolio
+              </Link>
+            </Button>
+            <Button
+              variant={pathname === "/asset-screener" ? "secondary" : "ghost"}
+              size="sm"
+              asChild
+            >
+              <Link href="/asset-screener">
+                <Search className="mr-2 h-4 w-4" />
+                Asset Screener
               </Link>
             </Button>
           </div>

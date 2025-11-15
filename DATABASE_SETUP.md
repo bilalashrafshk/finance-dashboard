@@ -141,3 +141,4 @@ If you were previously using Python scripts with Parquet files:
 - Python scripts are no longer required for data storage
 - All data is accessible via the `/api/historical-data` route
 
+
