@@ -42,34 +42,41 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
         let priceUrl = ''
         let historicalDataUrl = ''
         
+        // For detailed view, fetch enough data for 5-year CAGR (approx 1260 trading days)
+        // But we'll use only the most recent 1 year (252 days) for Beta and Sharpe Ratio calculations
+        // This ensures consistency: summary uses 1 year, detailed uses 1 year for 1-year metrics
+        // But detailed can still calculate 3-year and 5-year CAGR
+        const dataLimitForCAGR = 1260 // ~5 years of trading days
+        const dataLimitForBetaSharpe = 252 // 1 year for consistency with summary
+        
         if (asset.assetType === 'crypto') {
           const { parseSymbolToBinance } = await import('@/lib/portfolio/binance-api')
           const binanceSymbol = parseSymbolToBinance(asset.symbol)
           priceUrl = `/api/crypto/price?symbol=${encodeURIComponent(binanceSymbol)}`
-          historicalDataUrl = `/api/historical-data?assetType=crypto&symbol=${encodeURIComponent(binanceSymbol)}`
+          historicalDataUrl = `/api/historical-data?assetType=crypto&symbol=${encodeURIComponent(binanceSymbol)}&limit=${dataLimitForCAGR}`
         } else if (asset.assetType === 'pk-equity') {
           priceUrl = `/api/pk-equity/price?ticker=${encodeURIComponent(asset.symbol)}`
-          historicalDataUrl = `/api/historical-data?assetType=pk-equity&symbol=${encodeURIComponent(asset.symbol)}&market=PSX`
+          historicalDataUrl = `/api/historical-data?assetType=pk-equity&symbol=${encodeURIComponent(asset.symbol)}&market=PSX&limit=${dataLimitForCAGR}`
         } else if (asset.assetType === 'us-equity') {
           priceUrl = `/api/us-equity/price?ticker=${encodeURIComponent(asset.symbol)}`
-          historicalDataUrl = `/api/historical-data?assetType=us-equity&symbol=${encodeURIComponent(asset.symbol)}&market=US`
+          historicalDataUrl = `/api/historical-data?assetType=us-equity&symbol=${encodeURIComponent(asset.symbol)}&market=US&limit=${dataLimitForCAGR}`
         } else if (asset.assetType === 'metals') {
           priceUrl = `/api/metals/price?symbol=${encodeURIComponent(asset.symbol)}`
-          historicalDataUrl = `/api/historical-data?assetType=metals&symbol=${encodeURIComponent(asset.symbol)}`
+          historicalDataUrl = `/api/historical-data?assetType=metals&symbol=${encodeURIComponent(asset.symbol)}&limit=${dataLimitForCAGR}`
         } else if (asset.assetType === 'kse100' || asset.assetType === 'spx500') {
           priceUrl = `/api/indices/price?symbol=${encodeURIComponent(asset.symbol)}`
           const apiAssetType = asset.assetType === 'kse100' ? 'kse100' : 'spx500'
-          historicalDataUrl = `/api/historical-data?assetType=${apiAssetType}&symbol=${encodeURIComponent(asset.symbol)}`
+          historicalDataUrl = `/api/historical-data?assetType=${apiAssetType}&symbol=${encodeURIComponent(asset.symbol)}&limit=${dataLimitForCAGR}`
         }
         
-        // Determine benchmark for Beta calculation
+        // Determine benchmark for Beta calculation (use 1 year for consistency with summary)
         let benchmarkDataUrl = ''
         if (asset.assetType === 'us-equity') {
           // Use SPX500 as benchmark for US equities
-          benchmarkDataUrl = `/api/historical-data?assetType=spx500&symbol=SPX500`
+          benchmarkDataUrl = `/api/historical-data?assetType=spx500&symbol=SPX500&limit=${dataLimitForBetaSharpe}`
         } else if (asset.assetType === 'pk-equity') {
           // Use KSE100 as benchmark for PK equities
-          benchmarkDataUrl = `/api/historical-data?assetType=kse100&symbol=KSE100`
+          benchmarkDataUrl = `/api/historical-data?assetType=kse100&symbol=KSE100&limit=${dataLimitForBetaSharpe}`
         }
         
         // Fetch current price, historical data, and benchmark data in parallel
@@ -114,12 +121,22 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
         
         // Calculate metrics if we have both current price and historical data
         if (currentPrice !== undefined && historicalData.length > 0) {
+          // For Beta and Sharpe Ratio, use only the most recent 1 year of data (252 records)
+          // This ensures consistency with summary metrics
+          // For CAGR, use all available data
+          // Note: historicalData is already in ascending order (oldest to newest)
+          // So slice(-252) gives us the most recent 252 records
+          const historicalDataForBetaSharpe = historicalData.slice(-dataLimitForBetaSharpe)
+          // Benchmark data is already fetched with limit=252, so it's already the most recent year
+          
+          // Calculate metrics with full data for CAGR, but use 1-year subset for Beta/Sharpe
           const calculatedMetrics = calculateAllMetrics(
             currentPrice, 
-            historicalData, 
+            historicalData, // Full data for CAGR calculations
             asset.assetType,
             benchmarkData.length > 0 ? benchmarkData : undefined,
-            effectiveRiskFreeRates
+            effectiveRiskFreeRates,
+            historicalDataForBetaSharpe // 1-year subset for Beta and Sharpe
           )
           setMetrics({
             currentPrice,

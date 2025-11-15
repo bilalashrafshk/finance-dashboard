@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Trash2, Loader2 } from "lucide-react"
 import { ASSET_TYPE_LABELS, ASSET_TYPE_COLORS } from "@/lib/portfolio/types"
 import type { TrackedAsset } from "./add-asset-dialog"
+import { AssetSummaryMetrics } from "./asset-summary-metrics"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -82,11 +83,14 @@ export function AssetList({ assets, onDelete, loading }: AssetListProps) {
                       {ASSET_TYPE_LABELS[asset.assetType as keyof typeof ASSET_TYPE_LABELS]}
                     </Badge>
                   </div>
-                  <CardDescription className="flex items-center gap-2">
+                  <CardDescription className="flex items-center gap-2 mb-2">
                     <span className="font-mono">{asset.symbol}</span>
                     <span className="text-muted-foreground">•</span>
                     <span>{asset.currency}</span>
                   </CardDescription>
+                  <div className="mt-2">
+                    <AssetSummaryMetrics asset={asset} />
+                  </div>
                 </Link>
                 <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                   <Button

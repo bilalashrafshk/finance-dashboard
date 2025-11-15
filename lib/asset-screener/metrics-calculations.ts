@@ -387,10 +387,11 @@ export interface RiskFreeRates {
  * Add new metrics here as you implement them.
  * 
  * @param currentPrice - Current price of the asset
- * @param historicalData - Array of historical price data points
+ * @param historicalData - Array of historical price data points (full dataset for CAGR)
  * @param assetType - Type of asset (for determining which metrics to calculate)
  * @param benchmarkData - Benchmark data for Beta calculation (SPX500 or KSE100)
  * @param riskFreeRates - Risk-free rates for Sharpe Ratio calculation
+ * @param historicalData1Year - Optional 1-year subset for Beta and Sharpe Ratio (for consistency)
  * @returns Object containing all calculated metrics
  */
 export function calculateAllMetrics(
@@ -398,7 +399,8 @@ export function calculateAllMetrics(
   historicalData: PriceDataPoint[],
   assetType?: string,
   benchmarkData?: PriceDataPoint[],
-  riskFreeRates?: RiskFreeRates
+  riskFreeRates?: RiskFreeRates,
+  historicalData1Year?: PriceDataPoint[]
 ): CalculatedMetrics {
   const metrics: CalculatedMetrics = {}
 
@@ -426,14 +428,17 @@ export function calculateAllMetrics(
   }
 
   // Calculate Beta for US and PK equities
+  // Use 1-year subset if provided (for consistency with summary), otherwise use full data
   if ((assetType === 'us-equity' || assetType === 'pk-equity') && benchmarkData && benchmarkData.length > 0) {
-    const beta = calculateBeta(historicalData, benchmarkData)
+    const dataForBeta = historicalData1Year && historicalData1Year.length > 0 ? historicalData1Year : historicalData
+    const beta = calculateBeta(dataForBeta, benchmarkData)
     if (beta !== null) {
       metrics.beta1Year = beta
     }
   }
 
   // Calculate Sharpe Ratio for US and PK equities
+  // Use 1-year subset if provided (for consistency with summary), otherwise use full data
   if (assetType === 'us-equity' || assetType === 'pk-equity') {
     // Use provided risk-free rates or defaults
     let riskFreeRate: number
@@ -446,7 +451,8 @@ export function calculateAllMetrics(
       riskFreeRate = assetType === 'us-equity' ? 0.025 : 0.035
     }
     
-    const sharpeRatio = calculateSharpeRatio(historicalData, riskFreeRate)
+    const dataForSharpe = historicalData1Year && historicalData1Year.length > 0 ? historicalData1Year : historicalData
+    const sharpeRatio = calculateSharpeRatio(dataForSharpe, riskFreeRate)
     if (sharpeRatio !== null) {
       metrics.sharpeRatio1Year = sharpeRatio
     }
