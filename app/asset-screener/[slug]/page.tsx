@@ -11,7 +11,7 @@ import type { TrackedAsset } from "@/components/asset-screener/add-asset-dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ASSET_TYPE_LABELS, ASSET_TYPE_COLORS } from "@/lib/portfolio/types"
-import { parseAssetSlug, getAssetTypeFromMarket } from "@/lib/asset-screener/url-utils"
+import { parseAssetSlug, getAssetTypeFromMarket, generateAssetSlug } from "@/lib/asset-screener/url-utils"
 
 export default function AssetDetailPage() {
   const params = useParams()
@@ -32,17 +32,6 @@ export default function AssetDetailPage() {
         return
       }
 
-      // Parse slug to get market and ticker
-      const parsed = parseAssetSlug(slug)
-      if (!parsed) {
-        setError('Invalid asset URL format')
-        setLoading(false)
-        return
-      }
-
-      const { market, ticker } = parsed
-      const assetType = getAssetTypeFromMarket(market, ticker)
-
       const token = localStorage.getItem('auth_token')
       if (!token) {
         setError('Authentication required')
@@ -50,31 +39,75 @@ export default function AssetDetailPage() {
         return
       }
 
-      // Fetch all assets and find the one matching market and ticker
-      const response = await fetch('/api/user/tracked-assets', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
+      // First, try to parse as slug format (e.g., "psx-ogdc", "us-aapl")
+      const parsed = parseAssetSlug(slug)
+      
+      if (parsed) {
+        // Valid slug format - find asset by market and ticker
+        const { market, ticker } = parsed
+        const assetType = getAssetTypeFromMarket(market, ticker)
 
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          const foundAsset = data.assets.find((a: TrackedAsset) => 
-            a.assetType === assetType && a.symbol.toUpperCase() === ticker
-          )
-          if (foundAsset) {
-            setAsset(foundAsset)
+        const response = await fetch('/api/user/tracked-assets', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success) {
+            const foundAsset = data.assets.find((a: TrackedAsset) => 
+              a.assetType === assetType && a.symbol.toUpperCase() === ticker
+            )
+            if (foundAsset) {
+              setAsset(foundAsset)
+            } else {
+              setError('Asset not found')
+            }
           } else {
-            setError('Asset not found')
+            setError('Failed to fetch assets')
           }
+        } else if (response.status === 401) {
+          setError('Authentication required')
         } else {
-          setError('Failed to fetch assets')
+          setError('Failed to load asset')
         }
-      } else if (response.status === 401) {
-        setError('Authentication required')
       } else {
-        setError('Failed to load asset')
+        // Not a valid slug format - might be a legacy ID
+        // If it contains a hyphen, it's likely a malformed slug, not an ID
+        if (slug.includes('-')) {
+          setError('Invalid asset URL format')
+          setLoading(false)
+          return
+        }
+
+        // Treat as legacy ID and redirect to slug format
+        const response = await fetch('/api/user/tracked-assets', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success) {
+            const foundAsset = data.assets.find((a: TrackedAsset) => a.id === slug)
+            if (foundAsset) {
+              // Redirect to new slug format
+              const newSlug = generateAssetSlug(foundAsset.assetType, foundAsset.symbol)
+              router.replace(`/asset-screener/${newSlug}`)
+              return
+            } else {
+              setError('Asset not found')
+            }
+          } else {
+            setError('Failed to fetch assets')
+          }
+        } else if (response.status === 401) {
+          setError('Authentication required')
+        } else {
+          setError('Failed to load asset')
+        }
       }
     } catch (error) {
       console.error('Error loading asset:', error)
