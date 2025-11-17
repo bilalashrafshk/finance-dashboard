@@ -7,6 +7,7 @@ import {
 import { fetchStockAnalysisData } from '@/lib/portfolio/stockanalysis-api'
 import { fetchBinanceHistoricalData } from '@/lib/portfolio/binance-historical-api'
 import { retryWithBackoff } from '@/lib/portfolio/retry-utils'
+import { getTodayInMarketTimezone } from '@/lib/portfolio/market-hours'
 import type { StockAnalysisDataPoint } from '@/lib/portfolio/stockanalysis-api'
 import type { BinanceHistoricalDataPoint } from '@/lib/portfolio/binance-historical-api'
 import type { InvestingHistoricalDataPoint } from '@/lib/portfolio/investing-client-api'
@@ -19,9 +20,15 @@ import type { InvestingHistoricalDataPoint } from '@/lib/portfolio/investing-cli
  * Flow:
  * 1. Check database for stored data
  * 2. If exists, return stored data immediately
- * 3. Fetch only new dates from API (after last stored date)
- * 4. Store new data in database
- * 5. Return combined data
+ * 3. Detect gaps between last stored date and today
+ * 4. Trigger background fetch for missing dates (non-blocking)
+ * 5. Return stored data immediately (background fetch runs asynchronously)
+ * 
+ * Gap Detection:
+ * - Automatically detects missing trading days between last stored date and today
+ * - Only triggers for server-side fetchable assets (pk-equity, us-equity, crypto)
+ * - Excludes weekends from trading day calculations
+ * - Runs in background without blocking the API response
  */
 
 function convertStockAnalysisToRecord(data: StockAnalysisDataPoint): HistoricalPriceRecord {
@@ -61,6 +68,39 @@ function convertInvestingToRecord(data: InvestingHistoricalDataPoint): Historica
     adjusted_close: null,
     change_pct: null,
   }
+}
+
+/**
+ * Check if a date is a weekend (Saturday or Sunday)
+ */
+function isWeekend(date: Date): boolean {
+  const day = date.getDay()
+  return day === 0 || day === 6 // 0 = Sunday, 6 = Saturday
+}
+
+/**
+ * Calculate the number of trading days between two dates (excluding weekends)
+ * This is a simple approximation - doesn't account for market holidays
+ */
+function calculateTradingDaysBetween(startDate: string, endDate: string): number {
+  const start = new Date(startDate)
+  const end = new Date(endDate)
+  
+  if (start >= end) {
+    return 0
+  }
+  
+  let tradingDays = 0
+  const current = new Date(start)
+  
+  while (current <= end) {
+    if (!isWeekend(current)) {
+      tradingDays++
+    }
+    current.setDate(current.getDate() + 1)
+  }
+  
+  return tradingDays
 }
 
 /**
@@ -213,10 +253,40 @@ export async function GET(request: NextRequest) {
       ? new Date(new Date(storedData.latestStoredDate).getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0] // Day after last stored
       : undefined // No stored data, fetch from beginning
 
-    // Step 3: Return stored data (ONLY read from database - NO automatic external API calls)
-    // External API calls should ONLY happen when:
-    // 1. User clicks "Update All" button
-    // 2. User is adding a holding
+    // Step 3: Gap Detection - Check for missing dates and trigger background fetch
+    // Only fetch for asset types that support server-side fetching (pk-equity, us-equity, crypto)
+    const supportsServerSideFetch = assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto'
+    
+    if (supportsServerSideFetch && storedData.latestStoredDate && fetchStartDate) {
+      // Get today's date in the appropriate market timezone
+      const marketForTimezone = assetType === 'pk-equity' ? 'PSX' : assetType === 'us-equity' ? 'US' : 'crypto'
+      const todayInMarketTimezone = getTodayInMarketTimezone(marketForTimezone)
+      
+      // Only check for gaps if fetchStartDate is before or equal to today
+      // This ensures we fetch today's data if it's missing
+      if (fetchStartDate <= todayInMarketTimezone) {
+        // Calculate approximate trading days between dates (excluding weekends)
+        const tradingDays = calculateTradingDaysBetween(fetchStartDate, todayInMarketTimezone)
+        
+        // If there are potential trading days missing, trigger background fetch
+        // We use a threshold of 1 day to avoid unnecessary fetches for same-day requests
+        if (tradingDays > 0) {
+          console.log(`[Gap Detection] ${assetType}/${symbol}: Detected ${tradingDays} potential trading days missing between ${fetchStartDate} and ${todayInMarketTimezone}`)
+          
+          // Trigger background fetch (non-blocking - don't await)
+          fetchNewDataInBackground(assetType, symbol, market, fetchStartDate, todayInMarketTimezone)
+            .then(() => {
+              console.log(`[Gap Detection] ${assetType}/${symbol}: Background fetch completed successfully`)
+            })
+            .catch((error) => {
+              console.error(`[Gap Detection] ${assetType}/${symbol}: Background fetch failed:`, error)
+            })
+        }
+      }
+    }
+
+    // Step 4: Return stored data immediately (non-blocking response)
+    // Background fetch runs asynchronously and doesn't block the response
     const cached = cacheManager.get(cacheKey)
     const fromCache = cached !== null
     

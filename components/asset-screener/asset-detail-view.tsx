@@ -31,6 +31,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
   const [metrics, setMetrics] = useState<AssetMetrics | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<string>('analytics')
   
   // Use provided risk-free rates or load from localStorage
   const effectiveRiskFreeRates = riskFreeRates || loadRiskFreeRates()
@@ -221,7 +222,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
   }
 
   return (
-    <Tabs defaultValue="analytics" className="w-full">
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
       <TabsList className="mb-6">
         <TabsTrigger value="analytics">Analytics</TabsTrigger>
         <TabsTrigger value="dividends">Dividends</TabsTrigger>

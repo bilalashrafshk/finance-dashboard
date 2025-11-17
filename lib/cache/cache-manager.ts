@@ -210,6 +210,16 @@ export class CacheManager {
   }
 
   /**
+   * Set cached value with custom TTL (in milliseconds)
+   * Useful for rate limiting and custom expiration times
+   */
+  setWithCustomTTL<T>(key: string, value: T, ttl: number): void {
+    if (ttl > 0) {
+      globalCache.set(key, value, ttl)
+    }
+  }
+
+  /**
    * Delete cached value
    */
   delete(key: string): void {

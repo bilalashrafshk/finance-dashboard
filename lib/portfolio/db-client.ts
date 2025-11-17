@@ -633,3 +633,43 @@ export async function hasDividendData(
     return false
   }
 }
+
+/**
+ * Get the latest dividend date for an asset
+ * @returns Latest dividend date (YYYY-MM-DD) or null if no dividends exist
+ */
+export async function getLatestDividendDate(
+  assetType: string,
+  symbol: string
+): Promise<string | null> {
+  try {
+    const client = await getPool().connect()
+
+    try {
+      const result = await client.query(
+        `SELECT date
+         FROM dividend_data
+         WHERE asset_type = $1 AND symbol = $2
+         ORDER BY date DESC
+         LIMIT 1`,
+        [assetType, symbol.toUpperCase()]
+      )
+
+      if (result.rows.length > 0) {
+        const date = result.rows[0].date
+        // Convert Date object to YYYY-MM-DD string
+        if (date instanceof Date) {
+          return date.toISOString().split('T')[0]
+        }
+        return date
+      }
+
+      return null
+    } finally {
+      client.release()
+    }
+  } catch (error) {
+    console.error(`Error getting latest dividend date for ${assetType}-${symbol}:`, error)
+    return null
+  }
+}
