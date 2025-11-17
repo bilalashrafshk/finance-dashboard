@@ -313,3 +313,4 @@ const updateAllHoldings = async () => {
 **Key Issue**: Redundant storage for crypto, PK equity, and US equity (they store twice).
 
 
+

@@ -308,3 +308,4 @@ app/
 4. **Historical Analysis**: Use stored historical data for charts and analysis
 
 
+

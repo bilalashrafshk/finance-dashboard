@@ -8,8 +8,8 @@ import { AuthProvider } from "@/lib/auth/auth-context"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Risk Dashboard - Bilal Ashraf",
-  description: "Ethereum Risk Analysis Dashboard by Bilal Ashraf",
+  title: "Invest Away - Risk Dashboard",
+  description: "Investment risk analysis and portfolio management by Invest Away",
 }
 
 export const viewport: Viewport = {

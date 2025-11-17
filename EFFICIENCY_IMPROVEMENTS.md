@@ -347,3 +347,4 @@ return NextResponse.json(data, {
 - Chart loading: 5-10x faster (with parallel processing)
 
 
+

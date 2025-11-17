@@ -40,15 +40,34 @@ export function Navigation() {
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2 font-semibold">
             <BarChart3 className="h-5 w-5" />
-            <span>Risk Dashboard</span>
+            <span className="inline-flex items-baseline">
+              {"INVEST AWAY".split("").map((char, index) => {
+                const scale = Math.pow(1.06, index); // Compounding factor of 6% per letter
+                const isInvest = index < "INVEST ".length;
+                const colorClass = isInvest 
+                  ? "text-red-600" 
+                  : "text-green-500";
+                return (
+                  <span
+                    key={index}
+                    className={colorClass}
+                    style={{
+                      fontSize: `${scale}em`,
+                    }}
+                  >
+                    {char === " " ? "\u00A0" : char}
+                  </span>
+                );
+              })}
+            </span>
           </Link>
           <div className="flex items-center gap-2">
             <Button
-              variant={pathname === "/" ? "secondary" : "ghost"}
+              variant={pathname === "/eth-risk" ? "secondary" : "ghost"}
               size="sm"
               asChild
             >
-              <Link href="/">
+              <Link href="/eth-risk">
                 <BarChart3 className="mr-2 h-4 w-4" />
                 ETH Risk
               </Link>
