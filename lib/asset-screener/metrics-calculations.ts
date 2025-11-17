@@ -12,6 +12,23 @@ export interface PriceDataPoint {
   close: number
 }
 
+export interface MonthlySeasonality {
+  month: number // 0-11 (January = 0)
+  monthName: string
+  avgReturn: number // Average return as percentage
+  count: number // Number of observations
+}
+
+export interface DrawdownPeriod {
+  peakDate: string
+  troughDate: string
+  recoveryDate: string | null // null if not yet recovered
+  peakPrice: number
+  troughPrice: number
+  drawdown: number // percentage
+  duration: number // days from peak to recovery (or to end if not recovered)
+}
+
 export interface CalculatedMetrics {
   ytdReturn?: number | null
   ytdReturnPercent?: number | null
@@ -20,6 +37,9 @@ export interface CalculatedMetrics {
   cagr5Year?: number | null
   beta1Year?: number | null
   sharpeRatio1Year?: number | null
+  sortinoRatio1Year?: number | null
+  maxDrawdown?: number | null
+  monthlySeasonality?: MonthlySeasonality[]
 }
 
 /**
@@ -373,6 +393,341 @@ export function calculateSharpeRatio(
 }
 
 /**
+ * Calculate Sortino Ratio (annualized from daily returns)
+ * 
+ * Formula: Sortino Ratio = (Mean Daily Return * 252 - Risk-Free Rate) / (Downside Std Dev * sqrt(252))
+ * 
+ * Where:
+ * - 252 = number of trading days in a year
+ * - Risk-Free Rate = annual risk-free rate (default: 2.5% or 0.025)
+ * - Downside Std Dev = standard deviation of only negative returns
+ * 
+ * @param historicalData - Asset historical price data
+ * @param riskFreeRate - Annual risk-free rate (default: 0.025 = 2.5%)
+ * @returns Annualized Sortino Ratio, or null if insufficient data
+ */
+export function calculateSortinoRatio(
+  historicalData: PriceDataPoint[],
+  riskFreeRate: number = 0.025 // Default 2.5% annual risk-free rate
+): number | null {
+  if (!historicalData || historicalData.length < 30) {
+    return null // Need at least 30 trading days
+  }
+  
+  // Calculate daily returns
+  const dailyReturns = calculateDailyReturns(historicalData)
+  
+  if (dailyReturns.length < 30) {
+    return null
+  }
+  
+  // Calculate mean daily return (as percentage)
+  const meanDailyReturn = mean(dailyReturns)
+  
+  // Calculate downside deviation: only consider negative returns (returns below 0)
+  const negativeReturns = dailyReturns.filter(ret => ret < 0)
+  
+  if (negativeReturns.length === 0) {
+    // If there are no negative returns, downside deviation is 0
+    // In this case, Sortino Ratio would be infinite, so we return null
+    // Alternatively, we could return a very high number, but null is safer
+    return null
+  }
+  
+  // Calculate standard deviation of negative returns only
+  const downsideStdDev = standardDeviation(negativeReturns)
+  
+  if (downsideStdDev === 0) {
+    return null // Cannot divide by zero
+  }
+  
+  // Annualize the returns and downside standard deviation
+  // Mean annual return = Mean daily return * 252 (trading days)
+  const annualizedReturn = meanDailyReturn * 252
+  
+  // Annualized downside standard deviation = Downside std dev * sqrt(252)
+  const annualizedDownsideStdDev = downsideStdDev * Math.sqrt(252)
+  
+  if (annualizedDownsideStdDev === 0) {
+    return null
+  }
+  
+  // Calculate Sortino Ratio
+  // Sortino Ratio = (Annualized Return - Risk-Free Rate) / Annualized Downside Std Dev
+  const sortinoRatio = (annualizedReturn - (riskFreeRate * 100)) / annualizedDownsideStdDev
+  
+  return sortinoRatio
+}
+
+/**
+ * Calculate Max Drawdown
+ * 
+ * Formula: MaxDD = max((Peak - Trough) / Peak)
+ * 
+ * Max Drawdown is the largest observed drop from peak to trough.
+ * Shows downside risk - critical for illiquid stocks.
+ * 
+ * @param historicalData - Asset historical price data
+ * @returns Max Drawdown as a percentage (e.g., 25.5 for 25.5%), or null if insufficient data
+ */
+export function calculateMaxDrawdown(
+  historicalData: PriceDataPoint[]
+): number | null {
+  if (!historicalData || historicalData.length < 2) {
+    return null // Need at least 2 data points
+  }
+  
+  // Sort data by date (ascending) to ensure chronological order
+  const sortedData = [...historicalData].sort((a, b) => a.date.localeCompare(b.date))
+  
+  let maxDrawdown = 0
+  let peak = sortedData[0].close
+  
+  // Iterate through prices to find the maximum drawdown
+  for (let i = 1; i < sortedData.length; i++) {
+    const currentPrice = sortedData[i].close
+    
+    // Update peak if we see a new high
+    if (currentPrice > peak) {
+      peak = currentPrice
+    }
+    
+    // Calculate drawdown from current peak
+    if (peak > 0) {
+      const drawdown = ((peak - currentPrice) / peak) * 100
+      
+      // Update max drawdown if this is larger
+      if (drawdown > maxDrawdown) {
+        maxDrawdown = drawdown
+      }
+    }
+  }
+  
+  return maxDrawdown
+}
+
+/**
+ * Calculate Drawdown Duration
+ * 
+ * Measures how long it takes to recover from a peak.
+ * Tracks time from peak to recovery (when price returns to or exceeds peak).
+ * 
+ * @param historicalData - Asset historical price data
+ * @returns Object with max and average drawdown durations in days, or null if insufficient data
+ */
+export function calculateDrawdownDuration(
+  historicalData: PriceDataPoint[]
+): { maxDuration: number | null, avgDuration: number | null, drawdownPeriods: DrawdownPeriod[] } | null {
+  if (!historicalData || historicalData.length < 2) {
+    return null
+  }
+  
+  // Sort data by date (ascending)
+  const sortedData = [...historicalData].sort((a, b) => a.date.localeCompare(b.date))
+  
+  const drawdownPeriods: DrawdownPeriod[] = []
+  let currentPeak: { date: string, price: number } | null = null
+  let currentTrough: { date: string, price: number } | null = null
+  let inDrawdown = false
+  
+  for (let i = 0; i < sortedData.length; i++) {
+    const currentDate = sortedData[i].date
+    const currentPrice = sortedData[i].close
+    
+    if (!currentPeak || currentPrice > currentPeak.price) {
+      // New peak - check if we were in a drawdown and recovered
+      if (inDrawdown && currentPeak && currentTrough) {
+        // Recovery! Calculate the drawdown period
+        const peakDate = new Date(currentPeak.date)
+        const recoveryDate = new Date(currentDate)
+        const duration = Math.floor((recoveryDate.getTime() - peakDate.getTime()) / (1000 * 60 * 60 * 24))
+        const drawdown = ((currentPeak.price - currentTrough.price) / currentPeak.price) * 100
+        
+        drawdownPeriods.push({
+          peakDate: currentPeak.date,
+          troughDate: currentTrough.date,
+          recoveryDate: currentDate,
+          peakPrice: currentPeak.price,
+          troughPrice: currentTrough.price,
+          drawdown,
+          duration
+        })
+        
+        inDrawdown = false
+        currentTrough = null
+      }
+      
+      // Update peak
+      currentPeak = { date: currentDate, price: currentPrice }
+    } else if (currentPeak && currentPrice < currentPeak.price) {
+      // We're in a drawdown
+      if (!inDrawdown) {
+        inDrawdown = true
+        currentTrough = { date: currentDate, price: currentPrice }
+      } else {
+        // Update trough if this is a new low
+        if (!currentTrough || currentPrice < currentTrough.price) {
+          currentTrough = { date: currentDate, price: currentPrice }
+        }
+      }
+    }
+  }
+  
+  // Handle any ongoing drawdown (not yet recovered)
+  if (inDrawdown && currentPeak && currentTrough) {
+    const peakDate = new Date(currentPeak.date)
+    const lastDate = new Date(sortedData[sortedData.length - 1].date)
+    const duration = Math.floor((lastDate.getTime() - peakDate.getTime()) / (1000 * 60 * 60 * 24))
+    const drawdown = ((currentPeak.price - currentTrough.price) / currentPeak.price) * 100
+    
+    drawdownPeriods.push({
+      peakDate: currentPeak.date,
+      troughDate: currentTrough.date,
+      recoveryDate: null, // Not yet recovered
+      peakPrice: currentPeak.price,
+      troughPrice: currentTrough.price,
+      drawdown,
+      duration
+    })
+  }
+  
+  if (drawdownPeriods.length === 0) {
+    return null
+  }
+  
+  // Calculate max and average duration (only for recovered drawdowns)
+  const recoveredDurations = drawdownPeriods
+    .filter(p => p.recoveryDate !== null)
+    .map(p => p.duration)
+  
+  if (recoveredDurations.length === 0) {
+    return {
+      maxDuration: null,
+      avgDuration: null,
+      drawdownPeriods
+    }
+  }
+  
+  const maxDuration = Math.max(...recoveredDurations)
+  const avgDuration = mean(recoveredDurations)
+  
+  return {
+    maxDuration,
+    avgDuration,
+    drawdownPeriods
+  }
+}
+
+/**
+ * Calculate Monthly Seasonality
+ * 
+ * Computes average monthly returns by:
+ * 1. For each year, calculate monthly return: (Last day of month price - First day of month price) / First day of month price
+ * 2. Average those monthly returns across all years
+ * 
+ * @param historicalData - Asset historical price data
+ * @returns Array of monthly seasonality data, or null if insufficient data
+ */
+export function calculateMonthlySeasonality(
+  historicalData: PriceDataPoint[]
+): MonthlySeasonality[] | null {
+  if (!historicalData || historicalData.length < 2) {
+    return null
+  }
+  
+  // Sort data by date (ascending)
+  const sortedData = [...historicalData].sort((a, b) => a.date.localeCompare(b.date))
+  
+  // Group data points by year-month
+  const dataByYearMonth: Map<string, PriceDataPoint[]> = new Map()
+  
+  sortedData.forEach(point => {
+    const date = new Date(point.date)
+    const year = date.getFullYear()
+    const month = date.getMonth() // 0-11
+    const key = `${year}-${month}`
+    
+    if (!dataByYearMonth.has(key)) {
+      dataByYearMonth.set(key, [])
+    }
+    dataByYearMonth.get(key)!.push(point)
+  })
+  
+  // For each month (0-11), collect monthly returns across all years
+  const monthlyReturnsByMonth: Map<number, number[]> = new Map()
+  
+  dataByYearMonth.forEach((points, key) => {
+    if (points.length === 0) return
+    
+    // Sort points by date within the month
+    const sortedPoints = [...points].sort((a, b) => a.date.localeCompare(b.date))
+    
+    // Extract year and month from key (format: "YYYY-M")
+    const [yearStr, monthStr] = key.split('-')
+    const year = parseInt(yearStr)
+    const month = parseInt(monthStr)
+    
+    // Get the first and last day of the month
+    const firstDayOfMonth = new Date(year, month, 1)
+    const lastDayOfMonth = new Date(year, month + 1, 0) // Last day of the month
+    
+    // Check if we have data in the first week (days 1-7)
+    const firstWeekEnd = new Date(year, month, 7)
+    const hasFirstWeekData = sortedPoints.some(point => {
+      const pointDate = new Date(point.date)
+      return pointDate >= firstDayOfMonth && pointDate <= firstWeekEnd
+    })
+    
+    // Check if we have data in the last week (last 7 days of the month)
+    const lastWeekStart = new Date(year, month + 1, -7) // 7 days before end of month
+    const hasLastWeekData = sortedPoints.some(point => {
+      const pointDate = new Date(point.date)
+      return pointDate >= lastWeekStart && pointDate <= lastDayOfMonth
+    })
+    
+    // Only calculate monthly return if we have data in both first and last week
+    if (!hasFirstWeekData || !hasLastWeekData) {
+      return // Skip this month-year combination
+    }
+    
+    // Get first and last day prices for this month
+    const firstDayPrice = sortedPoints[0].close
+    const lastDayPrice = sortedPoints[sortedPoints.length - 1].close
+    
+    if (firstDayPrice > 0) {
+      // Calculate monthly return: (Last day - First day) / First day * 100
+      const monthlyReturn = ((lastDayPrice - firstDayPrice) / firstDayPrice) * 100
+      
+      if (!monthlyReturnsByMonth.has(month)) {
+        monthlyReturnsByMonth.set(month, [])
+      }
+      monthlyReturnsByMonth.get(month)!.push(monthlyReturn)
+    }
+  })
+  
+  // Calculate average for each month across all years
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                      'July', 'August', 'September', 'October', 'November', 'December']
+  
+  const seasonality: MonthlySeasonality[] = []
+  
+  for (let month = 0; month < 12; month++) {
+    const returns = monthlyReturnsByMonth.get(month) || []
+    const avgReturn = returns.length > 0 ? mean(returns) : 0
+    
+    seasonality.push({
+      month,
+      monthName: monthNames[month],
+      avgReturn,
+      count: returns.length // Number of years with data for this month
+    })
+  }
+  
+  return seasonality
+}
+
+
+/**
  * Risk-free rate configuration
  */
 export interface RiskFreeRates {
@@ -392,6 +747,7 @@ export interface RiskFreeRates {
  * @param benchmarkData - Benchmark data for Beta calculation (SPX500 or KSE100)
  * @param riskFreeRates - Risk-free rates for Sharpe Ratio calculation
  * @param historicalData1Year - Optional 1-year subset for Beta and Sharpe Ratio (for consistency)
+ * @param historicalDataForSeasonality - Optional full historical data for seasonality (all years, no limit)
  * @returns Object containing all calculated metrics
  */
 export function calculateAllMetrics(
@@ -400,7 +756,8 @@ export function calculateAllMetrics(
   assetType?: string,
   benchmarkData?: PriceDataPoint[],
   riskFreeRates?: RiskFreeRates,
-  historicalData1Year?: PriceDataPoint[]
+  historicalData1Year?: PriceDataPoint[],
+  historicalDataForSeasonality?: PriceDataPoint[]
 ): CalculatedMetrics {
   const metrics: CalculatedMetrics = {}
 
@@ -456,6 +813,30 @@ export function calculateAllMetrics(
     if (sharpeRatio !== null) {
       metrics.sharpeRatio1Year = sharpeRatio
     }
+    
+    // Calculate Sortino Ratio for US and PK equities
+    // Use same data and risk-free rate as Sharpe Ratio
+    const sortinoRatio = calculateSortinoRatio(dataForSharpe, riskFreeRate)
+    if (sortinoRatio !== null) {
+      metrics.sortinoRatio1Year = sortinoRatio
+    }
+  }
+
+  // Calculate Max Drawdown for all asset types (using full historical data)
+  // Max Drawdown shows the worst peak-to-trough decline, so we want the full history
+  const maxDrawdown = calculateMaxDrawdown(historicalData)
+  if (maxDrawdown !== null) {
+    metrics.maxDrawdown = maxDrawdown
+  }
+
+  // Calculate Seasonality for all asset types (using full historical data - all years)
+  // Use historicalDataForSeasonality if provided (all years), otherwise use historicalData
+  const dataForSeasonality = historicalDataForSeasonality && historicalDataForSeasonality.length > 0 
+    ? historicalDataForSeasonality 
+    : historicalData
+  const monthlySeasonality = calculateMonthlySeasonality(dataForSeasonality)
+  if (monthlySeasonality !== null) {
+    metrics.monthlySeasonality = monthlySeasonality
   }
 
   return metrics

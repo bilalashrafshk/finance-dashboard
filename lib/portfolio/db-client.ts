@@ -470,3 +470,166 @@ export async function closePool(): Promise<void> {
     pool = null
   }
 }
+
+// ============================================================================
+// DIVIDEND DATA FUNCTIONS
+// ============================================================================
+
+export interface DividendRecord {
+  date: string // YYYY-MM-DD
+  dividend_amount: number // percent/10 (e.g., 110% = 11.0)
+}
+
+/**
+ * Insert or update dividend data (upsert)
+ * Uses chunked batch inserts for better performance
+ */
+export async function insertDividendData(
+  assetType: string,
+  symbol: string,
+  data: DividendRecord[],
+  source: string = 'scstrade'
+): Promise<{ inserted: number; skipped: number }> {
+  if (!data || data.length === 0) {
+    return { inserted: 0, skipped: 0 }
+  }
+
+  try {
+    const client = await getPool().connect()
+
+    try {
+      await client.query('BEGIN')
+
+      const CHUNK_SIZE = 1000
+      let totalInserted = 0
+
+      for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+        const chunk = data.slice(i, i + CHUNK_SIZE)
+        const values: any[] = []
+        const placeholders: string[] = []
+
+        chunk.forEach((record, index) => {
+          const baseIndex = index * 5
+          placeholders.push(
+            `($${baseIndex + 1}, $${baseIndex + 2}, $${baseIndex + 3}, $${baseIndex + 4}, $${baseIndex + 5})`
+          )
+          values.push(
+            assetType,
+            symbol.toUpperCase(),
+            record.date,
+            record.dividend_amount,
+            source
+          )
+        })
+
+        const result = await client.query(
+          `INSERT INTO dividend_data 
+           (asset_type, symbol, date, dividend_amount, source)
+           VALUES ${placeholders.join(', ')}
+           ON CONFLICT (asset_type, symbol, date) 
+           DO UPDATE SET 
+             dividend_amount = EXCLUDED.dividend_amount,
+             source = EXCLUDED.source,
+             updated_at = NOW()`,
+          values
+        )
+
+        totalInserted += result.rowCount || 0
+      }
+
+      const skipped = data.length - totalInserted
+
+      await client.query('COMMIT')
+
+      return { inserted: totalInserted, skipped }
+    } catch (error: any) {
+      await client.query('ROLLBACK')
+      console.error(`[DB] insertDividendData: Transaction rolled back for ${assetType}-${symbol}:`, error.message)
+      throw error
+    } finally {
+      client.release()
+    }
+  } catch (error: any) {
+    console.error(`[DB] Error inserting dividend data for ${assetType}-${symbol}:`, error.message)
+    return { inserted: 0, skipped: 0 }
+  }
+}
+
+/**
+ * Get dividend data for an asset within a date range
+ */
+export async function getDividendData(
+  assetType: string,
+  symbol: string,
+  startDate?: string,
+  endDate?: string
+): Promise<DividendRecord[]> {
+  try {
+    const client = await getPool().connect()
+
+    try {
+      const normalizedSymbol = symbol.toUpperCase()
+      const params: any[] = [assetType, normalizedSymbol]
+      let whereClause = 'WHERE asset_type = $1 AND symbol = $2'
+      let paramIndex = 3
+
+      if (startDate) {
+        whereClause += ` AND date >= $${paramIndex}`
+        params.push(startDate)
+        paramIndex++
+      }
+
+      if (endDate) {
+        whereClause += ` AND date <= $${paramIndex}`
+        params.push(endDate)
+        paramIndex++
+      }
+
+      const result = await client.query(
+        `SELECT date, dividend_amount
+         FROM dividend_data
+         ${whereClause}
+         ORDER BY date ASC`,
+        params
+      )
+
+      return result.rows.map(row => ({
+        date: row.date.toISOString().split('T')[0],
+        dividend_amount: parseFloat(row.dividend_amount)
+      }))
+    } finally {
+      client.release()
+    }
+  } catch (error) {
+    console.error(`Error getting dividend data for ${assetType}-${symbol}:`, error)
+    return []
+  }
+}
+
+/**
+ * Check if dividend data exists for an asset
+ */
+export async function hasDividendData(
+  assetType: string,
+  symbol: string
+): Promise<boolean> {
+  try {
+    const client = await getPool().connect()
+
+    try {
+      const result = await client.query(
+        `SELECT COUNT(*) as count
+         FROM dividend_data
+         WHERE asset_type = $1 AND symbol = $2`,
+        [assetType, symbol.toUpperCase()]
+      )
+
+      return parseInt(result.rows[0]?.count || '0', 10) > 0
+    } finally {
+      client.release()
+    }
+  } catch (error) {
+    console.error(`Error checking dividend data for ${assetType}-${symbol}:`, error)
+    return false
+  }
+}

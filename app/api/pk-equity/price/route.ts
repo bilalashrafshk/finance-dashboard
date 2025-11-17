@@ -5,6 +5,7 @@ import { isMarketClosed, getTodayInMarketTimezone } from '@/lib/portfolio/market
 import { fetchPSXBidPrice } from '@/lib/portfolio/psx-api'
 import { cacheManager } from '@/lib/cache/cache-manager'
 import { generatePriceCacheKey, generateHistoricalCacheKey, generateInvalidationKeys, generateHistoricalInvalidationPattern } from '@/lib/cache/cache-utils'
+import { fetchAndStoreDividends } from '@/lib/portfolio/dividend-fetcher'
 
 /**
  * Unified PK Equity Price API Route
@@ -184,6 +185,11 @@ export async function GET(request: NextRequest) {
               console.error(`[PK Equity API] Failed to store historical data for ${tickerUpper}:`, err)
             }
           }
+
+          // Fetch and store dividend data (non-blocking - errors won't affect price response)
+          fetchAndStoreDividends(tickerUpper, 'pk-equity', false).catch(err => {
+            console.error(`[PK Equity API] Dividend fetch failed for ${tickerUpper} (non-critical):`, err)
+          })
         } else {
           // DB has data, just store today's price
           const priceRecord = {
@@ -203,6 +209,11 @@ export async function GET(request: NextRequest) {
           } catch (err) {
             console.error(`[PK Equity API] Failed to store price for ${tickerUpper}:`, err)
           }
+
+          // Fetch and store dividend data (non-blocking - errors won't affect price response)
+          fetchAndStoreDividends(tickerUpper, 'pk-equity', false).catch(err => {
+            console.error(`[PK Equity API] Dividend fetch failed for ${tickerUpper} (non-critical):`, err)
+          })
         }
 
         const response = {

@@ -20,6 +20,8 @@ export function AssetSummaryMetrics({ asset }: AssetSummaryMetricsProps) {
   const [ytdReturn, setYtdReturn] = useState<number | null>(null)
   const [beta, setBeta] = useState<number | null>(null)
   const [sharpeRatio, setSharpeRatio] = useState<number | null>(null)
+  const [sortinoRatio, setSortinoRatio] = useState<number | null>(null)
+  const [maxDrawdown, setMaxDrawdown] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -113,6 +115,12 @@ export function AssetSummaryMetrics({ asset }: AssetSummaryMetricsProps) {
           if (metrics.sharpeRatio1Year !== null && metrics.sharpeRatio1Year !== undefined) {
             setSharpeRatio(metrics.sharpeRatio1Year)
           }
+          if (metrics.sortinoRatio1Year !== null && metrics.sortinoRatio1Year !== undefined) {
+            setSortinoRatio(metrics.sortinoRatio1Year)
+          }
+          if (metrics.maxDrawdown !== null && metrics.maxDrawdown !== undefined) {
+            setMaxDrawdown(metrics.maxDrawdown)
+          }
         }
       } catch (error) {
         console.error(`Error fetching summary metrics for ${asset.symbol}:`, error)
@@ -173,7 +181,29 @@ export function AssetSummaryMetrics({ asset }: AssetSummaryMetricsProps) {
         </div>
       )}
       
-      {!currentPrice && !ytdReturn && !beta && !sharpeRatio && (
+      {sortinoRatio !== null && (asset.assetType === 'us-equity' || asset.assetType === 'pk-equity') && (
+        <div>
+          <span className="text-muted-foreground">Sortino: </span>
+          <span className={`font-semibold ${
+            sortinoRatio >= 1 ? 'text-green-600 dark:text-green-400' : 
+            sortinoRatio >= 0 ? 'text-yellow-600 dark:text-yellow-400' : 
+            'text-red-600 dark:text-red-400'
+          }`}>
+            {sortinoRatio.toFixed(2)}
+          </span>
+        </div>
+      )}
+      
+      {maxDrawdown !== null && (
+        <div>
+          <span className="text-muted-foreground">Max DD: </span>
+          <span className="font-semibold text-red-600 dark:text-red-400">
+            {formatPercentage(maxDrawdown)}
+          </span>
+        </div>
+      )}
+      
+      {!currentPrice && !ytdReturn && !beta && !sharpeRatio && !sortinoRatio && !maxDrawdown && (
         <span className="text-muted-foreground text-xs">No metrics available</span>
       )}
     </div>

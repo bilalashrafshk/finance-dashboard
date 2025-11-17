@@ -9,6 +9,7 @@ import { Trash2, Loader2 } from "lucide-react"
 import { ASSET_TYPE_LABELS, ASSET_TYPE_COLORS } from "@/lib/portfolio/types"
 import type { TrackedAsset } from "./add-asset-dialog"
 import { AssetSummaryMetrics } from "./asset-summary-metrics"
+import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -68,7 +69,7 @@ export function AssetList({ assets, onDelete, loading }: AssetListProps) {
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between gap-4">
                 <Link 
-                  href={`/asset-screener/${asset.id}`}
+                  href={`/asset-screener/${generateAssetSlug(asset.assetType, asset.symbol)}`}
                   className="flex-1 hover:opacity-80 transition-opacity cursor-pointer"
                 >
                   <div className="flex items-center gap-2 mb-1">
