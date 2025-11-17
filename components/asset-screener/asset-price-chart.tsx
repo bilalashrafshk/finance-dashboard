@@ -67,14 +67,15 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
     }>
   } | null>(null)
 
-  // Only show comparison and total return options for PK equities
-  const canShowComparison = asset.assetType === 'pk-equity'
+  // Show comparison for PK equities (KSE100) and US equities (SPX500)
+  const canShowComparison = asset.assetType === 'pk-equity' || asset.assetType === 'us-equity'
   const canShowTotalReturn = asset.assetType === 'pk-equity'
+  const comparisonIndex = asset.assetType === 'pk-equity' ? 'KSE100' : asset.assetType === 'us-equity' ? 'SPX500' : null
 
-  // Handle comparison toggle - auto-enable total return if needed
+  // Handle comparison toggle - auto-enable total return if needed (only for PK equities)
   const handleComparisonChange = (checked: boolean) => {
-    if (checked && !showTotalReturn) {
-      // Auto-enable total return when comparison is enabled
+    if (checked && !showTotalReturn && asset.assetType === 'pk-equity') {
+      // Auto-enable total return when comparison is enabled for PK equities
       setShowTotalReturn(true)
       toast({
         title: "Total Return Enabled",
@@ -179,10 +180,12 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
           }
         }
 
-        // Fetch KSE100 data if comparison is enabled and asset is PK equity
+        // Fetch comparison index data (KSE100 for PK equities, SPX500 for US equities)
         let comparisonData: PriceDataPoint[] = []
-        if (showComparison && canShowComparison) {
-          const comparisonResponse = await fetch(`/api/historical-data?assetType=kse100&symbol=KSE100&limit=${limit}`)
+        if (showComparison && canShowComparison && comparisonIndex) {
+          const comparisonAssetType = asset.assetType === 'pk-equity' ? 'kse100' : 'spx500'
+          const comparisonSymbol = comparisonIndex
+          const comparisonResponse = await fetch(`/api/historical-data?assetType=${comparisonAssetType}&symbol=${comparisonSymbol}&limit=${limit}`)
           if (comparisonResponse.ok) {
             const comparisonResponseData = await comparisonResponse.json()
             if (comparisonResponseData.data && Array.isArray(comparisonResponseData.data)) {
@@ -330,12 +333,12 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
           })
         }
 
-        // Add KSE100 comparison line if enabled
-        if (showComparison && canShowComparison && alignedComparisonPrices.length > 0) {
+        // Add comparison index line if enabled (KSE100 for PK equities, SPX500 for US equities)
+        if (showComparison && canShowComparison && alignedComparisonPrices.length > 0 && comparisonIndex) {
           datasets.push({
-            label: 'KSE100 Index',
+            label: `${comparisonIndex} Index`,
             data: alignedComparisonPrices,
-            borderColor: '#a855f7', // Purple for KSE100
+            borderColor: '#a855f7', // Purple for comparison index
             backgroundColor: 'transparent',
             fill: false,
             borderDash: [5, 5], // Dashed line for comparison
@@ -363,7 +366,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
     }
 
     loadChartData()
-  }, [asset, chartPeriod, showComparison, showTotalReturn, canShowComparison, canShowTotalReturn, colors.primary])
+  }, [asset, chartPeriod, showComparison, showTotalReturn, canShowComparison, canShowTotalReturn, comparisonIndex, colors.primary])
 
   const formatCurrency = (value: number, currency: string, decimals: number = 2): string => {
     if (isNaN(value)) return 'N/A'
@@ -454,7 +457,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
                   onCheckedChange={handleComparisonChange}
                 />
                 <Label htmlFor="comparison" className="text-sm">
-                  Compare with KSE100
+                  Compare with {comparisonIndex}
                 </Label>
               </div>
             )}

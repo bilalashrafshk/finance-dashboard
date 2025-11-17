@@ -30,50 +30,69 @@ export function AssetSummaryMetrics({ asset }: AssetSummaryMetricsProps) {
       
       try {
         const market = asset.assetType === 'pk-equity' ? 'PSX' : asset.assetType === 'us-equity' ? 'US' : null
-        let priceUrl = ''
         let historicalDataUrl = ''
         let benchmarkDataUrl = ''
         
+        // Fetch current price using unified price API (handles client-side fetch for indices)
+        let price: number | undefined
         if (asset.assetType === 'crypto') {
           const { parseSymbolToBinance } = await import('@/lib/portfolio/binance-api')
           const binanceSymbol = parseSymbolToBinance(asset.symbol)
-          priceUrl = `/api/crypto/price?symbol=${encodeURIComponent(binanceSymbol)}`
+          const { fetchCryptoPrice } = await import('@/lib/portfolio/unified-price-api')
+          const priceData = await fetchCryptoPrice(binanceSymbol)
+          if (priceData && priceData.price) {
+            price = priceData.price
+            setCurrentPrice(price)
+          }
           historicalDataUrl = `/api/historical-data?assetType=crypto&symbol=${encodeURIComponent(binanceSymbol)}&limit=252` // 1 year
         } else if (asset.assetType === 'pk-equity') {
-          priceUrl = `/api/pk-equity/price?ticker=${encodeURIComponent(asset.symbol)}`
+          const { fetchPKEquityPrice } = await import('@/lib/portfolio/unified-price-api')
+          const priceData = await fetchPKEquityPrice(asset.symbol)
+          if (priceData && priceData.price) {
+            price = priceData.price
+            setCurrentPrice(price)
+          }
           historicalDataUrl = `/api/historical-data?assetType=pk-equity&symbol=${encodeURIComponent(asset.symbol)}&market=PSX&limit=252`
           benchmarkDataUrl = `/api/historical-data?assetType=kse100&symbol=KSE100&limit=252`
         } else if (asset.assetType === 'us-equity') {
-          priceUrl = `/api/us-equity/price?ticker=${encodeURIComponent(asset.symbol)}`
+          const { fetchUSEquityPrice } = await import('@/lib/portfolio/unified-price-api')
+          const priceData = await fetchUSEquityPrice(asset.symbol)
+          if (priceData && priceData.price) {
+            price = priceData.price
+            setCurrentPrice(price)
+          }
           historicalDataUrl = `/api/historical-data?assetType=us-equity&symbol=${encodeURIComponent(asset.symbol)}&market=US&limit=252`
           benchmarkDataUrl = `/api/historical-data?assetType=spx500&symbol=SPX500&limit=252`
         } else if (asset.assetType === 'metals') {
-          priceUrl = `/api/metals/price?symbol=${encodeURIComponent(asset.symbol)}`
+          const { fetchMetalsPrice } = await import('@/lib/portfolio/unified-price-api')
+          const priceData = await fetchMetalsPrice(asset.symbol)
+          if (priceData && priceData.price) {
+            price = priceData.price
+            setCurrentPrice(price)
+          }
           historicalDataUrl = `/api/historical-data?assetType=metals&symbol=${encodeURIComponent(asset.symbol)}&limit=252`
         } else if (asset.assetType === 'kse100' || asset.assetType === 'spx500') {
-          priceUrl = `/api/indices/price?symbol=${encodeURIComponent(asset.symbol)}`
+          // Use unified price API for indices (handles client-side fetch automatically)
+          const { fetchIndicesPrice } = await import('@/lib/portfolio/unified-price-api')
+          const priceData = await fetchIndicesPrice(asset.symbol)
+          if (priceData && priceData.price) {
+            price = priceData.price
+            setCurrentPrice(price)
+          }
           const apiAssetType = asset.assetType === 'kse100' ? 'kse100' : 'spx500'
           historicalDataUrl = `/api/historical-data?assetType=${apiAssetType}&symbol=${encodeURIComponent(asset.symbol)}&limit=252`
         }
         
         // Fetch in parallel
         const fetchPromises = [
-          priceUrl ? fetch(priceUrl) : Promise.resolve(null),
           historicalDataUrl ? fetch(historicalDataUrl) : Promise.resolve(null),
           benchmarkDataUrl ? fetch(benchmarkDataUrl) : Promise.resolve(null)
         ]
         
-        const [priceResponse, historicalResponse, benchmarkResponse] = await Promise.all(fetchPromises)
+        const [historicalResponse, benchmarkResponse] = await Promise.all(fetchPromises)
         
-        let price: number | undefined
         let historicalData: PriceDataPoint[] = []
         let benchmarkData: PriceDataPoint[] = []
-        
-        if (priceResponse && priceResponse.ok) {
-          const priceData = await priceResponse.json()
-          price = priceData.price
-          setCurrentPrice(price)
-        }
         
         if (historicalResponse && historicalResponse.ok) {
           const historicalDataResponse = await historicalResponse.json()
@@ -82,6 +101,15 @@ export function AssetSummaryMetrics({ asset }: AssetSummaryMetricsProps) {
               date: record.date,
               close: parseFloat(record.close)
             })).filter((point: PriceDataPoint) => !isNaN(point.close))
+              .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
+            
+            // Fallback: Use latest historical price if current price is not available
+            if (price === undefined && historicalData.length > 0) {
+              const latestDataPoint = historicalData[historicalData.length - 1]
+              price = latestDataPoint.close
+              setCurrentPrice(price)
+              console.log(`[Asset Screener Summary] Using latest historical price as fallback: ${price} (date: ${latestDataPoint.date})`)
+            }
           }
         }
         

@@ -29,6 +29,9 @@ export async function GET(request: NextRequest) {
   const startDate = searchParams.get('startDate')
   const endDate = searchParams.get('endDate')
   const refresh = searchParams.get('refresh') === 'true'
+  
+  // Get base URL from request for internal API calls
+  const baseUrl = request.nextUrl.origin
 
   if (!ticker) {
     return NextResponse.json(
@@ -121,19 +124,25 @@ export async function GET(request: NextRequest) {
       })
     }
     
-    // Check database first if not forcing refresh
-    if (!refresh) {
+    // Check if latest date in DB equals today
+    let latestStoredDate: string | null = null
+    try {
+      const { latestStoredDate: latestDate } = await getHistoricalDataWithMetadata('pk-equity', tickerUpper, undefined, undefined, 1)
+      latestStoredDate = latestDate
+    } catch (err) {
+      console.error(`[PK Equity API] Error checking latest date for ${tickerUpper}:`, err)
+    }
+    
+    // If latest date equals today, return today's price from DB
+    if (latestStoredDate === today && !refresh) {
       const todayPrice = await getTodayPriceFromDatabase('pk-equity', tickerUpper, today)
-      
-      // If market is closed and we have today's data, use it
-      if (marketClosed && todayPrice !== null) {
+      if (todayPrice !== null) {
         const response = {
           ticker: tickerUpper,
           price: todayPrice,
           date: today,
           source: 'database',
         }
-        // Cache the response
         cacheManager.set(cacheKey, response, 'pk-equity', cacheContext)
         return NextResponse.json(response, {
           headers: {
@@ -142,156 +151,55 @@ export async function GET(request: NextRequest) {
         })
       }
     }
-
-    // Check if database is empty - if so, fetch all historical data
-    // Handle errors gracefully - if check fails, assume DB is empty and fetch data
-    let isDbEmpty = true
+    
+    // Latest date is not today - get latest price from DB and trigger gap detection
+    // This leverages gap detection automatically and returns latest available price
+    console.log(`[PK Equity API] Latest date (${latestStoredDate}) is not today (${today}), using latest available price from DB`)
+    
     try {
-      const { data: existingData } = await getHistoricalDataWithMetadata('pk-equity', tickerUpper, undefined, undefined, 1) // Only check for 1 record to speed up
-      isDbEmpty = existingData.length === 0
-    } catch (err) {
-      console.error(`[PK Equity API] Error checking DB for ${tickerUpper}, assuming empty and fetching:`, err)
-      isDbEmpty = true // If check fails, assume empty and fetch data
-    }
-
-    // Fetch from StockAnalysis.com API
-    try {
-      let priceData = await getLatestPriceFromStockAnalysis(tickerUpper, 'PSX')
+      // Get latest historical data (limit=1 gets most recent record)
+      const { data: histData } = await getHistoricalDataWithMetadata('pk-equity', tickerUpper, undefined, undefined, 1)
       
-      if (priceData) {
-        // If DB is empty, fetch all historical data and store it
-        if (isDbEmpty) {
-          console.log(`[PK Equity API] DB is empty for ${tickerUpper}, fetching full historical data`)
-          const historicalData = await fetchStockAnalysisData(tickerUpper, 'PSX')
-          
-          if (historicalData && historicalData.length > 0) {
-            // Convert to database format
-            const records = historicalData.map(data => ({
-              date: data.t, // StockAnalysis uses 't' for date
-              open: data.o,
-              high: data.h,
-              low: data.l,
-              close: data.c,
-              volume: data.v || null,
-              adjusted_close: data.a || null,
-              change_pct: data.ch || null,
-            }))
-            
-            // Store all historical data
-            try {
-              const storeResult = await insertHistoricalData('pk-equity', tickerUpper, records, 'stockanalysis')
-              console.log(`[PK Equity API] Stored full history for ${tickerUpper}: ${storeResult.inserted} inserted, ${storeResult.skipped} skipped`)
-            } catch (err) {
-              console.error(`[PK Equity API] Failed to store historical data for ${tickerUpper}:`, err)
-            }
-          }
-
-          // Fetch and store dividend data (non-blocking - errors won't affect price response)
-          fetchAndStoreDividends(tickerUpper, 'pk-equity', false).catch(err => {
-            console.error(`[PK Equity API] Dividend fetch failed for ${tickerUpper} (non-critical):`, err)
+      if (histData && histData.length > 0) {
+        // Get the latest record (most recent date)
+        const latestRecord = histData[histData.length - 1]
+        
+        // Trigger gap detection by calling historical-data endpoint
+        // This is done by making a non-blocking internal request to trigger gap detection
+        // Gap detection will run in background and fill missing dates
+        fetch(`${baseUrl}/api/historical-data?assetType=pk-equity&symbol=${encodeURIComponent(tickerUpper)}&market=PSX&limit=1`)
+          .catch(err => {
+            // Ignore errors - gap detection is non-critical
+            console.log(`[PK Equity API] Gap detection trigger failed (non-critical):`, err)
           })
-        } else {
-          // DB has data, just store today's price
-          const priceRecord = {
-            date: priceData.date,
-            open: priceData.price,
-            high: priceData.price,
-            low: priceData.price,
-            close: priceData.price,
-            volume: null,
-            adjusted_close: null,
-            change_pct: null,
-          }
-          
-          try {
-            const storeResult = await insertHistoricalData('pk-equity', tickerUpper, [priceRecord], 'stockanalysis')
-            console.log(`[PK Equity API] Stored price for ${tickerUpper}: ${storeResult.inserted} inserted, ${storeResult.skipped} skipped`)
-          } catch (err) {
-            console.error(`[PK Equity API] Failed to store price for ${tickerUpper}:`, err)
-          }
-
-          // Fetch and store dividend data (non-blocking - errors won't affect price response)
-          fetchAndStoreDividends(tickerUpper, 'pk-equity', false).catch(err => {
-            console.error(`[PK Equity API] Dividend fetch failed for ${tickerUpper} (non-critical):`, err)
-          })
-        }
-
+        
         const response = {
           ticker: tickerUpper,
-          price: priceData.price,
-          date: priceData.date,
-          source: 'stockanalysis_api',
+          price: latestRecord.close,
+          date: latestRecord.date,
+          source: 'database',
         }
         
-        // Cache the response and invalidate related cache
+        // Cache the response
         cacheManager.set(cacheKey, response, 'pk-equity', cacheContext)
-        // Invalidate related cache when new data is stored
-        const invalidationKeys = generateInvalidationKeys('pk-equity', tickerUpper, priceData.date)
-        invalidationKeys.forEach(key => cacheManager.delete(key))
-        // Also invalidate historical data patterns
-        const historicalPattern = generateHistoricalInvalidationPattern('pk-equity', tickerUpper)
-        cacheManager.deletePattern(historicalPattern)
         
         return NextResponse.json(response, {
           headers: {
             'X-Cache': 'MISS',
+            'X-Delegated': 'historical-data',
           },
         })
       }
     } catch (error) {
-      console.error(`Failed to fetch from StockAnalysis.com API: ${error}`)
-      // Fall through to scraping method
-    }
-
-    // Fallback: Use PSX scraping method
-    const price = await fetchPSXBidPrice(tickerUpper)
-    
-    if (price === null) {
-      return NextResponse.json(
-        { error: `Price not found for ticker: ${ticker}` },
-        { status: 404 }
-      )
-    }
-
-    // Store scraped price in database
-    const priceRecord = {
-      date: today,
-      open: price,
-      high: price,
-      low: price,
-      close: price,
-      volume: null,
-      adjusted_close: null,
-      change_pct: null,
+      console.error(`[PK Equity API] Error getting latest price for ${tickerUpper}:`, error)
+      // Fall through to error response
     }
     
-    try {
-      const storeResult = await insertHistoricalData('pk-equity', tickerUpper, [priceRecord], 'stockanalysis')
-      console.log(`[PK Equity API] Stored scraped price for ${tickerUpper}: ${storeResult.inserted} inserted, ${storeResult.skipped} skipped`)
-    } catch (err) {
-      console.error(`[PK Equity API] Failed to store PK equity price for ${tickerUpper}:`, err)
-      // Continue even if storage fails - we still return the price
-    }
-
-    const response = {
-      ticker: tickerUpper,
-      price,
-      date: today,
-      source: 'psx_scraping',
-    }
-    
-    // Cache the response and invalidate related cache
-    cacheManager.set(cacheKey, response, 'pk-equity', cacheContext)
-    const invalidationKeys = generateInvalidationKeys('pk-equity', tickerUpper, today)
-    invalidationKeys.forEach(key => cacheManager.delete(key))
-    const historicalPattern = generateHistoricalInvalidationPattern('pk-equity', tickerUpper)
-    cacheManager.deletePattern(historicalPattern)
-    
-    return NextResponse.json(response, {
-      headers: {
-        'X-Cache': 'MISS',
-      },
-    })
+    // If delegation fails, return error
+    return NextResponse.json(
+      { error: `Price not found for ticker: ${ticker}` },
+      { status: 404 }
+    )
   } catch (error) {
     console.error('Error in PK equity price API:', error)
     return NextResponse.json(

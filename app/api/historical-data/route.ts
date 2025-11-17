@@ -7,7 +7,7 @@ import {
 import { fetchStockAnalysisData } from '@/lib/portfolio/stockanalysis-api'
 import { fetchBinanceHistoricalData } from '@/lib/portfolio/binance-historical-api'
 import { retryWithBackoff } from '@/lib/portfolio/retry-utils'
-import { getTodayInMarketTimezone } from '@/lib/portfolio/market-hours'
+import { getTodayInMarketTimezone, isMarketClosed } from '@/lib/portfolio/market-hours'
 import type { StockAnalysisDataPoint } from '@/lib/portfolio/stockanalysis-api'
 import type { BinanceHistoricalDataPoint } from '@/lib/portfolio/binance-historical-api'
 import type { InvestingHistoricalDataPoint } from '@/lib/portfolio/investing-client-api'
@@ -114,6 +114,22 @@ async function fetchNewDataInBackground(
   today: string
 ): Promise<void> {
   try {
+    // Check if market is closed and we're trying to fetch today's data
+    // If market is closed, today's data won't be available yet, so skip fetching if only today is requested
+    const marketForCheck = assetType === 'pk-equity' ? 'PSX' : assetType === 'us-equity' ? 'US' : null
+    if (marketForCheck) {
+      const marketClosed = isMarketClosed(marketForCheck)
+      const todayInMarketTimezone = getTodayInMarketTimezone(marketForCheck)
+      
+      // If market is closed and we're only trying to fetch today's data, skip it
+      // (Today's data won't be available until market closes)
+      // But if we're fetching a range that includes historical dates, proceed (they might be missing)
+      if (marketClosed && fetchStartDate === todayInMarketTimezone) {
+        console.log(`[Gap Detection] ${assetType}/${symbol}: Market is closed, skipping fetch for today's data only (${todayInMarketTimezone})`)
+        return
+      }
+    }
+    
     let newData: HistoricalPriceRecord[] = []
     let source: 'stockanalysis' | 'binance' | 'investing' = 'stockanalysis'
 
