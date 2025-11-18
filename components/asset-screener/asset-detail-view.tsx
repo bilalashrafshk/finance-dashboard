@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Loader2 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { TrackedAsset } from "./add-asset-dialog"
 import { 
   calculateAllMetrics, 
@@ -27,11 +28,16 @@ interface AssetMetrics extends CalculatedMetrics {
   currentPrice?: number
 }
 
+type MaxDrawdownTimeframe = '1Y' | '3Y' | '5Y' | 'All'
+
 export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) {
   const [metrics, setMetrics] = useState<AssetMetrics | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<string>('analytics')
+  const [maxDrawdownTimeframe, setMaxDrawdownTimeframe] = useState<MaxDrawdownTimeframe>('5Y')
+  const [fullHistoricalDataForMaxDD, setFullHistoricalDataForMaxDD] = useState<PriceDataPoint[]>([])
+  const [maxDrawdown, setMaxDrawdown] = useState<number | null>(null)
   
   // Use provided risk-free rates or load from localStorage
   const effectiveRiskFreeRates = riskFreeRates || loadRiskFreeRates()
@@ -165,7 +171,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
           fullHistoricalDataUrl = `/api/historical-data?assetType=${apiAssetType}&symbol=${encodeURIComponent(asset.symbol)}`
         }
 
-        // Fetch full historical data for seasonality (no limit)
+        // Fetch full historical data for seasonality and max drawdown (no limit)
         let fullHistoricalData: PriceDataPoint[] = []
         if (fullHistoricalDataUrl) {
           const fullHistoricalResponse = await fetch(fullHistoricalDataUrl)
@@ -179,6 +185,9 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
                 }))
                 .filter((point: PriceDataPoint) => !isNaN(point.close))
                 .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
+              
+              // Store full historical data for max drawdown calculations
+              setFullHistoricalDataForMaxDD(fullHistoricalData)
             }
           }
         }
@@ -198,6 +207,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
           
           // Calculate metrics with full data for CAGR, but use 1-year subset for Beta/Sharpe/Sortino
           // Use full historical data for seasonality calculations
+          // Note: We'll calculate max drawdown separately based on selected timeframe
           const calculatedMetrics = calculateAllMetrics(
             currentPrice, 
             historicalData, // Full data for CAGR calculations (limited to 5 years)
@@ -207,9 +217,38 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
             historicalDataForBetaSharpe, // 1-year subset for Beta and Sharpe
             dataForSeasonality // Full historical data for seasonality
           )
+          
+          // Calculate max drawdown based on selected timeframe
+          const { calculateMaxDrawdown } = await import('@/lib/asset-screener/metrics-calculations')
+          const dataForMaxDD = fullHistoricalData.length > 0 ? fullHistoricalData : historicalData
+          let maxDD: number | null = null
+          
+          if (dataForMaxDD.length > 0) {
+            // Filter data based on selected timeframe
+            let filteredData = dataForMaxDD
+            const now = new Date()
+            if (maxDrawdownTimeframe === '1Y') {
+              const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
+              filteredData = dataForMaxDD.filter(point => new Date(point.date) >= oneYearAgo)
+            } else if (maxDrawdownTimeframe === '3Y') {
+              const threeYearsAgo = new Date(now.getFullYear() - 3, now.getMonth(), now.getDate())
+              filteredData = dataForMaxDD.filter(point => new Date(point.date) >= threeYearsAgo)
+            } else if (maxDrawdownTimeframe === '5Y') {
+              const fiveYearsAgo = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate())
+              filteredData = dataForMaxDD.filter(point => new Date(point.date) >= fiveYearsAgo)
+            }
+            // 'All' uses all data, no filtering needed
+            
+            if (filteredData.length > 0) {
+              maxDD = calculateMaxDrawdown(filteredData)
+            }
+          }
+          
+          setMaxDrawdown(maxDD)
           setMetrics({
             currentPrice,
-            ...calculatedMetrics
+            ...calculatedMetrics,
+            maxDrawdown: maxDD // Override with timeframe-specific max drawdown
           })
         } else if (currentPrice !== undefined) {
           // Just set current price if no historical data
@@ -227,6 +266,45 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
 
     fetchMetrics()
   }, [asset, effectiveRiskFreeRates])
+  
+  // Recalculate max drawdown when timeframe changes
+  useEffect(() => {
+    const recalculateMaxDrawdown = async () => {
+      if (fullHistoricalDataForMaxDD.length > 0) {
+        const { calculateMaxDrawdown } = await import('@/lib/asset-screener/metrics-calculations')
+        
+        let filteredData = fullHistoricalDataForMaxDD
+        const now = new Date()
+        if (maxDrawdownTimeframe === '1Y') {
+          const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
+          filteredData = fullHistoricalDataForMaxDD.filter(point => new Date(point.date) >= oneYearAgo)
+        } else if (maxDrawdownTimeframe === '3Y') {
+          const threeYearsAgo = new Date(now.getFullYear() - 3, now.getMonth(), now.getDate())
+          filteredData = fullHistoricalDataForMaxDD.filter(point => new Date(point.date) >= threeYearsAgo)
+        } else if (maxDrawdownTimeframe === '5Y') {
+          const fiveYearsAgo = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate())
+          filteredData = fullHistoricalDataForMaxDD.filter(point => new Date(point.date) >= fiveYearsAgo)
+        }
+        // 'All' uses all data, no filtering needed
+        
+        if (filteredData.length > 0) {
+          const maxDD = calculateMaxDrawdown(filteredData)
+          setMaxDrawdown(maxDD)
+          setMetrics(prev => {
+            if (prev) {
+              return {
+                ...prev,
+                maxDrawdown: maxDD
+              }
+            }
+            return prev
+          })
+        }
+      }
+    }
+    
+    recalculateMaxDrawdown()
+  }, [maxDrawdownTimeframe, fullHistoricalDataForMaxDD])
 
   if (loading) {
     return (
@@ -330,6 +408,24 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
       <TabsContent value="prices" className="space-y-4">
         <AssetPriceChart asset={asset} />
         
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Risk Metrics</h3>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Max Drawdown Period:</span>
+            <Select value={maxDrawdownTimeframe} onValueChange={(value) => setMaxDrawdownTimeframe(value as MaxDrawdownTimeframe)}>
+              <SelectTrigger className="w-[100px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1Y">1Y</SelectItem>
+                <SelectItem value="3Y">3Y</SelectItem>
+                <SelectItem value="5Y">5Y</SelectItem>
+                <SelectItem value="All">All</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {metrics?.beta1Year !== undefined && metrics.beta1Year !== null && (
             <Card>
@@ -379,17 +475,17 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
             </Card>
           )}
           
-          {metrics?.maxDrawdown !== undefined && metrics.maxDrawdown !== null && (
+          {maxDrawdown !== null && (
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription>
                   Max Drawdown
                   <span className="text-xs text-muted-foreground ml-2">
-                    (Largest Peak-to-Trough Decline)
+                    ({maxDrawdownTimeframe === 'All' ? 'All Time' : maxDrawdownTimeframe})
                   </span>
                 </CardDescription>
                 <CardTitle className="text-lg text-red-600 dark:text-red-400">
-                  {formatPercentage(metrics.maxDrawdown)}
+                  {formatPercentage(maxDrawdown)}
                 </CardTitle>
               </CardHeader>
             </Card>

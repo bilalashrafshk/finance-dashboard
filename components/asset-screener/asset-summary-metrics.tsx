@@ -23,6 +23,9 @@ export function AssetSummaryMetrics({ asset }: AssetSummaryMetricsProps) {
   const [sortinoRatio, setSortinoRatio] = useState<number | null>(null)
   const [maxDrawdown, setMaxDrawdown] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  
+  // Separate data for max drawdown (5 years)
+  const dataLimitForMaxDD = 1260 // ~5 years of trading days
 
   useEffect(() => {
     const fetchSummaryMetrics = async () => {
@@ -83,16 +86,35 @@ export function AssetSummaryMetrics({ asset }: AssetSummaryMetricsProps) {
           historicalDataUrl = `/api/historical-data?assetType=${apiAssetType}&symbol=${encodeURIComponent(asset.symbol)}&limit=252`
         }
         
+        // For max drawdown, we need 5 years of data
+        let maxDrawdownDataUrl = ''
+        if (asset.assetType === 'crypto') {
+          const { parseSymbolToBinance } = await import('@/lib/portfolio/binance-api')
+          const binanceSymbol = parseSymbolToBinance(asset.symbol)
+          maxDrawdownDataUrl = `/api/historical-data?assetType=crypto&symbol=${encodeURIComponent(binanceSymbol)}&limit=${dataLimitForMaxDD}`
+        } else if (asset.assetType === 'pk-equity') {
+          maxDrawdownDataUrl = `/api/historical-data?assetType=pk-equity&symbol=${encodeURIComponent(asset.symbol)}&market=PSX&limit=${dataLimitForMaxDD}`
+        } else if (asset.assetType === 'us-equity') {
+          maxDrawdownDataUrl = `/api/historical-data?assetType=us-equity&symbol=${encodeURIComponent(asset.symbol)}&market=US&limit=${dataLimitForMaxDD}`
+        } else if (asset.assetType === 'metals') {
+          maxDrawdownDataUrl = `/api/historical-data?assetType=metals&symbol=${encodeURIComponent(asset.symbol)}&limit=${dataLimitForMaxDD}`
+        } else if (asset.assetType === 'kse100' || asset.assetType === 'spx500') {
+          const apiAssetType = asset.assetType === 'kse100' ? 'kse100' : 'spx500'
+          maxDrawdownDataUrl = `/api/historical-data?assetType=${apiAssetType}&symbol=${encodeURIComponent(asset.symbol)}&limit=${dataLimitForMaxDD}`
+        }
+        
         // Fetch in parallel
         const fetchPromises = [
           historicalDataUrl ? fetch(historicalDataUrl) : Promise.resolve(null),
-          benchmarkDataUrl ? fetch(benchmarkDataUrl) : Promise.resolve(null)
+          benchmarkDataUrl ? fetch(benchmarkDataUrl) : Promise.resolve(null),
+          maxDrawdownDataUrl ? fetch(maxDrawdownDataUrl) : Promise.resolve(null)
         ]
         
-        const [historicalResponse, benchmarkResponse] = await Promise.all(fetchPromises)
+        const [historicalResponse, benchmarkResponse, maxDrawdownResponse] = await Promise.all(fetchPromises)
         
         let historicalData: PriceDataPoint[] = []
         let benchmarkData: PriceDataPoint[] = []
+        let maxDrawdownData: PriceDataPoint[] = []
         
         if (historicalResponse && historicalResponse.ok) {
           const historicalDataResponse = await historicalResponse.json()
@@ -123,6 +145,17 @@ export function AssetSummaryMetrics({ asset }: AssetSummaryMetricsProps) {
           }
         }
         
+        if (maxDrawdownResponse && maxDrawdownResponse.ok) {
+          const maxDrawdownDataResponse = await maxDrawdownResponse.json()
+          if (maxDrawdownDataResponse.data && Array.isArray(maxDrawdownDataResponse.data)) {
+            maxDrawdownData = maxDrawdownDataResponse.data.map((record: any) => ({
+              date: record.date,
+              close: parseFloat(record.close)
+            })).filter((point: PriceDataPoint) => !isNaN(point.close))
+              .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
+          }
+        }
+        
         // Calculate metrics if we have price and historical data
         if (price !== undefined && historicalData.length > 0) {
           const riskFreeRates = loadRiskFreeRates()
@@ -146,7 +179,16 @@ export function AssetSummaryMetrics({ asset }: AssetSummaryMetricsProps) {
           if (metrics.sortinoRatio1Year !== null && metrics.sortinoRatio1Year !== undefined) {
             setSortinoRatio(metrics.sortinoRatio1Year)
           }
-          if (metrics.maxDrawdown !== null && metrics.maxDrawdown !== undefined) {
+          
+          // Calculate max drawdown using 5-year data
+          if (maxDrawdownData.length > 0) {
+            const { calculateMaxDrawdown } = await import('@/lib/asset-screener/metrics-calculations')
+            const maxDD = calculateMaxDrawdown(maxDrawdownData)
+            if (maxDD !== null) {
+              setMaxDrawdown(maxDD)
+            }
+          } else if (metrics.maxDrawdown !== null && metrics.maxDrawdown !== undefined) {
+            // Fallback to using regular historical data if max drawdown data fetch failed
             setMaxDrawdown(metrics.maxDrawdown)
           }
         }
@@ -224,7 +266,7 @@ export function AssetSummaryMetrics({ asset }: AssetSummaryMetricsProps) {
       
       {maxDrawdown !== null && (
         <div>
-          <span className="text-muted-foreground">Max DD: </span>
+          <span className="text-muted-foreground">Max DD (5Y): </span>
           <span className="font-semibold text-red-600 dark:text-red-400">
             {formatPercentage(maxDrawdown)}
           </span>

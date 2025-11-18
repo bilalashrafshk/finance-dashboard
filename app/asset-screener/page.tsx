@@ -6,11 +6,13 @@ import { Plus } from "lucide-react"
 import { useAuth } from "@/lib/auth/auth-context"
 import { AddAssetDialog } from "@/components/asset-screener/add-asset-dialog"
 import { AssetList } from "@/components/asset-screener/asset-list"
+import { MPTPortfolioView } from "@/components/asset-screener/mpt-portfolio-view"
 import { RiskFreeRateSettings, loadRiskFreeRates, type RiskFreeRates } from "@/components/asset-screener/risk-free-rate-settings"
 import type { TrackedAsset } from "@/components/asset-screener/add-asset-dialog"
 import { LoginDialog } from "@/components/auth/login-dialog"
 import { RegisterDialog } from "@/components/auth/register-dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function AssetScreenerPage() {
   const { user, loading: authLoading } = useAuth()
@@ -182,11 +184,24 @@ export default function AssetScreenerPage() {
           </div>
         )}
 
-        <AssetList 
-          assets={assets} 
-          onDelete={handleDeleteAsset}
-          loading={loading}
-        />
+        <Tabs defaultValue="assets" className="w-full">
+          <TabsList className="mb-6">
+            <TabsTrigger value="assets">Asset List</TabsTrigger>
+            <TabsTrigger value="mpt">Modern Portfolio Theory</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="assets" className="space-y-4">
+            <AssetList 
+              assets={assets} 
+              onDelete={handleDeleteAsset}
+              loading={loading}
+            />
+          </TabsContent>
+
+          <TabsContent value="mpt" className="space-y-4">
+            <MPTPortfolioView assets={assets} />
+          </TabsContent>
+        </Tabs>
 
         <AddAssetDialog
           open={isAddDialogOpen}
