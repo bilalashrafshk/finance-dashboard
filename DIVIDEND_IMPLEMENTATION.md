@@ -185,3 +185,4 @@ All dates are stored in ISO format: `YYYY-MM-DD`
 - Dividend payment date tracking
 - Dividend reinvestment calculations
 
+

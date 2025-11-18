@@ -9,8 +9,8 @@ import { Toaster } from "@/components/ui/toaster"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Invest Away - Risk Dashboard",
-  description: "Investment risk analysis and portfolio management by Invest Away",
+  title: "Stack Them Gains - Risk Dashboard",
+  description: "Investment risk analysis and portfolio management by Stack Them Gains",
 }
 
 export const viewport: Viewport = {

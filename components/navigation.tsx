@@ -41,11 +41,11 @@ export function Navigation() {
           <Link href="/" className="flex items-center gap-2 font-semibold">
             <BarChart3 className="h-5 w-5" />
             <span className="inline-flex items-baseline">
-              {"INVEST AWAY".split("").map((char, index) => {
+              {"STACK THEM GAINS".split("").map((char, index) => {
                 const scale = Math.pow(1.06, index); // Compounding factor of 6% per letter
                 const fontSize = Math.round(scale * 10000) / 10000; // Round to 4 decimal places for consistency
-                const isInvest = index < "INVEST ".length;
-                const colorClass = isInvest 
+                const isStack = index < "STACK ".length;
+                const colorClass = isStack 
                   ? "text-red-600" 
                   : "text-green-500";
                 return (

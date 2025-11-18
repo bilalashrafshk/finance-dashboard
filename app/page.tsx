@@ -15,12 +15,12 @@ export default function Home() {
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight">
               Welcome to{" "}
               <span className="inline-flex items-baseline">
-                {"INVEST AWAY".split("").map((char, index) => {
+                {"STACK THEM GAINS".split("").map((char, index) => {
                   const scale = Math.pow(1.06, index); // Compounding factor of 6% per letter
                   // Round to 4 decimal places to prevent hydration mismatch
                   const fontSize = Math.round(scale * 10000) / 10000;
-                  const isInvest = index < "INVEST ".length;
-                  const colorClass = isInvest 
+                  const isStack = index < "STACK ".length;
+                  const colorClass = isStack 
                     ? "text-red-600" 
                     : "text-green-500";
                   return (
