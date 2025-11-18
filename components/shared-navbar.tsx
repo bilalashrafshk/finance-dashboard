@@ -3,15 +3,25 @@
 import React, { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { TrendingUp, Menu, X, LogOut, BarChart3, Wallet, Search } from 'lucide-react'
+import { TrendingUp, Menu, X, LogOut, BarChart3, Wallet, Search, User, Settings, Crown } from 'lucide-react'
 import { useAuth } from '@/lib/auth/auth-context'
 import LoginModal from '@/components/landing/login-modal'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useTheme } from 'next-themes'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { SettingsDialog } from '@/components/auth/settings-dialog'
 
 export function SharedNavbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [loginModalOpen, setLoginModalOpen] = useState(false)
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
   const { user, logout } = useAuth()
   const pathname = usePathname()
   const { theme } = useTheme()
@@ -102,20 +112,47 @@ export function SharedNavbar() {
             <div className="hidden md:flex items-center gap-4">
               <ThemeToggle />
               {user ? (
-                <>
-                  <div className="flex items-center gap-3 px-4 py-2 bg-muted rounded-lg">
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                      {user.name?.charAt(0).toUpperCase() || 'U'}
-                    </div>
-                    <span className="text-sm text-foreground">{user.name || 'User'}</span>
-                  </div>
-                  <button
-                    onClick={handleLogout}
-                    className="p-2 text-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                  >
-                    <LogOut className="w-5 h-5" />
-                  </button>
-                </>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="flex items-center gap-3 px-4 py-2 bg-muted rounded-lg hover:bg-muted/80 transition-colors cursor-pointer">
+                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                        {user.name?.charAt(0).toUpperCase() || 'U'}
+                      </div>
+                      <span className="text-sm text-foreground">{user.name || 'User'}</span>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel>
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-medium">{user.name || 'User'}</p>
+                        <p className="text-xs text-muted-foreground">{user.email}</p>
+                        <div className="flex flex-col gap-0.5 mt-1 pt-1 border-t border-border">
+                          <p className="text-xs text-muted-foreground">Plan: <span className="font-medium">Lite</span></p>
+                        </div>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="cursor-pointer">
+                      <Crown className="mr-2 h-4 w-4 text-yellow-500" />
+                      <span>Subscription & Tiers</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      className="cursor-pointer"
+                      onClick={() => setSettingsDialogOpen(true)}
+                    >
+                      <Settings className="mr-2 h-4 w-4" />
+                      <span>Settings</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      onClick={handleLogout}
+                      className="cursor-pointer text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400"
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      <span>Logout</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               ) : (
                 <>
                   <button
@@ -196,12 +233,44 @@ export function SharedNavbar() {
                 </div>
                 {user ? (
                   <>
-                    <button
-                      onClick={handleLogout}
-                      className="w-full px-4 py-2 text-white bg-red-600 dark:bg-red-900/50 border border-red-600 dark:border-red-800 rounded-lg hover:bg-red-700 dark:hover:bg-red-900 transition-colors"
-                    >
-                      Logout
-                    </button>
+                    <div className="flex items-center gap-3 px-4 py-2 bg-muted rounded-lg">
+                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                        {user.name?.charAt(0).toUpperCase() || 'U'}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-foreground">{user.name || 'User'}</p>
+                        <p className="text-xs text-muted-foreground">{user.email}</p>
+                      </div>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="w-full px-4 py-2 text-foreground border border-border rounded-lg hover:bg-muted transition-colors flex items-center justify-between">
+                          <span>Account</span>
+                          <Menu className="w-4 h-4" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-56">
+                        <DropdownMenuItem className="cursor-pointer">
+                          <Crown className="mr-2 h-4 w-4 text-yellow-500" />
+                          <span>Subscription & Tiers</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          className="cursor-pointer"
+                          onClick={() => setSettingsDialogOpen(true)}
+                        >
+                          <Settings className="mr-2 h-4 w-4" />
+                          <span>Settings</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          onClick={handleLogout}
+                          className="cursor-pointer text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400"
+                        >
+                          <LogOut className="mr-2 h-4 w-4" />
+                          <span>Logout</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </>
                 ) : (
                   <>
@@ -228,6 +297,11 @@ export function SharedNavbar() {
       <LoginModal
         isOpen={loginModalOpen}
         onClose={() => setLoginModalOpen(false)}
+      />
+      
+      <SettingsDialog
+        open={settingsDialogOpen}
+        onOpenChange={setSettingsDialogOpen}
       />
     </>
   )

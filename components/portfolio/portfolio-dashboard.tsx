@@ -8,6 +8,10 @@ import { Label } from "@/components/ui/label"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Plus, RefreshCw, Loader2, DollarSign, ChevronDown, ChevronRight } from "lucide-react"
 import { AddHoldingDialog } from "./add-holding-dialog"
+import { AddCashDialog } from "./add-cash-dialog"
+import { AddFDDialog } from "./add-fd-dialog"
+import { AddCommodityDialog } from "./add-commodity-dialog"
+import { AssetTypeSelectorDialog } from "./asset-type-selector-dialog"
 import { PortfolioSummary } from "./portfolio-summary"
 import { AllocationChart } from "./allocation-chart"
 import { PerformanceChart } from "./performance-chart"
@@ -38,6 +42,8 @@ export function PortfolioDashboard() {
   const { user, loading: authLoading } = useAuth()
   const [holdings, setHoldings] = useState<Holding[]>([])
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [isAssetTypeSelectorOpen, setIsAssetTypeSelectorOpen] = useState(false)
+  const [selectedAssetType, setSelectedAssetType] = useState<AssetType | null>(null)
   const [editingHolding, setEditingHolding] = useState<Holding | null>(null)
   const [refreshingPrices, setRefreshingPrices] = useState(false)
   const [exchangeRates, setExchangeRates] = useState<Map<string, number>>(new Map())
@@ -126,6 +132,7 @@ export function PortfolioDashboard() {
 
   const handleEditHolding = (holding: Holding) => {
     setEditingHolding(holding)
+    setSelectedAssetType(holding.assetType)
     setIsAddDialogOpen(true)
   }
 
@@ -140,6 +147,12 @@ export function PortfolioDashboard() {
 
   const handleOpenAddDialog = () => {
     setEditingHolding(null)
+    setSelectedAssetType(null)
+    setIsAssetTypeSelectorOpen(true)
+  }
+
+  const handleAssetTypeSelect = (assetType: AssetType) => {
+    setSelectedAssetType(assetType)
     setIsAddDialogOpen(true)
   }
 
@@ -661,11 +674,63 @@ export function PortfolioDashboard() {
         )
       })}
 
-      <AddHoldingDialog
-        open={isAddDialogOpen}
-        onOpenChange={setIsAddDialogOpen}
+      {/* Asset Type Selector */}
+      <AssetTypeSelectorDialog
+        open={isAssetTypeSelectorOpen}
+        onOpenChange={setIsAssetTypeSelectorOpen}
+        onSelect={handleAssetTypeSelect}
+      />
+
+      {/* Show appropriate dialog based on asset type */}
+      <AddCashDialog
+        open={isAddDialogOpen && (selectedAssetType === 'cash' || (editingHolding?.assetType === 'cash'))}
+        onOpenChange={(open) => {
+          setIsAddDialogOpen(open)
+          if (!open) {
+            setSelectedAssetType(null)
+            setEditingHolding(null)
+          }
+        }}
         onSave={handleAddHolding}
-        editingHolding={editingHolding}
+        editingHolding={editingHolding?.assetType === 'cash' ? editingHolding : null}
+      />
+      <AddFDDialog
+        open={isAddDialogOpen && (selectedAssetType === 'fd' || (editingHolding?.assetType === 'fd'))}
+        onOpenChange={(open) => {
+          setIsAddDialogOpen(open)
+          if (!open) {
+            setSelectedAssetType(null)
+            setEditingHolding(null)
+          }
+        }}
+        onSave={handleAddHolding}
+        editingHolding={editingHolding?.assetType === 'fd' ? editingHolding : null}
+      />
+      <AddCommodityDialog
+        open={isAddDialogOpen && (selectedAssetType === 'commodities' || (editingHolding?.assetType === 'commodities'))}
+        onOpenChange={(open) => {
+          setIsAddDialogOpen(open)
+          if (!open) {
+            setSelectedAssetType(null)
+            setEditingHolding(null)
+          }
+        }}
+        onSave={handleAddHolding}
+        editingHolding={editingHolding?.assetType === 'commodities' ? editingHolding : null}
+      />
+      
+      {/* Standard dialog for other asset types */}
+      <AddHoldingDialog
+        open={isAddDialogOpen && selectedAssetType !== 'cash' && selectedAssetType !== 'fd' && selectedAssetType !== 'commodities' && (!editingHolding || (editingHolding.assetType !== 'cash' && editingHolding.assetType !== 'fd' && editingHolding.assetType !== 'commodities'))}
+        onOpenChange={(open) => {
+          setIsAddDialogOpen(open)
+          if (!open) {
+            setSelectedAssetType(null)
+            setEditingHolding(null)
+          }
+        }}
+        onSave={handleAddHolding}
+        editingHolding={editingHolding && editingHolding.assetType !== 'cash' && editingHolding.assetType !== 'fd' && editingHolding.assetType !== 'commodities' ? editingHolding : null}
       />
     </div>
   )

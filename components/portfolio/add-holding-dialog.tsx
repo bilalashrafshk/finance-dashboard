@@ -93,7 +93,7 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
           setName('S&P 500 Index')
         }
       }
-      // Keep existing currency for other asset types (bonds, fd, cash)
+      // Keep existing currency for other asset types
     }
   }, [assetType, editingHolding, open])
 
@@ -702,11 +702,13 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(ASSET_TYPE_LABELS).map(([key, label]) => (
-                      <SelectItem key={key} value={key}>
-                        {label}
-                      </SelectItem>
-                    ))}
+                    {Object.entries(ASSET_TYPE_LABELS)
+                      .filter(([key]) => key !== 'cash' && key !== 'fd' && key !== 'commodities') // These have their own dialogs
+                      .map(([key, label]) => (
+                        <SelectItem key={key} value={key}>
+                          {label}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

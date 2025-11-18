@@ -9,6 +9,7 @@ import { Trash2, Loader2 } from "lucide-react"
 import { ASSET_TYPE_LABELS, ASSET_TYPE_COLORS } from "@/lib/portfolio/types"
 import type { TrackedAsset } from "./add-asset-dialog"
 import { AssetSummaryMetrics } from "./asset-summary-metrics"
+import { LazyMetrics } from "./lazy-metrics"
 import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
 import {
   AlertDialog,
@@ -90,7 +91,15 @@ export function AssetList({ assets, onDelete, loading }: AssetListProps) {
                     <span>{asset.currency}</span>
                   </CardDescription>
                   <div className="mt-2">
-                    <AssetSummaryMetrics asset={asset} />
+                    <LazyMetrics 
+                      fallback={
+                        <div className="text-sm text-muted-foreground">
+                          <span>Loading metrics...</span>
+                        </div>
+                      }
+                    >
+                      <AssetSummaryMetrics asset={asset} />
+                    </LazyMetrics>
                   </div>
                 </Link>
                 <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>

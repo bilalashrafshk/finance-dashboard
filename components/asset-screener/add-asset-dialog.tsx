@@ -67,7 +67,7 @@ export function AddAssetDialog({ open, onOpenChange, onSave }: AddAssetDialogPro
           setSymbol('KSE100')
           setName('KSE 100 Index')
         }
-      } else if (assetType === 'us-equity' || assetType === 'spx500' || assetType === 'crypto' || assetType === 'metals' || assetType === 'commodities') {
+      } else if (assetType === 'us-equity' || assetType === 'spx500' || assetType === 'crypto' || assetType === 'metals') {
         setCurrency('USD')
         if (assetType === 'spx500') {
           setSymbol('SPX500')
@@ -341,11 +341,13 @@ export function AddAssetDialog({ open, onOpenChange, onSave }: AddAssetDialogPro
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(ASSET_TYPE_LABELS).map(([key, label]) => (
-                      <SelectItem key={key} value={key}>
-                        {label}
-                      </SelectItem>
-                    ))}
+                    {Object.entries(ASSET_TYPE_LABELS)
+                      .filter(([key]) => key !== 'cash' && key !== 'fd' && key !== 'commodities') // Exclude these from asset screener
+                      .map(([key, label]) => (
+                        <SelectItem key={key} value={key}>
+                          {label}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

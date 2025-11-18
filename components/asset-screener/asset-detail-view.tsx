@@ -326,7 +326,9 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
       <TabsList className="mb-6">
         <TabsTrigger value="analytics">Analytics</TabsTrigger>
-        <TabsTrigger value="dividends">Dividends</TabsTrigger>
+        {asset.assetType === 'pk-equity' && (
+          <TabsTrigger value="dividends">Dividends</TabsTrigger>
+        )}
         <TabsTrigger value="prices">Prices & Ratios</TabsTrigger>
         <TabsTrigger value="seasonality">Seasonality</TabsTrigger>
       </TabsList>
@@ -401,9 +403,11 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
         )}
       </TabsContent>
 
-      <TabsContent value="dividends" className="space-y-4">
-        <DividendTable assetType={asset.assetType} symbol={asset.symbol} />
-      </TabsContent>
+      {asset.assetType === 'pk-equity' && (
+        <TabsContent value="dividends" className="space-y-4">
+          <DividendTable assetType={asset.assetType} symbol={asset.symbol} />
+        </TabsContent>
+      )}
 
       <TabsContent value="prices" className="space-y-4">
         <AssetPriceChart asset={asset} />
