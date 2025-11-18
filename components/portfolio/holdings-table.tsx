@@ -29,6 +29,8 @@ import {
 } from "@/lib/portfolio/portfolio-utils"
 import { calculatePKEquityGain, getGainPeriodLabel, type GainPeriod } from "@/lib/portfolio/pk-equity-gains"
 import { calculateCryptoGain, getGainPeriodLabel as getCryptoGainPeriodLabel } from "@/lib/portfolio/crypto-gains"
+import Link from "next/link"
+import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
 
 interface HoldingsTableProps {
   holdings: Holding[]
@@ -356,13 +358,32 @@ export function HoldingsTable({ holdings, onEdit, onDelete }: HoldingsTableProps
                     ? getCryptoGainPeriodLabel(gainPeriod)
                     : ''
 
+                // Check if asset type is supported in asset screener
+                const supportedTypes: AssetType[] = ['us-equity', 'pk-equity', 'crypto', 'metals', 'kse100', 'spx500']
+                const isSupportedInScreener = supportedTypes.includes(holding.assetType)
+                const assetSlug = isSupportedInScreener ? generateAssetSlug(holding.assetType, holding.symbol) : null
+
                 return (
                   <TableRow key={holding.id}>
                     <TableCell className="font-medium">
                       <div>
-                        <div>{holding.symbol}</div>
-                        {holding.name !== holding.symbol && (
-                          <div className="text-xs text-muted-foreground">{holding.name}</div>
+                        {assetSlug ? (
+                          <Link 
+                            href={`/asset-screener/${assetSlug}`}
+                            className="hover:underline hover:text-primary transition-colors"
+                          >
+                            <div>{holding.symbol}</div>
+                            {holding.name !== holding.symbol && (
+                              <div className="text-xs text-muted-foreground">{holding.name}</div>
+                            )}
+                          </Link>
+                        ) : (
+                          <>
+                            <div>{holding.symbol}</div>
+                            {holding.name !== holding.symbol && (
+                              <div className="text-xs text-muted-foreground">{holding.name}</div>
+                            )}
+                          </>
                         )}
                       </div>
                     </TableCell>

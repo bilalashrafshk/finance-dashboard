@@ -11,6 +11,7 @@ import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
+  LogarithmicScale,
   PointElement,
   LineElement,
   Title,
@@ -21,13 +22,15 @@ import {
 import { Loader2 } from "lucide-react"
 import type { Holding } from "@/lib/portfolio/types"
 import type { InvestingHistoricalDataPoint } from "@/lib/portfolio/investing-client-api"
-import { formatCurrency } from "@/lib/portfolio/portfolio-utils"
+import { formatCurrency, calculatePortfolioValueForDate } from "@/lib/portfolio/portfolio-utils"
 import { useTheme } from "next-themes"
 import { getThemeColors } from "@/lib/charts/theme-colors"
+import { createYAxisScaleConfig } from "@/lib/charts/portfolio-chart-utils"
 
 ChartJS.register(
   CategoryScale,
   LinearScale,
+  LogarithmicScale,
   PointElement,
   LineElement,
   Title,
@@ -47,6 +50,7 @@ export function MetalsPortfolioChart({ holdings, currency }: MetalsPortfolioChar
   const { theme } = useTheme()
   const colors = getThemeColors()
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('1Y')
+  const [useLogScale, setUseLogScale] = useState(false)
   const [loading, setLoading] = useState(true)
   const [chartData, setChartData] = useState<{
     labels: string[]
@@ -186,37 +190,18 @@ export function MetalsPortfolioChart({ holdings, currency }: MetalsPortfolioChar
         // Sort dates
         const sortedDates = Array.from(allDates).sort((a, b) => a.localeCompare(b))
 
-        // Calculate portfolio value over time
-        const portfolioValues: number[] = []
-        
-        sortedDates.forEach((dateStr) => {
-          const dateObj = new Date(dateStr)
-          let totalValue = 0
-
-          metalsHoldings.forEach((holding) => {
-            // Only include holdings purchased on or before this date
-            const purchaseDate = new Date(holding.purchaseDate)
-            if (dateObj >= purchaseDate) {
-              const historicalData = historicalDataMap.get(holding.symbol)
-              if (historicalData) {
-                // Find price for this date (or closest before)
-                let pricePoint = historicalData.find((d) => d.date === dateStr)
-                if (!pricePoint) {
-                  const beforeDates = historicalData.filter((d) => d.date <= dateStr)
-                  if (beforeDates.length > 0) {
-                    pricePoint = beforeDates.sort((a, b) => b.date.localeCompare(a.date))[0]
-                  }
-                }
-                
-                if (pricePoint) {
-                  totalValue += holding.quantity * pricePoint.close
-                }
-              }
-            }
-          })
-
-          portfolioValues.push(totalValue)
+        // Prepare historical price map for centralized calculation
+        const historicalPriceMap = new Map<string, { date: string; price: number }[]>()
+        historicalDataMap.forEach((data, symbol) => {
+          historicalPriceMap.set(symbol, data.map(d => ({ date: d.date, price: d.close })))
         })
+        
+        // Calculate portfolio value for each date using centralized function
+        const portfolioValues: number[] = []
+        for (const dateStr of sortedDates) {
+          const value = calculatePortfolioValueForDate(metalsHoldings, dateStr, historicalPriceMap)
+          portfolioValues.push(value)
+        }
 
         // Use notional values (actual dollar amounts) instead of normalized percentages
         if (portfolioValues.length > 0 && portfolioValues[0] > 0) {
@@ -252,7 +237,7 @@ export function MetalsPortfolioChart({ holdings, currency }: MetalsPortfolioChar
     }
 
     loadChartData()
-  }, [metalsHoldings, chartPeriod]) // Removed colors.primary to prevent unnecessary re-renders
+  }, [metalsHoldings, chartPeriod, useLogScale]) // Removed colors.primary to prevent unnecessary re-renders
 
   if (metalsHoldings.length === 0) {
     return null
@@ -277,7 +262,17 @@ export function MetalsPortfolioChart({ holdings, currency }: MetalsPortfolioChar
           </div>
         ) : chartData ? (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="log-scale"
+                  checked={useLogScale}
+                  onCheckedChange={setUseLogScale}
+                />
+                <Label htmlFor="log-scale" className="text-sm cursor-pointer whitespace-nowrap">
+                  Log Scale
+                </Label>
+              </div>
               <ToggleGroup
                 type="single"
                 value={chartPeriod}
@@ -342,15 +337,15 @@ export function MetalsPortfolioChart({ holdings, currency }: MetalsPortfolioChar
                       },
                     },
                     y: {
-                      display: true,
+                      ...createYAxisScaleConfig({
+                        useLogScale,
+                        isPercentage: false,
+                        currency,
+                        title: 'Portfolio Value',
+                      }),
                       title: {
                         display: true,
                         text: 'Portfolio Value',
-                      },
-                      ticks: {
-                        callback: function (value) {
-                          return formatCurrency(Number(value), currency)
-                        },
                       },
                     },
                   },

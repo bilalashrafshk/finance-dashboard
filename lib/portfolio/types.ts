@@ -32,6 +32,9 @@ export interface PortfolioSummary {
   totalGainLoss: number
   totalGainLossPercent: number
   holdingsCount: number
+  dividendsCollected?: number
+  dividendsCollectedPercent?: number
+  cagr?: number // Compound Annual Growth Rate as percentage
 }
 
 export interface AssetTypeAllocation {

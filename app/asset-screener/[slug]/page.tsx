@@ -56,13 +56,54 @@ export default function AssetDetailPage() {
         if (response.ok) {
           const data = await response.json()
           if (data.success) {
-            const foundAsset = data.assets.find((a: TrackedAsset) => 
+            let foundAsset = data.assets.find((a: TrackedAsset) => 
               a.assetType === assetType && a.symbol.toUpperCase() === ticker
             )
+            
+            // If asset not found, try to auto-create it
+            if (!foundAsset) {
+              try {
+                // Determine currency based on asset type
+                const currency = assetType === 'pk-equity' || assetType === 'kse100' ? 'PKR' : 'USD'
+                
+                // Determine name based on asset type and symbol
+                let name = ticker
+                if (assetType === 'kse100') {
+                  name = 'KSE 100 Index'
+                } else if (assetType === 'spx500') {
+                  name = 'S&P 500 Index'
+                }
+                
+                const createResponse = await fetch('/api/user/tracked-assets', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                  },
+                  body: JSON.stringify({
+                    assetType,
+                    symbol: ticker,
+                    name,
+                    currency,
+                  }),
+                })
+                
+                if (createResponse.ok) {
+                  const createData = await createResponse.json()
+                  if (createData.success && createData.asset) {
+                    foundAsset = createData.asset
+                  }
+                }
+              } catch (createError) {
+                console.warn('Failed to auto-create asset:', createError)
+                // Continue to show error if creation fails
+              }
+            }
+            
             if (foundAsset) {
               setAsset(foundAsset)
             } else {
-              setError('Asset not found')
+              setError('Asset not found. Please add it to the asset screener first.')
             }
           } else {
             setError('Failed to fetch assets')

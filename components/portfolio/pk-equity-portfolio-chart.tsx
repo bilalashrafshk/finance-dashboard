@@ -9,6 +9,7 @@ import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
+  LogarithmicScale,
   PointElement,
   LineElement,
   Tooltip,
@@ -18,13 +19,19 @@ import {
 import type { Holding } from "@/lib/portfolio/types"
 import type { StockAnalysisDataPoint } from "@/lib/portfolio/stockanalysis-api"
 import { getThemeColors } from "@/lib/charts/theme-colors"
-import { formatCurrency } from "@/lib/portfolio/portfolio-utils"
+import { createYAxisScaleConfig } from "@/lib/charts/portfolio-chart-utils"
+import { formatCurrency, calculatePortfolioValueForDate } from "@/lib/portfolio/portfolio-utils"
 import { Loader2 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
+import { useToast } from "@/hooks/use-toast"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { fetchInvestingHistoricalDataClient, type InvestingHistoricalDataPoint, KSE100_INSTRUMENT_ID } from "@/lib/portfolio/investing-client-api"
+import { calculateDividendAdjustedPrices, normalizeToPercentage, normalizeOriginalPricesToPercentage } from "@/lib/asset-screener/dividend-adjusted-prices"
+import type { PriceDataPoint } from "@/lib/asset-screener/metrics-calculations"
+import { convertDividendToRupees, filterDividendsByPurchaseDate } from "@/lib/portfolio/dividend-utils"
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler)
+ChartJS.register(CategoryScale, LinearScale, LogarithmicScale, PointElement, LineElement, Tooltip, Legend, Filler)
 
 interface PKEquityPortfolioChartProps {
   holdings: Holding[]
@@ -36,8 +43,11 @@ type ChartPeriod = '1M' | '3M' | '6M' | '1Y' | '2Y' | '5Y' | 'ALL'
 export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolioChartProps) {
   const { theme } = useTheme()
   const colors = getThemeColors()
+  const { toast } = useToast()
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('1Y')
   const [showKSE100Comparison, setShowKSE100Comparison] = useState(false)
+  const [showTotalReturn, setShowTotalReturn] = useState(false)
+  const [useLogScale, setUseLogScale] = useState(false)
   const [loading, setLoading] = useState(true)
   const [chartData, setChartData] = useState<{
     labels: string[]
@@ -165,59 +175,115 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
           sortedDates.push(...filteredDates)
         }
 
-        // Calculate portfolio value for each date
-        const portfolioValues: number[] = []
-        
-        for (const date of sortedDates) {
-          const dateObj = new Date(date)
-          let totalValue = 0
-          
-          for (const holding of pkEquityHoldings) {
-            const purchaseDate = new Date(holding.purchaseDate)
-            
-            // Only include this holding if the date is on or after the purchase date
-            if (dateObj >= purchaseDate) {
-              const data = historicalDataMap.get(holding.symbol)
-              if (data) {
-                // Find price for this date (or closest before)
-                // Data from API is sorted most recent first, so find exact match or closest before
-                let datePoint = data.find(d => d.t === date)
-                
-                if (!datePoint) {
-                  // Find closest date before (or equal to) the target date
-                  const beforeDates = data.filter(d => d.t <= date)
-                  if (beforeDates.length > 0) {
-                    // Sort by date descending to get the closest before date
-                    datePoint = beforeDates.sort((a, b) => b.t.localeCompare(a.t))[0]
-                  }
+        // Fetch dividend data for all holdings if total return is enabled
+        const dividendDataMap = new Map<string, Array<{ date: string; dividend_amount: number }>>()
+        if (showTotalReturn) {
+          const dividendPromises = pkEquityHoldings.map(async (holding) => {
+            try {
+              const response = await fetch(`/api/pk-equity/dividend?ticker=${encodeURIComponent(holding.symbol)}`)
+              if (response.ok) {
+                const data = await response.json()
+                if (data.dividends && Array.isArray(data.dividends)) {
+                  // Filter dividends that occurred on or after purchase date and convert to rupees
+                  const relevantDividends = filterDividendsByPurchaseDate(data.dividends, holding.purchaseDate)
+                    .map((d: any) => {
+                      // Convert dividend_amount (percent/10) to rupees
+                      const dividendAmountRupees = convertDividendToRupees(d.dividend_amount)
+                      return {
+                        date: d.date,
+                        dividend_amount: dividendAmountRupees // Now in rupees
+                      }
+                    })
+                  dividendDataMap.set(holding.symbol, relevantDividends)
                 }
-                
-                if (datePoint) {
-                  totalValue += holding.quantity * datePoint.c // Close price
-                } else {
-                  // If no historical data for this date, use current price as fallback
-                  totalValue += holding.quantity * holding.currentPrice
-                }
-              } else {
-                // If no historical data at all, use current price
-                totalValue += holding.quantity * holding.currentPrice
               }
+            } catch (error) {
+              console.error(`Error fetching dividends for ${holding.symbol}:`, error)
             }
-            // If date is before purchase date, don't include this holding (value stays 0 for this holding)
-          }
-          
-          portfolioValues.push(totalValue)
+          })
+          await Promise.all(dividendPromises)
         }
 
+        // Prepare historical price map for centralized calculation
+        // PK equity data uses 't' for date and 'c' for close price
+        const historicalPriceMap = new Map<string, { date: string; price: number }[]>()
+        historicalDataMap.forEach((data, symbol) => {
+          historicalPriceMap.set(symbol, data.map(d => ({ date: d.t, price: d.c })))
+        })
+        
+        // Calculate base portfolio value for each date using centralized function
+        const portfolioValues: number[] = []
+        const portfolioValuesWithDividends: number[] = []
+        
+        for (const date of sortedDates) {
+          // Use centralized function for base value (ensures consistency with summary)
+          const baseValue = calculatePortfolioValueForDate(pkEquityHoldings, date, historicalPriceMap)
+          portfolioValues.push(baseValue)
+          
+          // Calculate dividend-adjusted value if total return is enabled
+          if (showTotalReturn) {
+            let totalValueWithDividends = 0
+            
+            for (const holding of pkEquityHoldings) {
+              const purchaseDate = new Date(holding.purchaseDate)
+              const dateObj = new Date(date)
+              
+              // Only include holdings purchased on or before this date
+              if (dateObj >= purchaseDate) {
+                const data = historicalDataMap.get(holding.symbol)
+                const dividends = dividendDataMap.get(holding.symbol) || []
+                
+                if (data && dividends.length > 0) {
+                  // Convert historical data to PriceDataPoint format
+                  const priceData: PriceDataPoint[] = data
+                    .filter(d => d.t >= holding.purchaseDate && d.t <= date)
+                    .map(d => ({ date: d.t, close: d.c }))
+                    .sort((a, b) => a.date.localeCompare(b.date))
+                  
+                  if (priceData.length > 0) {
+                    // Calculate dividend-adjusted prices for this holding
+                    const adjustedPoints = calculateDividendAdjustedPrices(priceData, dividends)
+                    if (adjustedPoints.length > 0) {
+                      // Get the last adjusted point (most recent)
+                      const lastAdjusted = adjustedPoints[adjustedPoints.length - 1]
+                      // The adjusted value is for 1 share, so multiply by our holding quantity
+                      totalValueWithDividends += lastAdjusted.adjustedValue * holding.quantity
+                    } else {
+                      // Fallback to base value for this holding
+                      const holdingBaseValue = calculatePortfolioValueForDate([holding], date, historicalPriceMap)
+                      totalValueWithDividends += holdingBaseValue
+                    }
+                  } else {
+                    // Fallback to base value for this holding
+                    const holdingBaseValue = calculatePortfolioValueForDate([holding], date, historicalPriceMap)
+                    totalValueWithDividends += holdingBaseValue
+                  }
+                } else {
+                  // No dividends or no data, use base value for this holding
+                  const holdingBaseValue = calculatePortfolioValueForDate([holding], date, historicalPriceMap)
+                  totalValueWithDividends += holdingBaseValue
+                }
+              }
+            }
+            
+            portfolioValuesWithDividends.push(totalValueWithDividends)
+          } else {
+            portfolioValuesWithDividends.push(baseValue)
+          }
+        }
+
+        // Use dividend-adjusted values if total return is enabled
+        const valuesToUse = showTotalReturn ? portfolioValuesWithDividends : portfolioValues
+        
         // Normalize portfolio values to percentage change from start (for comparison with KSE 100)
-        const startValue = portfolioValues[0] || 1
+        const startValue = valuesToUse[0] || 1
         setPortfolioStartValue(startValue)
-        const normalizedPortfolioValues = portfolioValues.map(value => (value / startValue) * 100)
+        const normalizedPortfolioValues = valuesToUse.map(value => (value / startValue) * 100)
 
         // Fetch KSE 100 data if comparison is enabled
         let kse100Data: number[] | null = null
         let alignedDates = sortedDates
-        let alignedPortfolioValues = showKSE100Comparison ? normalizedPortfolioValues : portfolioValues
+        let alignedPortfolioValues = showKSE100Comparison ? normalizedPortfolioValues : valuesToUse
         
         if (showKSE100Comparison) {
           try {
@@ -456,9 +522,20 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
     }
 
     loadChartData()
-    // Re-run when holdings, period, or comparison toggle changes
+    // Re-run when holdings, period, comparison toggle, total return toggle, or log scale changes
     // When comparison toggle changes, we need to re-process the data (but not re-fetch from API)
-  }, [pkEquityHoldings, chartPeriod, showKSE100Comparison])
+  }, [pkEquityHoldings, chartPeriod, showKSE100Comparison, showTotalReturn, useLogScale])
+  
+  // Show warning when comparing with KSE100 using price return only
+  useEffect(() => {
+    if (showKSE100Comparison && !showTotalReturn) {
+      toast({
+        title: "Comparison Warning",
+        description: "KSE100 is dividend-adjusted. For accurate comparison, consider using total return (dividend-adjusted).",
+        variant: "default",
+      })
+    }
+  }, [showKSE100Comparison, showTotalReturn, toast])
 
   const chartOptions = useMemo(() => ({
     responsive: true,
@@ -510,28 +587,13 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
           minRotation: 45,
         },
       },
-      y: {
-        grid: {
-          color: colors.grid,
-        },
-        ticks: {
-          color: colors.foreground,
-          callback: (value: any) => {
-            const num = Number(value)
-            if (showKSE100Comparison) {
-              // Show percentage when comparing
-              return `${num.toFixed(0)}%`
-            } else {
-              // Show currency values when not comparing
-              if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M ${currency}`
-              if (num >= 1000) return `${(num / 1000).toFixed(1)}K ${currency}`
-              return `${num.toFixed(0)} ${currency}`
-            }
-          },
-        },
-      },
+      y: createYAxisScaleConfig({
+        useLogScale,
+        isPercentage: showKSE100Comparison,
+        currency,
+      }),
     },
-  }), [colors, currency, showKSE100Comparison, portfolioStartValue])
+  }), [colors, currency, showKSE100Comparison, portfolioStartValue, useLogScale])
 
   // Don't render anything if there are no PK equity holdings
   if (pkEquityHoldings.length === 0) {
@@ -547,6 +609,16 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
             <CardDescription>Historical portfolio value over time</CardDescription>
           </div>
           <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="total-return"
+                checked={showTotalReturn}
+                onCheckedChange={setShowTotalReturn}
+              />
+              <Label htmlFor="total-return" className="text-sm cursor-pointer">
+                Total Return (with dividends)
+              </Label>
+            </div>
             <div className="flex items-center gap-2">
               <Switch
                 id="kse100-comparison"
@@ -575,19 +647,42 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
         </div>
       </CardHeader>
       <CardContent>
-        {loading ? (
-          <div className="flex items-center justify-center h-[400px]">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : chartData ? (
-          <div className="h-[400px]">
-            <Line data={chartData} options={chartOptions} />
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-[400px] text-muted-foreground">
-            Unable to load chart data
-          </div>
+        {showKSE100Comparison && !showTotalReturn && (
+          <Alert className="mb-4">
+            <AlertDescription>
+              KSE100 is dividend-adjusted. For accurate comparison, consider using total return (dividend-adjusted).
+            </AlertDescription>
+          </Alert>
         )}
+        <div className="flex gap-4">
+          <div className="flex flex-col items-start gap-2 pt-2">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="log-scale"
+                checked={useLogScale}
+                onCheckedChange={setUseLogScale}
+              />
+              <Label htmlFor="log-scale" className="text-sm cursor-pointer whitespace-nowrap">
+                Log Scale
+              </Label>
+            </div>
+          </div>
+          <div className="flex-1">
+            {loading ? (
+              <div className="flex items-center justify-center h-[400px]">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : chartData ? (
+              <div className="h-[400px]">
+                <Line data={chartData} options={chartOptions} />
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-[400px] text-muted-foreground">
+                Unable to load chart data
+              </div>
+            )}
+          </div>
+        </div>
       </CardContent>
     </Card>
   )

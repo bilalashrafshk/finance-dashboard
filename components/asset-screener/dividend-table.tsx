@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Loader2 } from "lucide-react"
+import { convertDividendToRupees } from "@/lib/portfolio/dividend-utils"
 
 interface DividendRecord {
   date: string
@@ -141,13 +142,8 @@ export function DividendTable({ assetType, symbol }: DividendTableProps) {
           // (percent/10) * 1 = rupees
           // Example: 20% stored as 2.0, so 2.0 * 1 = Rs. 2 per share
           if (lastPrice > 0) {
-            // Convert dividend_amount to rupees (assuming face value Rs. 10)
-            // dividend_amount is percent/10, so to get rupees: multiply by 1
-            // Example: 20% + 10% + 15% + 25% = 70% total
-            // Stored as: 2.0 + 1.0 + 1.5 + 2.5 = 7.0
-            // In rupees: 7.0 * 1 = Rs. 7 per share
-            const FACE_VALUE = 10 // Standard face value in Pakistan
-            const totalDividendRupees = totalDividends * (FACE_VALUE / 10)
+            // Convert dividend_amount to rupees using centralized utility
+            const totalDividendRupees = convertDividendToRupees(totalDividends)
             // Yield = (Total Dividends in Rs. / Price) * 100
             yieldValue = (totalDividendRupees / lastPrice) * 100
           }

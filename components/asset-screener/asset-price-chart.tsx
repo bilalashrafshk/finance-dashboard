@@ -8,11 +8,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Line } from "react-chartjs-2"
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
+  LogarithmicScale,
   PointElement,
   LineElement,
   Title,
@@ -23,6 +25,7 @@ import {
 import type { TrackedAsset } from "./add-asset-dialog"
 import type { PriceDataPoint } from "@/lib/asset-screener/metrics-calculations"
 import { getThemeColors } from "@/lib/charts/theme-colors"
+import { createAssetPriceYAxisScaleConfig } from "@/lib/charts/portfolio-chart-utils"
 import { 
   calculateDividendAdjustedPrices, 
   normalizeToPercentage, 
@@ -33,6 +36,7 @@ import {
 ChartJS.register(
   CategoryScale,
   LinearScale,
+  LogarithmicScale,
   PointElement,
   LineElement,
   Title,
@@ -54,6 +58,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('1Y')
   const [showComparison, setShowComparison] = useState(false)
   const [showTotalReturn, setShowTotalReturn] = useState(false)
+  const [useLogScale, setUseLogScale] = useState(false)
   const [loading, setLoading] = useState(true)
   const [chartData, setChartData] = useState<{
     labels: string[]
@@ -72,14 +77,14 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
   const canShowTotalReturn = asset.assetType === 'pk-equity'
   const comparisonIndex = asset.assetType === 'pk-equity' ? 'KSE100' : asset.assetType === 'us-equity' ? 'SPX500' : null
 
-  // Handle comparison toggle - auto-enable total return if needed (only for PK equities)
+  // Handle comparison toggle - auto-enable total return for PK equity
   const handleComparisonChange = (checked: boolean) => {
-    if (checked && !showTotalReturn && asset.assetType === 'pk-equity') {
+    if (checked && asset.assetType === 'pk-equity' && canShowTotalReturn) {
       // Auto-enable total return when comparison is enabled for PK equities
       setShowTotalReturn(true)
       toast({
         title: "Total Return Enabled",
-        description: "KSE100 is dividend-adjusted. Comparing with total return (dividend-adjusted) for accurate comparison.",
+        description: "KSE100 is dividend-adjusted. Total return (dividend-adjusted) has been enabled for accurate comparison.",
         variant: "default",
       })
     }
@@ -407,26 +412,20 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
           display: false,
         },
       },
-      y: {
-        display: true,
-        grid: {
-          color: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-        },
-        ticks: {
-          callback: (value: any) => {
-            if ((showTotalReturn && canShowTotalReturn) || (showComparison && canShowComparison)) {
-              return `${value.toFixed(0)}%`
-            }
-            return formatCurrency(value, asset.currency, asset.assetType === 'crypto' ? 4 : 2)
-          },
-        },
-      },
+      y: createAssetPriceYAxisScaleConfig({
+        useLogScale,
+        isPercentage: (showTotalReturn && canShowTotalReturn) || (showComparison && canShowComparison),
+        currency: asset.currency,
+        assetType: asset.assetType,
+        formatCurrency,
+        theme,
+      }),
     },
     interaction: {
       mode: 'index' as const,
       intersect: false,
     },
-  }), [asset, showComparison, showTotalReturn, canShowComparison, canShowTotalReturn, theme, formatCurrency])
+  }), [asset, showComparison, showTotalReturn, canShowComparison, canShowTotalReturn, theme, formatCurrency, useLogScale])
 
   return (
     <Card>
@@ -479,19 +478,42 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
         </div>
       </CardHeader>
       <CardContent>
-        {loading ? (
-          <div className="flex items-center justify-center h-[400px]">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : chartData ? (
-          <div className="h-[400px]">
-            <Line data={chartData} options={chartOptions} />
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-[400px] text-muted-foreground">
-            Unable to load chart data
-          </div>
+        {showComparison && canShowComparison && !showTotalReturn && asset.assetType === 'pk-equity' && (
+          <Alert className="mb-4">
+            <AlertDescription>
+              KSE100 is dividend-adjusted. For accurate comparison, consider using total return (dividend-adjusted).
+            </AlertDescription>
+          </Alert>
         )}
+        <div className="flex gap-4">
+          <div className="flex flex-col items-start gap-2 pt-2">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="log-scale"
+                checked={useLogScale}
+                onCheckedChange={setUseLogScale}
+              />
+              <Label htmlFor="log-scale" className="text-sm cursor-pointer whitespace-nowrap">
+                Log Scale
+              </Label>
+            </div>
+          </div>
+          <div className="flex-1">
+            {loading ? (
+              <div className="flex items-center justify-center h-[400px]">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : chartData ? (
+              <div className="h-[400px]">
+                <Line data={chartData} options={chartOptions} />
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-[400px] text-muted-foreground">
+                Unable to load chart data
+              </div>
+            )}
+          </div>
+        </div>
       </CardContent>
     </Card>
   )

@@ -191,11 +191,11 @@ export default function AssetScreenerPage() {
           </TabsList>
 
           <TabsContent value="assets" className="space-y-4">
-            <AssetList 
-              assets={assets} 
-              onDelete={handleDeleteAsset}
-              loading={loading}
-            />
+        <AssetList 
+          assets={assets} 
+          onDelete={handleDeleteAsset}
+          loading={loading}
+        />
           </TabsContent>
 
           <TabsContent value="mpt" className="space-y-4">

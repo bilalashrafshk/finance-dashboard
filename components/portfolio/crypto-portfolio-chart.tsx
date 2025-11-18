@@ -9,6 +9,7 @@ import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
+  LogarithmicScale,
   PointElement,
   LineElement,
   Tooltip,
@@ -19,10 +20,13 @@ import type { Holding } from "@/lib/portfolio/types"
 import type { BinanceHistoricalDataPoint } from "@/lib/portfolio/binance-historical-api"
 import { parseSymbolToBinance } from "@/lib/portfolio/binance-api"
 import { getThemeColors } from "@/lib/charts/theme-colors"
-import { formatCurrency } from "@/lib/portfolio/portfolio-utils"
+import { createYAxisScaleConfig } from "@/lib/charts/portfolio-chart-utils"
+import { formatCurrency, calculatePortfolioValueForDate } from "@/lib/portfolio/portfolio-utils"
 import { Loader2 } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler)
+ChartJS.register(CategoryScale, LinearScale, LogarithmicScale, PointElement, LineElement, Tooltip, Legend, Filler)
 
 interface CryptoPortfolioChartProps {
   holdings: Holding[]
@@ -35,6 +39,7 @@ export function CryptoPortfolioChart({ holdings, currency }: CryptoPortfolioChar
   const { theme } = useTheme()
   const colors = getThemeColors()
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('1Y')
+  const [useLogScale, setUseLogScale] = useState(false)
   const [loading, setLoading] = useState(true)
   const [chartData, setChartData] = useState<{
     labels: string[]
@@ -77,8 +82,8 @@ export function CryptoPortfolioChart({ holdings, currency }: CryptoPortfolioChar
                 // Convert database records to Binance format
                 const { dbRecordToBinance } = await import('@/lib/portfolio/db-to-chart-format')
                 const data: BinanceHistoricalDataPoint[] = dbRecords.map(dbRecordToBinance)
-                    return { symbol: holding.symbol, data }
-                  }
+                return { symbol: holding.symbol, data }
+              }
             } else {
               console.error(`[Crypto Chart] API error for ${holding.symbol}: ${response.status}`)
             }
@@ -159,46 +164,17 @@ export function CryptoPortfolioChart({ holdings, currency }: CryptoPortfolioChar
           sortedDates.push(...filteredDates)
         }
 
-        // Calculate portfolio value for each date
-        const portfolioValues: number[] = []
+        // Prepare historical price map for centralized calculation
+        const historicalPriceMap = new Map<string, { date: string; price: number }[]>()
+        historicalDataMap.forEach((data, symbol) => {
+          historicalPriceMap.set(symbol, data.map(d => ({ date: d.date, price: d.close })))
+        })
         
+        // Calculate portfolio value for each date using centralized function
+        const portfolioValues: number[] = []
         for (const date of sortedDates) {
-          const dateObj = new Date(date)
-          let totalValue = 0
-          
-          for (const holding of cryptoHoldings) {
-            const purchaseDate = new Date(holding.purchaseDate)
-            
-            // Only include this holding if the date is on or after the purchase date
-            if (dateObj >= purchaseDate) {
-              const data = historicalDataMap.get(holding.symbol)
-              if (data) {
-                // Find price for this date (data is sorted oldest first)
-                let datePoint = data.find(d => d.date === date)
-                
-                if (!datePoint) {
-                  // Find closest date before (or equal to) the target date
-                  const beforeDates = data.filter(d => d.date <= date)
-                  if (beforeDates.length > 0) {
-                    // Get the last one (closest before date)
-                    datePoint = beforeDates[beforeDates.length - 1]
-                  }
-                }
-                
-                if (datePoint) {
-                  totalValue += holding.quantity * datePoint.close // Close price
-                } else {
-                  // If no historical data for this date, use current price as fallback
-                  totalValue += holding.quantity * holding.currentPrice
-                }
-              } else {
-                // If no historical data at all, use current price
-                totalValue += holding.quantity * holding.currentPrice
-              }
-            }
-          }
-          
-          portfolioValues.push(totalValue)
+          const value = calculatePortfolioValueForDate(cryptoHoldings, date, historicalPriceMap)
+          portfolioValues.push(value)
         }
 
         // Create chart data
@@ -225,7 +201,7 @@ export function CryptoPortfolioChart({ holdings, currency }: CryptoPortfolioChar
     }
 
     loadChartData()
-  }, [cryptoHoldings, chartPeriod, colors.primary])
+  }, [cryptoHoldings, chartPeriod, colors.primary, useLogScale])
 
   const chartOptions = useMemo(() => ({
     responsive: true,
@@ -264,22 +240,13 @@ export function CryptoPortfolioChart({ holdings, currency }: CryptoPortfolioChar
           minRotation: 45,
         },
       },
-      y: {
-        grid: {
-          color: colors.grid,
-        },
-        ticks: {
-          color: colors.foreground,
-          callback: (value: any) => {
-            const num = Number(value)
-            if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M ${currency}`
-            if (num >= 1000) return `${(num / 1000).toFixed(1)}K ${currency}`
-            return `${num.toFixed(0)} ${currency}`
-          },
-        },
-      },
+      y: createYAxisScaleConfig({
+        useLogScale,
+        isPercentage: false,
+        currency,
+      }),
     },
-  }), [colors, currency])
+  }), [colors, currency, useLogScale])
 
   // Don't render anything if there are no crypto holdings
   if (cryptoHoldings.length === 0) {
@@ -311,19 +278,35 @@ export function CryptoPortfolioChart({ holdings, currency }: CryptoPortfolioChar
         </div>
       </CardHeader>
       <CardContent>
-        {loading ? (
-          <div className="flex items-center justify-center h-[400px]">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="flex gap-4">
+          <div className="flex flex-col items-start gap-2 pt-2">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="log-scale"
+                checked={useLogScale}
+                onCheckedChange={setUseLogScale}
+              />
+              <Label htmlFor="log-scale" className="text-sm cursor-pointer whitespace-nowrap">
+                Log Scale
+              </Label>
+            </div>
           </div>
-        ) : chartData ? (
-          <div className="h-[400px]">
-            <Line data={chartData} options={chartOptions} />
+          <div className="flex-1">
+            {loading ? (
+              <div className="flex items-center justify-center h-[400px]">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : chartData ? (
+              <div className="h-[400px]">
+                <Line data={chartData} options={chartOptions} />
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-[400px] text-muted-foreground">
+                Unable to load chart data
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="flex items-center justify-center h-[400px] text-muted-foreground">
-            Unable to load chart data
-          </div>
-        )}
+        </div>
       </CardContent>
     </Card>
   )

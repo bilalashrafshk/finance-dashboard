@@ -9,6 +9,7 @@ import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
+  LogarithmicScale,
   PointElement,
   LineElement,
   Tooltip,
@@ -18,13 +19,13 @@ import {
 import type { Holding } from "@/lib/portfolio/types"
 import type { StockAnalysisDataPoint } from "@/lib/portfolio/stockanalysis-api"
 import { getThemeColors } from "@/lib/charts/theme-colors"
-import { formatCurrency } from "@/lib/portfolio/portfolio-utils"
+import { createYAxisScaleConfig } from "@/lib/charts/portfolio-chart-utils"
+import { formatCurrency, calculatePortfolioValueForDate } from "@/lib/portfolio/portfolio-utils"
 import { Loader2 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { fetchInvestingHistoricalDataClient, type InvestingHistoricalDataPoint, SPX500_INSTRUMENT_ID } from "@/lib/portfolio/investing-client-api"
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler)
+ChartJS.register(CategoryScale, LinearScale, LogarithmicScale, PointElement, LineElement, Tooltip, Legend, Filler)
 
 interface USEquityPortfolioChartProps {
   holdings: Holding[]
@@ -38,6 +39,7 @@ export function USEquityPortfolioChart({ holdings, currency }: USEquityPortfolio
   const colors = getThemeColors()
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('1Y')
   const [showSPX500Comparison, setShowSPX500Comparison] = useState(false)
+  const [useLogScale, setUseLogScale] = useState(false)
   const [loading, setLoading] = useState(true)
   const [chartData, setChartData] = useState<{
     labels: string[]
@@ -165,48 +167,18 @@ export function USEquityPortfolioChart({ holdings, currency }: USEquityPortfolio
           sortedDates.push(...filteredDates)
         }
 
-        // Calculate portfolio value for each date
-        const portfolioValues: number[] = []
+        // Prepare historical price map for centralized calculation
+        // US equity data uses 't' for date and 'c' for close price
+        const historicalPriceMap = new Map<string, { date: string; price: number }[]>()
+        historicalDataMap.forEach((data, symbol) => {
+          historicalPriceMap.set(symbol, data.map(d => ({ date: d.t, price: d.c })))
+        })
         
+        // Calculate portfolio value for each date using centralized function
+        const portfolioValues: number[] = []
         for (const date of sortedDates) {
-          const dateObj = new Date(date)
-          let totalValue = 0
-          
-          for (const holding of usEquityHoldings) {
-            const purchaseDate = new Date(holding.purchaseDate)
-            
-            // Only include this holding if the date is on or after the purchase date
-            if (dateObj >= purchaseDate) {
-              const data = historicalDataMap.get(holding.symbol)
-              if (data) {
-                // Find price for this date (or closest before)
-                // Data from API is sorted most recent first, so find exact match or closest before
-                let datePoint = data.find(d => d.t === date)
-                
-                if (!datePoint) {
-                  // Find closest date before (or equal to) the target date
-                  const beforeDates = data.filter(d => d.t <= date)
-                  if (beforeDates.length > 0) {
-                    // Sort by date descending to get the closest before date
-                    datePoint = beforeDates.sort((a, b) => b.t.localeCompare(a.t))[0]
-                  }
-                }
-                
-                if (datePoint) {
-                  totalValue += holding.quantity * datePoint.c // Close price
-                } else {
-                  // If no historical data for this date, use current price as fallback
-                  totalValue += holding.quantity * holding.currentPrice
-                }
-              } else {
-                // If no historical data at all, use current price
-                totalValue += holding.quantity * holding.currentPrice
-              }
-            }
-            // If date is before purchase date, don't include this holding (value stays 0 for this holding)
-          }
-          
-          portfolioValues.push(totalValue)
+          const value = calculatePortfolioValueForDate(usEquityHoldings, date, historicalPriceMap)
+          portfolioValues.push(value)
         }
 
         // Normalize portfolio values to percentage change from start (for comparison with S&P 500)
@@ -214,196 +186,68 @@ export function USEquityPortfolioChart({ holdings, currency }: USEquityPortfolio
         setPortfolioStartValue(startValue)
         const normalizedPortfolioValues = portfolioValues.map(value => (value / startValue) * 100)
 
-        // Fetch S&P 500 data if comparison is enabled
+        // Fetch S&P 500 data if comparison is enabled (using same approach as asset screener)
         let spx500Data: number[] | null = null
         let alignedDates = sortedDates
         let alignedPortfolioValues = showSPX500Comparison ? normalizedPortfolioValues : portfolioValues
         
         if (showSPX500Comparison) {
           try {
-            // First check database
+            // Use same simple approach as asset screener - just fetch from API
             const { deduplicatedFetch } = await import('@/lib/portfolio/request-deduplication')
-            let spx500Historical: InvestingHistoricalDataPoint[] | null = null
+            const comparisonResponse = await deduplicatedFetch(`/api/historical-data?assetType=spx500&symbol=SPX500`)
             
-            const dbResponse = await deduplicatedFetch(`/api/historical-data?assetType=spx500&symbol=SPX500`)
-            if (dbResponse.ok) {
-              const dbData = await dbResponse.json()
-              const dbRecords = dbData.data || []
-              
-              if (dbRecords.length > 0) {
-                // Convert database records to Investing format
-                const { dbRecordToInvesting } = await import('@/lib/portfolio/db-to-chart-format')
-                spx500Historical = dbRecords.map(dbRecordToInvesting)
+            if (comparisonResponse.ok) {
+              const comparisonResponseData = await comparisonResponse.json()
+              if (comparisonResponseData.data && Array.isArray(comparisonResponseData.data)) {
+                // Convert to simple format with date and close price
+                const spx500Historical = comparisonResponseData.data
+                  .map((record: any) => ({
+                    date: record.date,
+                    close: parseFloat(record.close)
+                  }))
+                  .filter((point: any) => !isNaN(point.close))
+                  .sort((a: any, b: any) => a.date.localeCompare(b.date))
                 
-                // Check if today's data is missing - if so, fetch and store it using centralized route
-                // Use US market timezone for SPX500
-                const { getTodayInMarketTimezone } = await import('@/lib/portfolio/market-hours')
-                const today = getTodayInMarketTimezone('US')
-                const hasTodayData = spx500Historical.some(d => d.date === today)
-                
-                if (!hasTodayData) {
-                  // Use unified API route to fetch latest price (handles client-side fetch if needed)
-                  const { fetchIndicesPrice } = await import('@/lib/portfolio/unified-price-api')
-                  const latestPriceData = await fetchIndicesPrice('SPX500', true) // refresh=true to force fetch
-                  
-                  if (latestPriceData && latestPriceData.price && latestPriceData.date) {
-                    // Store the latest price in database
-                    const storeResponse = await fetch('/api/historical-data/store', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        assetType: 'spx500',
-                        symbol: 'SPX500',
-                        data: [{
-                          date: latestPriceData.date,
-                          open: latestPriceData.price,
-                          high: latestPriceData.price,
-                          low: latestPriceData.price,
-                          close: latestPriceData.price,
-                          volume: null,
-                        }],
-                        source: 'investing',
-                      }),
-                    })
+                if (spx500Historical.length > 0) {
+                  // Map S&P 500 data to our date range
+                  const spx500Mapped: (number | null)[] = sortedDates.map(date => {
+                    // Find exact match or closest before
+                    let spxPoint = spx500Historical.find((d: any) => d.date === date)
                     
-                    if (storeResponse.ok) {
-                      // Add today's data to historical array
-                      spx500Historical.push({
-                        date: latestPriceData.date,
-                        open: latestPriceData.price,
-                        high: latestPriceData.price,
-                        low: latestPriceData.price,
-                        close: latestPriceData.price,
-                        volume: null,
-                      })
-                      // Sort by date
-                      spx500Historical.sort((a, b) => a.date.localeCompare(b.date))
-                    } else {
-                      console.error(`[US Equity Chart] Failed to store today's SPX500 price`)
-                      // Don't show comparison if we can't store today's data
-                      spx500Historical = null
+                    if (!spxPoint) {
+                      const beforeDates = spx500Historical.filter((d: any) => d.date <= date)
+                      if (beforeDates.length > 0) {
+                        spxPoint = beforeDates.sort((a: any, b: any) => b.date.localeCompare(a.date))[0]
+                      }
                     }
-                  } else {
-                    // Don't show comparison if we can't fetch today's data
-                    spx500Historical = null
-                  }
-                }
-              } else {
-                // No data in database - fetch it client-side and store it
-                try {
-                  const { fetchInvestingHistoricalDataClient } = await import('@/lib/portfolio/investing-client-api')
-                  const { SPX500_INSTRUMENT_ID } = await import('@/lib/portfolio/investing-client-api')
-                  
-                  // Fetch all historical data (from 1996 to today)
-                  const clientData = await fetchInvestingHistoricalDataClient(
-                    SPX500_INSTRUMENT_ID,
-                    '1996-01-01',
-                    new Date().toISOString().split('T')[0]
-                  )
-                  
-                  if (clientData && clientData.length > 0) {
-                    // Store in database
-                    const storeResponse = await fetch('/api/historical-data/store', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        assetType: 'spx500',
-                        symbol: 'SPX500',
-                        data: clientData,
-                        source: 'investing',
-                      }),
-                    })
                     
-                    if (storeResponse.ok) {
-                      spx500Historical = clientData
-                    } else {
-                      console.error(`[US Equity Chart] Failed to store SPX500 data`)
-                      spx500Historical = clientData // Use it anyway even if storage failed
+                    return spxPoint ? spxPoint.close : null
+                  })
+                  
+                  // Only use data points that have values for both portfolio and S&P 500
+                  const validSpxData: number[] = []
+                  const validPortfolioValues: number[] = []
+                  const validDates: string[] = []
+                  
+                  for (let i = 0; i < sortedDates.length; i++) {
+                    if (spx500Mapped[i] !== null && normalizedPortfolioValues[i] !== undefined) {
+                      validSpxData.push(spx500Mapped[i]!)
+                      validPortfolioValues.push(normalizedPortfolioValues[i])
+                      validDates.push(sortedDates[i])
                     }
-                  } else {
-                    console.error(`[US Equity Chart] Failed to fetch SPX500 data from Investing.com`)
-                    spx500Historical = null
                   }
-                } catch (fetchError) {
-                  console.error(`[US Equity Chart] Error fetching SPX500 data:`, fetchError)
-                  spx500Historical = null
-                }
-              }
-            } else {
-              // Database check failed - try to fetch anyway
-              try {
-                const { fetchInvestingHistoricalDataClient } = await import('@/lib/portfolio/investing-client-api')
-                const { SPX500_INSTRUMENT_ID } = await import('@/lib/portfolio/investing-client-api')
-                
-                const clientData = await fetchInvestingHistoricalDataClient(
-                  SPX500_INSTRUMENT_ID,
-                  '1996-01-01',
-                  new Date().toISOString().split('T')[0]
-                )
-                
-                if (clientData && clientData.length > 0) {
-                  spx500Historical = clientData
-                  // Try to store it
-                  try {
-                    await fetch('/api/historical-data/store', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        assetType: 'spx500',
-                        symbol: 'SPX500',
-                        data: clientData,
-                        source: 'investing',
-                      }),
-                    })
-                  } catch (storeError) {
-                    console.error(`[US Equity Chart] Failed to store SPX500 data:`, storeError)
-                  }
-                } else {
-                  spx500Historical = null
-                }
-              } catch (fetchError) {
-                console.error(`[US Equity Chart] Error fetching SPX500 data:`, fetchError)
-                spx500Historical = null
-              }
-            }
-            
-            if (spx500Historical && spx500Historical.length > 0) {
-              // Map S&P 500 data to our date range
-              const spx500Mapped: (number | null)[] = sortedDates.map(date => {
-                // Find exact match or closest before
-                let spxPoint = spx500Historical!.find(d => d.date === date)
-                
-                if (!spxPoint) {
-                  const beforeDates = spx500Historical!.filter(d => d.date <= date)
-                  if (beforeDates.length > 0) {
-                    spxPoint = beforeDates.sort((a, b) => b.date.localeCompare(a.date))[0]
+                  
+                  if (validSpxData.length > 0 && validSpxData[0] > 0) {
+                    // Normalize S&P 500 to percentage change from start (for comparison)
+                    const spx500StartValue = validSpxData[0]
+                    spx500Data = validSpxData.map(value => (value / spx500StartValue) * 100)
+                    
+                    // Use aligned data
+                    alignedDates = validDates
+                    alignedPortfolioValues = validPortfolioValues
                   }
                 }
-                
-                return spxPoint ? spxPoint.close : null
-              })
-              
-              // Only use data points that have values for both portfolio and S&P 500
-              const validSpxData: number[] = []
-              const validPortfolioValues: number[] = []
-              const validDates: string[] = []
-              
-              for (let i = 0; i < sortedDates.length; i++) {
-                if (spx500Mapped[i] !== null && normalizedPortfolioValues[i] !== undefined) {
-                  validSpxData.push(spx500Mapped[i]!)
-                  validPortfolioValues.push(normalizedPortfolioValues[i])
-                  validDates.push(sortedDates[i])
-                }
-              }
-              
-              if (validSpxData.length > 0 && validSpxData[0] > 0) {
-                // Normalize S&P 500 to percentage change from start (for comparison)
-                const spx500StartValue = validSpxData[0]
-                spx500Data = validSpxData.map(value => (value / spx500StartValue) * 100)
-                
-                // Use aligned data
-                alignedDates = validDates
-                alignedPortfolioValues = validPortfolioValues
               }
             }
           } catch (error) {
@@ -456,9 +300,9 @@ export function USEquityPortfolioChart({ holdings, currency }: USEquityPortfolio
     }
 
     loadChartData()
-    // Re-run when holdings, period, or comparison toggle changes
+    // Re-run when holdings, period, comparison toggle, or log scale changes
     // When comparison toggle changes, we need to re-process the data (but not re-fetch from API)
-  }, [usEquityHoldings, chartPeriod, showSPX500Comparison])
+  }, [usEquityHoldings, chartPeriod, showSPX500Comparison, useLogScale])
 
   const chartOptions = useMemo(() => ({
     responsive: true,
@@ -510,28 +354,13 @@ export function USEquityPortfolioChart({ holdings, currency }: USEquityPortfolio
           minRotation: 45,
         },
       },
-      y: {
-        grid: {
-          color: colors.grid,
-        },
-        ticks: {
-          color: colors.foreground,
-          callback: (value: any) => {
-            const num = Number(value)
-            if (showSPX500Comparison) {
-              // Show percentage when comparing
-              return `${num.toFixed(0)}%`
-            } else {
-              // Show currency values when not comparing
-              if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M ${currency}`
-              if (num >= 1000) return `${(num / 1000).toFixed(1)}K ${currency}`
-              return `${num.toFixed(0)} ${currency}`
-            }
-          },
-        },
-      },
+      y: createYAxisScaleConfig({
+        useLogScale,
+        isPercentage: showSPX500Comparison,
+        currency,
+      }),
     },
-  }), [colors, currency, showSPX500Comparison, portfolioStartValue])
+  }), [colors, currency, showSPX500Comparison, portfolioStartValue, useLogScale])
 
   // Don't render anything if there are no US equity holdings
   if (usEquityHoldings.length === 0) {
@@ -575,19 +404,35 @@ export function USEquityPortfolioChart({ holdings, currency }: USEquityPortfolio
         </div>
       </CardHeader>
       <CardContent>
-        {loading ? (
-          <div className="flex items-center justify-center h-[400px]">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="flex gap-4">
+          <div className="flex flex-col items-start gap-2 pt-2">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="log-scale"
+                checked={useLogScale}
+                onCheckedChange={setUseLogScale}
+              />
+              <Label htmlFor="log-scale" className="text-sm cursor-pointer whitespace-nowrap">
+                Log Scale
+              </Label>
+            </div>
           </div>
-        ) : chartData ? (
-          <div className="h-[400px]">
-            <Line data={chartData} options={chartOptions} />
+          <div className="flex-1">
+            {loading ? (
+              <div className="flex items-center justify-center h-[400px]">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : chartData ? (
+              <div className="h-[400px]">
+                <Line data={chartData} options={chartOptions} />
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-[400px] text-muted-foreground">
+                Unable to load chart data
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="flex items-center justify-center h-[400px] text-muted-foreground">
-            Unable to load chart data
-          </div>
-        )}
+        </div>
       </CardContent>
     </Card>
   )

@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { RefreshCw, Loader2, TrendingUp, TrendingDown, Minus } from "lucide-react"
-import type { Holding } from "@/lib/portfolio/types"
+import type { Holding, AssetType } from "@/lib/portfolio/types"
 import { formatCurrency } from "@/lib/portfolio/portfolio-utils"
 import { parseSymbolToBinance } from "@/lib/portfolio/binance-api"
+import Link from "next/link"
+import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
 
 interface PortfolioUpdateSectionProps {
   holdings: Holding[]
@@ -387,14 +389,29 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
               </TableRow>
             </TableHeader>
             <TableBody>
-              {statusArray.map((status) => (
-                <TableRow key={status.holding.id}>
-                  <TableCell className="font-medium">
-                    {status.holding.name || status.holding.symbol}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{status.holding.symbol.toUpperCase()}</Badge>
-                  </TableCell>
+              {statusArray.map((status) => {
+                // Check if asset type is supported in asset screener
+                const supportedTypes: AssetType[] = ['us-equity', 'pk-equity', 'crypto', 'metals', 'kse100', 'spx500']
+                const isSupportedInScreener = supportedTypes.includes(status.holding.assetType)
+                const assetSlug = isSupportedInScreener ? generateAssetSlug(status.holding.assetType, status.holding.symbol) : null
+
+                return (
+                  <TableRow key={status.holding.id}>
+                    <TableCell className="font-medium">
+                      {status.holding.name || status.holding.symbol}
+                    </TableCell>
+                    <TableCell>
+                      {assetSlug ? (
+                        <Link 
+                          href={`/asset-screener/${assetSlug}`}
+                          className="hover:underline hover:text-primary transition-colors"
+                        >
+                          <Badge variant="outline" className="cursor-pointer">{status.holding.symbol.toUpperCase()}</Badge>
+                        </Link>
+                      ) : (
+                        <Badge variant="outline">{status.holding.symbol.toUpperCase()}</Badge>
+                      )}
+                    </TableCell>
                   <TableCell>
                     {formatCurrency(status.holding.currentPrice || 0, status.holding.currency)}
                   </TableCell>
@@ -430,7 +447,8 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
                     )}
                   </TableCell>
                 </TableRow>
-              ))}
+                )
+              })}
             </TableBody>
           </Table>
         </div>

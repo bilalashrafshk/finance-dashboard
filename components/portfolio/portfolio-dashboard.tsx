@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, RefreshCw, Loader2, DollarSign } from "lucide-react"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Plus, RefreshCw, Loader2, DollarSign, ChevronDown, ChevronRight } from "lucide-react"
 import { AddHoldingDialog } from "./add-holding-dialog"
 import { PortfolioSummary } from "./portfolio-summary"
 import { HoldingsTable } from "./holdings-table"
@@ -17,14 +18,17 @@ import { CryptoPortfolioChart } from "./crypto-portfolio-chart"
 import { USEquityPortfolioChart } from "./us-equity-portfolio-chart"
 import { MetalsPortfolioChart } from "./metals-portfolio-chart"
 import { PortfolioUpdateSection } from "./portfolio-update-section"
-import type { Holding } from "@/lib/portfolio/types"
+import { MyDividends } from "./my-dividends"
+import type { Holding, AssetType } from "@/lib/portfolio/types"
 import { loadPortfolio, addHolding, updateHolding, deleteHolding } from "@/lib/portfolio/portfolio-db-storage"
 import { 
   calculatePortfolioSummary, 
+  calculatePortfolioSummaryWithDividends,
   calculateAssetAllocation,
   groupHoldingsByCurrency,
   calculateUnifiedPortfolioSummary,
-  calculateUnifiedAssetAllocation
+  calculateUnifiedAssetAllocation,
+  formatCurrency
 } from "@/lib/portfolio/portfolio-utils"
 import { parseSymbolToBinance } from "@/lib/portfolio/binance-api"
 import { useAuth } from "@/lib/auth/auth-context"
@@ -39,6 +43,9 @@ export function PortfolioDashboard() {
   const [refreshingPrices, setRefreshingPrices] = useState(false)
   const [exchangeRates, setExchangeRates] = useState<Map<string, number>>(new Map())
   const [viewMode, setViewMode] = useState<'unified' | 'segregated'>('segregated')
+  const [summariesByCurrency, setSummariesByCurrency] = useState<Map<string, ReturnType<typeof calculatePortfolioSummary>>>(new Map())
+  const [unifiedSummary, setUnifiedSummary] = useState<ReturnType<typeof calculateUnifiedPortfolioSummary> | null>(null)
+  const [dividendsOpen, setDividendsOpen] = useState<{ [key: string]: boolean }>({})
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -63,6 +70,52 @@ export function PortfolioDashboard() {
         await updateHolding(editingHolding.id, holdingData)
       } else {
         await addHolding(holdingData)
+        
+        // Auto-add to asset screener if it's a supported asset type
+        const supportedTypes: AssetType[] = ['us-equity', 'pk-equity', 'crypto', 'metals', 'kse100', 'spx500']
+        if (supportedTypes.includes(holdingData.assetType)) {
+          try {
+            const token = localStorage.getItem('auth_token')
+            if (token) {
+              // Check if asset already exists in screener
+              const checkResponse = await fetch('/api/user/tracked-assets', {
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                },
+              })
+              
+              if (checkResponse.ok) {
+                const checkData = await checkResponse.json()
+                if (checkData.success) {
+                  const existingAsset = checkData.assets.find(
+                    (a: any) => a.assetType === holdingData.assetType && a.symbol === holdingData.symbol
+                  )
+                  
+                  // Only add if it doesn't already exist
+                  if (!existingAsset) {
+                    await fetch('/api/user/tracked-assets', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`,
+                      },
+                      body: JSON.stringify({
+                        assetType: holdingData.assetType,
+                        symbol: holdingData.symbol,
+                        name: holdingData.name,
+                        currency: holdingData.currency,
+                        notes: holdingData.notes,
+                      }),
+                    })
+                  }
+                }
+              }
+            }
+          } catch (screenerError) {
+            // Silently fail - don't block portfolio addition if screener add fails
+            console.warn('Failed to auto-add to asset screener:', screenerError)
+          }
+        }
       }
       await loadHoldings()
       setEditingHolding(null)
@@ -128,8 +181,7 @@ export function PortfolioDashboard() {
           if (data && data.price !== null && data.price !== holding.currentPrice) {
             updateHolding(holding.id, { currentPrice: data.price })
             updatedCount++
-            
-              }
+          }
         } catch (error) {
           console.error(`Error updating price for ${holding.symbol}:`, error)
         }
@@ -144,8 +196,7 @@ export function PortfolioDashboard() {
           if (data && data.price !== null && data.price !== holding.currentPrice) {
             updateHolding(holding.id, { currentPrice: data.price })
             updatedCount++
-            
-              }
+          }
         } catch (error) {
           console.error(`Error updating price for ${holding.symbol}:`, error)
         }
@@ -176,29 +227,67 @@ export function PortfolioDashboard() {
     }
   }
 
-  // Group holdings by currency
-  const holdingsByCurrency = groupHoldingsByCurrency(holdings)
-  const currencies = Array.from(holdingsByCurrency.keys()).sort()
+  // Group holdings by currency (memoized to avoid recreation on every render)
+  const holdingsByCurrency = useMemo(() => groupHoldingsByCurrency(holdings), [holdings])
+  const currencies = useMemo(() => Array.from(holdingsByCurrency.keys()).sort(), [holdingsByCurrency])
   
   // Get unique currencies that need exchange rates (excluding USD)
-  const currenciesNeedingRates = currencies.filter(c => c !== 'USD')
+  const currenciesNeedingRates = useMemo(() => currencies.filter(c => c !== 'USD'), [currencies])
   
-  // Calculate summaries for each currency
-  const summariesByCurrency = new Map<string, ReturnType<typeof calculatePortfolioSummary>>()
-  currencies.forEach((currency) => {
-    const currencyHoldings = holdingsByCurrency.get(currency) || []
-    summariesByCurrency.set(currency, calculatePortfolioSummary(currencyHoldings))
-  })
+  // Convert exchangeRates Map to a stable string for dependency checking
+  const exchangeRatesKey = useMemo(() => {
+    return Array.from(exchangeRates.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([currency, rate]) => `${currency}:${rate}`)
+      .join(',')
+  }, [exchangeRates])
   
   // Check if all required exchange rates are available
-  const allExchangeRatesAvailable = currenciesNeedingRates.length === 0 || 
-    currenciesNeedingRates.every(c => exchangeRates.has(c))
+  const allExchangeRatesAvailable = useMemo(() => {
+    return currenciesNeedingRates.length === 0 || 
+      currenciesNeedingRates.every(c => exchangeRates.has(c))
+  }, [currenciesNeedingRates, exchangeRatesKey, exchangeRates])
   
-  // Calculate unified USD summary
-  // Only show unified view if all exchange rates are provided (or if no non-USD currencies exist)
-  const unifiedSummary = viewMode === 'unified' && allExchangeRatesAvailable
-    ? calculateUnifiedPortfolioSummary(holdings, exchangeRates)
-    : null
+  // Calculate summaries with dividends (async)
+  useEffect(() => {
+    const calculateSummaries = async () => {
+      // Recalculate inside useEffect to avoid dependency issues
+      const currentHoldingsByCurrency = groupHoldingsByCurrency(holdings)
+      const currentCurrencies = Array.from(currentHoldingsByCurrency.keys()).sort()
+      
+      // Calculate summaries for each currency with dividends
+      const newSummaries = new Map<string, ReturnType<typeof calculatePortfolioSummary>>()
+      for (const currency of currentCurrencies) {
+        const currencyHoldings = currentHoldingsByCurrency.get(currency) || []
+        const summary = await calculatePortfolioSummaryWithDividends(currencyHoldings)
+        newSummaries.set(currency, summary)
+      }
+      setSummariesByCurrency(newSummaries)
+      
+      // Calculate unified USD summary with dividends
+      if (viewMode === 'unified' && allExchangeRatesAvailable) {
+        const unified = calculateUnifiedPortfolioSummary(holdings, exchangeRates)
+        // Add dividends to unified summary
+        const pkEquityHoldings = holdings.filter(h => h.assetType === 'pk-equity')
+        if (pkEquityHoldings.length > 0) {
+          const { calculateTotalDividendsCollected } = await import('@/lib/portfolio/portfolio-utils')
+          const dividendsCollected = await calculateTotalDividendsCollected(holdings)
+          unified.dividendsCollected = dividendsCollected
+          unified.dividendsCollectedPercent = unified.totalInvested > 0 ? (dividendsCollected / unified.totalInvested) * 100 : 0
+        }
+        setUnifiedSummary(unified)
+      } else {
+        setUnifiedSummary(null)
+      }
+    }
+    
+    if (holdings.length > 0) {
+      calculateSummaries()
+    } else {
+      setSummariesByCurrency(new Map())
+      setUnifiedSummary(null)
+    }
+  }, [holdings, exchangeRatesKey, viewMode, allExchangeRatesAvailable])
   
   const allocation = calculateAssetAllocation(holdings)
   const hasAutoPriceHoldings = holdings.some(
@@ -374,9 +463,40 @@ export function PortfolioDashboard() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <PortfolioSummary summary={unifiedSummary} currency="USD" />
+                  <PortfolioSummary summary={unifiedSummary} currency="USD" showDividends={true} />
                 </CardContent>
               </Card>
+
+              {/* My Dividends Section - Collapsible */}
+              {(() => {
+                const pkEquityHoldings = holdings.filter(h => h.assetType === 'pk-equity')
+                const key = 'unified'
+                const totalDividends = unifiedSummary?.dividendsCollected || 0
+                return pkEquityHoldings.length > 0 ? (
+                  <Collapsible open={dividendsOpen[key]} onOpenChange={(open) => setDividendsOpen(prev => ({ ...prev, [key]: open }))}>
+                    <CollapsibleTrigger asChild>
+                      <Card className="cursor-pointer hover:bg-muted/50 transition-colors">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                          <div className="flex items-center gap-2">
+                            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${dividendsOpen[key] ? 'rotate-90' : ''}`} />
+                            <div className="flex flex-col">
+                              <CardTitle>My Dividends</CardTitle>
+                              {totalDividends > 0 && (
+                                <CardDescription className="text-xs mt-0.5">
+                                  Total: {formatCurrency(totalDividends, 'USD')}
+                                </CardDescription>
+                              )}
+                            </div>
+                          </div>
+                        </CardHeader>
+                      </Card>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <MyDividends holdings={holdings} currency="USD" hideCard={true} />
+                    </CollapsibleContent>
+                  </Collapsible>
+                ) : null
+              })()}
 
               <Tabs defaultValue="overview" className="space-y-4">
                 <TabsList>
@@ -457,7 +577,12 @@ export function PortfolioDashboard() {
       {/* Separate Portfolio Views by Currency */}
       {viewMode === 'segregated' && currencies.map((currency) => {
         const currencyHoldings = holdingsByCurrency.get(currency) || []
-        const summary = summariesByCurrency.get(currency)!
+        const summary = summariesByCurrency.get(currency)
+        
+        // Skip rendering if summary is not yet calculated
+        if (!summary) {
+          return null
+        }
         
         return (
           <div key={currency} className="space-y-4">
@@ -469,9 +594,41 @@ export function PortfolioDashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <PortfolioSummary summary={summary} currency={currency} />
+                <PortfolioSummary summary={summary} currency={currency} showDividends={true} />
               </CardContent>
             </Card>
+
+            {/* My Dividends Section - Collapsible, only show for PKR currency with PK equity holdings */}
+            {currency === 'PKR' && (() => {
+              const pkEquityHoldings = currencyHoldings.filter(h => h.assetType === 'pk-equity')
+              const key = `pkr-${currency}`
+              const summary = summariesByCurrency.get(currency)
+              const totalDividends = summary?.dividendsCollected || 0
+              return pkEquityHoldings.length > 0 ? (
+                <Collapsible open={dividendsOpen[key]} onOpenChange={(open) => setDividendsOpen(prev => ({ ...prev, [key]: open }))}>
+                  <CollapsibleTrigger asChild>
+                    <Card className="cursor-pointer hover:bg-muted/50 transition-colors">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                        <div className="flex items-center gap-2">
+                          <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${dividendsOpen[key] ? 'rotate-90' : ''}`} />
+                          <div className="flex flex-col">
+                            <CardTitle>My Dividends</CardTitle>
+                            {totalDividends > 0 && (
+                              <CardDescription className="text-xs mt-0.5">
+                                Total: {formatCurrency(totalDividends, currency)}
+                              </CardDescription>
+                            )}
+                          </div>
+                        </div>
+                      </CardHeader>
+                    </Card>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <MyDividends holdings={currencyHoldings} currency={currency} hideCard={true} />
+                  </CollapsibleContent>
+                </Collapsible>
+              ) : null
+            })()}
 
             <Tabs defaultValue="overview" className="space-y-4">
               <TabsList>
