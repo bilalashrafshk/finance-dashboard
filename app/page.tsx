@@ -1,11 +1,13 @@
 "use client"
 
+import { useAuth } from "@/lib/auth/auth-context"
+import LandingPage from "@/components/landing/landing-page"
 import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { BarChart3, Wallet, Search, TrendingUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-export default function Home() {
+function DashboardHome() {
   return (
     <main className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-12 md:py-16 lg:py-20">
@@ -150,4 +152,24 @@ export default function Home() {
       </div>
     </main>
   )
+}
+
+export default function Home() {
+  const { user, loading } = useAuth()
+
+  // Show loading state or landing page while checking auth
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    )
+  }
+
+  // Show landing page for logged out users, dashboard for logged in users
+  if (!user) {
+    return <LandingPage />
+  }
+
+  return <DashboardHome />
 }
