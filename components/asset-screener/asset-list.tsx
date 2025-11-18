@@ -117,8 +117,9 @@ export function AssetList({ assets, onDelete, loading }: AssetListProps) {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Asset?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to remove this asset from your screener? This action cannot be undone.
+            <AlertDialogDescription className="space-y-1">
+              <div>Are you sure you want to remove this asset from your screener?</div>
+              <div>This action cannot be undone.</div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -126,7 +127,7 @@ export function AssetList({ assets, onDelete, loading }: AssetListProps) {
             <AlertDialogAction
               onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)}
               disabled={deleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-red-600 text-white hover:bg-red-700 focus:ring-red-600"
             >
               {deleting ? (
                 <>

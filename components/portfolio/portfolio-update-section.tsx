@@ -5,16 +5,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { RefreshCw, Loader2, TrendingUp, TrendingDown, Minus } from "lucide-react"
+import { RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, Trash2, Edit2 } from "lucide-react"
 import type { Holding, AssetType } from "@/lib/portfolio/types"
 import { formatCurrency } from "@/lib/portfolio/portfolio-utils"
 import { parseSymbolToBinance } from "@/lib/portfolio/binance-api"
 import Link from "next/link"
 import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface PortfolioUpdateSectionProps {
   holdings: Holding[]
   onUpdate: () => void
+  onDelete?: (id: string) => void
+  onEdit?: (holding: Holding) => void
 }
 
 interface HoldingUpdateStatus {
@@ -27,9 +39,10 @@ interface HoldingUpdateStatus {
   error: string | null
 }
 
-export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSectionProps) {
+export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }: PortfolioUpdateSectionProps) {
   const [updateStatuses, setUpdateStatuses] = useState<Map<string, HoldingUpdateStatus>>(new Map())
   const [isUpdatingAll, setIsUpdatingAll] = useState(false)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const isUpdatingRef = useRef(false)
   const holdingsIdsRef = useRef<string>('')
 
@@ -397,6 +410,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
                 <TableHead className="text-right">Day Change %</TableHead>
                 <TableHead className="text-right">Day PnL</TableHead>
                 <TableHead>Status</TableHead>
+                {(onDelete || onEdit) && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -467,6 +481,33 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
                       <Badge variant="outline" className="text-xs">Ready</Badge>
                     )}
                   </TableCell>
+                  {(onDelete || onEdit) && (
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        {onEdit && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onEdit(status.holding)}
+                            title="Edit holding"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {onDelete && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeleteConfirmId(status.holding.id)}
+                            title="Delete holding"
+                            className="hover:bg-red-50 dark:hover:bg-red-950/20"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600 dark:text-red-400" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
                 )
               })}
@@ -474,6 +515,31 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
           </Table>
         </div>
       </CardContent>
+
+      <AlertDialog open={deleteConfirmId !== null} onOpenChange={() => setDeleteConfirmId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete this holding from your portfolio.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteConfirmId && onDelete) {
+                  onDelete(deleteConfirmId)
+                  setDeleteConfirmId(null)
+                }
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

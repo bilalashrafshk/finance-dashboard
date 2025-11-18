@@ -175,7 +175,7 @@ export default function AssetDetailPage() {
         <main>
           <div className="container mx-auto px-4 py-8">
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-white" />
+              <Loader2 className="h-8 w-8 animate-spin text-foreground" />
             </div>
           </div>
         </main>
@@ -217,18 +217,18 @@ export default function AssetDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+    <div className="min-h-screen bg-background">
       <SharedNavbar />
       <main>
         <div className="container mx-auto px-4 py-8">
           <Button
-          variant="ghost"
-          onClick={() => router.push('/asset-screener')}
-          className="mb-6"
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Asset Screener
-        </Button>
+            variant="ghost"
+            onClick={() => router.push('/asset-screener')}
+            className="mb-6"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Asset Screener
+          </Button>
 
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-2">

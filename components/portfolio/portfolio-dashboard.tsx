@@ -5,12 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Plus, RefreshCw, Loader2, DollarSign, ChevronDown, ChevronRight } from "lucide-react"
 import { AddHoldingDialog } from "./add-holding-dialog"
 import { PortfolioSummary } from "./portfolio-summary"
-import { HoldingsTable } from "./holdings-table"
 import { AllocationChart } from "./allocation-chart"
 import { PerformanceChart } from "./performance-chart"
 import { PnLBreakdown } from "./pnl-breakdown"
@@ -369,7 +367,12 @@ export function PortfolioDashboard() {
 
       {/* Portfolio Update Section - Show all holdings together */}
       {holdings.length > 0 && (
-        <PortfolioUpdateSection holdings={holdings} onUpdate={loadHoldings} />
+        <PortfolioUpdateSection 
+          holdings={holdings} 
+          onUpdate={loadHoldings} 
+          onDelete={handleDeleteHolding}
+          onEdit={handleEditHolding}
+        />
       )}
 
       {/* View Mode Toggle */}
@@ -499,13 +502,7 @@ export function PortfolioDashboard() {
                 ) : null
               })()}
 
-              <Tabs defaultValue="overview" className="space-y-4">
-                <TabsList>
-                  <TabsTrigger value="overview">Overview</TabsTrigger>
-                  <TabsTrigger value="holdings">Holdings</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="overview" className="space-y-4">
+              <div className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-2">
                     <AllocationChart allocation={calculateUnifiedAssetAllocation(holdings, exchangeRates)} holdings={holdings} currency="USD" />
                     <PerformanceChart allocation={calculateUnifiedAssetAllocation(holdings, exchangeRates)} currency="USD" />
@@ -551,26 +548,7 @@ export function PortfolioDashboard() {
                       />
                     ) : null
                   })()}
-                </TabsContent>
-
-                <TabsContent value="holdings" className="space-y-4">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>All Holdings (USD)</CardTitle>
-                      <CardDescription>
-                        Manage and track all your investment positions
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <HoldingsTable
-                        holdings={holdings}
-                        onEdit={handleEditHolding}
-                        onDelete={handleDeleteHolding}
-                      />
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-              </Tabs>
+              </div>
             </>
           )}
         </>
