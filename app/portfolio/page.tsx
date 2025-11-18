@@ -1,10 +1,14 @@
 import { PortfolioDashboard } from "@/components/portfolio/portfolio-dashboard"
+import { SharedNavbar } from "@/components/shared-navbar"
 
 export default function PortfolioPage() {
   return (
-    <main className="min-h-screen bg-background">
-      <PortfolioDashboard />
-    </main>
+    <div className="min-h-screen bg-background">
+      <SharedNavbar />
+      <main>
+        <PortfolioDashboard />
+      </main>
+    </div>
   )
 }
 

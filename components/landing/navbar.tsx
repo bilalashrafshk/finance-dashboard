@@ -21,10 +21,27 @@ export default function LandingNavbar() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="flex items-center gap-2 group">
+              <span className="text-lg font-bold text-white inline-flex items-baseline">
+                {"STACK THEM GAINS".split("").map((char, index) => {
+                  const scale = Math.pow(1.06, index); // Compounding factor of 6% per letter
+                  // Round to 4 decimal places to prevent hydration mismatch
+                  const fontSize = Math.round(scale * 10000) / 10000;
+                  return (
+                    <span
+                      key={index}
+                      className="text-white"
+                      style={{
+                        fontSize: `${fontSize}em`,
+                      }}
+                    >
+                      {char === " " ? "\u00A0" : char}
+                    </span>
+                  );
+                })}
+              </span>
               <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg group-hover:shadow-lg group-hover:shadow-blue-500/20 transition-all">
                 <TrendingUp className="w-5 h-5 text-white" />
               </div>
-              <span className="text-lg font-bold text-white">Stack Them Gains</span>
             </Link>
 
             {/* Desktop Navigation */}
@@ -34,7 +51,7 @@ export default function LandingNavbar() {
             <div className="hidden md:flex items-center gap-4">
               {user ? (
                 <>
-                  <Link href="/portfolio" className="px-4 py-2 text-slate-300 hover:text-white transition-colors">
+                  <Link href="/portfolio" className="px-4 py-2 text-white hover:text-blue-400 transition-colors">
                     Portfolio
                   </Link>
                   <div className="flex items-center gap-3 px-4 py-2 bg-slate-800/50 rounded-lg">
@@ -45,7 +62,7 @@ export default function LandingNavbar() {
                   </div>
                   <button
                     onClick={handleLogout}
-                    className="p-2 text-slate-300 hover:text-red-400 transition-colors"
+                    className="p-2 text-white hover:text-red-400 transition-colors"
                   >
                     <LogOut className="w-5 h-5" />
                   </button>
@@ -54,7 +71,7 @@ export default function LandingNavbar() {
                 <>
                   <button
                     onClick={() => setLoginModalOpen(true)}
-                    className="px-6 py-2 text-slate-300 hover:text-white transition-colors"
+                    className="px-6 py-2 text-white hover:text-blue-400 transition-colors"
                   >
                     Sign In
                   </button>

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
 import { useAuth } from "@/lib/auth/auth-context"
+import { SharedNavbar } from "@/components/shared-navbar"
 import { AddAssetDialog } from "@/components/asset-screener/add-asset-dialog"
 import { AssetList } from "@/components/asset-screener/asset-list"
 import { MPTPortfolioView } from "@/components/asset-screener/mpt-portfolio-view"
@@ -119,21 +120,26 @@ export default function AssetScreenerPage() {
 
   if (authLoading) {
     return (
-      <main className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex items-center justify-center py-12">
-            <p className="text-muted-foreground">Loading...</p>
+      <div className="min-h-screen bg-background">
+        <SharedNavbar />
+        <main>
+          <div className="container mx-auto px-4 py-8">
+            <div className="flex items-center justify-center py-12">
+              <p className="text-foreground">Loading...</p>
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
     )
   }
 
   if (!user) {
     return (
-      <main className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8">
-          <div className="max-w-2xl mx-auto">
+      <div className="min-h-screen bg-background">
+        <SharedNavbar />
+        <main>
+          <div className="container mx-auto px-4 py-8">
+            <div className="max-w-2xl mx-auto">
             <Card>
               <CardHeader>
                 <CardTitle>Asset Screener</CardTitle>
@@ -152,27 +158,30 @@ export default function AssetScreenerPage() {
                 </div>
               </CardContent>
             </Card>
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
     )
   }
 
   return (
-    <main className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
+    <div className="min-h-screen bg-background">
+      <SharedNavbar />
+      <main>
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
             <h1 className="text-3xl font-bold">Asset Screener</h1>
             <p className="text-muted-foreground mt-1">
               Track and analyze your assets with key metrics
             </p>
+            </div>
+            <Button onClick={() => setIsAddDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Asset
+            </Button>
           </div>
-          <Button onClick={() => setIsAddDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Asset
-          </Button>
-        </div>
 
         <RiskFreeRateSettings onRatesChange={setRiskFreeRates} />
 
@@ -191,11 +200,11 @@ export default function AssetScreenerPage() {
           </TabsList>
 
           <TabsContent value="assets" className="space-y-4">
-        <AssetList 
-          assets={assets} 
-          onDelete={handleDeleteAsset}
-          loading={loading}
-        />
+            <AssetList 
+              assets={assets} 
+              onDelete={handleDeleteAsset}
+              loading={loading}
+            />
           </TabsContent>
 
           <TabsContent value="mpt" className="space-y-4">
@@ -203,13 +212,14 @@ export default function AssetScreenerPage() {
           </TabsContent>
         </Tabs>
 
-        <AddAssetDialog
-          open={isAddDialogOpen}
-          onOpenChange={setIsAddDialogOpen}
-          onSave={handleAddAsset}
-        />
-      </div>
-    </main>
+          <AddAssetDialog
+            open={isAddDialogOpen}
+            onOpenChange={setIsAddDialogOpen}
+            onSave={handleAddAsset}
+          />
+        </div>
+      </main>
+    </div>
   )
 }
 

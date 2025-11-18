@@ -183,3 +183,4 @@ export function parseSymbolToBinance(symbol: string): string {
 
 
 
+

@@ -175,7 +175,7 @@ export default function HeroSection() {
               </span>
             </h1>
 
-            <p className="text-lg text-slate-300 max-w-lg leading-relaxed">
+            <p className="text-lg text-white/90 max-w-lg leading-relaxed">
               Tailor Made for Pakistan Stock Exchange, Crypto and US Stocks. Risk metrics, valuation analysis, and portfolio optimization in one powerful platform.
             </p>
           </div>
@@ -193,15 +193,15 @@ export default function HeroSection() {
           <div className="grid grid-cols-3 gap-4 pt-4">
             <div>
               <div className="text-2xl font-bold text-blue-400">10+</div>
-              <div className="text-sm text-slate-400">Asset Types</div>
+              <div className="text-sm text-white/80">Asset Types</div>
             </div>
             <div>
               <div className="text-2xl font-bold text-cyan-400">50+</div>
-              <div className="text-sm text-slate-400">Risk Metrics</div>
+              <div className="text-sm text-white/80">Risk Metrics</div>
             </div>
             <div>
               <div className="text-2xl font-bold text-blue-400">Real-time</div>
-              <div className="text-sm text-slate-400">Data</div>
+              <div className="text-sm text-white/80">Data</div>
             </div>
           </div>
         </div>

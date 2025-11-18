@@ -203,7 +203,7 @@ export function EthRiskDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">{error}</p>
+            <p className="text-sm text-red-300 mb-4">{error}</p>
             <Button onClick={fetchData} className="w-full">
               Retry
             </Button>

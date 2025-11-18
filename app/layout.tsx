@@ -3,7 +3,6 @@ import type { Metadata, Viewport } from "next"
 import { GeistSans } from "geist/font/sans"
 import { GeistMono } from "geist/font/mono"
 import { ThemeProvider } from "@/components/theme-provider"
-import { Navigation } from "@/components/navigation"
 import { AuthProvider } from "@/lib/auth/auth-context"
 import { Toaster } from "@/components/ui/toaster"
 import "./globals.css"
@@ -38,7 +37,6 @@ html {
       <body>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <AuthProvider>
-            <Navigation />
             {children}
             <Toaster />
           </AuthProvider>

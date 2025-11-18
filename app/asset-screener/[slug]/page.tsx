@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { ASSET_TYPE_LABELS, ASSET_TYPE_COLORS } from "@/lib/portfolio/types"
 import { parseAssetSlug, getAssetTypeFromMarket, generateAssetSlug } from "@/lib/asset-screener/url-utils"
+import { SharedNavbar } from "@/components/shared-navbar"
 
 export default function AssetDetailPage() {
   const params = useParams()
@@ -169,50 +170,58 @@ export default function AssetDetailPage() {
 
   if (authLoading || loading) {
     return (
-      <main className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="min-h-screen bg-background">
+        <SharedNavbar />
+        <main>
+          <div className="container mx-auto px-4 py-8">
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-white" />
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
     )
   }
 
   if (error || !asset) {
     return (
-      <main className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8">
-          <div className="max-w-2xl mx-auto">
-            <Button
-              variant="ghost"
-              onClick={() => router.push('/asset-screener')}
-              className="mb-4"
-            >
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Asset Screener
-            </Button>
-            <Card>
-              <CardHeader>
-                <CardTitle>Error</CardTitle>
-                <CardDescription>{error || 'Asset not found'}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button onClick={() => router.push('/asset-screener')}>
-                  Go to Asset Screener
-                </Button>
-              </CardContent>
-            </Card>
+      <div className="min-h-screen bg-background">
+        <SharedNavbar />
+        <main>
+          <div className="container mx-auto px-4 py-8">
+            <div className="max-w-2xl mx-auto">
+              <Button
+                variant="ghost"
+                onClick={() => router.push('/asset-screener')}
+                className="mb-4"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Asset Screener
+              </Button>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Error</CardTitle>
+                  <CardDescription>{error || 'Asset not found'}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button onClick={() => router.push('/asset-screener')}>
+                    Go to Asset Screener
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
     )
   }
 
   return (
-    <main className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8">
-        <Button
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+      <SharedNavbar />
+      <main>
+        <div className="container mx-auto px-4 py-8">
+          <Button
           variant="ghost"
           onClick={() => router.push('/asset-screener')}
           className="mb-6"
@@ -241,9 +250,10 @@ export default function AssetDetailPage() {
           </div>
         </div>
 
-        <AssetDetailView asset={asset} riskFreeRates={loadRiskFreeRates()} />
-      </div>
-    </main>
+          <AssetDetailView asset={asset} riskFreeRates={loadRiskFreeRates()} />
+        </div>
+      </main>
+    </div>
   )
 }
 
