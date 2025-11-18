@@ -288,7 +288,9 @@ export function USEquityPortfolioChart({ holdings, currency }: USEquityPortfolio
         setChartData({
           labels: alignedDates.map(date => {
             const d = new Date(date)
-            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: chartPeriod === 'ALL' ? 'numeric' : undefined })
+            // Show year for periods that span multiple years (1Y, 2Y, 5Y, ALL)
+            const showYear = chartPeriod === 'ALL' || chartPeriod === '1Y' || chartPeriod === '2Y' || chartPeriod === '5Y'
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: showYear ? 'numeric' : undefined })
           }),
           datasets,
         })

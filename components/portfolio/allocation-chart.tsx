@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useTheme } from "next-themes"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -29,6 +29,18 @@ export function AllocationChart({ allocation, holdings, currency = 'USD' }: Allo
   const { theme } = useTheme()
   const colors = getThemeColors()
   const [expandedAssetType, setExpandedAssetType] = useState<AssetType | null>(null)
+
+  // Automatically expand to show holdings breakdown if there's only one asset type
+  useEffect(() => {
+    if (allocation.length === 1 && expandedAssetType === null) {
+      setExpandedAssetType(allocation[0].assetType)
+    } else if (allocation.length > 1 && expandedAssetType === allocation[0]?.assetType && allocation.length > 1) {
+      // If we had only one asset type and now have more, reset expansion
+      // But only if the expanded type is still the first one (to avoid resetting user's manual expansion)
+      // Actually, let's be smarter - only auto-expand when there's exactly one
+      // Don't auto-collapse when multiple appear
+    }
+  }, [allocation, expandedAssetType])
 
   const chartData = useMemo(() => {
     if (allocation.length === 0) {
@@ -278,29 +290,45 @@ export function AllocationChart({ allocation, holdings, currency = 'USD' }: Allo
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="h-[300px]">
-          <Pie data={chartData} options={chartOptions} />
-        </div>
-        
-        {expandedAssetType && holdingsChartData && (
-          <div className="border-t pt-4">
+        {/* If there's only one asset type, show holdings breakdown directly instead of asset type chart */}
+        {allocation.length === 1 && expandedAssetType && holdingsChartData ? (
+          <div>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-semibold">
                 {ASSET_TYPE_LABELS[expandedAssetType]} Holdings Breakdown
               </h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setExpandedAssetType(null)}
-                className="h-6 w-6 p-0"
-              >
-                <X className="h-3 w-3" />
-              </Button>
             </div>
-            <div className="h-[250px]">
+            <div className="h-[300px]">
               <Pie data={holdingsChartData} options={holdingsChartOptions} />
             </div>
           </div>
+        ) : (
+          <>
+            <div className="h-[300px]">
+              <Pie data={chartData} options={chartOptions} />
+            </div>
+            
+            {expandedAssetType && holdingsChartData && (
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-semibold">
+                    {ASSET_TYPE_LABELS[expandedAssetType]} Holdings Breakdown
+                  </h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setExpandedAssetType(null)}
+                    className="h-6 w-6 p-0"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+                <div className="h-[250px]">
+                  <Pie data={holdingsChartData} options={holdingsChartOptions} />
+                </div>
+              </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>

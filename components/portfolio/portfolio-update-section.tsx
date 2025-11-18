@@ -22,6 +22,7 @@ interface HoldingUpdateStatus {
   lastUpdatedDate: string | null
   dayChange: number | null
   dayChangePercent: number | null
+  dayPnL: number | null // Day PnL = dayChange * quantity
   isUpdating: boolean
   error: string | null
 }
@@ -82,12 +83,16 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
         console.error(`[LOAD STATUSES] ${holding.assetType}/${holding.symbol}: Error:`, error)
       }
 
+      // Calculate day PnL: dayChange * quantity
+      const dayPnL = dayChange !== null ? dayChange * holding.quantity : null
+
       return {
         holdingId: holding.id,
         holding,
         lastUpdatedDate,
         dayChange,
         dayChangePercent,
+        dayPnL,
       }
     })
     
@@ -107,6 +112,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
           existing.lastUpdatedDate !== result.lastUpdatedDate ||
           existing.dayChange !== result.dayChange ||
           existing.dayChangePercent !== result.dayChangePercent ||
+          existing.dayPnL !== result.dayPnL ||
           existing.holding.currentPrice !== result.holding.currentPrice
         
         if (dataChanged) {
@@ -116,6 +122,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
             lastUpdatedDate: result.lastUpdatedDate,
             dayChange: result.dayChange,
             dayChangePercent: result.dayChangePercent,
+            dayPnL: result.dayPnL,
             isUpdating: existing?.isUpdating || false,
             error: null,
           })
@@ -130,6 +137,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
             lastUpdatedDate: result.lastUpdatedDate,
             dayChange: result.dayChange,
             dayChangePercent: result.dayChangePercent,
+            dayPnL: result.dayPnL,
             isUpdating: false,
             error: null,
           })
@@ -145,6 +153,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
             lastUpdatedDate: null,
             dayChange: null,
             dayChangePercent: null,
+            dayPnL: null,
             isUpdating: false,
             error: null,
           })
@@ -259,7 +268,8 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
               error: null,
               lastUpdatedDate: priceDate,
               dayChange: null,
-              dayChangePercent: null
+              dayChangePercent: null,
+              dayPnL: null
             }
           }
           
@@ -385,6 +395,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
                 <TableHead>Last Updated</TableHead>
                 <TableHead className="text-right">Day Change</TableHead>
                 <TableHead className="text-right">Day Change %</TableHead>
+                <TableHead className="text-right">Day PnL</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -433,6 +444,16 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
                   <TableCell className={`text-right ${getDayChangeColor(status.dayChange)}`}>
                     {status.dayChangePercent !== null ? (
                       <span>{status.dayChangePercent > 0 ? '+' : ''}{status.dayChangePercent.toFixed(2)}%</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className={`text-right font-semibold ${getDayChangeColor(status.dayPnL)}`}>
+                    {status.dayPnL !== null ? (
+                      <div className="flex items-center justify-end gap-1">
+                        {getDayChangeIcon(status.dayPnL)}
+                        {formatCurrency(Math.abs(status.dayPnL), status.holding.currency)}
+                      </div>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}

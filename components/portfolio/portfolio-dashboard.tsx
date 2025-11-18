@@ -13,6 +13,7 @@ import { PortfolioSummary } from "./portfolio-summary"
 import { HoldingsTable } from "./holdings-table"
 import { AllocationChart } from "./allocation-chart"
 import { PerformanceChart } from "./performance-chart"
+import { PnLBreakdown } from "./pnl-breakdown"
 import { PKEquityPortfolioChart } from "./pk-equity-portfolio-chart"
 import { CryptoPortfolioChart } from "./crypto-portfolio-chart"
 import { USEquityPortfolioChart } from "./us-equity-portfolio-chart"
@@ -509,6 +510,7 @@ export function PortfolioDashboard() {
                     <AllocationChart allocation={calculateUnifiedAssetAllocation(holdings, exchangeRates)} holdings={holdings} currency="USD" />
                     <PerformanceChart allocation={calculateUnifiedAssetAllocation(holdings, exchangeRates)} currency="USD" />
                   </div>
+                  <PnLBreakdown holdings={holdings} currency="USD" />
                   {/* US Equities Portfolio Chart */}
                   {(() => {
                     const usEquityHoldings = holdings.filter(h => h.assetType === 'us-equity')
@@ -630,77 +632,53 @@ export function PortfolioDashboard() {
               ) : null
             })()}
 
-            <Tabs defaultValue="overview" className="space-y-4">
-              <TabsList>
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="holdings">Holdings</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="overview" className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <AllocationChart allocation={calculateAssetAllocation(currencyHoldings)} holdings={currencyHoldings} currency={currency} />
-                  <PerformanceChart allocation={calculateAssetAllocation(currencyHoldings)} currency={currency} />
-                </div>
-                {/* PK Equities Portfolio Chart - only show for PKR currency with actual PK equity holdings */}
-                {currency === 'PKR' && (() => {
-                  const pkEquityHoldings = currencyHoldings.filter(h => h.assetType === 'pk-equity')
-                  return pkEquityHoldings.length > 0 ? (
-                    <PKEquityPortfolioChart 
-                      holdings={pkEquityHoldings} 
-                      currency={currency}
-                    />
-                  ) : null
-                })()}
-                {/* US Equities Portfolio Chart - show for USD currency with actual US equity holdings */}
-                {currency === 'USD' && (() => {
-                  const usEquityHoldings = currencyHoldings.filter(h => h.assetType === 'us-equity')
-                  return usEquityHoldings.length > 0 ? (
-                    <USEquityPortfolioChart 
-                      holdings={usEquityHoldings} 
-                      currency={currency}
-                    />
-                  ) : null
-                })()}
-                {/* Crypto Portfolio Chart - show for any currency with crypto holdings */}
-                {(() => {
-                  const cryptoHoldings = currencyHoldings.filter(h => h.assetType === 'crypto')
-                  return cryptoHoldings.length > 0 ? (
-                    <CryptoPortfolioChart 
-                      holdings={cryptoHoldings} 
-                      currency={currency}
-                    />
-                  ) : null
-                })()}
-                {/* Metals Portfolio Chart - show for USD currency with metals holdings */}
-                {currency === 'USD' && (() => {
-                  const metalsHoldings = currencyHoldings.filter(h => h.assetType === 'metals')
-                  return metalsHoldings.length > 0 ? (
-                    <MetalsPortfolioChart 
-                      holdings={metalsHoldings} 
-                      currency={currency}
-                    />
-                  ) : null
-                })()}
-              </TabsContent>
-
-              <TabsContent value="holdings" className="space-y-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>{currency} Holdings</CardTitle>
-                    <CardDescription>
-                      Manage and track all your {currency} investment positions
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <HoldingsTable
-                      holdings={currencyHoldings}
-                      onEdit={handleEditHolding}
-                      onDelete={handleDeleteHolding}
-                    />
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <AllocationChart allocation={calculateAssetAllocation(currencyHoldings)} holdings={currencyHoldings} currency={currency} />
+                <PerformanceChart allocation={calculateAssetAllocation(currencyHoldings)} currency={currency} />
+              </div>
+              <PnLBreakdown holdings={currencyHoldings} currency={currency} />
+              {/* PK Equities Portfolio Chart - only show for PKR currency with actual PK equity holdings */}
+              {currency === 'PKR' && (() => {
+                const pkEquityHoldings = currencyHoldings.filter(h => h.assetType === 'pk-equity')
+                return pkEquityHoldings.length > 0 ? (
+                  <PKEquityPortfolioChart 
+                    holdings={pkEquityHoldings} 
+                    currency={currency}
+                  />
+                ) : null
+              })()}
+              {/* US Equities Portfolio Chart - show for USD currency with actual US equity holdings */}
+              {currency === 'USD' && (() => {
+                const usEquityHoldings = currencyHoldings.filter(h => h.assetType === 'us-equity')
+                return usEquityHoldings.length > 0 ? (
+                  <USEquityPortfolioChart 
+                    holdings={usEquityHoldings} 
+                    currency={currency}
+                  />
+                ) : null
+              })()}
+              {/* Crypto Portfolio Chart - show for any currency with crypto holdings */}
+              {(() => {
+                const cryptoHoldings = currencyHoldings.filter(h => h.assetType === 'crypto')
+                return cryptoHoldings.length > 0 ? (
+                  <CryptoPortfolioChart 
+                    holdings={cryptoHoldings} 
+                    currency={currency}
+                  />
+                ) : null
+              })()}
+              {/* Metals Portfolio Chart - show for USD currency with metals holdings */}
+              {currency === 'USD' && (() => {
+                const metalsHoldings = currencyHoldings.filter(h => h.assetType === 'metals')
+                return metalsHoldings.length > 0 ? (
+                  <MetalsPortfolioChart 
+                    holdings={metalsHoldings} 
+                    currency={currency}
+                  />
+                ) : null
+              })()}
+            </div>
           </div>
         )
       })}
