@@ -17,6 +17,8 @@ export default function Home() {
               <span className="inline-flex items-baseline">
                 {"INVEST AWAY".split("").map((char, index) => {
                   const scale = Math.pow(1.06, index); // Compounding factor of 6% per letter
+                  // Round to 4 decimal places to prevent hydration mismatch
+                  const fontSize = Math.round(scale * 10000) / 10000;
                   const isInvest = index < "INVEST ".length;
                   const colorClass = isInvest 
                     ? "text-red-600" 
@@ -26,7 +28,7 @@ export default function Home() {
                       key={index}
                       className={colorClass}
                       style={{
-                        fontSize: `${scale}em`,
+                        fontSize: `${fontSize}em`,
                       }}
                     >
                       {char === " " ? "\u00A0" : char}

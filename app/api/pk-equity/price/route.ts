@@ -152,46 +152,45 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    // Latest date is not today - get latest price from DB and trigger gap detection
-    // This leverages gap detection automatically and returns latest available price
-    console.log(`[PK Equity API] Latest date (${latestStoredDate}) is not today (${today}), using latest available price from DB`)
+    // Latest date is not today - trigger gap detection and wait for data to be fetched
+    // This leverages gap detection automatically and waits for data to be available
+    console.log(`[PK Equity API] Latest date (${latestStoredDate}) is not today (${today}), triggering gap detection and waiting for data`)
     
     try {
-      // Get latest historical data (limit=1 gets most recent record)
-      const { data: histData } = await getHistoricalDataWithMetadata('pk-equity', tickerUpper, undefined, undefined, 1)
+      // Call historical-data endpoint which will fetch data if needed and wait for completion
+      const histResponse = await fetch(`${baseUrl}/api/historical-data?assetType=pk-equity&symbol=${encodeURIComponent(tickerUpper)}&market=PSX&limit=1`)
       
-      if (histData && histData.length > 0) {
-        // Get the latest record (most recent date)
-        const latestRecord = histData[histData.length - 1]
+      if (histResponse.ok) {
+        const histData = await histResponse.json()
         
-        // Trigger gap detection by calling historical-data endpoint
-        // This is done by making a non-blocking internal request to trigger gap detection
-        // Gap detection will run in background and fill missing dates
-        fetch(`${baseUrl}/api/historical-data?assetType=pk-equity&symbol=${encodeURIComponent(tickerUpper)}&market=PSX&limit=1`)
-          .catch(err => {
-            // Ignore errors - gap detection is non-critical
-            console.log(`[PK Equity API] Gap detection trigger failed (non-critical):`, err)
+        if (histData.data && histData.data.length > 0) {
+          // Get the latest record (most recent date)
+          const latestRecord = histData.data[histData.data.length - 1]
+          
+          // Get today's price if available, otherwise use latest
+          const todayPrice = histData.data.find((r: any) => r.date === today)
+          const priceRecord = todayPrice || latestRecord
+          
+          const response = {
+            ticker: tickerUpper,
+            price: priceRecord.close,
+            date: priceRecord.date,
+            source: 'database',
+          }
+          
+          // Cache the response
+          cacheManager.set(cacheKey, response, 'pk-equity', cacheContext)
+          
+          return NextResponse.json(response, {
+            headers: {
+              'X-Cache': 'MISS',
+              'X-Delegated': 'historical-data',
+            },
           })
-        
-        const response = {
-          ticker: tickerUpper,
-          price: latestRecord.close,
-          date: latestRecord.date,
-          source: 'database',
         }
-        
-        // Cache the response
-        cacheManager.set(cacheKey, response, 'pk-equity', cacheContext)
-        
-        return NextResponse.json(response, {
-          headers: {
-            'X-Cache': 'MISS',
-            'X-Delegated': 'historical-data',
-          },
-        })
       }
     } catch (error) {
-      console.error(`[PK Equity API] Error getting latest price for ${tickerUpper}:`, error)
+      console.error(`[PK Equity API] Error getting price via historical-data for ${tickerUpper}:`, error)
       // Fall through to error response
     }
     

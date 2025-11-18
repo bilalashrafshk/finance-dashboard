@@ -20,15 +20,16 @@ import type { InvestingHistoricalDataPoint } from '@/lib/portfolio/investing-cli
  * Flow:
  * 1. Check database for stored data
  * 2. If exists, return stored data immediately
- * 3. Detect gaps between last stored date and today
- * 4. Trigger background fetch for missing dates (non-blocking)
- * 5. Return stored data immediately (background fetch runs asynchronously)
+ * 3. Detect gaps between last stored date and today (or empty DB)
+ * 4. Fetch missing data from external API (blocking - waits for completion)
+ * 5. Reload data from DB and return updated data
  * 
  * Gap Detection:
  * - Automatically detects missing trading days between last stored date and today
+ * - Handles empty DB case by fetching full history
  * - Only triggers for server-side fetchable assets (pk-equity, us-equity, crypto)
  * - Excludes weekends from trading day calculations
- * - Runs in background without blocking the API response
+ * - Waits for fetch to complete before returning response
  */
 
 function convertStockAnalysisToRecord(data: StockAnalysisDataPoint): HistoricalPriceRecord {
@@ -104,7 +105,7 @@ function calculateTradingDaysBetween(startDate: string, endDate: string): number
 }
 
 /**
- * Background function to fetch and store new data (non-blocking)
+ * Function to fetch and store new data (blocking - waits for completion)
  */
 async function fetchNewDataInBackground(
   assetType: string,
@@ -269,40 +270,52 @@ export async function GET(request: NextRequest) {
       ? new Date(new Date(storedData.latestStoredDate).getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0] // Day after last stored
       : undefined // No stored data, fetch from beginning
 
-    // Step 3: Gap Detection - Check for missing dates and trigger background fetch
+    // Step 3: Gap Detection - Check for missing dates and trigger fetch
     // Only fetch for asset types that support server-side fetching (pk-equity, us-equity, crypto)
     const supportsServerSideFetch = assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto'
     
-    if (supportsServerSideFetch && storedData.latestStoredDate && fetchStartDate) {
+    if (supportsServerSideFetch) {
       // Get today's date in the appropriate market timezone
       const marketForTimezone = assetType === 'pk-equity' ? 'PSX' : assetType === 'us-equity' ? 'US' : 'crypto'
       const todayInMarketTimezone = getTodayInMarketTimezone(marketForTimezone)
       
-      // Only check for gaps if fetchStartDate is before or equal to today
-      // This ensures we fetch today's data if it's missing
-      if (fetchStartDate <= todayInMarketTimezone) {
-        // Calculate approximate trading days between dates (excluding weekends)
-        const tradingDays = calculateTradingDaysBetween(fetchStartDate, todayInMarketTimezone)
+      // Handle both cases: empty DB (fetchStartDate is undefined) and gaps (fetchStartDate exists)
+      if (!storedData.latestStoredDate || (fetchStartDate && fetchStartDate <= todayInMarketTimezone)) {
+        let shouldFetch = false
+        let tradingDays = 0
         
-        // If there are potential trading days missing, trigger background fetch
-        // We use a threshold of 1 day to avoid unnecessary fetches for same-day requests
-        if (tradingDays > 0) {
-          console.log(`[Gap Detection] ${assetType}/${symbol}: Detected ${tradingDays} potential trading days missing between ${fetchStartDate} and ${todayInMarketTimezone}`)
+        if (!storedData.latestStoredDate) {
+          // DB is empty - fetch full history
+          shouldFetch = true
+          console.log(`[Gap Detection] ${assetType}/${symbol}: DB is empty, will fetch full history`)
+        } else if (fetchStartDate) {
+          // DB has data but there are gaps
+          tradingDays = calculateTradingDaysBetween(fetchStartDate, todayInMarketTimezone)
+          if (tradingDays > 0) {
+            shouldFetch = true
+            console.log(`[Gap Detection] ${assetType}/${symbol}: Detected ${tradingDays} potential trading days missing between ${fetchStartDate} and ${todayInMarketTimezone}`)
+          }
+        }
+        
+        if (shouldFetch) {
+          // Fetch data (blocking - await completion)
+          await fetchNewDataInBackground(assetType, symbol, market, fetchStartDate, todayInMarketTimezone)
+          console.log(`[Gap Detection] ${assetType}/${symbol}: Fetch completed successfully`)
           
-          // Trigger background fetch (non-blocking - don't await)
-          fetchNewDataInBackground(assetType, symbol, market, fetchStartDate, todayInMarketTimezone)
-            .then(() => {
-              console.log(`[Gap Detection] ${assetType}/${symbol}: Background fetch completed successfully`)
-            })
-            .catch((error) => {
-              console.error(`[Gap Detection] ${assetType}/${symbol}: Background fetch failed:`, error)
-            })
+          // Invalidate cache to ensure fresh data
+          cacheManager.delete(cacheKey)
+          
+          // Reload data from DB after fetch
+          const { data: updatedData } = await getHistoricalDataWithMetadata(assetType, symbol, undefined, undefined, limit)
+          storedData.data = updatedData
+          storedData.latestStoredDate = updatedData.length > 0 
+            ? updatedData[updatedData.length - 1].date 
+            : null
         }
       }
     }
 
-    // Step 4: Return stored data immediately (non-blocking response)
-    // Background fetch runs asynchronously and doesn't block the response
+    // Step 4: Return stored data (after fetch completes if data was fetched)
     const cached = cacheManager.get(cacheKey)
     const fromCache = cached !== null
     
