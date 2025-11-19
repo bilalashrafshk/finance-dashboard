@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchDividendData } from '@/lib/portfolio/dividend-api'
-import { insertDividendData, getDividendData, hasDividendData, getLatestDividendDate } from '@/lib/portfolio/db-client'
+import { insertDividendData, getDividendData, hasDividendData, getLatestDividendDate, getCompanyFaceValue } from '@/lib/portfolio/db-client'
+import { fetchFaceValue } from '@/lib/scraper/scstrade'
 import { cacheManager } from '@/lib/cache/cache-manager'
 import { getTodayInMarketTimezone } from '@/lib/portfolio/market-hours'
 
@@ -91,8 +92,17 @@ export async function GET(request: NextRequest) {
       
       console.log(`[Dividend API] Checking for new dividends for ${tickerUpper} (latest DB date: ${latestDbDate || 'none'})`)
       
-      // Fetch from API
-      const apiDividendData = await fetchDividendData(tickerUpper, 100)
+      // Get Face Value (try DB first, then scraper, default to 10)
+      let faceValue = await getCompanyFaceValue(tickerUpper, assetType)
+      if (!faceValue) {
+        console.log(`[Dividend API] Face value not in DB for ${tickerUpper}, fetching from source...`)
+        faceValue = await fetchFaceValue(tickerUpper)
+      }
+      const finalFaceValue = faceValue || 10
+      console.log(`[Dividend API] Using Face Value: ${finalFaceValue} for ${tickerUpper}`)
+      
+      // Fetch from API with face value
+      const apiDividendData = await fetchDividendData(tickerUpper, 100, finalFaceValue)
 
       if (apiDividendData && apiDividendData.length > 0) {
         // Find latest date in API data

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Loader2 } from "lucide-react"
+import { Loader2, RefreshCw } from "lucide-react"
 import { convertDividendToRupees } from "@/lib/portfolio/dividend-utils"
 
 interface DividendRecord {
@@ -35,64 +35,13 @@ export function DividendTable({ assetType, symbol }: DividendTableProps) {
   const [dividends, setDividends] = useState<DividendRecord[]>([])
   const [yearlyData, setYearlyData] = useState<YearlyDividendData[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [faceValue, setFaceValue] = useState<number | null>(null)
   const [displayYearCount, setDisplayYearCount] = useState(10) // Number of years to display
   const DISPLAY_INCREMENT = 10 // Load 10 more years at a time
 
-  useEffect(() => {
-    const fetchDividendsAndPrices = async () => {
-      setLoading(true)
-      setError(null)
-
-      try {
-        // Fetch dividends
-        const dividendResponse = await fetch(`/api/pk-equity/dividend?ticker=${encodeURIComponent(symbol)}`)
-        
-        if (!dividendResponse.ok) {
-          throw new Error('Failed to fetch dividend data')
-        }
-
-        const dividendData = await dividendResponse.json()
-        
-        let dividendRecords: DividendRecord[] = []
-        if (dividendData.dividends && Array.isArray(dividendData.dividends)) {
-          // Sort by date descending (most recent first)
-          dividendRecords = [...dividendData.dividends].sort((a, b) => b.date.localeCompare(a.date))
-          setDividends(dividendRecords)
-        } else {
-          setDividends([])
-          setYearlyData([])
-          setLoading(false)
-          return
-        }
-
-        // Fetch historical price data to calculate yields
-        const priceResponse = await fetch(`/api/historical-data?assetType=pk-equity&symbol=${encodeURIComponent(symbol)}&market=PSX`)
-        
-        if (!priceResponse.ok) {
-          // If price data fetch fails, still show dividends without yields
-          console.warn('Failed to fetch price data for yield calculation')
-          groupDividendsByYear(dividendRecords, [])
-          setLoading(false)
-          return
-        }
-
-        const priceData = await priceResponse.json()
-        const priceRecords = priceData.data || []
-
-        // Group dividends by year and calculate yields
-        groupDividendsByYear(dividendRecords, priceRecords)
-      } catch (err: any) {
-        console.error('Error fetching dividends:', err)
-        setError(err.message || 'Failed to fetch dividend data')
-        setDividends([])
-        setYearlyData([])
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    const groupDividendsByYear = (dividendRecords: DividendRecord[], priceRecords: any[]) => {
+  const groupDividendsByYear = (dividendRecords: DividendRecord[], priceRecords: any[]) => {
       // Group dividends by year
       const yearMap = new Map<number, DividendRecord[]>()
       
@@ -164,8 +113,86 @@ export function DividendTable({ assetType, symbol }: DividendTableProps) {
       setYearlyData(yearly)
     }
 
-    fetchDividendsAndPrices()
+  const fetchDividendsAndPrices = async (forceRefresh: boolean = false) => {
+    if (forceRefresh) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
+    }
+    setError(null)
+
+    try {
+      // Fetch face value from company profile
+      try {
+        const profileResponse = await fetch(`/api/financials?symbol=${encodeURIComponent(symbol)}&period=quarterly`)
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json()
+          if (profileData.profile && profileData.profile.face_value) {
+            setFaceValue(parseFloat(profileData.profile.face_value))
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch face value:', err)
+      }
+
+      // Fetch dividends with refresh parameter if needed
+      const refreshParam = forceRefresh ? '&refresh=true' : ''
+      const dividendResponse = await fetch(`/api/pk-equity/dividend?ticker=${encodeURIComponent(symbol)}${refreshParam}`)
+        
+      if (!dividendResponse.ok) {
+        throw new Error('Failed to fetch dividend data')
+      }
+
+      const dividendData = await dividendResponse.json()
+      
+      let dividendRecords: DividendRecord[] = []
+      if (dividendData.dividends && Array.isArray(dividendData.dividends)) {
+        // Sort by date descending (most recent first)
+        dividendRecords = [...dividendData.dividends].sort((a, b) => b.date.localeCompare(a.date))
+        setDividends(dividendRecords)
+      } else {
+        setDividends([])
+        setYearlyData([])
+        setLoading(false)
+        setRefreshing(false)
+        return
+      }
+
+      // Fetch historical price data to calculate yields
+      const priceResponse = await fetch(`/api/historical-data?assetType=pk-equity&symbol=${encodeURIComponent(symbol)}&market=PSX`)
+      
+      if (!priceResponse.ok) {
+        // If price data fetch fails, still show dividends without yields
+        console.warn('Failed to fetch price data for yield calculation')
+        groupDividendsByYear(dividendRecords, [])
+        setLoading(false)
+        setRefreshing(false)
+        return
+      }
+
+      const priceData = await priceResponse.json()
+      const priceRecords = priceData.data || []
+
+      // Group dividends by year and calculate yields
+      groupDividendsByYear(dividendRecords, priceRecords)
+    } catch (err: any) {
+      console.error('Error fetching dividends:', err)
+      setError(err.message || 'Failed to fetch dividend data')
+      setDividends([])
+      setYearlyData([])
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchDividendsAndPrices(false)
   }, [symbol])
+
+  const handleRefresh = () => {
+    fetchDividendsAndPrices(true)
+  }
 
   if (loading) {
     return (
@@ -238,19 +265,35 @@ export function DividendTable({ assetType, symbol }: DividendTableProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Dividend History</CardTitle>
-        <CardDescription>
-          {totalDividends} dividend payment{totalDividends !== 1 ? 's' : ''} recorded
-          {oldestDividend && latestDividend && (
-            <span className="ml-2">
-              ({formatDate(oldestDividend.date)} - {formatDate(latestDividend.date)})
-            </span>
-          )}
-        </CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Dividend History</CardTitle>
+            <CardDescription>
+              {totalDividends} dividend payment{totalDividends !== 1 ? 's' : ''} recorded
+              {oldestDividend && latestDividend && (
+                <span className="ml-2">
+                  ({formatDate(oldestDividend.date)} - {formatDate(latestDividend.date)})
+                </span>
+              )}
+              {faceValue && (
+                <span className="ml-2">• Face Value: {faceValue.toFixed(2)}</span>
+              )}
+            </CardDescription>
+          </div>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={handleRefresh} 
+            disabled={refreshing || loading}
+            title="Refresh and recalculate dividends with correct face value"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {/* Summary Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
           <div>
             <div className="text-sm text-muted-foreground">Latest Dividend</div>
             <div className="text-lg font-semibold">{formatDividend(latestDividend.dividend_amount)}</div>
@@ -275,6 +318,12 @@ export function DividendTable({ assetType, symbol }: DividendTableProps) {
               ) : (
                 <span className="text-muted-foreground">N/A</span>
               )}
+            </div>
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground">Face Value</div>
+            <div className="text-lg font-semibold">
+              {faceValue ? faceValue.toFixed(2) : <span className="text-muted-foreground">N/A</span>}
             </div>
           </div>
         </div>

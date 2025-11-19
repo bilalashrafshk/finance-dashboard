@@ -876,3 +876,18 @@ export function formatCurrency(value: number | null | undefined, currency: strin
   }).format(value)
 }
 
+/**
+ * Format a number to a compact string (e.g., 1.2M, 4.5B)
+ * 
+ * @param number - The number to format
+ * @returns Formatted compact string
+ */
+export function formatCompactNumber(number: number | null | undefined): string {
+  if (number === null || number === undefined || isNaN(number)) {
+    return 'N/A'
+  }
+  return Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    maximumFractionDigits: 2,
+  }).format(number)
+}

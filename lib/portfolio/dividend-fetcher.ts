@@ -7,7 +7,8 @@
  */
 
 import { fetchDividendData } from './dividend-api'
-import { insertDividendData, hasDividendData } from './db-client'
+import { insertDividendData, hasDividendData, getCompanyFaceValue } from './db-client'
+import { fetchFaceValue } from '@/lib/scraper/scstrade'
 
 /**
  * Fetch and store dividend data for a PK equity asset
@@ -42,7 +43,19 @@ export async function fetchAndStoreDividends(
     }
 
     console.log(`[Dividend Fetcher] Fetching dividend data for ${tickerUpper}...`)
-    const dividendData = await fetchDividendData(tickerUpper, 100)
+    
+    // Get Face Value (try DB first, then scraper, default to 10)
+    let faceValue = await getCompanyFaceValue(tickerUpper, assetType)
+    if (!faceValue) {
+      console.log(`[Dividend Fetcher] Face value not in DB for ${tickerUpper}, fetching from source...`)
+      faceValue = await fetchFaceValue(tickerUpper)
+    }
+    
+    // Default to 10 if still not found
+    const finalFaceValue = faceValue || 10
+    console.log(`[Dividend Fetcher] Using Face Value: ${finalFaceValue} for ${tickerUpper}`)
+
+    const dividendData = await fetchDividendData(tickerUpper, 100, finalFaceValue)
 
     if (!dividendData || dividendData.length === 0) {
       console.log(`[Dividend Fetcher] No dividend data available for ${tickerUpper}`)

@@ -9,7 +9,7 @@ import { parseDividendAmount, parseDividendDate, isValidDividendRecord } from '.
 
 export interface DividendRecord {
   date: string // YYYY-MM-DD
-  dividend_amount: number // percent/10 (e.g., 110% = 11.0)
+  dividend_amount: number // Dividend amount in Rupees
 }
 
 export interface ScstradeDividendResponse {
@@ -29,11 +29,13 @@ export interface ScstradeDividendResponse {
  * 
  * @param ticker - Stock ticker (e.g., "HBL", "PTC")
  * @param rows - Number of records to fetch (default: 100 for maximum history)
+ * @param faceValue - Face value of the stock (default: 10)
  * @returns Array of dividend records or null if error
  */
 export async function fetchDividendData(
   ticker: string,
-  rows: number = 100
+  rows: number = 100,
+  faceValue: number = 10
 ): Promise<DividendRecord[] | null> {
   try {
     const response = await fetch('https://scstrade.com/MarketStatistics/MS_xDates.aspx/chartact', {
@@ -78,7 +80,7 @@ export async function fetchDividendData(
         continue
       }
 
-      const dividendAmount = parseDividendAmount(record.bm_dividend)
+      const dividendAmount = parseDividendAmount(record.bm_dividend, faceValue)
       const date = parseDividendDate(record.bm_bc_exp)
 
       if (dividendAmount !== null && date !== null) {
@@ -98,4 +100,3 @@ export async function fetchDividendData(
     return null
   }
 }
-

@@ -406,6 +406,15 @@ export async function insertHistoricalData(
       // Commit transaction
       await client.query('COMMIT')
       
+      // Update market cap asynchronously (non-blocking)
+      // Only update if we inserted new data and it's an equity asset
+      if (totalInserted > 0 && (assetType === 'pk-equity' || assetType === 'us-equity')) {
+        // Run asynchronously without awaiting - don't block price insertion
+        updateMarketCapFromPrice(assetType, symbol).catch(err => {
+          console.error(`[Market Cap] Failed to update market cap for ${assetType}-${symbol}:`, err)
+        })
+      }
+      
       return { inserted: totalInserted, skipped }
     } catch (error: any) {
       await client.query('ROLLBACK')
@@ -671,5 +680,128 @@ export async function getLatestDividendDate(
   } catch (error) {
     console.error(`Error getting latest dividend date for ${assetType}-${symbol}:`, error)
     return null
+  }
+}
+
+/**
+ * Get face value for a company from the profile
+ * @param symbol - Asset symbol
+ * @returns Face value (number) or null if not found/not set
+ */
+export async function getCompanyFaceValue(
+  symbol: string,
+  assetType: string = 'pk-equity'
+): Promise<number | null> {
+  try {
+    const client = await getPool().connect()
+    
+    try {
+      const result = await client.query(
+        `SELECT face_value
+         FROM company_profiles
+         WHERE symbol = $1 AND asset_type = $2`,
+        [symbol.toUpperCase(), assetType]
+      )
+      
+      if (result.rows.length > 0 && result.rows[0].face_value) {
+        return parseFloat(result.rows[0].face_value)
+      }
+      
+      return null
+    } finally {
+      client.release()
+    }
+  } catch (error) {
+    console.error(`Error getting face value for ${assetType}-${symbol}:`, error)
+    return null
+  }
+}
+
+/**
+ * Update market cap based on latest price and shares outstanding
+ * Only updates for pk-equity and us-equity assets
+ * Uses caching to avoid unnecessary updates
+ */
+export async function updateMarketCapFromPrice(
+  assetType: string,
+  symbol: string
+): Promise<void> {
+  // Only update market cap for equity assets
+  if (assetType !== 'pk-equity' && assetType !== 'us-equity') {
+    return
+  }
+
+  try {
+    const client = await getPool().connect()
+    
+    try {
+      // Get latest price
+      const priceResult = await client.query(
+        `SELECT close, date
+         FROM historical_price_data
+         WHERE asset_type = $1 AND symbol = $2
+         ORDER BY date DESC
+         LIMIT 1`,
+        [assetType, symbol.toUpperCase()]
+      )
+
+      if (priceResult.rows.length === 0) {
+        // No price data available
+        return
+      }
+
+      const latestPrice = parseFloat(priceResult.rows[0].close)
+      const latestPriceDate = priceResult.rows[0].date
+
+      // Get shares outstanding from company profile
+      const profileResult = await client.query(
+        `SELECT shares_outstanding, market_cap
+         FROM company_profiles
+         WHERE asset_type = $1 AND symbol = $2`,
+        [assetType, symbol.toUpperCase()]
+      )
+
+      if (profileResult.rows.length === 0) {
+        // No profile data, can't calculate market cap
+        return
+      }
+
+      const sharesOutstanding = profileResult.rows[0].shares_outstanding
+      const currentMarketCap = profileResult.rows[0].market_cap
+
+      if (!sharesOutstanding || sharesOutstanding <= 0) {
+        // No shares outstanding data
+        return
+      }
+
+      // Calculate new market cap
+      const newMarketCap = latestPrice * parseFloat(sharesOutstanding)
+
+      // Only update if market cap has changed significantly (more than 0.1% difference)
+      // This avoids unnecessary database writes
+      if (currentMarketCap) {
+        const currentCap = parseFloat(currentMarketCap)
+        const percentChange = Math.abs((newMarketCap - currentCap) / currentCap) * 100
+        if (percentChange < 0.1) {
+          // Market cap hasn't changed significantly, skip update
+          return
+        }
+      }
+
+      // Update market cap in company_profiles
+      await client.query(
+        `UPDATE company_profiles
+         SET market_cap = $1, last_updated = NOW()
+         WHERE asset_type = $2 AND symbol = $3`,
+        [newMarketCap, assetType, symbol.toUpperCase()]
+      )
+
+      console.log(`[Market Cap] Updated ${assetType}/${symbol}: ${newMarketCap.toLocaleString()} (Price: ${latestPrice}, Shares: ${sharesOutstanding})`)
+    } finally {
+      client.release()
+    }
+  } catch (error: any) {
+    // Don't throw - market cap update failure shouldn't break price insertion
+    console.error(`[Market Cap] Error updating market cap for ${assetType}-${symbol}:`, error.message)
   }
 }

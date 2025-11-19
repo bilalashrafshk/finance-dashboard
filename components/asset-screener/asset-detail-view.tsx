@@ -18,6 +18,7 @@ import { loadRiskFreeRates } from "./risk-free-rate-settings"
 import { SeasonalityTable } from "./seasonality-table"
 import { AssetPriceChart } from "./asset-price-chart"
 import { DividendTable } from "./dividend-table"
+import { AssetFinancialsView } from "./asset-financials-view"
 
 interface AssetDetailViewProps {
   asset: TrackedAsset
@@ -26,6 +27,7 @@ interface AssetDetailViewProps {
 
 interface AssetMetrics extends CalculatedMetrics {
   currentPrice?: number
+  peRatio?: number
 }
 
 type MaxDrawdownTimeframe = '1Y' | '3Y' | '5Y' | 'All'
@@ -244,9 +246,31 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
             }
           }
           
+          // Calculate P/E Ratio for PK Equities
+          let peRatio: number | undefined
+          if (asset.assetType === 'pk-equity' && currentPrice) {
+              try {
+                  const financialsRes = await fetch(`/api/financials?symbol=${asset.symbol}&period=quarterly`)
+                  if (financialsRes.ok) {
+                      const data = await financialsRes.json()
+                      const financials = data.financials
+                      // Sum EPS of last 4 quarters for TTM EPS
+                      if (financials && financials.length >= 4) {
+                          const ttmEps = financials.slice(0, 4).reduce((sum: number, f: any) => sum + (parseFloat(f.eps_diluted) || 0), 0)
+                          if (ttmEps > 0) {
+                              peRatio = currentPrice / ttmEps
+                          }
+                      }
+                  }
+              } catch (e) {
+                  console.error('Error fetching financials for P/E:', e)
+              }
+          }
+
           setMaxDrawdown(maxDD)
           setMetrics({
             currentPrice,
+            peRatio,
             ...calculatedMetrics,
             maxDrawdown: maxDD // Override with timeframe-specific max drawdown
           })
@@ -327,6 +351,9 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
       <TabsList className="mb-6">
         <TabsTrigger value="analytics">Analytics</TabsTrigger>
         {asset.assetType === 'pk-equity' && (
+          <TabsTrigger value="financials">Financials</TabsTrigger>
+        )}
+        {asset.assetType === 'pk-equity' && (
           <TabsTrigger value="dividends">Dividends</TabsTrigger>
         )}
         <TabsTrigger value="prices">Prices & Ratios</TabsTrigger>
@@ -341,6 +368,17 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
                 <CardDescription>Current Price</CardDescription>
                 <CardTitle className="text-lg">
                   {formatCurrency(metrics.currentPrice, asset.currency, asset.assetType === 'crypto' ? 8 : 2)}
+                </CardTitle>
+              </CardHeader>
+            </Card>
+          )}
+          
+          {metrics?.peRatio !== undefined && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>P/E Ratio (TTM)</CardDescription>
+                <CardTitle className="text-lg">
+                  {metrics.peRatio.toFixed(2)}
                 </CardTitle>
               </CardHeader>
             </Card>
@@ -402,6 +440,12 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
           </Card>
         )}
       </TabsContent>
+
+      {asset.assetType === 'pk-equity' && (
+        <TabsContent value="financials" className="space-y-4">
+          <AssetFinancialsView symbol={asset.symbol} assetType={asset.assetType} />
+        </TabsContent>
+      )}
 
       {asset.assetType === 'pk-equity' && (
         <TabsContent value="dividends" className="space-y-4">

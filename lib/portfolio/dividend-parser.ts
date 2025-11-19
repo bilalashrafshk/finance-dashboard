@@ -2,24 +2,28 @@
  * Dividend Parser Utility
  * 
  * Parses dividend percentage strings from scstrade.com API and converts to amount
- * Formula: dividend_amount = percent / 10
- * Example: 110% -> 11.0, 50% -> 5.0, 40.50% -> 4.05
+ * Formula: dividend_amount = (percent / 100) * face_value
+ * Example: 
+ * - 110% (FV=10) -> 11.0
+ * - 50% (FV=10) -> 5.0
+ * - 50% (FV=5) -> 2.5
  */
 
 /**
- * Parse dividend percentage string to amount
+ * Parse dividend percentage string to amount (Rupees)
  * Handles various formats and edge cases:
- * - "50%" -> 5.0
- * - "110%" -> 11.0
- * - "40.50%" -> 4.05
+ * - "50%" -> 5.0 (if FV=10)
+ * - "110%" -> 11.0 (if FV=10)
+ * - "40.50%" -> 4.05 (if FV=10)
  * - "35%(CY15)" -> 3.5 (strips annotations)
  * - "12.50" -> 1.25 (missing % sign)
  * - "80%%" -> 8.0 (double % sign)
  * 
  * @param dividendStr - Dividend string from API (e.g., "50%", "110%", "35%(CY15)")
- * @returns Dividend amount (percent/10) or null if unparseable
+ * @param faceValue - Face value of the share (default: 10)
+ * @returns Dividend amount in Rupees or null if unparseable
  */
-export function parseDividendAmount(dividendStr: string | null | undefined): number | null {
+export function parseDividendAmount(dividendStr: string | null | undefined, faceValue: number = 10): number | null {
   if (!dividendStr || typeof dividendStr !== 'string') {
     return null
   }
@@ -41,9 +45,8 @@ export function parseDividendAmount(dividendStr: string | null | undefined): num
     return null
   }
 
-  // Convert percent to amount: percent / 10
-  // 110% -> 11.0, 50% -> 5.0, 40.50% -> 4.05
-  return numericValue / 10
+  // Convert percent to amount: (percent / 100) * faceValue
+  return (numericValue / 100) * faceValue
 }
 
 /**
@@ -111,7 +114,7 @@ export function isValidDividendRecord(record: {
     return false
   }
 
-  // Check if dividend amount can be parsed
+  // Check if dividend amount can be parsed (using default face value for check)
   const amount = parseDividendAmount(record.bm_dividend)
   if (amount === null) {
     return false
@@ -125,6 +128,3 @@ export function isValidDividendRecord(record: {
 
   return true
 }
-
-
-
