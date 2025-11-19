@@ -62,8 +62,59 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
       let lastUpdatedDate: string | null = null
       let dayChange: number | null = null
       let dayChangePercent: number | null = null
+      let error: string | null = null
 
       try {
+        // Auto-fetch current price using unified API
+        // This uses the centralized logic (cache check + refresh if stale)
+        let newPrice: number | null = null
+        let priceDate: string | null = null
+        
+        if (holding.assetType === 'crypto') {
+          const { parseSymbolToBinance } = await import('@/lib/portfolio/binance-api')
+          const binanceSymbol = parseSymbolToBinance(holding.symbol)
+          const { fetchCryptoPrice } = await import('@/lib/portfolio/unified-price-api')
+          const data = await fetchCryptoPrice(binanceSymbol)
+          if (data && data.price !== null) {
+            newPrice = data.price
+            priceDate = data.date
+          }
+        } else if (holding.assetType === 'pk-equity') {
+          const { fetchPKEquityPrice } = await import('@/lib/portfolio/unified-price-api')
+          const data = await fetchPKEquityPrice(holding.symbol)
+          if (data && data.price !== null) {
+            newPrice = data.price
+            priceDate = data.date
+          }
+        } else if (holding.assetType === 'us-equity') {
+          const { fetchUSEquityPrice } = await import('@/lib/portfolio/unified-price-api')
+          const data = await fetchUSEquityPrice(holding.symbol)
+          if (data && data.price !== null) {
+            newPrice = data.price
+            priceDate = data.date
+          }
+        } else if (holding.assetType === 'metals') {
+          const { fetchMetalsPrice } = await import('@/lib/portfolio/unified-price-api')
+          const data = await fetchMetalsPrice(holding.symbol)
+          if (data && data.price !== null) {
+            newPrice = data.price
+            priceDate = data.date
+          }
+        }
+
+        // Update holding if we got a new price
+        if (newPrice !== null && newPrice !== holding.currentPrice) {
+           // Update locally and in storage
+           holding.currentPrice = newPrice
+           const { updateHolding } = await import('@/lib/portfolio/portfolio-storage')
+           updateHolding(holding.id, { currentPrice: newPrice })
+        }
+
+        if (priceDate) {
+           lastUpdatedDate = priceDate
+        }
+
+        // Fetch historical data for day change calculation (using existing logic)
         const assetType = holding.assetType
         const symbol = holding.symbol.toUpperCase()
         const market = assetType === 'pk-equity' ? 'PSX' : assetType === 'us-equity' ? 'US' : null
@@ -80,7 +131,11 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
           if (records.length > 0) {
             // Records are already sorted ASC from API, so last item is latest
             const sortedRecords = [...records].sort((a: any, b: any) => b.date.localeCompare(a.date))
-            lastUpdatedDate = sortedRecords[0].date
+            
+            // If we didn't get a date from the price API, use the DB date
+            if (!lastUpdatedDate) {
+                lastUpdatedDate = sortedRecords[0].date
+            }
             
             if (sortedRecords.length >= 2) {
               const latest = sortedRecords[0]
@@ -89,11 +144,10 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
               dayChangePercent = previous.close > 0 ? ((dayChange / previous.close) * 100) : 0
             }
           }
-        } else {
-          console.error(`[LOAD STATUSES] ${assetType}/${symbol}: API error ${response.status}`)
         }
-      } catch (error) {
-        console.error(`[LOAD STATUSES] ${holding.assetType}/${holding.symbol}: Error:`, error)
+      } catch (err: any) {
+        console.error(`[LOAD STATUSES] ${holding.assetType}/${holding.symbol}: Error:`, err)
+        error = err.message || "Update failed"
       }
 
       // Calculate day PnL: dayChange * quantity
@@ -106,6 +160,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
         dayChange,
         dayChangePercent,
         dayPnL,
+        error
       }
     })
     
@@ -189,17 +244,14 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
     // Create stable dependency: holding IDs string
     const holdingsIds = holdings.map(h => h.id).sort().join(',')
     
-    // Initial load: if ref is empty/initialized and we have holdings, load them
-    if (holdingsIdsRef.current === '' && holdings.length > 0) {
-      holdingsIdsRef.current = holdingsIds
-      loadUpdateStatuses()
-      return
-    }
-    
-    // Reload if holdings IDs actually changed (not just reference)
-    if (holdingsIds !== holdingsIdsRef.current && holdingsIds.length > 0) {
-      holdingsIdsRef.current = holdingsIds
-      loadUpdateStatuses()
+    // Initial load or re-load
+    if (holdingsIds !== holdingsIdsRef.current) {
+        holdingsIdsRef.current = holdingsIds
+        loadUpdateStatuses()
+    } else if (holdingsIdsRef.current === '' && holdings.length > 0) {
+        // Handle case where ref was initialized empty but not updated yet
+        holdingsIdsRef.current = holdingsIds
+        loadUpdateStatuses()
     }
   }, [holdings, loadUpdateStatuses]) // Include loadUpdateStatuses to ensure it's available
 
@@ -232,18 +284,18 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
         let priceDate: string | null = null
         let apiResponse: any = null
 
-      // Fetch price using unified API (with refresh=true to force fresh fetch)
-      if (holding.assetType === 'crypto') {
-        const binanceSymbol = parseSymbolToBinance(holding.symbol)
-        const { fetchCryptoPrice } = await import('@/lib/portfolio/unified-price-api')
-        apiResponse = await fetchCryptoPrice(binanceSymbol, true)
-        if (apiResponse) {
-          newPrice = apiResponse.price
-          priceDate = apiResponse.date
-        } else {
-          console.error(`[UPDATE ALL] ${assetType}/${symbol}: API returned null`)
-        }
-      } else if (holding.assetType === 'pk-equity') {
+        // Fetch price using unified API (with refresh=true to force fresh fetch)
+        if (holding.assetType === 'crypto') {
+          const binanceSymbol = parseSymbolToBinance(holding.symbol)
+          const { fetchCryptoPrice } = await import('@/lib/portfolio/unified-price-api')
+          apiResponse = await fetchCryptoPrice(binanceSymbol, true)
+          if (apiResponse) {
+            newPrice = apiResponse.price
+            priceDate = apiResponse.date
+          } else {
+            console.error(`[UPDATE ALL] ${assetType}/${symbol}: API returned null`)
+          }
+        } else if (holding.assetType === 'pk-equity') {
           const { fetchPKEquityPrice } = await import('@/lib/portfolio/unified-price-api')
           apiResponse = await fetchPKEquityPrice(holding.symbol.toUpperCase(), true)
           if (apiResponse) {
@@ -378,23 +430,6 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
               View last updated dates and day changes for all holdings
             </CardDescription>
           </div>
-          <Button
-            onClick={updateAllHoldings}
-            disabled={isUpdatingAll}
-            variant="default"
-          >
-            {isUpdatingAll ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Updating All...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Update All Prices
-              </>
-            )}
-          </Button>
         </div>
       </CardHeader>
       <CardContent>
@@ -409,7 +444,6 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
                 <TableHead className="text-right">Day Change</TableHead>
                 <TableHead className="text-right">Day Change %</TableHead>
                 <TableHead className="text-right">Day PnL</TableHead>
-                <TableHead>Status</TableHead>
                 {(onDelete || onEdit) && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
@@ -470,15 +504,6 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
                       </div>
                     ) : (
                       <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {status.isUpdating ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                    ) : status.error ? (
-                      <Badge variant="destructive" className="text-xs">Error</Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-xs">Ready</Badge>
                     )}
                   </TableCell>
                   {(onDelete || onEdit) && (
