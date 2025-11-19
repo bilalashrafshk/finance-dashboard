@@ -206,6 +206,42 @@ export async function getHistoricalDataWithMetadata(
 }
 
 /**
+ * Get current price and its timestamp from database
+ */
+export async function getTodayPriceWithTimestamp(
+  assetType: string,
+  symbol: string,
+  marketDate: string
+): Promise<{ price: number; updatedAt: Date } | null> {
+  try {
+    const client = await getPool().connect()
+    
+    try {
+      const result = await client.query(
+        `SELECT close, updated_at
+         FROM historical_price_data
+         WHERE asset_type = $1 AND symbol = $2 AND date = $3`,
+        [assetType, symbol.toUpperCase(), marketDate]
+      )
+      
+      if (result.rows.length > 0) {
+        return {
+          price: parseFloat(result.rows[0].close),
+          updatedAt: result.rows[0].updated_at
+        }
+      }
+      
+      return null
+    } finally {
+      client.release()
+    }
+  } catch (error) {
+    console.error(`Error checking today's price for ${assetType}-${symbol}:`, error)
+    return null
+  }
+}
+
+/**
  * Check if today's data exists in database for a given asset
  * @param assetType - Asset type
  * @param symbol - Asset symbol

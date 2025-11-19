@@ -35,9 +35,14 @@ export async function fetchBinancePrice(symbol: string): Promise<number | null> 
       ? normalizedSymbol 
       : `${normalizedSymbol}USDT`
 
-    const response = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbolToFetch}`)
+    let response = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbolToFetch}`).catch(() => null)
     
-    if (!response.ok) {
+    if (!response || !response.ok) {
+      // Try Binance US as fallback (for US server locations)
+      response = await fetch(`https://api.binance.us/api/v3/ticker/price?symbol=${symbolToFetch}`).catch(() => null)
+    }
+    
+    if (!response || !response.ok) {
       // Try alternative: BTC/USD format
       if (symbolToFetch.includes('/')) {
         const [base, quote] = symbolToFetch.split('/')
@@ -69,9 +74,14 @@ export async function fetchBinanceTicker(symbol: string): Promise<BinanceTicker 
       ? normalizedSymbol 
       : `${normalizedSymbol}USDT`
 
-    const response = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbolToFetch}`)
+    let response = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbolToFetch}`).catch(() => null)
     
-    if (!response.ok) {
+    if (!response || !response.ok) {
+      // Try Binance US as fallback
+      response = await fetch(`https://api.binance.us/api/v3/ticker/24hr?symbol=${symbolToFetch}`).catch(() => null)
+    }
+    
+    if (!response || !response.ok) {
       return null
     }
 
@@ -96,9 +106,14 @@ export async function fetchBinanceTicker(symbol: string): Promise<BinanceTicker 
  */
 export async function fetchBinanceSymbols(): Promise<string[]> {
   try {
-    const response = await fetch('https://api.binance.com/api/v3/exchangeInfo')
+    let response = await fetch('https://api.binance.com/api/v3/exchangeInfo').catch(() => null)
     
-    if (!response.ok) {
+    if (!response || !response.ok) {
+      // Try Binance US as fallback
+      response = await fetch('https://api.binance.us/api/v3/exchangeInfo').catch(() => null)
+    }
+    
+    if (!response || !response.ok) {
       throw new Error('Failed to fetch Binance exchange info')
     }
 
@@ -136,9 +151,14 @@ export async function fetchMultipleBinancePrices(symbols: string[]): Promise<Rec
       return normalized.endsWith('USDT') ? normalized : `${normalized}USDT`
     })
 
-    const response = await fetch('https://api.binance.com/api/v3/ticker/price')
+    let response = await fetch('https://api.binance.com/api/v3/ticker/price').catch(() => null)
     
-    if (!response.ok) {
+    if (!response || !response.ok) {
+      // Try Binance US as fallback
+      response = await fetch('https://api.binance.us/api/v3/ticker/price').catch(() => null)
+    }
+    
+    if (!response || !response.ok) {
       throw new Error('Failed to fetch Binance prices')
     }
 

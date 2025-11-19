@@ -49,8 +49,8 @@ export interface CacheContext {
 class DefaultCacheConfig implements CacheConfig {
   // Base TTL values in milliseconds
   private readonly BASE_TTL = {
-    // Crypto: 1-2 minutes (volatile, 24/7)
-    crypto: 1 * 60 * 1000, // 1 minute
+    // Crypto: 15 minutes (market is 24/7)
+    crypto: 15 * 60 * 1000, // 15 minutes
     
     // Equity: Market-aware
     'pk-equity': 3 * 60 * 1000, // 3 minutes (when market open)

@@ -48,20 +48,27 @@ export async function fetchBinanceKlines(
       ? normalizedSymbol 
       : `${normalizedSymbol}USDT`
 
-    let url = `https://api.binance.com/api/v3/klines?symbol=${symbolToFetch}&interval=${interval}&limit=${limit}`
-    
-    if (startTime) {
-      url += `&startTime=${startTime}`
-    }
-    if (endTime) {
-      url += `&endTime=${endTime}`
+    const buildUrl = (baseUrl: string) => {
+      let u = `${baseUrl}/api/v3/klines?symbol=${symbolToFetch}&interval=${interval}&limit=${limit}`
+      if (startTime) {
+        u += `&startTime=${startTime}`
+      }
+      if (endTime) {
+        u += `&endTime=${endTime}`
+      }
+      return u
     }
 
-    const response = await fetch(url)
+    let response = await fetch(buildUrl('https://api.binance.com')).catch(() => null)
     
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error')
-      console.error(`Binance API error: ${response.status} ${response.statusText}`, errorText)
+    if (!response || !response.ok) {
+      // Try Binance US as fallback
+      response = await fetch(buildUrl('https://api.binance.us')).catch(() => null)
+    }
+    
+    if (!response || !response.ok) {
+      const errorText = response ? await response.text().catch(() => 'Unknown error') : 'Network error'
+      console.error(`Binance API error: ${response ? response.status : 'No response'} ${response ? response.statusText : ''}`, errorText)
       return null
     }
 

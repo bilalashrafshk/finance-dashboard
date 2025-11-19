@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchBinancePrice } from '@/lib/portfolio/binance-api'
-import { getTodayPriceFromDatabase, getHistoricalDataWithMetadata, insertHistoricalData } from '@/lib/portfolio/db-client'
+import { getTodayPriceFromDatabase, getTodayPriceWithTimestamp, getHistoricalDataWithMetadata, insertHistoricalData } from '@/lib/portfolio/db-client'
 import { getTodayInMarketTimezone } from '@/lib/portfolio/market-hours'
 import { fetchBinanceHistoricalData } from '@/lib/portfolio/binance-historical-api'
 import { cacheManager } from '@/lib/cache/cache-manager'
@@ -119,12 +119,29 @@ export async function GET(request: NextRequest) {
     }
     
     if (!refresh) {
-      const todayPrice = await getTodayPriceFromDatabase('crypto', symbolUpper, today)
-      if (todayPrice !== null) {
-        console.log(`[CRYPTO API] Found in DB: ${symbolUpper}, price=${todayPrice}, date=${today}`)
+      // Check if we have today's price and if it's fresh enough (for crypto, < 15 mins)
+      const dbData = await getTodayPriceWithTimestamp('crypto', symbolUpper, today)
+      
+      let useDbData = false
+      if (dbData) {
+        // For crypto, check if data is stale (> 15 mins old)
+        const lastUpdated = new Date(dbData.updatedAt).getTime()
+        const now = Date.now()
+        const ageInMinutes = (now - lastUpdated) / (1000 * 60)
+        
+        if (ageInMinutes < 15) {
+          useDbData = true
+          console.log(`[CRYPTO API] Found fresh data in DB: ${symbolUpper}, age=${ageInMinutes.toFixed(1)}m`)
+        } else {
+          console.log(`[CRYPTO API] Found stale data in DB: ${symbolUpper}, age=${ageInMinutes.toFixed(1)}m, refreshing...`)
+        }
+      }
+
+      if (useDbData && dbData) {
+        console.log(`[CRYPTO API] Returning DB data: ${symbolUpper}, price=${dbData.price}, date=${today}`)
         const response = {
           symbol: symbolUpper,
-          price: todayPrice,
+          price: dbData.price,
           date: today,
           source: 'database',
         }
@@ -136,7 +153,7 @@ export async function GET(request: NextRequest) {
           },
         })
       }
-      console.log(`[CRYPTO API] Not in DB, fetching from API: ${symbolUpper}`)
+      console.log(`[CRYPTO API] Not in DB or stale, fetching from API: ${symbolUpper}`)
     } else {
       console.log(`[CRYPTO API] Refresh=true, fetching from API: ${symbolUpper}`)
     }
