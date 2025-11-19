@@ -249,3 +249,37 @@ CREATE TRIGGER update_financial_statements_modtime
     BEFORE UPDATE ON financial_statements
     FOR EACH ROW
     EXECUTE PROCEDURE update_updated_at_column();
+
+-- 4. Screener Metrics Table (Materialized View for Efficiency)
+-- Stores pre-calculated valuation metrics for the Relative Valuation Screener
+-- Updated via Cron Job (daily)
+CREATE TABLE IF NOT EXISTS screener_metrics (
+  id SERIAL PRIMARY KEY,
+  asset_type VARCHAR(50) NOT NULL,     -- 'pk-equity'
+  symbol VARCHAR(50) NOT NULL,
+  sector VARCHAR(100),
+  
+  -- Price Data
+  price DECIMAL(20, 2),
+  price_date DATE,
+  
+  -- Valuation Metrics
+  pe_ratio DECIMAL(10, 2),             -- Price / EPS (TTM)
+  pb_ratio DECIMAL(10, 2),             -- Price / Book Value
+  dividend_yield DECIMAL(10, 2),       -- Annual Dividend / Price %
+  
+  -- Relative Metrics (Pre-calculated for speed)
+  sector_pe DECIMAL(10, 2),            -- Average P/E of the sector
+  relative_pe DECIMAL(10, 2),          -- Stock P/E / Sector P/E
+  
+  market_cap DECIMAL(20, 2),
+  
+  updated_at TIMESTAMP DEFAULT NOW(),
+  
+  UNIQUE(asset_type, symbol)
+);
+
+-- Indexes for filtering/sorting
+CREATE INDEX IF NOT EXISTS idx_screener_sector ON screener_metrics(sector);
+CREATE INDEX IF NOT EXISTS idx_screener_pe ON screener_metrics(pe_ratio);
+CREATE INDEX IF NOT EXISTS idx_screener_relative_pe ON screener_metrics(relative_pe);
