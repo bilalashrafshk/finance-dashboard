@@ -232,18 +232,18 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
         let priceDate: string | null = null
         let apiResponse: any = null
 
-        // Fetch price using unified API (with refresh=true to force fresh fetch)
-        if (holding.assetType === 'crypto') {
-          const binanceSymbol = parseSymbolToBinance(holding.symbol)
-          const { fetchCryptoPrice } = await import('@/lib/portfolio/unified-price-api')
-          apiResponse = await fetchCryptoPrice(binanceSymbol, true)
-          if (apiResponse) {
-            newPrice = apiResponse.price
-            priceDate = apiResponse.date
-          } else {
-            console.error(`[UPDATE ALL] ${assetType}/${symbol}: API returned null`)
-          }
-        } else if (holding.assetType === 'pk-equity') {
+      // Fetch price using unified API (with refresh=true to force fresh fetch)
+      if (holding.assetType === 'crypto') {
+        const binanceSymbol = parseSymbolToBinance(holding.symbol)
+        const { fetchCryptoPrice } = await import('@/lib/portfolio/unified-price-api')
+        apiResponse = await fetchCryptoPrice(binanceSymbol, true)
+        if (apiResponse) {
+          newPrice = apiResponse.price
+          priceDate = apiResponse.date
+        } else {
+          console.error(`[UPDATE ALL] ${assetType}/${symbol}: API returned null`)
+        }
+      } else if (holding.assetType === 'pk-equity') {
           const { fetchPKEquityPrice } = await import('@/lib/portfolio/unified-price-api')
           apiResponse = await fetchPKEquityPrice(holding.symbol.toUpperCase(), true)
           if (apiResponse) {
