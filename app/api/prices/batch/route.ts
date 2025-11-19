@@ -72,6 +72,12 @@ export async function POST(request: NextRequest) {
       const cryptoAssets = assetsToFetch.filter((a: any) => a.type === 'crypto')
       const otherAssets = assetsToFetch.filter((a: any) => a.type !== 'crypto')
 
+      // Determine base URL for internal API calls
+      const url = new URL(request.url)
+      const baseUrl = url.origin || 
+                      process.env.NEXT_PUBLIC_APP_URL || 
+                      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+
       // Bulk fetch Crypto (efficient)
       if (cryptoAssets.length > 0) {
         const symbols = cryptoAssets.map((a: any) => parseSymbolToBinance(a.symbol))
@@ -101,21 +107,11 @@ export async function POST(request: NextRequest) {
                }
                
                // We need to update the DB so next time it's cached
-               // We reuse the unified API or DB client logic here. 
-               // Calling the route locally is cleaner to reuse logic but adds overhead.
-               // Let's just call the single-fetcher wrapper which handles DB upsert.
-               // It will hit the cache/DB check again (redundant) but then hit Binance.
-               // Since we already fetched from Binance efficiently, let's just use the values.
-               // TODO: Ideally we call a "saveToDb" function here.
-               // For now, to strictly follow "wrapper" pattern without duplicating DB logic,
-               // we might have to call the individual functions.
-               // BUT, calling 50 individual functions = 50 DB writes.
-               
-               // Compromise: We return the live values to the user NOW (fast).
+               // We return the live values to the user NOW (fast).
                // We trigger the DB updates in the background (fire and forget).
                
                import('@/lib/portfolio/unified-price-api').then(({ fetchCryptoPrice }) => {
-                  fetchCryptoPrice(binanceSymbol, true).catch(err => console.error('Bg update failed', err))
+                  fetchCryptoPrice(binanceSymbol, true, baseUrl).catch(err => console.error('Bg update failed', err))
                })
 
              } else {
@@ -135,13 +131,13 @@ export async function POST(request: NextRequest) {
          
          try {
            if (asset.type === 'pk-equity') {
-             data = await fetchPKEquityPrice(asset.symbol)
+             data = await fetchPKEquityPrice(asset.symbol, false, baseUrl)
            } else if (asset.type === 'us-equity') {
-             data = await fetchUSEquityPrice(asset.symbol)
+             data = await fetchUSEquityPrice(asset.symbol, false, baseUrl)
            } else if (asset.type === 'metals') {
-             data = await fetchMetalsPrice(asset.symbol)
+             data = await fetchMetalsPrice(asset.symbol, false, 0, baseUrl)
            } else if (asset.type === 'spx500' || asset.type === 'kse100') {
-             data = await fetchIndicesPrice(asset.symbol)
+             data = await fetchIndicesPrice(asset.symbol, false, 0, baseUrl)
            }
            
            if (data && data.price !== null) {

@@ -40,15 +40,27 @@ export interface HistoricalDataResponse {
   source: string
 }
 
+
+/**
+ * Helper to get absolute URL for server-side fetching
+ */
+function getAbsoluteUrl(path: string, baseUrl?: string): string {
+  if (typeof window !== 'undefined') return path // Client-side: relative URL is fine
+  
+  // Server-side: need absolute URL
+  const base = baseUrl || process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+  return `${base}${path}`
+}
+
 /**
  * Fetch current price for crypto
  */
-export async function fetchCryptoPrice(symbol: string, refresh = false): Promise<PriceResponse | null> {
+export async function fetchCryptoPrice(symbol: string, refresh = false, baseUrl?: string): Promise<PriceResponse | null> {
   try {
     const params = new URLSearchParams({ symbol })
     if (refresh) params.set('refresh', 'true')
     
-    const url = `/api/crypto/price?${params}`
+    const url = getAbsoluteUrl(`/api/crypto/price?${params}`, baseUrl)
     const response = await fetch(url)
     
     if (!response.ok) {
@@ -67,12 +79,13 @@ export async function fetchCryptoPrice(symbol: string, refresh = false): Promise
 /**
  * Fetch current price for PK equity
  */
-export async function fetchPKEquityPrice(ticker: string, refresh = false): Promise<PriceResponse | null> {
+export async function fetchPKEquityPrice(ticker: string, refresh = false, baseUrl?: string): Promise<PriceResponse | null> {
   try {
     const params = new URLSearchParams({ ticker })
     if (refresh) params.set('refresh', 'true')
     
-    const response = await fetch(`/api/pk-equity/price?${params}`)
+    const url = getAbsoluteUrl(`/api/pk-equity/price?${params}`, baseUrl)
+    const response = await fetch(url)
     if (!response.ok) return null
     
     return await response.json()
@@ -85,12 +98,13 @@ export async function fetchPKEquityPrice(ticker: string, refresh = false): Promi
 /**
  * Fetch current price for US equity
  */
-export async function fetchUSEquityPrice(ticker: string, refresh = false): Promise<PriceResponse | null> {
+export async function fetchUSEquityPrice(ticker: string, refresh = false, baseUrl?: string): Promise<PriceResponse | null> {
   try {
     const params = new URLSearchParams({ ticker })
     if (refresh) params.set('refresh', 'true')
     
-    const response = await fetch(`/api/us-equity/price?${params}`)
+    const url = getAbsoluteUrl(`/api/us-equity/price?${params}`, baseUrl)
+    const response = await fetch(url)
     if (!response.ok) return null
     
     return await response.json()
@@ -104,7 +118,7 @@ export async function fetchUSEquityPrice(ticker: string, refresh = false): Promi
  * Fetch current price for metals
  * Handles client-side fetch if needed
  */
-export async function fetchMetalsPrice(symbol: string, refresh = false, _recursionDepth = 0): Promise<PriceResponse | null> {
+export async function fetchMetalsPrice(symbol: string, refresh = false, _recursionDepth = 0, baseUrl?: string): Promise<PriceResponse | null> {
   // Prevent infinite recursion
   if (_recursionDepth > 2) {
     console.error(`[UNIFIED API] fetchMetalsPrice: Max recursion depth reached for ${symbol}`)
@@ -118,13 +132,16 @@ export async function fetchMetalsPrice(symbol: string, refresh = false, _recursi
       params.set('refresh', 'true')
     }
     
-    const response = await fetch(`/api/metals/price?${params}`)
+    const url = getAbsoluteUrl(`/api/metals/price?${params}`, baseUrl)
+    const response = await fetch(url)
     if (!response.ok) return null
     
     const data: PriceResponse = await response.json()
     
     // If client-side fetch is needed, handle it
     if (data.needsClientFetch && data.instrumentId) {
+      if (typeof window === 'undefined') return data // Cannot do client fetch on server
+      
       const { getLatestPriceFromInvestingClient } = await import('@/lib/portfolio/investing-client-api')
       const { deduplicatedFetch } = await import('@/lib/portfolio/request-deduplication')
       
@@ -187,7 +204,7 @@ export async function fetchMetalsPrice(symbol: string, refresh = false, _recursi
  * Handles client-side fetch if needed (only if DB has some data)
  * If DB is empty, returns needsClientFetch: true and caller should fetch all historical data first
  */
-export async function fetchIndicesPrice(symbol: string, refresh = false, _recursionDepth = 0): Promise<PriceResponse | null> {
+export async function fetchIndicesPrice(symbol: string, refresh = false, _recursionDepth = 0, baseUrl?: string): Promise<PriceResponse | null> {
   // Prevent infinite recursion
   if (_recursionDepth > 2) {
     console.error(`[UNIFIED API] fetchIndicesPrice: Max recursion depth reached for ${symbol}`)
@@ -201,13 +218,16 @@ export async function fetchIndicesPrice(symbol: string, refresh = false, _recurs
       params.set('refresh', 'true')
     }
     
-    const response = await fetch(`/api/indices/price?${params}`)
+    const url = getAbsoluteUrl(`/api/indices/price?${params}`, baseUrl)
+    const response = await fetch(url)
     if (!response.ok) return null
     
     const data: PriceResponse = await response.json()
     
     // If client-side fetch is needed, check if DB has any data first
     if (data.needsClientFetch && data.instrumentId) {
+      if (typeof window === 'undefined') return data // Cannot do client fetch on server
+
       // Check if DB has any data - if not, caller should fetch all historical data first
       const assetType = symbol.toUpperCase() === 'SPX500' ? 'spx500' : 'kse100'
       const { deduplicatedFetch } = await import('@/lib/portfolio/request-deduplication')

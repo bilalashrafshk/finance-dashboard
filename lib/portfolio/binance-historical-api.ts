@@ -50,12 +50,12 @@ export async function fetchBinanceKlines(
 
     const buildUrl = (baseUrl: string) => {
       let u = `${baseUrl}/api/v3/klines?symbol=${symbolToFetch}&interval=${interval}&limit=${limit}`
-      if (startTime) {
+    if (startTime) {
         u += `&startTime=${startTime}`
-      }
-      if (endTime) {
+    }
+    if (endTime) {
         u += `&endTime=${endTime}`
-      }
+    }
       return u
     }
 

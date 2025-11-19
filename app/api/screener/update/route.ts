@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { Pool } from 'pg'
+import { fetchScreenerBatchData } from '@/lib/screener/batch-data-fetcher'
 
 // Re-use existing DB connection logic or create new for this batch job
 // We use a direct pool here for simplicity in the cron job
@@ -39,109 +40,82 @@ export async function GET(request: Request) {
   try {
     console.log('[Screener Update] Starting daily update...')
     
-    // 1. Fetch Base Data
-    // Get latest price for each symbol
-    // We use a subquery to get the most recent price per symbol
-    const pricesQuery = `
-      SELECT DISTINCT ON (symbol) symbol, close as price, date as price_date
-      FROM historical_price_data
+    // 1. Get all PK Equity symbols that have price data
+    // This ensures we process all assets with price data, even if they don't have company_profiles yet
+    const { rows: priceSymbols } = await client.query(`
+      SELECT DISTINCT symbol 
+      FROM historical_price_data 
       WHERE asset_type = 'pk-equity'
-      ORDER BY symbol, date DESC
-    `
+      ORDER BY symbol
+    `)
+    const allSymbols = priceSymbols.map(p => p.symbol)
     
-    // Get TTM EPS for each symbol
-    // We need to sum the last 4 quarters of EPS
-    // This is complex in SQL, so we'll fetch recent financials and calc in JS for flexibility
-    // Or better, let's try a robust SQL approach if possible, but JS is safer for logic nuances.
+    if (allSymbols.length === 0) {
+      return NextResponse.json({ success: true, count: 0, message: 'No PK equity symbols with price data found' })
+    }
     
-    const { rows: priceRows } = await client.query(pricesQuery)
-    const priceMap = new Map(priceRows.map(r => [r.symbol, { price: parseFloat(r.price), date: r.price_date }]))
+    console.log(`[Screener Update] Found ${allSymbols.length} symbols with price data`)
     
-    const { rows: profiles } = await client.query(`SELECT symbol, sector FROM company_profiles WHERE asset_type = 'pk-equity'`)
+    // 2. Fetch all data using centralized batch function
+    // Pass baseUrl so it can make internal API calls
+    const url = new URL(request.url)
+    const baseUrl = url.origin || 
+                    process.env.NEXT_PUBLIC_APP_URL || 
+                    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+    const batchData = await fetchScreenerBatchData(allSymbols, 'pk-equity', baseUrl)
     
-    // 2. Calculate Metrics per Company
+    console.log(`[Screener Update] Received data for ${Object.keys(batchData).length} symbols`)
+    
+    // 3. Calculate Metrics per Company
     const companyMetrics = []
     
-    for (const profile of profiles) {
-      const symbol = profile.symbol
-      const priceData = priceMap.get(symbol)
+    for (const [symbol, data] of Object.entries(batchData)) {
+      const { price, profile, financials } = data
       
-      if (!priceData) continue; // Skip if no price
+      if (!price || !profile) continue // Skip if missing critical data
       
-      // Fetch Financials for EPS (Last 4 Quarters)
-      // Optimized query to get last 4 quarterly reports
-      const financialsRes = await client.query(`
-        SELECT period_end_date, eps_basic, eps_diluted
-        FROM financial_statements
-        WHERE symbol = $1 AND asset_type = 'pk-equity' AND period_type = 'quarterly'
-        ORDER BY period_end_date DESC
-        LIMIT 4
-      `, [symbol])
-      
+      // Calculate TTM EPS from last 4 quarters
       let ttmEps = 0
       let peRatio = null
       
-      if (financialsRes.rows.length === 4) {
+      if (financials.length === 4) {
         // Calculate TTM EPS
-        ttmEps = financialsRes.rows.reduce((sum, row) => sum + parseFloat(row.eps_diluted || row.eps_basic || 0), 0)
+        ttmEps = financials.reduce((sum, row) => sum + (row.eps_diluted || row.eps_basic || 0), 0)
         
         if (ttmEps > 0) {
-          peRatio = priceData.price / ttmEps
+          peRatio = price.price / ttmEps
         }
       }
       
-      // Fetch Dividend Yield (Annualized from last year dividend)
-      // Simplified: Sum dividends from last 365 days
-      const oneYearAgo = new Date();
-      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-      const divRes = await client.query(`
-        SELECT dividend_amount
-        FROM dividend_data
-        WHERE symbol = $1 AND asset_type = 'pk-equity' AND date >= $2
-      `, [symbol, oneYearAgo.toISOString().split('T')[0]])
-      
-      // Dividends are usually stored as percent (e.g. 25% = Rs 2.5 for Rs 10 face value)
-      // We need Face Value to convert % to Rupees.
-      // Assuming standard Rs 10 face value for now if not in DB, but let's check profile.
-      const faceValueRes = await client.query(`SELECT face_value FROM company_profiles WHERE symbol = $1`, [symbol])
-      const faceValue = parseFloat(faceValueRes.rows[0]?.face_value || '10')
-      
-      let totalDivRupees = 0
-      divRes.rows.forEach(row => {
-         // dividend_amount is typically percent e.g. 25.0
-         // Dividend in Rs = (Percent / 100) * Face Value
-         // Note: In your DB schema comment it says "percent/10 (e.g., 110% = 11.0)". 
-         // Let's stick to standard: If 11.0 means 110%, then (11.0 / 10) * 10 = Rs 11.
-         // Wait, usually "110%" is stored as 110 or 1.1?
-         // Looking at previous code "convertDividendToRupees", it implies logic.
-         // Let's assume dividend_amount is % value (e.g. 150 for 150%).
-         // Rs = (Amount / 100) * FaceValue.
-         totalDivRupees += (parseFloat(row.dividend_amount) / 100) * faceValue
-      })
-      
-      let dividendYield = 0
-      if (priceData.price > 0) {
-        dividendYield = (totalDivRupees / priceData.price) * 100
-      }
+      // Note: Dividend yield calculation removed as per user request
+      // Screener doesn't need dividends
 
       companyMetrics.push({
         symbol: symbol,
         sector: profile.sector || 'Unknown',
-        price: priceData.price,
-        priceDate: priceData.date,
+        industry: profile.industry || 'Unknown',
+        price: price.price,
+        priceDate: price.date,
         peRatio: peRatio, // Can be null or negative
-        dividendYield: dividendYield
+        dividendYield: 0, // Not calculated anymore
+        marketCap: profile.market_cap
       })
     }
     
     // 3. Calculate Sector Averages (Median P/E)
     // Median is robust against outliers (e.g. one company with P/E 500)
     const sectorGroups = new Map() // Sector -> [PEs]
+    const industryGroups = new Map() // Industry -> [PEs]
     
     companyMetrics.forEach(m => {
        if (m.peRatio && m.peRatio > 0 && m.peRatio < 500) { // Filter valid positive P/Es
+         // Group by sector
          if (!sectorGroups.has(m.sector)) sectorGroups.set(m.sector, [])
          sectorGroups.get(m.sector).push(m.peRatio)
+         
+         // Group by industry
+         if (!industryGroups.has(m.industry)) industryGroups.set(m.industry, [])
+         industryGroups.get(m.industry).push(m.peRatio)
        }
     })
     
@@ -153,22 +127,36 @@ export async function GET(request: Request) {
        sectorAverages.set(sector, median)
     })
     
+    const industryAverages = new Map()
+    industryGroups.forEach((pes, industry) => {
+       pes.sort((a: number, b: number) => a - b)
+       const mid = Math.floor(pes.length / 2)
+       const median = pes.length % 2 !== 0 ? pes[mid] : (pes[mid - 1] + pes[mid]) / 2
+       industryAverages.set(industry, median)
+    })
+    
     // 4. Prepare Final Data & Upsert
     let upsertCount = 0
     
     for (const metric of companyMetrics) {
        const sectorPe = sectorAverages.get(metric.sector) || null
+       const industryPe = industryAverages.get(metric.industry) || null
        
        let relativePe = null
        if (metric.peRatio && sectorPe) {
          relativePe = metric.peRatio / sectorPe
        }
        
+       let relativePeIndustry = null
+       if (metric.peRatio && industryPe) {
+         relativePeIndustry = metric.peRatio / industryPe
+       }
+       
        // Upsert to DB
        await client.query(`
          INSERT INTO screener_metrics 
-         (asset_type, symbol, sector, price, price_date, pe_ratio, dividend_yield, sector_pe, relative_pe, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+         (asset_type, symbol, sector, industry, price, price_date, pe_ratio, dividend_yield, sector_pe, relative_pe, industry_pe, relative_pe_industry, market_cap, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
          ON CONFLICT (asset_type, symbol)
          DO UPDATE SET
            price = EXCLUDED.price,
@@ -177,17 +165,25 @@ export async function GET(request: Request) {
            dividend_yield = EXCLUDED.dividend_yield,
            sector_pe = EXCLUDED.sector_pe,
            relative_pe = EXCLUDED.relative_pe,
+           industry = EXCLUDED.industry,
+           industry_pe = EXCLUDED.industry_pe,
+           relative_pe_industry = EXCLUDED.relative_pe_industry,
+           market_cap = EXCLUDED.market_cap,
            updated_at = NOW()
        `, [
          'pk-equity',
          metric.symbol,
          metric.sector,
+         metric.industry,
          metric.price,
          metric.priceDate,
          metric.peRatio,
          metric.dividendYield,
          sectorPe,
-         relativePe
+         relativePe,
+         industryPe,
+         relativePeIndustry,
+         metric.marketCap
        ])
        upsertCount++
     }

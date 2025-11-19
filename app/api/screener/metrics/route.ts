@@ -14,11 +14,14 @@ export async function GET() {
     const res = await client.query(`
       SELECT 
         symbol, 
-        sector, 
+        sector,
+        industry,
         price, 
         pe_ratio, 
         sector_pe, 
-        relative_pe, 
+        relative_pe,
+        industry_pe,
+        relative_pe_industry,
         dividend_yield,
         market_cap
       FROM screener_metrics

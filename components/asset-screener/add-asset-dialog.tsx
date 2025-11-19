@@ -31,10 +31,12 @@ interface AddAssetDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSave: (asset: Omit<TrackedAsset, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>
+  defaultAssetType?: AssetType
+  restrictToAssetType?: AssetType
 }
 
-export function AddAssetDialog({ open, onOpenChange, onSave }: AddAssetDialogProps) {
-  const [assetType, setAssetType] = useState<AssetType>('us-equity')
+export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, restrictToAssetType }: AddAssetDialogProps) {
+  const [assetType, setAssetType] = useState<AssetType>(defaultAssetType || 'us-equity')
   const [symbol, setSymbol] = useState('')
   const [name, setName] = useState('')
   const [currency, setCurrency] = useState('USD')
@@ -47,35 +49,35 @@ export function AddAssetDialog({ open, onOpenChange, onSave }: AddAssetDialogPro
   useEffect(() => {
     if (!open) {
       // Reset form when dialog closes
-      setAssetType('us-equity')
+      setAssetType(defaultAssetType || 'us-equity')
       setSymbol('')
       setName('')
       setCurrency('USD')
-      setNotes('')
       setInitializingHistoricalData(false)
       setHistoricalDataReady(false)
       setError(null)
     }
-  }, [open])
+  }, [open, defaultAssetType])
 
   // Auto-set currency and symbol based on asset type
   useEffect(() => {
     if (open) {
-      if (assetType === 'pk-equity' || assetType === 'kse100') {
+      const effectiveAssetType = restrictToAssetType || assetType
+      if (effectiveAssetType === 'pk-equity' || effectiveAssetType === 'kse100') {
         setCurrency('PKR')
-        if (assetType === 'kse100') {
+        if (effectiveAssetType === 'kse100') {
           setSymbol('KSE100')
           setName('KSE 100 Index')
         }
-      } else if (assetType === 'us-equity' || assetType === 'spx500' || assetType === 'crypto' || assetType === 'metals') {
+      } else if (effectiveAssetType === 'us-equity' || effectiveAssetType === 'spx500' || effectiveAssetType === 'crypto' || effectiveAssetType === 'metals') {
         setCurrency('USD')
-        if (assetType === 'spx500') {
+        if (effectiveAssetType === 'spx500') {
           setSymbol('SPX500')
           setName('S&P 500 Index')
         }
       }
     }
-  }, [assetType, open])
+  }, [assetType, restrictToAssetType, open])
 
   // Wait for historical data to be ready
   const waitForHistoricalData = async (
@@ -176,9 +178,10 @@ export function AddAssetDialog({ open, onOpenChange, onSave }: AddAssetDialogPro
       setHistoricalDataReady(false)
       setError(null)
       
+      const effectiveAssetType = restrictToAssetType || assetType
       const { deduplicatedFetch } = await import('@/lib/portfolio/request-deduplication')
-      const market = assetType === 'pk-equity' ? 'PSX' : assetType === 'us-equity' ? 'US' : null
-      const checkUrl = `/api/historical-data?assetType=${assetType}&symbol=${encodeURIComponent(symbol.toUpperCase())}${market ? `&market=${market}` : ''}&limit=1`
+      const market = effectiveAssetType === 'pk-equity' ? 'PSX' : effectiveAssetType === 'us-equity' ? 'US' : null
+      const checkUrl = `/api/historical-data?assetType=${effectiveAssetType}&symbol=${encodeURIComponent(symbol.toUpperCase())}${market ? `&market=${market}` : ''}&limit=1`
       const checkResponse = await deduplicatedFetch(checkUrl)
       const hasExistingData = checkResponse.ok && (await checkResponse.json()).data?.length > 0
       
@@ -186,7 +189,7 @@ export function AddAssetDialog({ open, onOpenChange, onSave }: AddAssetDialogPro
         setInitializingHistoricalData(true)
       }
       
-      if (assetType === 'crypto') {
+      if (effectiveAssetType === 'crypto') {
         const binanceSymbol = parseSymbolToBinance(symbol)
         const { fetchCryptoPrice } = await import('@/lib/portfolio/unified-price-api')
         const data = await fetchCryptoPrice(binanceSymbol)
@@ -203,7 +206,7 @@ export function AddAssetDialog({ open, onOpenChange, onSave }: AddAssetDialogPro
         } else {
           setHistoricalDataReady(true)
         }
-      } else if (assetType === 'pk-equity') {
+      } else if (effectiveAssetType === 'pk-equity') {
         const { fetchPKEquityPrice } = await import('@/lib/portfolio/unified-price-api')
         const data = await fetchPKEquityPrice(symbol.toUpperCase())
         
@@ -219,14 +222,14 @@ export function AddAssetDialog({ open, onOpenChange, onSave }: AddAssetDialogPro
         } else {
           setHistoricalDataReady(true)
         }
-      } else if (assetType === 'kse100' || assetType === 'spx500') {
-        const indexSymbol = assetType === 'kse100' ? 'KSE100' : 'SPX500'
+      } else if (effectiveAssetType === 'kse100' || effectiveAssetType === 'spx500') {
+        const indexSymbol = effectiveAssetType === 'kse100' ? 'KSE100' : 'SPX500'
         const { fetchIndicesPrice } = await import('@/lib/portfolio/unified-price-api')
         const data = await fetchIndicesPrice(indexSymbol)
         
         if (data && data.price) {
           if (!name) {
-            setName(assetType === 'kse100' ? 'KSE 100 Index' : 'S&P 500 Index')
+            setName(effectiveAssetType === 'kse100' ? 'KSE 100 Index' : 'S&P 500 Index')
           }
           if (!symbol) {
             setSymbol(indexSymbol)
@@ -234,13 +237,13 @@ export function AddAssetDialog({ open, onOpenChange, onSave }: AddAssetDialogPro
         }
         
         if (!hasExistingData) {
-          const apiAssetType = assetType === 'kse100' ? 'kse100' : 'spx500'
+          const apiAssetType = effectiveAssetType === 'kse100' ? 'kse100' : 'spx500'
           const dataReady = await waitForHistoricalData(apiAssetType, indexSymbol)
           setHistoricalDataReady(dataReady)
         } else {
           setHistoricalDataReady(true)
         }
-      } else if (assetType === 'us-equity') {
+      } else if (effectiveAssetType === 'us-equity') {
         const { fetchUSEquityPrice } = await import('@/lib/portfolio/unified-price-api')
         const data = await fetchUSEquityPrice(symbol.toUpperCase())
         
@@ -256,7 +259,7 @@ export function AddAssetDialog({ open, onOpenChange, onSave }: AddAssetDialogPro
         } else {
           setHistoricalDataReady(true)
         }
-      } else if (assetType === 'metals') {
+      } else if (effectiveAssetType === 'metals') {
         const { fetchMetalsPrice } = await import('@/lib/portfolio/unified-price-api')
         const data = await fetchMetalsPrice(symbol.toUpperCase())
         
@@ -299,8 +302,10 @@ export function AddAssetDialog({ open, onOpenChange, onSave }: AddAssetDialogPro
     e.preventDefault()
     setError(null)
     
+    const finalAssetType = restrictToAssetType || assetType
+    
     const asset: Omit<TrackedAsset, 'id' | 'createdAt' | 'updatedAt'> = {
-      assetType,
+      assetType: finalAssetType,
       symbol: symbol.toUpperCase().trim(),
       name: name.trim() || symbol.toUpperCase().trim(),
       currency: currency.trim(),
@@ -315,7 +320,8 @@ export function AddAssetDialog({ open, onOpenChange, onSave }: AddAssetDialogPro
     }
   }
 
-  const needsHistoricalData = assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500'
+  const effectiveAssetType = restrictToAssetType || assetType
+  const needsHistoricalData = effectiveAssetType === 'pk-equity' || effectiveAssetType === 'us-equity' || effectiveAssetType === 'crypto' || effectiveAssetType === 'metals' || effectiveAssetType === 'kse100' || effectiveAssetType === 'spx500'
   
   const isFormValid = symbol.trim() && 
                       name.trim() &&
@@ -336,58 +342,76 @@ export function AddAssetDialog({ open, onOpenChange, onSave }: AddAssetDialogPro
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="assetType">Asset Type *</Label>
-                <Select value={assetType} onValueChange={(value) => setAssetType(value as AssetType)}>
-                  <SelectTrigger id="assetType">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(ASSET_TYPE_LABELS)
-                      .filter(([key]) => key !== 'cash' && key !== 'fd' && key !== 'commodities') // Exclude these from asset screener
-                      .map(([key, label]) => (
-                        <SelectItem key={key} value={key}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                {restrictToAssetType ? (
+                  <Input
+                    id="assetType"
+                    value={ASSET_TYPE_LABELS[restrictToAssetType]}
+                    disabled
+                    className="bg-muted cursor-not-allowed"
+                  />
+                ) : (
+                  <Select value={assetType} onValueChange={(value) => setAssetType(value as AssetType)}>
+                    <SelectTrigger id="assetType">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(ASSET_TYPE_LABELS)
+                        .filter(([key]) => key !== 'cash' && key !== 'fd' && key !== 'commodities') // Exclude these from asset screener
+                        .map(([key, label]) => (
+                          <SelectItem key={key} value={key}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="currency">Currency *</Label>
-                <Select value={currency} onValueChange={setCurrency}>
-                  <SelectTrigger id="currency">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="USD">USD</SelectItem>
-                    <SelectItem value="PKR">PKR</SelectItem>
-                    <SelectItem value="EUR">EUR</SelectItem>
-                    <SelectItem value="GBP">GBP</SelectItem>
-                  </SelectContent>
-                </Select>
+                {restrictToAssetType === 'pk-equity' ? (
+                  <Input
+                    id="currency"
+                    value="PKR"
+                    disabled
+                    className="bg-muted cursor-not-allowed"
+                  />
+                ) : (
+                  <Select value={currency} onValueChange={setCurrency}>
+                    <SelectTrigger id="currency">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="USD">USD</SelectItem>
+                      <SelectItem value="PKR">PKR</SelectItem>
+                      <SelectItem value="EUR">EUR</SelectItem>
+                      <SelectItem value="GBP">GBP</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="symbol">Symbol/Ticker *</Label>
-                {assetType === 'crypto' ? (
+                {effectiveAssetType === 'crypto' ? (
                   <CryptoSelector
                     value={symbol}
                     onValueChange={handleCryptoSelect}
                   />
-                ) : assetType === 'metals' ? (
+                  ) : effectiveAssetType === 'metals' ? (
                   <MetalsSelector
                     value={symbol}
                     onValueChange={handleMetalSelect}
                   />
-                ) : assetType === 'kse100' || assetType === 'spx500' ? (
+                  ) : effectiveAssetType === 'kse100' || effectiveAssetType === 'spx500' ? (
                   <Input
                     id="symbol"
                     value={symbol}
                     disabled
                     className="bg-muted cursor-not-allowed"
-                    placeholder={assetType === 'kse100' ? 'KSE100' : 'SPX500'}
+                    placeholder={effectiveAssetType === 'kse100' ? 'KSE100' : 'SPX500'}
                     required
                   />
                 ) : (
@@ -396,7 +420,7 @@ export function AddAssetDialog({ open, onOpenChange, onSave }: AddAssetDialogPro
                     value={symbol}
                     onChange={(e) => setSymbol(e.target.value)}
                     placeholder={
-                      assetType === 'pk-equity'
+                      effectiveAssetType === 'pk-equity'
                         ? 'PTC, HBL, UBL, etc.'
                         : 'AAPL, TSLA, etc.'
                     }
@@ -428,7 +452,7 @@ export function AddAssetDialog({ open, onOpenChange, onSave }: AddAssetDialogPro
               />
             </div>
 
-            {(assetType === 'crypto' || assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500') && symbol && (
+            {(effectiveAssetType === 'crypto' || effectiveAssetType === 'pk-equity' || effectiveAssetType === 'us-equity' || effectiveAssetType === 'metals' || effectiveAssetType === 'kse100' || effectiveAssetType === 'spx500') && symbol && (
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
