@@ -38,21 +38,39 @@ interface FinancialStatement {
 }
 
 /**
- * Format date as fiscal quarter (e.g., "Q3 2025")
- * Q1: Jan-Mar, Q2: Apr-Jun, Q3: Jul-Sep, Q4: Oct-Dec
+ * Format date as fiscal quarter (e.g., "Q1 2026")
+ * Pakistani companies use fiscal year July-June:
+ * Q1: Jul-Sep (months 7-9), Q2: Oct-Dec (months 10-12), 
+ * Q3: Jan-Mar (months 1-3), Q4: Apr-Jun (months 4-6)
  */
 function formatFiscalQuarter(dateStr: string): string {
   const date = new Date(dateStr)
   const month = date.getMonth() + 1 // 1-12
-  const year = date.getFullYear()
+  const calendarYear = date.getFullYear()
   
   let quarter: number
-  if (month >= 1 && month <= 3) quarter = 1
-  else if (month >= 4 && month <= 6) quarter = 2
-  else if (month >= 7 && month <= 9) quarter = 3
-  else quarter = 4
+  let fiscalYear: number
   
-  return `Q${quarter} ${year}`
+  // Determine quarter and fiscal year based on July-June fiscal year
+  if (month >= 7 && month <= 9) {
+    // Jul-Sep: Q1 of next calendar year's fiscal year
+    quarter = 1
+    fiscalYear = calendarYear + 1
+  } else if (month >= 10 && month <= 12) {
+    // Oct-Dec: Q2 of next calendar year's fiscal year
+    quarter = 2
+    fiscalYear = calendarYear + 1
+  } else if (month >= 1 && month <= 3) {
+    // Jan-Mar: Q3 of current calendar year's fiscal year
+    quarter = 3
+    fiscalYear = calendarYear
+  } else {
+    // Apr-Jun: Q4 of current calendar year's fiscal year
+    quarter = 4
+    fiscalYear = calendarYear
+  }
+  
+  return `Q${quarter} ${fiscalYear}`
 }
 
 export function AssetFinancialsView({ symbol, assetType }: AssetFinancialsViewProps) {
