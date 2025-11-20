@@ -238,25 +238,28 @@ export function ValuationScatterChart({ data, groupBy = 'sector' }: ValuationSca
                   label={{ position: 'insideTopRight', value: 'Fair Value', fill: axisColor, fontSize: 11 }}
                 />
                 
-                {/* Render scatter points grouped by sector/industry for better visual organization */}
-                {groups.map(group => {
-                  const groupDataPoints = groupData.get(group) || []
-                  if (groupDataPoints.length === 0) return null
-                  
-                  return (
-                    <Scatter key={group} name={group} data={groupDataPoints} fill={colorMap.get(group)}>
-                      {groupDataPoints.map((entry, index) => (
+                {/* Render all scatter points in a single Scatter, sorted by market cap (ascending) */}
+                {/* This ensures smaller bubbles render on top and are hoverable even when inside larger ones */}
+                <Scatter 
+                  name="Stocks" 
+                  data={[...filteredData].sort((a, b) => (a.market_cap || 0) - (b.market_cap || 0))}
+                  fill="#8884d8"
+                >
+                  {[...filteredData]
+                    .sort((a, b) => (a.market_cap || 0) - (b.market_cap || 0))
+                    .map((entry, index) => {
+                      const groupColor = colorMap.get(entry.group_name) || COLORS[0]
+                      return (
                         <Cell 
-                          key={`${group}-${index}`} 
-                          fill={colorMap.get(group)} 
-                          stroke={colorMap.get(group)}
+                          key={`cell-${entry.symbol}-${index}`} 
+                          fill={groupColor} 
+                          stroke={groupColor}
                           fillOpacity={0.7}
                           strokeWidth={1.5}
                         />
-                      ))}
-                    </Scatter>
-                  )
-                })}
+                      )
+                    })}
+                </Scatter>
               </ScatterChart>
             </ResponsiveContainer>
           </div>
