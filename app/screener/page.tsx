@@ -59,6 +59,16 @@ export default function ScreenerPage() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
   const [filterSector, setFilterSector] = useState<string>("all")
   const [filterIndustry, setFilterIndustry] = useState<string>("all")
+  
+  // Traditional screener filters
+  const [minPE, setMinPE] = useState<number | "">("")
+  const [maxPE, setMaxPE] = useState<number | "">("")
+  const [minRelativePE, setMinRelativePE] = useState<number | "">("")
+  const [maxRelativePE, setMaxRelativePE] = useState<number | "">("")
+  const [minMarketCap, setMinMarketCap] = useState<number>(0) // In Billions
+  const [maxMarketCap, setMaxMarketCap] = useState<number | "">("")
+  const [minPrice, setMinPrice] = useState<number | "">("")
+  const [maxPrice, setMaxPrice] = useState<number | "">("")
 
   useEffect(() => {
     async function loadData() {
@@ -249,7 +259,28 @@ export default function ScreenerPage() {
       // Industry filter
       const matchesIndustry = filterIndustry === "all" || stock.industry === filterIndustry
       
-      return matchesSearch && matchesSector && matchesIndustry
+      // P/E Ratio filter
+      const pe = typeof stock.pe_ratio === 'number' ? stock.pe_ratio : null
+      const matchesPE = (minPE === "" || pe === null || pe >= minPE) && 
+                        (maxPE === "" || pe === null || pe <= maxPE)
+      
+      // Relative P/E filter
+      const relPE = typeof stock.relative_pe === 'number' ? stock.relative_pe : null
+      const matchesRelativePE = (minRelativePE === "" || relPE === null || relPE >= minRelativePE) && 
+                                (maxRelativePE === "" || relPE === null || relPE <= maxRelativePE)
+      
+      // Market Cap filter (in billions)
+      const marketCapB = stock.market_cap ? stock.market_cap / 1_000_000_000 : 0
+      const matchesMarketCap = marketCapB >= minMarketCap && 
+                               (maxMarketCap === "" || marketCapB <= maxMarketCap)
+      
+      // Price filter
+      const price = typeof stock.price === 'number' ? stock.price : null
+      const matchesPrice = (minPrice === "" || price === null || price >= minPrice) && 
+                          (maxPrice === "" || price === null || price <= maxPrice)
+      
+      return matchesSearch && matchesSector && matchesIndustry && matchesPE && 
+             matchesRelativePE && matchesMarketCap && matchesPrice
     })
     .sort((a, b) => {
       let aVal = a[sortField]
@@ -441,45 +472,134 @@ export default function ScreenerPage() {
             {/* Search and Filter Controls */}
             <Card>
               <CardContent className="pt-6">
-                <div className="flex flex-col md:flex-row gap-4">
-                  <div className="flex-1">
-                    <Label className="flex items-center gap-2 mb-2">
-                      <Search className="h-4 w-4" />
-                      Search
-                    </Label>
-                    <Input
-                      placeholder="Search by symbol, name, sector, or industry..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
+                <div className="space-y-6">
+                  {/* Search and Basic Filters */}
+                  <div className="flex flex-col md:flex-row gap-4">
+                    <div className="flex-1">
+                      <Label className="flex items-center gap-2 mb-2">
+                        <Search className="h-4 w-4" />
+                        Search
+                      </Label>
+                      <Input
+                        placeholder="Search by symbol, name, sector, or industry..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                      />
+                    </div>
+                    <div className="w-full md:w-48">
+                      <Label className="mb-2 block">Filter by Sector</Label>
+                      <Select value={filterSector} onValueChange={setFilterSector}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="All Sectors" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Sectors</SelectItem>
+                          {uniqueSectors.map(sector => (
+                            <SelectItem key={sector} value={sector}>{sector}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="w-full md:w-48">
+                      <Label className="mb-2 block">Filter by Industry</Label>
+                      <Select value={filterIndustry} onValueChange={setFilterIndustry}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="All Industries" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Industries</SelectItem>
+                          {uniqueIndustries.map(industry => (
+                            <SelectItem key={industry} value={industry}>{industry}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div className="w-full md:w-48">
-                    <Label className="mb-2 block">Filter by Sector</Label>
-                    <Select value={filterSector} onValueChange={setFilterSector}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="All Sectors" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Sectors</SelectItem>
-                        {uniqueSectors.map(sector => (
-                          <SelectItem key={sector} value={sector}>{sector}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="w-full md:w-48">
-                    <Label className="mb-2 block">Filter by Industry</Label>
-                    <Select value={filterIndustry} onValueChange={setFilterIndustry}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="All Industries" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Industries</SelectItem>
-                        {uniqueIndustries.map(industry => (
-                          <SelectItem key={industry} value={industry}>{industry}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+
+                  {/* Valuation Filters */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                      <Label className="mb-2 block">P/E Ratio</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          placeholder="Min"
+                          value={minPE}
+                          onChange={(e) => setMinPE(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                          className="flex-1"
+                        />
+                        <Input
+                          type="number"
+                          placeholder="Max"
+                          value={maxPE}
+                          onChange={(e) => setMaxPE(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                          className="flex-1"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="mb-2 block">Relative P/E</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="Min"
+                          value={minRelativePE}
+                          onChange={(e) => setMinRelativePE(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                          className="flex-1"
+                        />
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="Max"
+                          value={maxRelativePE}
+                          onChange={(e) => setMaxRelativePE(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                          className="flex-1"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="mb-2 block">Market Cap (Billion PKR)</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="Min"
+                          value={minMarketCap}
+                          onChange={(e) => setMinMarketCap(parseFloat(e.target.value) || 0)}
+                          className="flex-1"
+                        />
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="Max"
+                          value={maxMarketCap}
+                          onChange={(e) => setMaxMarketCap(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                          className="flex-1"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="mb-2 block">Price (PKR)</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="Min"
+                          value={minPrice}
+                          onChange={(e) => setMinPrice(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                          className="flex-1"
+                        />
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="Max"
+                          value={maxPrice}
+                          onChange={(e) => setMaxPrice(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                          className="flex-1"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -537,9 +657,6 @@ export default function ScreenerPage() {
                             <SortButton field="sector_pe">Sector P/E</SortButton>
                           </TableHead>
                           <TableHead className="text-right">
-                            <SortButton field="dividend_yield">Dividend Yield (%)</SortButton>
-                          </TableHead>
-                          <TableHead className="text-right">
                             <SortButton field="market_cap">Market Cap</SortButton>
                           </TableHead>
                         </TableRow>
@@ -561,19 +678,14 @@ export default function ScreenerPage() {
                               ) : "N/A"}
                             </TableCell>
                             <TableCell className="text-right">{formatNumber(stock.sector_pe)}</TableCell>
-                            <TableCell className="text-right">
-                              {stock.dividend_yield !== null && stock.dividend_yield !== undefined ? (
-                                `${formatNumber(stock.dividend_yield)}%`
-                              ) : "N/A"}
-                            </TableCell>
                             <TableCell className="text-right">{formatCurrency(stock.market_cap)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
-                  </div>
+                          </div>
                 </CardContent>
-              </Card>
+                  </Card>
             )}
           </TabsContent>
         </Tabs>
