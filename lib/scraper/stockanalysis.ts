@@ -5,6 +5,76 @@ const HEADERS = {
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
 };
 
+/**
+ * PSX Symbols API response type
+ */
+interface PSXSymbol {
+  symbol: string;
+  name: string;
+  sectorName: string;
+  isETF: boolean;
+  isDebt: boolean;
+  isGEM: boolean;
+}
+
+/**
+ * Cache for PSX symbols data (fetched once, reused)
+ */
+let psxSymbolsCache: Map<string, string> | null = null;
+let psxSymbolsCacheTimestamp: number = 0;
+const PSX_SYMBOLS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Fetch sector name from PSX symbols API
+ * Uses caching to avoid repeated API calls
+ * @param symbol - Stock ticker symbol (e.g., 'PTC', 'HBL')
+ * @returns Sector name or null if not found
+ */
+async function fetchSectorFromPSX(symbol: string): Promise<string | null> {
+  try {
+    const normalizedSymbol = symbol.toUpperCase().trim();
+    const now = Date.now();
+    
+    // Check cache validity
+    if (psxSymbolsCache && (now - psxSymbolsCacheTimestamp) < PSX_SYMBOLS_CACHE_TTL) {
+      const cachedSector = psxSymbolsCache.get(normalizedSymbol);
+      if (cachedSector !== undefined) {
+        return cachedSector || null; // Return null if empty string was cached
+      }
+    }
+    
+    // Fetch from API
+    const response = await fetch('https://dps.psx.com.pk/symbols', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      console.error(`[PSX Symbols API] Failed to fetch: ${response.status}`);
+      return null;
+    }
+    
+    const symbols: PSXSymbol[] = await response.json();
+    
+    // Build cache map
+    psxSymbolsCache = new Map();
+    for (const sym of symbols) {
+      // Store sector name (can be empty string, which we'll treat as null)
+      psxSymbolsCache.set(sym.symbol.toUpperCase(), sym.sectorName || '');
+    }
+    psxSymbolsCacheTimestamp = now;
+    
+    // Return sector for requested symbol
+    const sector = psxSymbolsCache.get(normalizedSymbol);
+    return sector && sector.trim() ? sector.trim() : null;
+  } catch (error) {
+    console.error(`[PSX Symbols API] Error fetching sector for ${symbol}:`, error);
+    return null;
+  }
+}
+
 // Helper to parse "1.06T", "767.38B", "574.68M" into numbers
 function parseMetricValue(str: string): number | undefined {
   if (!str || str === 'n/a' || str === '-' || str === '') return undefined;
@@ -36,20 +106,25 @@ async function fetchHtml(url: string): Promise<string> {
 
 /**
  * Scrapes the Profile & Statistics pages to get Static Data (Sector, Market Cap, Float)
+ * Note: Sector is fetched from PSX API, not StockAnalysis
  */
 export async function scrapeCompanyProfile(symbol: string): Promise<CompanyProfile> {
   const baseUrl = `https://stockanalysis.com/quote/psx/${symbol}`;
   
-  // 1. Fetch Overview for Sector/Industry/Name
-  const overviewHtml = await fetchHtml(`${baseUrl}/`);
+  // 1. Fetch Overview for Industry/Name (Sector comes from PSX API)
+  // Also fetch sector from PSX API in parallel
+  const [overviewHtml, statsHtml, psxSector] = await Promise.all([
+    fetchHtml(`${baseUrl}/`),
+    fetchHtml(`${baseUrl}/statistics/`),
+    fetchSectorFromPSX(symbol)
+  ]);
   
   // Extract Name
   const nameMatch = overviewHtml.match(/<h1[^>]*>([^<]+)\s*\(PSX:/i);
   const name = nameMatch ? nameMatch[1].trim() : symbol;
   
-  // Extract Sector & Industry from div structure
+  // Extract Industry from div structure (Sector comes from PSX API)
   // Structure: <span class="block font-semibold">Industry</span> <!--[!--><span>Oil &amp; Gas</span>
-  // Or: <span class="block font-semibold">Sector</span> <!--[--><a href="/stocks/sector/energy/">Energy</a>
   const getDivValue = (label: string): string | undefined => {
     // Find the label, then find the next span with the value
     const labelIndex = overviewHtml.indexOf(`${label}</span>`);
@@ -68,26 +143,10 @@ export async function scrapeCompanyProfile(symbol: string): Promise<CompanyProfi
   // Extract Industry (plain text in span)
   let industry = getDivValue('Industry');
   
-  // Extract Sector (from link, with fallback to div structure)
-  let sector: string | undefined;
-  const sectorLabelIndex = overviewHtml.indexOf('Sector</span>');
-  if (sectorLabelIndex !== -1) {
-    const afterSectorLabel = overviewHtml.substring(sectorLabelIndex);
-    const sectorLinkMatch = afterSectorLabel.match(/href="\/stocks\/sector\/[^"]+"[^>]*>([^<]+)<\/a>/);
-    if (sectorLinkMatch) {
-      sector = sectorLinkMatch[1].trim();
-    }
-  }
+  // Sector comes from PSX API, not StockAnalysis
+  const sector = psxSector || 'Unknown';
   
-  // Fallback: try direct link match anywhere in the HTML
-  if (!sector) {
-    const directLinkMatch = overviewHtml.match(/href="\/stocks\/sector\/[^"]+"[^>]*>([^<]+)<\/a>/);
-    sector = directLinkMatch ? directLinkMatch[1] : undefined;
-  }
-  
-  // 2. Fetch Statistics for Float & Shares
-  const statsHtml = await fetchHtml(`${baseUrl}/statistics/`);
-  
+  // 2. Parse Statistics for Float & Shares
   const getStat = (label: string) => {
     // Find the label, then find the NEXT td cell (not the one containing the label)
     const labelIndex = statsHtml.indexOf(`>${label}<`);
@@ -105,7 +164,7 @@ export async function scrapeCompanyProfile(symbol: string): Promise<CompanyProfi
   return {
     symbol,
     name,
-    sector: sector || 'Unknown',
+    sector,
     industry: industry || 'Unknown',
     marketCap: getStat('Market Cap'),
     sharesOutstanding: getStat('Shares Outstanding'),

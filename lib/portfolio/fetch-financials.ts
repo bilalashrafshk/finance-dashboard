@@ -13,6 +13,76 @@ const FETCH_HEADERS = {
   'Pragma': 'no-cache'
 };
 
+/**
+ * PSX Symbols API response type
+ */
+interface PSXSymbol {
+  symbol: string;
+  name: string;
+  sectorName: string;
+  isETF: boolean;
+  isDebt: boolean;
+  isGEM: boolean;
+}
+
+/**
+ * Cache for PSX symbols data (fetched once, reused)
+ */
+let psxSymbolsCache: Map<string, string> | null = null;
+let psxSymbolsCacheTimestamp: number = 0;
+const PSX_SYMBOLS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Fetch sector name from PSX symbols API
+ * Uses caching to avoid repeated API calls
+ * @param symbol - Stock ticker symbol (e.g., 'PTC', 'HBL')
+ * @returns Sector name or null if not found
+ */
+async function fetchSectorFromPSX(symbol: string): Promise<string | null> {
+  try {
+    const normalizedSymbol = symbol.toUpperCase().trim();
+    const now = Date.now();
+    
+    // Check cache validity
+    if (psxSymbolsCache && (now - psxSymbolsCacheTimestamp) < PSX_SYMBOLS_CACHE_TTL) {
+      const cachedSector = psxSymbolsCache.get(normalizedSymbol);
+      if (cachedSector !== undefined) {
+        return cachedSector || null; // Return null if empty string was cached
+      }
+    }
+    
+    // Fetch from API
+    const response = await fetch('https://dps.psx.com.pk/symbols', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      console.error(`[PSX Symbols API] Failed to fetch: ${response.status}`);
+      return null;
+    }
+    
+    const symbols: PSXSymbol[] = await response.json();
+    
+    // Build cache map
+    psxSymbolsCache = new Map();
+    for (const sym of symbols) {
+      // Store sector name (can be empty string, which we'll treat as null)
+      psxSymbolsCache.set(sym.symbol.toUpperCase(), sym.sectorName || '');
+    }
+    psxSymbolsCacheTimestamp = now;
+    
+    // Return sector for requested symbol
+    const sector = psxSymbolsCache.get(normalizedSymbol);
+    return sector && sector.trim() ? sector.trim() : null;
+  } catch (error) {
+    console.error(`[PSX Symbols API] Error fetching sector for ${symbol}:`, error);
+    return null;
+  }
+}
+
 // Map of our DB columns to the text labels found on StockAnalysis.com
 const METRIC_MAPPING: Record<string, string[]> = {
   // INCOME STATEMENT
@@ -312,21 +382,23 @@ export async function updateFinancials(symbol: string, assetType: string = 'pk-e
 async function updateCompanyProfile(symbol: string, assetType: string) {
     const baseUrl = `https://stockanalysis.com/quote/psx/${symbol}`;
     
-    // We need the Profile page (Sector/Industry) and Statistics page (Float/Shares)
+    // We need the Profile page (Industry) and Statistics page (Float/Shares)
+    // Sector is fetched from PSX API, not StockAnalysis
     // Also fetch Face Value from SCSTrade
-    const [profileHtml, statsHtml, faceValue] = await Promise.all([
+    const [profileHtml, statsHtml, faceValue, psxSector] = await Promise.all([
         fetchHtml(`${baseUrl}/profile/`),
         fetchHtml(`${baseUrl}/statistics/`),
-        fetchFaceValue(symbol)
+        fetchFaceValue(symbol),
+        assetType === 'pk-equity' ? fetchSectorFromPSX(symbol) : Promise.resolve(null)
     ]);
 
     // Parse Profile
-    // Look for "Sector: <a ...>Energy</a>"
-    const sectorMatch = profileHtml.match(/Sector:[\s\S]*?>([^<]+)</);
+    // Industry still comes from StockAnalysis
     const industryMatch = profileHtml.match(/Industry:[\s\S]*?>([^<]+)</);
     const descMatch = profileHtml.match(/<meta name="description" content="([^"]+)"/);
 
-    const sector = sectorMatch ? sectorMatch[1] : null;
+    // Sector from PSX API (for PK equity), otherwise null
+    const sector = assetType === 'pk-equity' ? psxSector : null;
     const industry = industryMatch ? industryMatch[1] : null;
     const description = descMatch ? descMatch[1] : null;
 
