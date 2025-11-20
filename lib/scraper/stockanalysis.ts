@@ -123,46 +123,36 @@ export async function scrapeFinancials(symbol: string, period: 'quarterly' | 'an
   const statements: Record<string, Partial<FinancialStatement>> = {};
   
   // Helper to extract dates from thead (first row with date IDs)
-  const extractDatesFromHeader = (html: string): { dates: string[], ttmOffset: number } => {
+  // Returns dates in the order they appear in the header, along with column indices
+  const extractDatesFromHeader = (html: string): { dates: string[], dateColumnIndices: number[], ttmOffset: number } => {
     const dates: string[] = [];
+    const dateColumnIndices: number[] = [];
     let ttmOffset = 0;
     
     // Find thead section
     const theadMatch = html.match(/<thead>([\s\S]*?)<\/thead>/);
-    if (!theadMatch) return { dates, ttmOffset };
+    if (!theadMatch) return { dates, dateColumnIndices, ttmOffset };
     
     // Find first <tr> in thead (Fiscal Quarter/Fiscal Year row)
     const firstRowMatch = theadMatch[0].match(/<tr[^>]*>([\s\S]*?)<\/tr>/);
-    if (!firstRowMatch) return { dates, ttmOffset };
+    if (!firstRowMatch) return { dates, dateColumnIndices, ttmOffset };
     
     // Extract all <th> elements from first row
     const allThMatches = firstRowMatch[0].match(/<th[^>]*>([\s\S]*?)<\/th>/g);
-    if (!allThMatches) return { dates, ttmOffset };
+    if (!allThMatches) return { dates, dateColumnIndices, ttmOffset };
     
-    // Extract all <th> elements with id="YYYY-MM-DD" from first row (these are the actual date columns)
-    const thMatches = firstRowMatch[0].match(/<th[^>]*id="(\d{4}-\d{2}-\d{2})"[^>]*>/g);
-    if (thMatches) {
-      thMatches.forEach(m => {
-        const dateMatch = m.match(/id="(\d{4}-\d{2}-\d{2})"/);
-        if (dateMatch) dates.push(dateMatch[1]);
-      });
-    }
+    // Iterate through all <th> elements and find which ones have date IDs
+    // This ensures we map data cells to dates correctly based on column position
+    allThMatches.forEach((th, index) => {
+      const dateMatch = th.match(/id="(\d{4}-\d{2}-\d{2})"/);
+      if (dateMatch) {
+        dates.push(dateMatch[1]);
+        dateColumnIndices.push(index); // Store the column index where this date appears
+      }
+    });
     
-    // Calculate TTM offset by comparing total columns vs date columns
-    // Total columns = allThMatches.length (includes label + TTM if present + dates)
-    // Date columns = dates.length
-    // Label column = 1 (always present)
-    // So: allThMatches.length = 1 (label) + ttmOffset + dates.length
-    // Therefore: ttmOffset = allThMatches.length - 1 - dates.length
-    
-    const totalColumns = allThMatches.length;
-    const dateColumns = dates.length;
-    const labelColumn = 1;
-    
-    // Calculate expected offset
-    const calculatedOffset = totalColumns - labelColumn - dateColumns;
-    
-    // Verify by checking the second column (after label)
+    // Calculate TTM offset by checking if second column (index 1) has a date ID
+    // If not, it's likely a TTM or "+X Quarters" column
     if (allThMatches.length > 1) {
       const firstTh = allThMatches[0];
       const secondTh = allThMatches[1];
@@ -180,27 +170,21 @@ export async function scrapeFinancials(symbol: string, period: 'quarterly' | 'an
           if (secondThText.includes('ttm') || secondThText.includes('+') || 
               (secondThText.includes('quarter') && !secondThText.match(/\d{4}/))) {
             ttmOffset = 1;
-          } else {
-            // Use calculated offset if it makes sense
-            ttmOffset = calculatedOffset > 0 ? calculatedOffset : 0;
           }
         } else {
           // Second column has date ID, so no TTM column
           ttmOffset = 0;
         }
-      } else {
-        // First column might not be label, use calculated offset
-        ttmOffset = calculatedOffset > 0 ? calculatedOffset : 0;
       }
     }
     
-    return { dates, ttmOffset };
+    return { dates, dateColumnIndices, ttmOffset };
   };
   
   // Helper to process a page and extract rows
   const processPage = (html: string, type: 'income' | 'balance' | 'cashflow') => {
     // 1. Extract Dates (Columns) from Header and TTM offset
-    const { dates, ttmOffset: headerTtmOffset } = extractDatesFromHeader(html);
+    const { dates, dateColumnIndices, ttmOffset: headerTtmOffset } = extractDatesFromHeader(html);
     
     if (dates.length === 0) return;
     
@@ -289,36 +273,59 @@ export async function scrapeFinancials(symbol: string, period: 'quarterly' | 'an
          // Extract all <td> cells from this row
          const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/g);
          if (cells && cells.length > 1) {
-           // Check if first cell contains the label (to determine if we need to skip it)
-           // In StockAnalysis tables, the first cell is ALWAYS the label/header for the row.
-           // We should always skip it.
-           const dataStartIndex = 1;
+           // In StockAnalysis tables, the first cell (index 0) is ALWAYS the label/header for the row.
+           // Data cells start at index 1.
+           // We need to map data cells to dates based on the dateColumnIndices from the header.
+           // dateColumnIndices tells us which column indices in the header contain dates.
+           // Since data rows have the same structure as the header, we can use the same indices.
            
-          // Use the TTM offset detected from header
-          let ttmOffset = headerTtmOffset;
-          
-          // Verify offset by checking if we have the right number of data cells
-          // Only adjust if we didn't find a definitive TTM column in the header
-          // (If we found a date ID in column 2, ttmOffset is definitely 0)
-          // Also, assume extra cells are at the end (e.g. "Upgrade" column), not the start
-          // So we only recalculate if we have FEWER cells than expected, not more
-          
-          // Map cells to dates (skip label cell + TTM offset)
-          const dataCells = cells.slice(dataStartIndex + ttmOffset);
-          dataCells.forEach((cell, i) => {
-             if (i < dates.length && statements[dates[i]]) {
+           // Map each date to its corresponding data cell
+           // dateColumnIndices[i] tells us the header column index for dates[i]
+           // In the data row, cells[dateColumnIndices[i]] contains the value for dates[i]
+           // But we need to account for the label column in data rows (index 0)
+           // So: if header column index is N, data cell index is also N (both skip label at 0)
+           
+           dates.forEach((date, dateIndex) => {
+             // Get the header column index where this date appears
+             const headerColumnIndex = dateColumnIndices[dateIndex];
+             
+             // The corresponding data cell is at the same index (both header and data rows have label at index 0)
+             const dataCellIndex = headerColumnIndex;
+             
+             if (dataCellIndex < cells.length && statements[date]) {
+               const cell = cells[dataCellIndex];
                const valStr = cell.replace(/<[^>]+>/g, '').trim();
-               // Skip "Upgrade" text or empty cells
-               if (valStr.toLowerCase().includes('upgrade') || valStr === '-' || valStr === '') return;
                
-               // Parse value
-               const cleanStr = valStr.replace(/,/g, '').trim();
-               const numVal = parseFloat(cleanStr);
+               // Skip "Upgrade" text, empty cells, or non-numeric values
+               if (valStr.toLowerCase().includes('upgrade') || valStr === '-' || valStr === '' || valStr === 'n/a') {
+                 return;
+               }
+               
+               // Parse value (remove commas, handle B/M/T suffixes if present)
+               let cleanStr = valStr.replace(/,/g, '').trim();
+               
+               // Handle B/M/T suffixes (though StockAnalysis usually shows raw numbers)
+               let numVal = parseFloat(cleanStr);
+               if (isNaN(numVal)) {
+                 // Try parsing with suffix
+                 const lastChar = cleanStr.slice(-1).toUpperCase();
+                 const numPart = parseFloat(cleanStr.slice(0, -1));
+                 if (!isNaN(numPart)) {
+                   switch (lastChar) {
+                     case 'T': numVal = numPart * 1e12; break;
+                     case 'B': numVal = numPart * 1e9; break;
+                     case 'M': numVal = numPart * 1e6; break;
+                     case 'K': numVal = numPart * 1e3; break;
+                     default: numVal = NaN;
+                   }
+                 }
+               }
+               
                if (!isNaN(numVal)) {
                  // Apply multiplier (default 1e6 for millions, 1 for per-share/ratios)
                  const val = numVal * multiplier;
                  // @ts-ignore
-                 statements[dates[i]][key] = val;
+                 statements[date][key] = val;
                  foundAny = true;
                }
              }
