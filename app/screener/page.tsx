@@ -213,7 +213,14 @@ export default function ScreenerPage() {
         },
       })
 
-      const data = await response.json()
+      let data
+      try {
+        data = await response.json()
+      } catch (jsonError) {
+        // If response is not JSON, get text instead
+        const text = await response.text()
+        throw new Error(text || 'Failed to add KSE100 stocks')
+      }
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to add KSE100 stocks')
@@ -252,7 +259,14 @@ export default function ScreenerPage() {
         },
       })
 
-      const data = await response.json()
+      let data
+      try {
+        data = await response.json()
+      } catch (jsonError) {
+        // If response is not JSON, get text instead
+        const text = await response.text()
+        throw new Error(text || 'Failed to add all PSX stocks')
+      }
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to add all PSX stocks')
