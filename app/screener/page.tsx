@@ -213,11 +213,14 @@ export default function ScreenerPage() {
         },
       })
 
+      // Check content type before parsing
+      const contentType = response.headers.get('content-type')
       let data
-      try {
+      
+      if (contentType && contentType.includes('application/json')) {
         data = await response.json()
-      } catch (jsonError) {
-        // If response is not JSON, get text instead
+      } else {
+        // If not JSON, read as text
         const text = await response.text()
         throw new Error(text || 'Failed to add KSE100 stocks')
       }
@@ -259,11 +262,14 @@ export default function ScreenerPage() {
         },
       })
 
+      // Check content type before parsing
+      const contentType = response.headers.get('content-type')
       let data
-      try {
+      
+      if (contentType && contentType.includes('application/json')) {
         data = await response.json()
-      } catch (jsonError) {
-        // If response is not JSON, get text instead
+      } else {
+        // If not JSON, read as text
         const text = await response.text()
         throw new Error(text || 'Failed to add all PSX stocks')
       }
