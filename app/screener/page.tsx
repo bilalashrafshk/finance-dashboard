@@ -517,88 +517,117 @@ export default function ScreenerPage() {
                   </div>
 
                   {/* Valuation Filters */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div>
-                      <Label className="mb-2 block">P/E Ratio</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          type="number"
-                          placeholder="Min"
-                          value={minPE}
-                          onChange={(e) => setMinPE(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                          className="flex-1"
-                        />
-                        <Input
-                          type="number"
-                          placeholder="Max"
-                          value={maxPE}
-                          onChange={(e) => setMaxPE(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                          className="flex-1"
-                        />
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div>
+                        <Label className="mb-2 block">P/E Ratio</Label>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground w-12">Min:</span>
+                            <Input
+                              type="number"
+                              placeholder="More than..."
+                              value={minPE}
+                              onChange={(e) => setMinPE(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                              className="flex-1"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground w-12">Max:</span>
+                            <Input
+                              type="number"
+                              placeholder="Less than..."
+                              value={maxPE}
+                              onChange={(e) => setMaxPE(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                              className="flex-1"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="mb-2 block">Relative P/E</Label>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground w-12">Min:</span>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              placeholder="More than..."
+                              value={minRelativePE}
+                              onChange={(e) => setMinRelativePE(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                              className="flex-1"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground w-12">Max:</span>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              placeholder="Less than..."
+                              value={maxRelativePE}
+                              onChange={(e) => setMaxRelativePE(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                              className="flex-1"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="mb-2 block">Market Cap (Billion PKR)</Label>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground w-12">Min:</span>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              placeholder="More than..."
+                              value={minMarketCap}
+                              onChange={(e) => setMinMarketCap(parseFloat(e.target.value) || 0)}
+                              className="flex-1"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground w-12">Max:</span>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              placeholder="Less than..."
+                              value={maxMarketCap}
+                              onChange={(e) => setMaxMarketCap(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                              className="flex-1"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="mb-2 block">Price (PKR)</Label>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground w-12">Min:</span>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              placeholder="More than..."
+                              value={minPrice}
+                              onChange={(e) => setMinPrice(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                              className="flex-1"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground w-12">Max:</span>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              placeholder="Less than..."
+                              value={maxPrice}
+                              onChange={(e) => setMaxPrice(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                              className="flex-1"
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
-                    <div>
-                      <Label className="mb-2 block">Relative P/E</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          type="number"
-                          step="0.1"
-                          placeholder="Min"
-                          value={minRelativePE}
-                          onChange={(e) => setMinRelativePE(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                          className="flex-1"
-                        />
-                        <Input
-                          type="number"
-                          step="0.1"
-                          placeholder="Max"
-                          value={maxRelativePE}
-                          onChange={(e) => setMaxRelativePE(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                          className="flex-1"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="mb-2 block">Market Cap (Billion PKR)</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          type="number"
-                          step="0.1"
-                          placeholder="Min"
-                          value={minMarketCap}
-                          onChange={(e) => setMinMarketCap(parseFloat(e.target.value) || 0)}
-                          className="flex-1"
-                        />
-                        <Input
-                          type="number"
-                          step="0.1"
-                          placeholder="Max"
-                          value={maxMarketCap}
-                          onChange={(e) => setMaxMarketCap(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                          className="flex-1"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="mb-2 block">Price (PKR)</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="Min"
-                          value={minPrice}
-                          onChange={(e) => setMinPrice(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                          className="flex-1"
-                        />
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="Max"
-                          value={maxPrice}
-                          onChange={(e) => setMaxPrice(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                          className="flex-1"
-                        />
-                      </div>
+                    <div className="text-xs text-muted-foreground">
+                      💡 Tip: Leave Min empty for "less than" filter, or leave Max empty for "more than" filter
                     </div>
                   </div>
                 </div>
