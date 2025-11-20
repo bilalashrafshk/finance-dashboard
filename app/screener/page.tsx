@@ -24,8 +24,8 @@ export default function ScreenerPage() {
   const [loading, setLoading] = useState(true)
   const [groupBy, setGroupBy] = useState<'sector' | 'industry'>('sector')
   
-  // Filters
-  const [minMarketCap, setMinMarketCap] = useState(0) // In Billions
+  // Filters for chart view
+  const [minMarketCapChart, setMinMarketCapChart] = useState(0) // In Billions
   const [sectorFilter, setSectorFilter] = useState<string>("")
   
   // All stocks with price data (PK equities only)
@@ -60,7 +60,7 @@ export default function ScreenerPage() {
   const [filterSector, setFilterSector] = useState<string>("all")
   const [filterIndustry, setFilterIndustry] = useState<string>("all")
   
-  // Traditional screener filters
+  // Traditional screener filters for stocks list
   const [minPE, setMinPE] = useState<number | "">("")
   const [maxPE, setMaxPE] = useState<number | "">("")
   const [minRelativePE, setMinRelativePE] = useState<number | "">("")
@@ -235,7 +235,7 @@ export default function ScreenerPage() {
       const groupName = groupBy === 'industry' ? (m.industry || m.sector) : m.sector
       const matchesGroup = sectorFilter ? groupName?.toLowerCase().includes(sectorFilter.toLowerCase()) : true
       // Assuming market_cap stored in raw rupees. 1 Billion = 1,000,000,000
-      const matchesCap = (m.market_cap || 0) >= (minMarketCap * 1_000_000_000)
+      const matchesCap = (m.market_cap || 0) >= (minMarketCapChart * 1_000_000_000)
       return matchesGroup && matchesCap
   })
 
@@ -397,13 +397,13 @@ export default function ScreenerPage() {
                             </div>
                             
                             <div className="space-y-4 w-full md:w-64">
-                                <Label>Min Market Cap: {minMarketCap} Billion PKR</Label>
+                                <Label>Min Market Cap: {minMarketCapChart} Billion PKR</Label>
                                 <Slider 
                                     min={0} 
                                     max={100} 
                                     step={1} 
-                                    value={[minMarketCap]} 
-                                    onValueChange={(v) => setMinMarketCap(v[0])} 
+                                    value={[minMarketCapChart]} 
+                                    onValueChange={(v) => setMinMarketCapChart(v[0])} 
                                 />
                             </div>
                         </div>
