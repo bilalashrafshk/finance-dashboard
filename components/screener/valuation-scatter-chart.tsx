@@ -238,15 +238,15 @@ export function ValuationScatterChart({ data, groupBy = 'sector' }: ValuationSca
                   label={{ position: 'insideTopRight', value: 'Fair Value', fill: axisColor, fontSize: 11 }}
                 />
                 
-                {/* Render all scatter points in a single Scatter, sorted by market cap (ascending) */}
+                {/* Render all scatter points in a single Scatter, sorted by market cap (descending) */}
                 {/* This ensures smaller bubbles render on top and are hoverable even when inside larger ones */}
                 <Scatter 
                   name="Stocks" 
-                  data={[...filteredData].sort((a, b) => (a.market_cap || 0) - (b.market_cap || 0))}
+                  data={[...filteredData].sort((a, b) => (b.market_cap || 0) - (a.market_cap || 0))}
                   fill="#8884d8"
                 >
                   {[...filteredData]
-                    .sort((a, b) => (a.market_cap || 0) - (b.market_cap || 0))
+                    .sort((a, b) => (b.market_cap || 0) - (a.market_cap || 0))
                     .map((entry, index) => {
                       const groupColor = colorMap.get(entry.group_name) || COLORS[0]
                       return (

@@ -403,6 +403,7 @@ export function AssetFinancialsView({ symbol, assetType }: AssetFinancialsViewPr
                                 { k: 'long_term_deferred_tax_liabilities', l: 'Long-Term Deferred Tax Liabilities' },
                                 { k: 'other_long_term_liabilities', l: 'Other Long-Term Liabilities' },
                                 { k: 'total_liabilities', l: 'Total Liabilities', bold: true },
+                                { k: 'total_debt', l: 'Total Debt', bold: true },
                                 // Equity
                                 { k: 'retained_earnings', l: 'Retained Earnings' },
                                 { k: 'total_equity', l: 'Total Equity', bold: true },
