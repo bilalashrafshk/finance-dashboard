@@ -19,6 +19,7 @@ import { SeasonalityTable } from "./seasonality-table"
 import { AssetPriceChart } from "./asset-price-chart"
 import { DividendTable } from "./dividend-table"
 import { AssetFinancialsView } from "./asset-financials-view"
+import { HistoricPEChart } from "./historic-pe-chart"
 
 interface AssetDetailViewProps {
   asset: TrackedAsset
@@ -455,6 +456,8 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
 
       <TabsContent value="prices" className="space-y-4">
         <AssetPriceChart asset={asset} />
+        
+        <HistoricPEChart asset={asset} />
         
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Risk Metrics</h3>
