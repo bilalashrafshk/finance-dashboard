@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { SharedNavbar } from "@/components/shared-navbar"
 import { ValuationScatterChart } from "@/components/screener/valuation-scatter-chart"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Loader2, Filter, Plus, AlertCircle } from "lucide-react"
+import { Loader2, Filter, Plus, AlertCircle, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
@@ -15,6 +15,8 @@ import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/lib/auth/auth-context"
 import { AddAssetDialog, type TrackedAsset } from "@/components/asset-screener/add-asset-dialog"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default function ScreenerPage() {
   const { user, loading: authLoading } = useAuth()
@@ -33,12 +35,30 @@ export default function ScreenerPage() {
     sector: string
     industry: string
   }
+  interface StockWithMetrics extends StockInfo {
+    price?: number
+    pe_ratio?: number
+    sector_pe?: number
+    relative_pe?: number
+    industry_pe?: number
+    relative_pe_industry?: number
+    dividend_yield?: number
+    market_cap?: number
+  }
   const [allStocks, setAllStocks] = useState<StockInfo[]>([])
+  const [stocksWithMetrics, setStocksWithMetrics] = useState<StockWithMetrics[]>([])
   const [loadingStocks, setLoadingStocks] = useState(true)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [addingKSE100, setAddingKSE100] = useState(false)
   const [kse100Error, setKse100Error] = useState<string | null>(null)
   const [kse100Success, setKse100Success] = useState<string | null>(null)
+  
+  // Search, Sort, Filter states for stocks list
+  const [searchQuery, setSearchQuery] = useState("")
+  const [sortField, setSortField] = useState<keyof StockWithMetrics>("symbol")
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
+  const [filterSector, setFilterSector] = useState<string>("all")
+  const [filterIndustry, setFilterIndustry] = useState<string>("all")
 
   useEffect(() => {
     async function loadData() {
@@ -60,6 +80,23 @@ export default function ScreenerPage() {
   useEffect(() => {
     loadAllStocks()
   }, [])
+
+  // Merge stocks with metrics when both are loaded
+  useEffect(() => {
+    if (allStocks.length > 0 && metrics.length > 0) {
+      const merged = allStocks.map(stock => {
+        const metric = metrics.find(m => m.symbol === stock.symbol)
+        return {
+          ...stock,
+          ...metric
+        } as StockWithMetrics
+      })
+      setStocksWithMetrics(merged)
+    } else if (allStocks.length > 0) {
+      // If metrics not loaded yet, just use stocks
+      setStocksWithMetrics(allStocks.map(s => ({ ...s } as StockWithMetrics)))
+    }
+  }, [allStocks, metrics])
 
   const loadAllStocks = async () => {
     try {
@@ -172,6 +209,91 @@ export default function ScreenerPage() {
       return matchesGroup && matchesCap
   })
 
+  // Get unique sectors and industries for filters
+  const uniqueSectors = Array.from(new Set(allStocks.map(s => s.sector).filter(Boolean))).sort()
+  const uniqueIndustries = Array.from(new Set(allStocks.map(s => s.industry).filter(Boolean))).sort()
+
+  // Filter and sort stocks
+  const filteredAndSortedStocks = stocksWithMetrics
+    .filter(stock => {
+      // Search filter
+      const matchesSearch = searchQuery === "" || 
+        stock.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        stock.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        stock.sector.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (stock.industry && stock.industry.toLowerCase().includes(searchQuery.toLowerCase()))
+      
+      // Sector filter
+      const matchesSector = filterSector === "all" || stock.sector === filterSector
+      
+      // Industry filter
+      const matchesIndustry = filterIndustry === "all" || stock.industry === filterIndustry
+      
+      return matchesSearch && matchesSector && matchesIndustry
+    })
+    .sort((a, b) => {
+      let aVal = a[sortField]
+      let bVal = b[sortField]
+      
+      // Handle null/undefined values
+      if (aVal === null || aVal === undefined) aVal = sortDirection === "asc" ? Infinity : -Infinity
+      if (bVal === null || bVal === undefined) bVal = sortDirection === "asc" ? Infinity : -Infinity
+      
+      // Handle string comparison
+      if (typeof aVal === "string" && typeof bVal === "string") {
+        return sortDirection === "asc" 
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal)
+      }
+      
+      // Handle number comparison
+      if (typeof aVal === "number" && typeof bVal === "number") {
+        return sortDirection === "asc" ? aVal - bVal : bVal - aVal
+      }
+      
+      return 0
+    })
+
+  const handleSort = (field: keyof StockWithMetrics) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
+    } else {
+      setSortField(field)
+      setSortDirection("asc")
+    }
+  }
+
+  const formatCurrency = (value: number | null | undefined) => {
+    if (value === null || value === undefined) return "N/A"
+    if (value >= 1_000_000_000) {
+      return `PKR ${(value / 1_000_000_000).toFixed(2)}B`
+    } else if (value >= 1_000_000) {
+      return `PKR ${(value / 1_000_000).toFixed(2)}M`
+    } else if (value >= 1_000) {
+      return `PKR ${(value / 1_000).toFixed(2)}K`
+    }
+    return `PKR ${value.toFixed(2)}`
+  }
+
+  const formatNumber = (value: number | null | undefined, decimals: number = 2) => {
+    if (value === null || value === undefined) return "N/A"
+    return value.toFixed(decimals)
+  }
+
+  const SortButton = ({ field, children }: { field: keyof StockWithMetrics, children: React.ReactNode }) => (
+    <button
+      onClick={() => handleSort(field)}
+      className="flex items-center gap-1 hover:text-foreground transition-colors"
+    >
+      {children}
+      {sortField === field ? (
+        sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+      ) : (
+        <ArrowUpDown className="h-3 w-3 opacity-50" />
+      )}
+    </button>
+  )
+
   return (
     <div className="min-h-screen bg-background">
       <SharedNavbar />
@@ -250,7 +372,7 @@ export default function ScreenerPage() {
               <div>
                 <h2 className="text-2xl font-semibold">All PK Equities</h2>
                 <p className="text-muted-foreground text-sm mt-1">
-                  All stocks with price data in the database ({allStocks.length} stocks)
+                  Showing {filteredAndSortedStocks.length} of {allStocks.length} stocks
                 </p>
               </div>
               {user && (
@@ -292,7 +414,54 @@ export default function ScreenerPage() {
               </Alert>
             )}
 
-            {loadingStocks ? (
+            {/* Search and Filter Controls */}
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex-1">
+                    <Label className="flex items-center gap-2 mb-2">
+                      <Search className="h-4 w-4" />
+                      Search
+                    </Label>
+                    <Input
+                      placeholder="Search by symbol, name, sector, or industry..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                  <div className="w-full md:w-48">
+                    <Label className="mb-2 block">Filter by Sector</Label>
+                    <Select value={filterSector} onValueChange={setFilterSector}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Sectors" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Sectors</SelectItem>
+                        {uniqueSectors.map(sector => (
+                          <SelectItem key={sector} value={sector}>{sector}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="w-full md:w-48">
+                    <Label className="mb-2 block">Filter by Industry</Label>
+                    <Select value={filterIndustry} onValueChange={setFilterIndustry}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Industries" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Industries</SelectItem>
+                        {uniqueIndustries.map(industry => (
+                          <SelectItem key={industry} value={industry}>{industry}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {loadingStocks || loading ? (
               <div className="flex justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
@@ -304,34 +473,83 @@ export default function ScreenerPage() {
                   </p>
                 </CardContent>
               </Card>
+            ) : filteredAndSortedStocks.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <p className="text-muted-foreground mb-4">
+                    No stocks match your search criteria.
+                  </p>
+                </CardContent>
+              </Card>
             ) : (
-              <div className="space-y-4">
-                {allStocks.map((stock) => (
-                  <Card key={stock.symbol} className="overflow-hidden hover:shadow-md transition-shadow">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <CardTitle className="text-lg">{stock.name}</CardTitle>
-                            <Badge variant="outline">PK Equity</Badge>
-                          </div>
-                          <CardDescription className="flex items-center gap-2">
-                            <span className="font-mono">{stock.symbol}</span>
-                            <span className="text-muted-foreground">•</span>
-                            <span>{stock.sector}</span>
-                            {stock.industry && stock.industry !== 'Unknown' && (
-                              <>
-                                <span className="text-muted-foreground">•</span>
-                                <span>{stock.industry}</span>
-                              </>
-                            )}
-                          </CardDescription>
-                        </div>
-                      </div>
-                    </CardHeader>
-                  </Card>
-                ))}
-              </div>
+              <Card>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>
+                            <SortButton field="symbol">Symbol</SortButton>
+                          </TableHead>
+                          <TableHead>
+                            <SortButton field="name">Name</SortButton>
+                          </TableHead>
+                          <TableHead>
+                            <SortButton field="sector">Sector</SortButton>
+                          </TableHead>
+                          <TableHead>
+                            <SortButton field="industry">Industry</SortButton>
+                          </TableHead>
+                          <TableHead className="text-right">
+                            <SortButton field="price">Price (PKR)</SortButton>
+                          </TableHead>
+                          <TableHead className="text-right">
+                            <SortButton field="pe_ratio">P/E Ratio</SortButton>
+                          </TableHead>
+                          <TableHead className="text-right">
+                            <SortButton field="relative_pe">Relative P/E</SortButton>
+                          </TableHead>
+                          <TableHead className="text-right">
+                            <SortButton field="sector_pe">Sector P/E</SortButton>
+                          </TableHead>
+                          <TableHead className="text-right">
+                            <SortButton field="dividend_yield">Dividend Yield (%)</SortButton>
+                          </TableHead>
+                          <TableHead className="text-right">
+                            <SortButton field="market_cap">Market Cap</SortButton>
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredAndSortedStocks.map((stock) => (
+                          <TableRow key={stock.symbol} className="hover:bg-muted/50">
+                            <TableCell className="font-mono font-medium">{stock.symbol}</TableCell>
+                            <TableCell>{stock.name}</TableCell>
+                            <TableCell>{stock.sector || "N/A"}</TableCell>
+                            <TableCell>{stock.industry && stock.industry !== "Unknown" ? stock.industry : "N/A"}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(stock.price)}</TableCell>
+                            <TableCell className="text-right">{formatNumber(stock.pe_ratio)}</TableCell>
+                            <TableCell className="text-right">
+                              {stock.relative_pe !== null && stock.relative_pe !== undefined ? (
+                                <span className={stock.relative_pe < 1 ? "text-green-600 dark:text-green-400 font-medium" : ""}>
+                                  {formatNumber(stock.relative_pe)}
+                                </span>
+                              ) : "N/A"}
+                            </TableCell>
+                            <TableCell className="text-right">{formatNumber(stock.sector_pe)}</TableCell>
+                            <TableCell className="text-right">
+                              {stock.dividend_yield !== null && stock.dividend_yield !== undefined ? (
+                                `${formatNumber(stock.dividend_yield)}%`
+                              ) : "N/A"}
+                            </TableCell>
+                            <TableCell className="text-right">{formatCurrency(stock.market_cap)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
             )}
           </TabsContent>
         </Tabs>
