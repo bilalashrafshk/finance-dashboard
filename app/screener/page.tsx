@@ -86,9 +86,29 @@ export default function ScreenerPage() {
     if (allStocks.length > 0 && metrics.length > 0) {
       const merged = allStocks.map(stock => {
         const metric = metrics.find(m => m.symbol === stock.symbol)
+        if (!metric) {
+          return { ...stock } as StockWithMetrics
+        }
+        // Convert string numbers to actual numbers (PostgreSQL may return strings)
+        const convertToNumber = (val: any): number | undefined => {
+          if (val === null || val === undefined) return undefined
+          if (typeof val === 'number') return isNaN(val) ? undefined : val
+          if (typeof val === 'string') {
+            const parsed = parseFloat(val)
+            return isNaN(parsed) ? undefined : parsed
+          }
+          return undefined
+        }
         return {
           ...stock,
-          ...metric
+          price: convertToNumber(metric.price),
+          pe_ratio: convertToNumber(metric.pe_ratio),
+          sector_pe: convertToNumber(metric.sector_pe),
+          relative_pe: convertToNumber(metric.relative_pe),
+          industry_pe: convertToNumber(metric.industry_pe),
+          relative_pe_industry: convertToNumber(metric.relative_pe_industry),
+          dividend_yield: convertToNumber(metric.dividend_yield),
+          market_cap: convertToNumber(metric.market_cap),
         } as StockWithMetrics
       })
       setStocksWithMetrics(merged)
@@ -263,21 +283,25 @@ export default function ScreenerPage() {
     }
   }
 
-  const formatCurrency = (value: number | null | undefined) => {
+  const formatCurrency = (value: number | string | null | undefined) => {
     if (value === null || value === undefined) return "N/A"
-    if (value >= 1_000_000_000) {
-      return `PKR ${(value / 1_000_000_000).toFixed(2)}B`
-    } else if (value >= 1_000_000) {
-      return `PKR ${(value / 1_000_000).toFixed(2)}M`
-    } else if (value >= 1_000) {
-      return `PKR ${(value / 1_000).toFixed(2)}K`
+    const numValue = typeof value === "string" ? parseFloat(value) : value
+    if (isNaN(numValue)) return "N/A"
+    if (numValue >= 1_000_000_000) {
+      return `PKR ${(numValue / 1_000_000_000).toFixed(2)}B`
+    } else if (numValue >= 1_000_000) {
+      return `PKR ${(numValue / 1_000_000).toFixed(2)}M`
+    } else if (numValue >= 1_000) {
+      return `PKR ${(numValue / 1_000).toFixed(2)}K`
     }
-    return `PKR ${value.toFixed(2)}`
+    return `PKR ${numValue.toFixed(2)}`
   }
 
-  const formatNumber = (value: number | null | undefined, decimals: number = 2) => {
+  const formatNumber = (value: number | string | null | undefined, decimals: number = 2) => {
     if (value === null || value === undefined) return "N/A"
-    return value.toFixed(decimals)
+    const numValue = typeof value === "string" ? parseFloat(value) : value
+    if (isNaN(numValue)) return "N/A"
+    return numValue.toFixed(decimals)
   }
 
   const SortButton = ({ field, children }: { field: keyof StockWithMetrics, children: React.ReactNode }) => (
@@ -530,8 +554,8 @@ export default function ScreenerPage() {
                             <TableCell className="text-right">{formatCurrency(stock.price)}</TableCell>
                             <TableCell className="text-right">{formatNumber(stock.pe_ratio)}</TableCell>
                             <TableCell className="text-right">
-                              {stock.relative_pe !== null && stock.relative_pe !== undefined ? (
-                                <span className={stock.relative_pe < 1 ? "text-green-600 dark:text-green-400 font-medium" : ""}>
+                              {stock.relative_pe !== null && stock.relative_pe !== undefined && !isNaN(stock.relative_pe) ? (
+                                <span className={typeof stock.relative_pe === 'number' && stock.relative_pe < 1 ? "text-green-600 dark:text-green-400 font-medium" : ""}>
                                   {formatNumber(stock.relative_pe)}
                                 </span>
                               ) : "N/A"}
