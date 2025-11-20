@@ -52,6 +52,9 @@ export default function ScreenerPage() {
   const [addingKSE100, setAddingKSE100] = useState(false)
   const [kse100Error, setKse100Error] = useState<string | null>(null)
   const [kse100Success, setKse100Success] = useState<string | null>(null)
+  const [addingAllPSX, setAddingAllPSX] = useState(false)
+  const [allPSXError, setAllPSXError] = useState<string | null>(null)
+  const [allPSXSuccess, setAllPSXSuccess] = useState<string | null>(null)
   
   // Search, Sort, Filter states for stocks list
   const [searchQuery, setSearchQuery] = useState("")
@@ -228,6 +231,45 @@ export default function ScreenerPage() {
       setKse100Error(error.message || 'Failed to add KSE100 stocks')
     } finally {
       setAddingKSE100(false)
+    }
+  }
+
+  const handleAddAllPSX = async () => {
+    try {
+      setAddingAllPSX(true)
+      setAllPSXError(null)
+      setAllPSXSuccess(null)
+
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        throw new Error('Authentication required')
+      }
+
+      const response = await fetch('/api/screener/add-all-psx-stocks', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to add all PSX stocks')
+      }
+
+      if (data.success) {
+        setAllPSXSuccess(
+          `Successfully added ${data.added} stocks. ${data.failed > 0 ? `${data.failed} failed.` : ''} Total: ${data.total}`
+        )
+        // Reload all stocks to show newly added ones
+        await loadAllStocks()
+      }
+    } catch (error: any) {
+      console.error('Error adding all PSX stocks:', error)
+      setAllPSXError(error.message || 'Failed to add all PSX stocks')
+    } finally {
+      setAddingAllPSX(false)
     }
   }
   
@@ -435,7 +477,7 @@ export default function ScreenerPage() {
                   <Button 
                     variant="outline"
                     onClick={handleAddAllKSE100}
-                    disabled={addingKSE100}
+                    disabled={addingKSE100 || addingAllPSX}
                   >
                     {addingKSE100 ? (
                       <>
@@ -446,6 +488,23 @@ export default function ScreenerPage() {
                       <>
                         <Plus className="mr-2 h-4 w-4" />
                         Add All KSE100 Stocks
+                      </>
+                    )}
+                  </Button>
+                  <Button 
+                    variant="outline"
+                    onClick={handleAddAllPSX}
+                    disabled={addingKSE100 || addingAllPSX}
+                  >
+                    {addingAllPSX ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add All PSX Stocks
                       </>
                     )}
                   </Button>
@@ -466,6 +525,17 @@ export default function ScreenerPage() {
             {kse100Success && (
               <Alert>
                 <AlertDescription>{kse100Success}</AlertDescription>
+              </Alert>
+            )}
+            {allPSXError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{allPSXError}</AlertDescription>
+              </Alert>
+            )}
+            {allPSXSuccess && (
+              <Alert>
+                <AlertDescription>{allPSXSuccess}</AlertDescription>
               </Alert>
             )}
 
