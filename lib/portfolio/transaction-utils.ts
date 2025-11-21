@@ -48,10 +48,12 @@ export function calculateHoldingsFromTransactions(
   // Group trades by asset key (assetType:symbol:currency)
   const holdingsMap = new Map<string, CalculatedHolding>()
   
-  // Sort trades by date to process chronologically
-  const sortedTrades = [...trades].sort((a, b) => 
-    new Date(a.tradeDate).getTime() - new Date(b.tradeDate).getTime()
-  )
+  // Sort trades by date to process chronologically, then by ID to handle same-day trades in insertion order
+  const sortedTrades = [...trades].sort((a, b) => {
+    const dateDiff = new Date(a.tradeDate).getTime() - new Date(b.tradeDate).getTime()
+    if (dateDiff !== 0) return dateDiff
+    return a.id - b.id
+  })
   
   for (const trade of sortedTrades) {
     const key = `${trade.assetType}:${trade.symbol.toUpperCase()}:${trade.currency}`

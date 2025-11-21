@@ -860,12 +860,21 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     tradeType === 'buy' || (tradeType === 'sell' && priceTab === 'historical')
   )
 
+  // Validation for cash balance
+  const buyTotalAmount = quantityNum * (parseFloat(purchasePrice) || 0)
+  const hasInsufficientCash = tradeType === 'buy' && 
+                              assetType !== 'cash' && 
+                              !editingTrade && 
+                              cashBalance !== null && 
+                              cashBalance < buyTotalAmount
+
   const isFormValid = 
     symbol && 
     name && 
     quantity && 
     quantityNum > 0 &&
     !exceedsAvailable &&
+    !(hasInsufficientCash && !autoDeposit) && // Prevent submission if insufficient cash and auto-deposit not checked
     (
       (tradeType === 'buy' && purchasePrice && parseFloat(purchasePrice) > 0) || 
       (tradeType === 'add') || 
@@ -1108,9 +1117,9 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="quantity">
-                    {tradeType === 'sell' ? 'Number of Shares to Sell *' : tradeType === 'add' ? 'Amount *' : 'Quantity *'}
-                  </Label>
+                <Label htmlFor="quantity">
+                  {tradeType === 'sell' ? 'Number of Shares to Sell *' : tradeType === 'add' ? 'Amount *' : 'Quantity *'}
+                </Label>
                   {tradeType === 'buy' && cashBalance !== null && purchasePrice && parseFloat(purchasePrice) > 0 && assetType !== 'cash' && !editingTrade && (
                     <Button
                       type="button"

@@ -601,35 +601,7 @@ export function TransactionsView({
             if (editingTrade) {
               await updateTransaction(editingTrade.id, tradeData)
             } else {
-              try {
-                await addTransaction(tradeData as any)
-              } catch (error: any) {
-                // Check if it's a cash balance error
-                if (error.details?.error === 'Insufficient cash balance' && !tradeData.autoDeposit) {
-                  const shortfall = error.details.shortfall
-                  const cashBalance = error.details.cashBalance
-                  const required = error.details.required
-                  const currency = error.details.currency
-                  
-                  // Show confirmation dialog for auto-deposit
-                  const confirmed = window.confirm(
-                    `Insufficient cash balance!\n\n` +
-                    `Available: ${formatCurrency(cashBalance, currency)}\n` +
-                    `Required: ${formatCurrency(required, currency)}\n` +
-                    `Shortfall: ${formatCurrency(shortfall, currency)}\n\n` +
-                    `Would you like to auto-deposit ${formatCurrency(shortfall, currency)} to complete this purchase?`
-                  )
-                  
-                  if (confirmed) {
-                    // Retry with auto-deposit
-                    await addTransaction({ ...tradeData, autoDeposit: true } as any)
-                  } else {
-                    throw error
-                  }
-                } else {
-                  throw error
-                }
-              }
+              await addTransaction(tradeData as any)
             }
             loadTransactions()
             setIsAddTransactionOpen(false)
