@@ -69,12 +69,39 @@ export function PortfolioDashboard() {
     }
   }
 
-  const handleAddHolding = async (holdingData: Omit<Holding, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const handleAddHolding = async (holdingData: Omit<Holding, 'id' | 'createdAt' | 'updatedAt'>, autoDeposit = false) => {
     try {
       if (editingHolding) {
         await updateHolding(editingHolding.id, holdingData)
       } else {
-        await addHolding(holdingData)
+        try {
+          await addHolding({ ...holdingData, autoDeposit } as any)
+        } catch (error: any) {
+          // Check if it's a cash balance error
+          if (error.details?.error === 'Insufficient cash balance' && !autoDeposit) {
+            const shortfall = error.details.shortfall
+            const cashBalance = error.details.cashBalance
+            const required = error.details.required
+            const currency = error.details.currency
+            
+            // Show confirmation dialog for auto-deposit
+            const confirmed = window.confirm(
+              `Insufficient cash balance!\n\n` +
+              `Available: ${formatCurrency(cashBalance, currency)}\n` +
+              `Required: ${formatCurrency(required, currency)}\n` +
+              `Shortfall: ${formatCurrency(shortfall, currency)}\n\n` +
+              `Would you like to auto-deposit ${formatCurrency(shortfall, currency)} to complete this purchase?`
+            )
+            
+            if (confirmed) {
+              // Retry with auto-deposit
+              return handleAddHolding(holdingData, true)
+            } else {
+              throw error
+            }
+          }
+          throw error
+        }
         
         // Auto-add to asset screener if it's a supported asset type
         const supportedTypes: AssetType[] = ['us-equity', 'pk-equity', 'crypto', 'metals', 'kse100', 'spx500']

@@ -81,7 +81,10 @@ export async function addHolding(holding: Omit<Holding, 'id' | 'createdAt' | 'up
 
     if (!response.ok) {
       const error = await response.json()
-      throw new Error(error.error || 'Failed to add holding')
+      // Preserve error details for cash checking
+      const errorObj: any = new Error(error.error || 'Failed to add holding')
+      errorObj.details = error
+      throw errorObj
     }
 
     const data = await response.json()

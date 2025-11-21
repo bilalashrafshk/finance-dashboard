@@ -150,13 +150,30 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * Get cash balance for a specific currency from holdings
+ */
+async function getCashBalance(client: any, userId: number, currency: string): Promise<number> {
+  const cashResult = await client.query(
+    `SELECT quantity FROM user_holdings
+     WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND currency = $2`,
+    [userId, currency]
+  )
+  
+  if (cashResult.rows.length === 0) {
+    return 0
+  }
+  
+  return Math.max(0, parseFloat(cashResult.rows[0].quantity) || 0)
+}
+
 // POST - Create a new holding
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request)
     const body = await request.json()
     
-    const { assetType, symbol, name, quantity, purchasePrice, purchaseDate, currentPrice, currency, notes } = body
+    const { assetType, symbol, name, quantity, purchasePrice, purchaseDate, currentPrice, currency, notes, autoDeposit } = body
     
     if (!assetType || !symbol || !name || quantity === undefined || !purchasePrice || !purchaseDate || currentPrice === undefined) {
       return NextResponse.json(
@@ -169,6 +186,85 @@ export async function POST(request: NextRequest) {
     const client = await pool.connect()
     
     try {
+      await client.query('BEGIN')
+      
+      // For non-cash assets, check cash balance before allowing purchase
+      if (assetType !== 'cash') {
+        const assetCurrency = currency || 'USD'
+        const totalAmount = quantity * purchasePrice
+        const cashBalance = await getCashBalance(client, user.id, assetCurrency)
+        
+        if (cashBalance < totalAmount) {
+          const shortfall = totalAmount - cashBalance
+          
+          if (!autoDeposit) {
+            // Return error with shortfall amount
+            await client.query('ROLLBACK')
+            return NextResponse.json(
+              { 
+                success: false, 
+                error: 'Insufficient cash balance',
+                cashBalance,
+                required: totalAmount,
+                shortfall,
+                currency: assetCurrency
+              },
+              { status: 400 }
+            )
+          }
+          
+          // Auto-deposit: Create cash transaction for the shortfall
+          const cashHoldingResult = await client.query(
+            `SELECT id FROM user_holdings
+             WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND currency = $2`,
+            [user.id, assetCurrency]
+          )
+          
+          let cashHoldingId = cashHoldingResult.rows[0]?.id
+          
+          if (!cashHoldingId) {
+            // Create cash holding if it doesn't exist
+            const newCashResult = await client.query(
+              `INSERT INTO user_holdings 
+               (user_id, asset_type, symbol, name, quantity, purchase_price, purchase_date, current_price, currency)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+               RETURNING id`,
+              [user.id, 'cash', 'CASH', `Cash (${assetCurrency})`, shortfall, 1, purchaseDate, 1, assetCurrency]
+            )
+            cashHoldingId = newCashResult.rows[0].id
+          } else {
+            // Update existing cash holding
+            await client.query(
+              `UPDATE user_holdings 
+               SET quantity = quantity + $1, updated_at = NOW()
+               WHERE id = $2`,
+              [shortfall, cashHoldingId]
+            )
+          }
+          
+          // Record auto-deposit transaction
+          await client.query(
+            `INSERT INTO user_trades 
+             (user_id, holding_id, trade_type, asset_type, symbol, name, quantity, price, total_amount, currency, trade_date, notes)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            [
+              user.id,
+              cashHoldingId,
+              'add',
+              'cash',
+              'CASH',
+              `Cash (${assetCurrency})`,
+              shortfall,
+              1,
+              shortfall,
+              assetCurrency,
+              purchaseDate,
+              `Auto-deposit: Insufficient cash for ${symbol} purchase`
+            ]
+          )
+        }
+      }
+      
       const result = await client.query(
         `INSERT INTO user_holdings 
          (user_id, asset_type, symbol, name, quantity, purchase_price, purchase_date, current_price, currency, notes)
@@ -210,7 +306,35 @@ export async function POST(request: NextRequest) {
         console.error('Failed to record buy transaction:', tradeError)
       }
       
+      // Deduct cash for non-cash assets (after auto-deposit if needed)
+      if (assetType !== 'cash') {
+        const assetCurrency = currency || 'USD'
+        const totalAmount = quantity * purchasePrice
+        const cashHoldingResult = await client.query(
+          `SELECT id, quantity FROM user_holdings
+           WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND currency = $2`,
+          [user.id, assetCurrency]
+        )
+        
+        if (cashHoldingResult.rows.length > 0) {
+          const cashHolding = cashHoldingResult.rows[0]
+          const newCashQuantity = Math.max(0, parseFloat(cashHolding.quantity) - totalAmount)
+          
+          await client.query(
+            `UPDATE user_holdings 
+             SET quantity = $1, updated_at = NOW()
+             WHERE id = $2`,
+            [newCashQuantity, cashHolding.id]
+          )
+        }
+      }
+      
+      await client.query('COMMIT')
+      
       return NextResponse.json({ success: true, holding }, { status: 201 })
+    } catch (error: any) {
+      await client.query('ROLLBACK')
+      throw error
     } finally {
       client.release()
     }
