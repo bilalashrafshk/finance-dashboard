@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/middleware'
 import { Pool } from 'pg'
 import type { Holding } from '@/lib/portfolio/types'
+import { calculateHoldingsFromTransactions, getCurrentPrice } from '@/lib/portfolio/transaction-utils'
 
 function getPool(): Pool {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
@@ -19,7 +20,7 @@ function getPool(): Pool {
   })
 }
 
-// GET - Get all holdings for the authenticated user
+// GET - Get all holdings for the authenticated user (calculated from transactions)
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth(request)
@@ -27,29 +28,60 @@ export async function GET(request: NextRequest) {
     const client = await pool.connect()
     
     try {
-      const result = await client.query(
-        `SELECT id, asset_type, symbol, name, quantity, purchase_price, purchase_date,
-                current_price, currency, notes, created_at, updated_at
-         FROM user_holdings
+      // Get all transactions for the user
+      const tradesResult = await client.query(
+        `SELECT id, user_id, holding_id, trade_type, asset_type, symbol, name, quantity,
+                price, total_amount, currency, trade_date, notes, created_at
+         FROM user_trades
          WHERE user_id = $1
-         ORDER BY created_at DESC`,
+         ORDER BY trade_date ASC, created_at ASC`,
         [user.id]
       )
       
-      const holdings: Holding[] = result.rows.map(row => ({
-        id: row.id.toString(),
+      const trades = tradesResult.rows.map(row => ({
+        id: row.id,
+        userId: row.user_id,
+        holdingId: row.holding_id,
+        tradeType: row.trade_type,
         assetType: row.asset_type,
         symbol: row.symbol,
         name: row.name,
         quantity: parseFloat(row.quantity),
-        purchasePrice: parseFloat(row.purchase_price),
-        purchaseDate: row.purchase_date.toISOString().split('T')[0],
-        currentPrice: parseFloat(row.current_price),
+        price: parseFloat(row.price),
+        totalAmount: parseFloat(row.total_amount),
         currency: row.currency,
-        notes: row.notes || undefined,
+        tradeDate: row.trade_date.toISOString().split('T')[0],
+        notes: row.notes,
         createdAt: row.created_at.toISOString(),
-        updatedAt: row.updated_at.toISOString(),
       }))
+      
+      // Calculate holdings from transactions
+      const calculatedHoldings = calculateHoldingsFromTransactions(trades)
+      
+      // Fetch current prices for all holdings
+      const currentPrices = new Map<string, number>()
+      const pricePromises = calculatedHoldings.map(async (holding) => {
+        const priceKey = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
+        try {
+          const price = await getCurrentPrice(holding.assetType, holding.symbol, holding.currency)
+          currentPrices.set(priceKey, price)
+        } catch (error) {
+          console.error(`Error fetching price for ${priceKey}:`, error)
+          // Use average purchase price as fallback
+          currentPrices.set(priceKey, holding.purchasePrice)
+        }
+      })
+      
+      await Promise.all(pricePromises)
+      
+      // Update holdings with current prices
+      const holdings: Holding[] = calculatedHoldings.map(holding => {
+        const priceKey = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
+        return {
+          ...holding,
+          currentPrice: currentPrices.get(priceKey) || holding.purchasePrice,
+        }
+      })
       
       return NextResponse.json({ success: true, holdings })
     } finally {

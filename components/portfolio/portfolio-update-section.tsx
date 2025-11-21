@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, Trash2, Edit2, Plus } from "lucide-react"
+import { RefreshCw, Loader2, TrendingUp, TrendingDown, Minus } from "lucide-react"
 import type { Holding, AssetType } from "@/lib/portfolio/types"
 import { ASSET_TYPE_LABELS } from "@/lib/portfolio/types"
 import { formatCurrency } from "@/lib/portfolio/portfolio-utils"
@@ -15,24 +15,12 @@ import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { TransactionsView } from "./transactions-view"
-import { SellHoldingDialog } from "./sell-holding-dialog"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 
 interface PortfolioUpdateSectionProps {
   holdings: Holding[]
   onUpdate: () => void
-  onDelete?: (id: string) => void
-  onEdit?: (holding: Holding) => void
-  onSell?: (holding: Holding, quantity: number, price: number, date: string, fees?: number, notes?: string) => Promise<void>
+  // Holdings are now read-only (calculated from transactions)
+  // All modifications should be done through transactions
 }
 
 interface HoldingUpdateStatus {
@@ -46,13 +34,11 @@ interface HoldingUpdateStatus {
   originalHoldingIds?: string[] // For combined holdings, track all original IDs
 }
 
-export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit, onSell }: PortfolioUpdateSectionProps) {
+export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSectionProps) {
   const [updateStatuses, setUpdateStatuses] = useState<Map<string, HoldingUpdateStatus>>(new Map())
   const [isUpdatingAll, setIsUpdatingAll] = useState(false)
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [selectedAsset, setSelectedAsset] = useState<{ assetType: string; symbol: string; currency: string; name: string } | null>(null)
   const [activeTab, setActiveTab] = useState<'updates' | 'transactions'>('updates')
-  const [sellingHolding, setSellingHolding] = useState<Holding | null>(null)
   const isUpdatingRef = useRef(false)
   const holdingsIdsRef = useRef<string>('')
 
@@ -535,7 +521,6 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit, o
                 <TableHead className="text-right">Day Change</TableHead>
                 <TableHead className="text-right">Day Change %</TableHead>
                 <TableHead className="text-right">Day PnL</TableHead>
-                {(onDelete || onEdit) && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -624,77 +609,6 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit, o
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  {(onDelete || onEdit || onSell) && (
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        {onSell && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              // For combined holdings, use first holding for sell
-                              let holdingToSell = status.holding
-                              if (status.originalHoldingIds && status.originalHoldingIds.length > 1) {
-                                const firstHolding = holdings.find(h => h.id === status.originalHoldingIds![0])
-                                if (firstHolding) {
-                                  holdingToSell = firstHolding
-                                }
-                              }
-                              setSellingHolding(holdingToSell)
-                            }}
-                            title="Sell holding"
-                            className="hover:bg-orange-50 dark:hover:bg-orange-950/20"
-                          >
-                            <TrendingDown className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                          </Button>
-                        )}
-                        {onEdit && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              // For combined holdings, edit the first underlying holding
-                              if (status.originalHoldingIds && status.originalHoldingIds.length > 1) {
-                                // Find the first original holding
-                                const firstStatus = statusArray.find(s => s.holding.id === status.originalHoldingIds![0])
-                                if (firstStatus) {
-                                  onEdit(firstStatus.holding)
-                                }
-                              } else {
-                                onEdit(status.holding)
-                              }
-                            }}
-                            title={status.originalHoldingIds && status.originalHoldingIds.length > 1 
-                              ? "Edit holding (showing combined entry)" 
-                              : "Edit holding"}
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {onDelete && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              // For combined holdings, delete all underlying holdings
-                              if (status.originalHoldingIds && status.originalHoldingIds.length > 1) {
-                                // Store IDs to delete all at once
-                                setDeleteConfirmId(status.originalHoldingIds.join(','))
-                              } else {
-                                setDeleteConfirmId(status.holding.id)
-                              }
-                            }}
-                            title={status.originalHoldingIds && status.originalHoldingIds.length > 1 
-                              ? `Delete ${status.originalHoldingIds.length} holdings` 
-                              : "Delete holding"}
-                            className="hover:bg-red-50 dark:hover:bg-red-950/20"
-                          >
-                            <Trash2 className="h-4 w-4 text-red-600 dark:text-red-400" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  )}
                 </TableRow>
                 )
               })}
@@ -706,9 +620,6 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit, o
           <TabsContent value="transactions" className="space-y-4">
             <TransactionsView
               holdings={holdings}
-              onSell={onSell}
-              onEdit={onEdit}
-              onDelete={onDelete}
               selectedAsset={selectedAsset}
               onClearAssetFilter={() => setSelectedAsset(null)}
             />
@@ -716,55 +627,6 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit, o
         </Tabs>
       </CardContent>
 
-      <AlertDialog open={deleteConfirmId !== null} onOpenChange={() => setDeleteConfirmId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteConfirmId && deleteConfirmId.includes(',') 
-                ? `This action cannot be undone. This will permanently delete ${deleteConfirmId.split(',').length} holdings from your portfolio.`
-                : 'This action cannot be undone. This will permanently delete this holding from your portfolio.'}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (deleteConfirmId && onDelete) {
-                  // Handle multiple IDs (comma-separated) for combined holdings
-                  if (deleteConfirmId.includes(',')) {
-                    const ids = deleteConfirmId.split(',')
-                    ids.forEach(id => onDelete(id))
-                  } else {
-                    onDelete(deleteConfirmId)
-                  }
-                  setDeleteConfirmId(null)
-                }
-              }}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {onSell && (
-        <SellHoldingDialog
-          open={sellingHolding !== null}
-          onOpenChange={(open) => {
-            if (!open) {
-              setSellingHolding(null)
-            }
-          }}
-          holding={sellingHolding}
-          onSell={async (holding, quantity, price, date, fees, notes) => {
-            await onSell(holding, quantity, price, date, fees, notes)
-            setSellingHolding(null)
-            onUpdate() // Refresh holdings
-          }}
-        />
-      )}
     </Card>
   )
 }

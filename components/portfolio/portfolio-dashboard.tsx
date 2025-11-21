@@ -383,22 +383,14 @@ export function PortfolioDashboard() {
             Track and manage all your investments in one place
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={handleOpenAddDialog}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Holding
-          </Button>
-        </div>
+        {/* Add Holding button removed - use Transactions tab to add transactions */}
       </div>
 
       {/* Portfolio Update Section - Show all holdings together */}
       {holdings.length > 0 && (
         <PortfolioUpdateSection 
           holdings={holdings} 
-          onUpdate={loadHoldings} 
-          onDelete={handleDeleteHolding}
-          onEdit={handleEditHolding}
-          onSell={handleSellHolding}
+          onUpdate={loadHoldings}
         />
       )}
 

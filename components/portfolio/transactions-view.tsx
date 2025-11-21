@@ -11,8 +11,10 @@ import { formatCurrency, calculateInvested, calculateCurrentValue, calculateGain
 import { ASSET_TYPE_LABELS } from "@/lib/portfolio/types"
 import type { AssetType } from "@/lib/portfolio/types"
 import { SellHoldingDialog } from "./sell-holding-dialog"
+import { AddTransactionDialog } from "./add-transaction-dialog"
 import type { Holding } from "@/lib/portfolio/types"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { addTransaction, updateTransaction, deleteTransaction, type Trade as TradeType } from "@/lib/portfolio/portfolio-db-storage"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,6 +63,8 @@ export function TransactionsView({
   const [assetTypeFilter, setAssetTypeFilter] = useState<string>('all')
   const [sellingHolding, setSellingHolding] = useState<Holding | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [isAddTransactionOpen, setIsAddTransactionOpen] = useState(false)
+  const [editingTrade, setEditingTrade] = useState<Trade | null>(null)
 
   // Get unique currencies and asset types
   const currencies = useMemo(() => {
@@ -466,7 +470,7 @@ export function TransactionsView({
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead className="text-right">Total Amount</TableHead>
                   <TableHead>Notes</TableHead>
-                  {(onSell || onEdit || onDelete) && <TableHead className="text-right">Actions</TableHead>}
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -510,33 +514,27 @@ export function TransactionsView({
                       <TableCell className="text-sm text-muted-foreground max-w-xs truncate">
                         {trade.notes || '—'}
                       </TableCell>
-                      {(onSell || onEdit || onDelete) && (
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            {onSell && holding && trade.tradeType === 'buy' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setSellingHolding(holding)}
-                                title="Sell holding"
-                                className="hover:bg-orange-50 dark:hover:bg-orange-950/20"
-                              >
-                                <TrendingDown className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                              </Button>
-                            )}
-                            {onEdit && holding && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => onEdit(holding)}
-                                title="Edit holding"
-                              >
-                                <Edit2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      )}
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingTrade(trade)}
+                            title="Edit transaction"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeleteConfirmId(trade.id.toString())}
+                            title="Delete transaction"
+                            className="hover:bg-red-50 dark:hover:bg-red-950/20"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600 dark:text-red-400" />
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   )
                 })}
@@ -548,23 +546,27 @@ export function TransactionsView({
         )}
       </div>
 
-      {/* Sell Dialog */}
-      {onSell && (
-        <SellHoldingDialog
-          open={sellingHolding !== null}
-          onOpenChange={(open) => {
-            if (!open) {
-              setSellingHolding(null)
-            }
-          }}
-          holding={sellingHolding}
-          onSell={async (holding, quantity, price, date, fees, notes) => {
-            await onSell(holding, quantity, price, date, fees, notes)
-            setSellingHolding(null)
-            loadTransactions() // Reload transactions
-          }}
-        />
-      )}
+      {/* Add/Edit Transaction Dialog */}
+      <AddTransactionDialog
+        open={isAddTransactionOpen || editingTrade !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIsAddTransactionOpen(false)
+            setEditingTrade(null)
+          }
+        }}
+        onSave={async (tradeData) => {
+          if (editingTrade) {
+            await updateTransaction(editingTrade.id, tradeData)
+          } else {
+            await addTransaction(tradeData)
+          }
+          loadTransactions()
+          setIsAddTransactionOpen(false)
+          setEditingTrade(null)
+        }}
+        editingTrade={editingTrade}
+      />
 
       {/* Delete Confirmation */}
       <AlertDialog open={deleteConfirmId !== null} onOpenChange={() => setDeleteConfirmId(null)}>
@@ -572,15 +574,15 @@ export function TransactionsView({
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete this transaction.
+              This action cannot be undone. This will permanently delete this transaction and may affect your holdings.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                if (deleteConfirmId && onDelete) {
-                  onDelete(deleteConfirmId)
+              onClick={async () => {
+                if (deleteConfirmId) {
+                  await deleteTransaction(parseInt(deleteConfirmId))
                   setDeleteConfirmId(null)
                   loadTransactions()
                 }
