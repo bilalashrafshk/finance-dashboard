@@ -386,13 +386,11 @@ export function PortfolioDashboard() {
         {/* Add Holding button removed - use Transactions tab to add transactions */}
       </div>
 
-      {/* Portfolio Update Section - Show all holdings together */}
-      {holdings.length > 0 && (
-        <PortfolioUpdateSection 
-          holdings={holdings} 
-          onUpdate={loadHoldings}
-        />
-      )}
+      {/* Portfolio Update Section - Always show to allow adding transactions */}
+      <PortfolioUpdateSection 
+        holdings={holdings} 
+        onUpdate={loadHoldings}
+      />
 
       {/* View Mode Toggle */}
       {currencies.length > 1 && (

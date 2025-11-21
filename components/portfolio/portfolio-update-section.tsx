@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { RefreshCw, Loader2, TrendingUp, TrendingDown, Minus } from "lucide-react"
+import { RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, Plus } from "lucide-react"
 import type { Holding, AssetType } from "@/lib/portfolio/types"
 import { ASSET_TYPE_LABELS } from "@/lib/portfolio/types"
 import { formatCurrency } from "@/lib/portfolio/portfolio-utils"
@@ -510,7 +510,16 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
           </TabsList>
 
           <TabsContent value="updates" className="space-y-4">
-            <div className="overflow-x-auto">
+            {holdings.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <p className="text-muted-foreground mb-4">No holdings yet. Add your first transaction to get started!</p>
+                <Button onClick={() => setActiveTab('transactions')}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Your First Transaction
+                </Button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -615,6 +624,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
             </TableBody>
           </Table>
         </div>
+            )}
           </TabsContent>
 
           <TabsContent value="transactions" className="space-y-4">
