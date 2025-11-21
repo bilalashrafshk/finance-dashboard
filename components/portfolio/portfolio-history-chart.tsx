@@ -144,7 +144,7 @@ export function PortfolioHistoryChart({ currency = "USD" }: PortfolioHistoryProp
              )}
           </div>
           <p className="text-xs text-muted-foreground">
-             Includes Cash + Cost Basis of Assets (Realized P&L included)
+             Includes Cash + Market Value of Assets (Realized & Unrealized P&L included)
           </p>
         </div>
         <Select value={period} onValueChange={setPeriod}>

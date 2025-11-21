@@ -5,6 +5,7 @@ import { Pool } from 'pg'
 import { calculateHoldingsFromTransactions, getCurrentPrice } from '@/lib/portfolio/transaction-utils'
 import { Trade } from '@/lib/portfolio/transaction-utils'
 import { Holding } from '@/lib/portfolio/types'
+import { getHistoricalDataWithMetadata } from '@/lib/portfolio/db-client'
 
 function getPool(): Pool {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
@@ -87,46 +88,96 @@ export async function GET(request: NextRequest) {
       }
 
       // 2. Generate date range
-      const history: HistoricalValue[] = []
       const endDate = new Date()
       const startDate = new Date()
       startDate.setDate(endDate.getDate() - days)
       
       // Identify all unique assets to fetch history for
-      const uniqueAssets = new Set<string>()
+      const uniqueAssets = new Map<string, { assetType: string; symbol: string; currency: string }>()
       trades.forEach(t => {
         if (t.assetType !== 'cash') {
-          uniqueAssets.add(`${t.assetType}:${t.symbol}`)
+          const key = `${t.assetType}:${t.symbol.toUpperCase()}:${t.currency}`
+          if (!uniqueAssets.has(key)) {
+            uniqueAssets.set(key, {
+              assetType: t.assetType,
+              symbol: t.symbol.toUpperCase(),
+              currency: t.currency || 'USD'
+            })
+          }
         }
       })
       
-      // 3. Fetch historical prices (Optimization: Client-side should handle this or we do a big batch fetch here?)
-      // Doing it here is better for "Lazy Load".
-      // But fetching history for ALL assets for ALL days is heavy.
-      // We can rely on the API to give us ranges.
+      // 3. Pre-fetch historical prices for all assets in the date range
+      // This creates a map: assetKey -> date -> price for quick lookups
+      const historicalPriceMap = new Map<string, Map<string, number>>()
+      const todayStr = new Date().toISOString().split('T')[0]
       
-      // For now, to keep it simple and fast enough:
-      // We will calculate holdings for each day.
-      // For prices, we will use a simplified approach:
-      // - Use current price for today.
-      // - For past dates, we strictly need historical data.
-      // - If we don't have historical data easily, we might fallback to purchase price (inaccurate but fast) or fail.
-      // - BETTER: The frontend graph usually queries a separate endpoint for ASSET history.
-      // - Here we want PORTFOLIO history.
+      // Fetch historical prices for each unique asset
+      for (const [assetKey, asset] of uniqueAssets.entries()) {
+        try {
+          const priceMap = new Map<string, number>()
+          
+          // Get historical data for the date range
+          const historicalData = await getHistoricalDataWithMetadata(
+            asset.assetType,
+            asset.symbol,
+            startDate.toISOString().split('T')[0],
+            todayStr
+          )
+          
+          // Build a map of date -> price
+          historicalData.data.forEach(record => {
+            const price = record.adjusted_close || record.close
+            if (price && price > 0) {
+              priceMap.set(record.date, price)
+            }
+          })
+          
+          // If today's price is not in historical data, try to fetch current price
+          if (!priceMap.has(todayStr)) {
+            try {
+              const currentPrice = await getCurrentPrice(asset.assetType, asset.symbol, asset.currency)
+              if (currentPrice && currentPrice > 0) {
+                priceMap.set(todayStr, currentPrice)
+              }
+            } catch (error) {
+              console.error(`Error fetching current price for ${assetKey}:`, error)
+              // Continue without today's price
+            }
+          }
+          
+          historicalPriceMap.set(assetKey, priceMap)
+        } catch (error) {
+          console.error(`Error fetching historical prices for ${assetKey}:`, error)
+          // Continue with other assets
+        }
+      }
       
-      // Let's implement a "Transaction-based" history first (Value based on Cost Basis + Realized PnL) 
-      // + Unrealized PnL (approximate if we can't fetch all history).
-      
-      // ACTUALLY: The user wants "accounting for realised pnl".
-      // If we just plot "Net Liquid Value" (Cash + Asset Market Value), it accounts for everything.
-      
-      // To do this accurately, we need historical prices for every asset for every day in the range.
-      // That is too heavy for a synchronous API call if there are many assets.
-      // Strategy:
-      // Return the "Holdings History" (Quantity of each asset per day).
-      // Frontend fetches Historical Prices for assets separately (cached).
-      // Frontend combines Holdings * Price + Cash to draw the chart.
-      // This distributes the load.
+      // Helper function to get price for a specific date
+      // Falls back to closest earlier date, then purchase price, then 0
+      const getPriceForDate = (assetKey: string, dateStr: string, fallbackPrice: number): number => {
+        const priceMap = historicalPriceMap.get(assetKey)
+        if (!priceMap) {
+          // No historical data, use fallback (purchase price)
+          return fallbackPrice
+        }
+        
+        // Try exact date first
+        if (priceMap.has(dateStr)) {
+          return priceMap.get(dateStr)!
+        }
+        
+        // Find closest earlier date
+        const dates = Array.from(priceMap.keys()).sort().reverse()
+        for (const date of dates) {
+          if (date <= dateStr) {
+            return priceMap.get(date)!
+          }
+        }
+        
+        // No historical price found, use fallback
+        return fallbackPrice
+      }
       
       const dailyHoldings: Record<string, { date: string, cash: number, invested: number }> = {}
       
@@ -167,7 +218,7 @@ export async function GET(request: NextRequest) {
             const holdings = calculateHoldingsFromTransactions(tradesUntilDate)
             
             let cashBalance = 0
-            let investedBalance = 0
+            let bookValue = 0 // Book Value = Cash + Current Market Value (includes unrealized P&L)
             
             holdings.forEach(h => {
               try {
@@ -176,15 +227,16 @@ export async function GET(request: NextRequest) {
                   // Normalize currency comparison (PKR vs PKR, USD vs USD)
                   if (h.currency && h.currency.toUpperCase() === currency.toUpperCase()) {
                     cashBalance += h.quantity || 0
-                    investedBalance += h.quantity || 0
+                    bookValue += h.quantity || 0
                   }
                 } else {
-                  // For assets, we calculate the Cost Basis (Invested Amount)
-                  // This represents "Book Value"
-                  // We only sum up if currency matches
+                  // For assets, calculate current market value using historical price
+                  // This includes unrealized P&L
                   if (h.currency && h.currency.toUpperCase() === currency.toUpperCase()) {
-                    const costBasis = (h.purchasePrice || 0) * (h.quantity || 0)
-                    investedBalance += costBasis
+                    const assetKey = `${h.assetType}:${h.symbol.toUpperCase()}:${h.currency}`
+                    const historicalPrice = getPriceForDate(assetKey, dateStr, h.purchasePrice || 0)
+                    const marketValue = (h.quantity || 0) * historicalPrice
+                    bookValue += marketValue
                   }
                 }
               } catch (holdingError) {
@@ -196,7 +248,7 @@ export async function GET(request: NextRequest) {
             dailyHoldings[dateStr] = {
               date: dateStr,
               cash: cashBalance,
-              invested: investedBalance // This is effectively (Cash + Cost Basis of Assets)
+              invested: bookValue // Book Value = Cash + Market Value of Assets (includes unrealized P&L)
             }
           }
         } catch (dateError) {
