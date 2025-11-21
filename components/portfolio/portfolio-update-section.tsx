@@ -410,9 +410,6 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
     return <Minus className="h-3 w-3" />
   }
 
-  if (holdings.length === 0) {
-    return null
-  }
 
   const statusArray = Array.from(updateStatuses.values())
   
@@ -481,8 +478,9 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
     }
   })
 
+  // Always render the component, even with no holdings
   return (
-    <Card>
+    <Card className="w-full">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
