@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +14,8 @@ import type { AssetType } from "@/lib/portfolio/types"
 import { ASSET_TYPE_LABELS } from "@/lib/portfolio/types"
 import { formatSymbolForDisplay, parseSymbolToBinance } from "@/lib/portfolio/binance-api"
 import { formatMetalForDisplay } from "@/lib/portfolio/metals-api"
+import type { Holding } from "@/lib/portfolio/types"
+import { combineHoldingsByAsset } from "@/lib/portfolio/portfolio-utils"
 
 interface Trade {
   id: number
@@ -34,9 +36,10 @@ interface AddTransactionDialogProps {
   onOpenChange: (open: boolean) => void
   onSave: (trade: Omit<Trade, 'id'>) => Promise<void>
   editingTrade?: Trade | null
+  holdings?: Holding[] // Holdings to show when selling
 }
 
-export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade }: AddTransactionDialogProps) {
+export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade, holdings = [] }: AddTransactionDialogProps) {
   const [tradeType, setTradeType] = useState<'buy' | 'sell' | 'add' | 'remove'>('buy')
   const [assetType, setAssetType] = useState<AssetType>('us-equity')
   const [symbol, setSymbol] = useState('')
@@ -47,6 +50,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade 
   const [currency, setCurrency] = useState('USD')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
+  const [selectedHoldingId, setSelectedHoldingId] = useState<string>('')
 
   useEffect(() => {
     if (editingTrade) {
@@ -70,12 +74,42 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade 
       setTradeDate(new Date().toISOString().split('T')[0])
       setCurrency('USD')
       setNotes('')
+      setSelectedHoldingId('')
     }
   }, [editingTrade, open])
 
-  // Auto-set currency based on asset type
+  // Get available holdings for sell (combined by asset)
+  const availableHoldings = useMemo(() => {
+    if (tradeType !== 'sell' || holdings.length === 0) {
+      return []
+    }
+    // Combine holdings by asset and filter by selected asset type and currency if set
+    const combined = combineHoldingsByAsset(holdings)
+    return combined.filter(h => {
+      if (assetType && h.assetType !== assetType) return false
+      if (currency && h.currency !== currency) return false
+      return h.quantity > 0 // Only show holdings with quantity > 0
+    })
+  }, [holdings, tradeType, assetType, currency])
+
+  // When holding is selected for sell, auto-fill fields
   useEffect(() => {
-    if (!editingTrade && open) {
+    if (tradeType === 'sell' && selectedHoldingId && availableHoldings.length > 0) {
+      const holding = availableHoldings.find(h => h.id === selectedHoldingId)
+      if (holding) {
+        setAssetType(holding.assetType)
+        setSymbol(holding.symbol)
+        setName(holding.name)
+        setCurrency(holding.currency)
+        setPrice(holding.currentPrice.toString())
+        // Don't auto-set quantity - let user enter how much to sell
+      }
+    }
+  }, [selectedHoldingId, tradeType, availableHoldings])
+
+  // Auto-set currency based on asset type (only for buy/add, not sell)
+  useEffect(() => {
+    if (!editingTrade && open && tradeType !== 'sell') {
       if (assetType === 'pk-equity' || assetType === 'kse100') {
         setCurrency('PKR')
         if (assetType === 'kse100') {
@@ -90,7 +124,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade 
         }
       }
     }
-  }, [assetType, editingTrade, open])
+  }, [assetType, editingTrade, open, tradeType])
 
   const handleCryptoSelect = (crypto: string) => {
     setSymbol(crypto)
@@ -112,6 +146,14 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade 
     
     if (!quantityNum || !priceNum || !symbol || !name || !tradeDate) {
       return
+    }
+
+    // Validate sell quantity doesn't exceed available
+    if (tradeType === 'sell' && selectedHolding) {
+      if (quantityNum > selectedHolding.quantity) {
+        alert(`Cannot sell more than available. You have ${selectedHolding.quantity.toLocaleString()} ${selectedHolding.symbol.toUpperCase()}`)
+        return
+      }
     }
 
     const totalAmount = quantityNum * priceNum
@@ -138,14 +180,22 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade 
     }
   }
 
+  // Get selected holding for validation
+  const selectedHolding = selectedHoldingId ? availableHoldings.find(h => h.id === selectedHoldingId) : null
+  const maxQuantity = selectedHolding ? selectedHolding.quantity : Infinity
+  const quantityNum = parseFloat(quantity) || 0
+  const exceedsAvailable = tradeType === 'sell' && selectedHolding && quantityNum > maxQuantity
+
   const isFormValid = 
     symbol && 
     name && 
     quantity && 
-    parseFloat(quantity) > 0 &&
+    quantityNum > 0 &&
+    !exceedsAvailable &&
     price && 
     parseFloat(price) > 0 &&
-    tradeDate
+    tradeDate &&
+    (tradeType !== 'sell' || selectedHoldingId) // For sell, must select a holding
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -164,7 +214,10 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="tradeType">Transaction Type *</Label>
-                <Select value={tradeType} onValueChange={(value) => setTradeType(value as 'buy' | 'sell' | 'add' | 'remove')}>
+                <Select value={tradeType} onValueChange={(value) => {
+                  setTradeType(value as 'buy' | 'sell' | 'add' | 'remove')
+                  setSelectedHoldingId('') // Reset holding selection when changing type
+                }}>
                   <SelectTrigger id="tradeType">
                     <SelectValue />
                   </SelectTrigger>
@@ -175,6 +228,11 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade 
                     <SelectItem value="remove">Remove (Withdrawal)</SelectItem>
                   </SelectContent>
                 </Select>
+                {tradeType === 'remove' && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Withdrawal: Remove cash/currency from your portfolio (not for selling assets)
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -222,10 +280,45 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade 
               </div>
             </div>
 
+            {/* Show holdings selector when selling */}
+            {tradeType === 'sell' && availableHoldings.length > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="holdingSelect">Select Holding to Sell *</Label>
+                <Select value={selectedHoldingId} onValueChange={setSelectedHoldingId}>
+                  <SelectTrigger id="holdingSelect">
+                    <SelectValue placeholder="Select a holding to sell" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableHoldings.map((holding) => (
+                      <SelectItem key={holding.id} value={holding.id}>
+                        {holding.name || holding.symbol} ({holding.symbol.toUpperCase()}) - {holding.quantity.toLocaleString()} {ASSET_TYPE_LABELS[holding.assetType as AssetType]} - {holding.currency}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedHoldingId && (() => {
+                  const selectedHolding = availableHoldings.find(h => h.id === selectedHoldingId)
+                  return selectedHolding ? (
+                    <p className="text-xs text-muted-foreground">
+                      Available: {selectedHolding.quantity.toLocaleString()} {selectedHolding.symbol.toUpperCase()} at {selectedHolding.currentPrice.toLocaleString('en-US', { style: 'currency', currency: selectedHolding.currency, minimumFractionDigits: 2 })}
+                    </p>
+                  ) : null
+                })()}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="symbol">Symbol/Ticker *</Label>
-                {assetType === 'crypto' ? (
+                {tradeType === 'sell' && selectedHoldingId ? (
+                  <Input
+                    id="symbol"
+                    value={symbol}
+                    disabled
+                    className="bg-muted cursor-not-allowed"
+                    required
+                  />
+                ) : assetType === 'crypto' ? (
                   <CryptoSelector
                     value={symbol}
                     onValueChange={handleCryptoSelect}
@@ -263,13 +356,23 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade 
 
               <div className="space-y-2">
                 <Label htmlFor="name">Name *</Label>
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Asset name"
-                  required
-                />
+                {tradeType === 'sell' && selectedHoldingId ? (
+                  <Input
+                    id="name"
+                    value={name}
+                    disabled
+                    className="bg-muted cursor-not-allowed"
+                    required
+                  />
+                ) : (
+                  <Input
+                    id="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Asset name"
+                    required
+                  />
+                )}
               </div>
             </div>
 
@@ -283,8 +386,19 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade 
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
                   placeholder="0.00"
+                  max={tradeType === 'sell' && selectedHolding ? selectedHolding.quantity : undefined}
                   required
                 />
+                {tradeType === 'sell' && selectedHolding && (
+                  <p className="text-xs text-muted-foreground">
+                    Max: {selectedHolding.quantity.toLocaleString()} {selectedHolding.symbol.toUpperCase()}
+                    {exceedsAvailable && (
+                      <span className="text-red-600 dark:text-red-400 ml-2">
+                        (Exceeds available quantity)
+                      </span>
+                    )}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">

@@ -572,6 +572,7 @@ export function TransactionsView({
           setEditingTrade(null)
         }}
         editingTrade={editingTrade}
+        holdings={holdings}
       />
 
       {/* Delete Confirmation */}
