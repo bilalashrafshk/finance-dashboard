@@ -127,8 +127,8 @@ export function AssetList({ assets, onDelete, loading }: AssetListProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Asset?</AlertDialogTitle>
             <AlertDialogDescription className="space-y-1">
-              <div>Are you sure you want to remove this asset from your screener?</div>
-              <div>This action cannot be undone.</div>
+              <span className="block">Are you sure you want to remove this asset from your screener?</span>
+              <span className="block">This action cannot be undone.</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
