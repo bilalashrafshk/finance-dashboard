@@ -275,6 +275,27 @@ export function calculateRealizedPnLPerAsset(trades: Trade[]): Map<string, numbe
   return realizedPnLMap
 }
 
+/**
+ * Calculate total invested amount per asset from buy/add transactions
+ * Groups by asset key (assetType:symbol:currency) and sums totalAmount from buy/add transactions
+ * @param trades - Array of all trades
+ * @returns Map of asset key to total invested amount
+ */
+export function calculateInvestedPerAsset(trades: Trade[]): Map<string, number> {
+  const investedMap = new Map<string, number>()
+
+  trades.forEach((trade) => {
+    if (trade.tradeType === 'buy' || trade.tradeType === 'add') {
+      // Group by asset key (assetType:symbol:currency)
+      const assetKey = `${trade.assetType}:${trade.symbol.toUpperCase()}:${trade.currency}`
+      const currentInvested = investedMap.get(assetKey) || 0
+      investedMap.set(assetKey, currentInvested + trade.totalAmount)
+    }
+  })
+
+  return investedMap
+}
+
 export async function calculateTotalRealizedPnL(): Promise<number> {
   // Only run in browser environment
   if (typeof window === 'undefined' || typeof fetch === 'undefined') {

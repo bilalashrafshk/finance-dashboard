@@ -15,6 +15,7 @@ import {
   formatPercent,
   combineHoldingsByAsset,
   calculateRealizedPnLPerAsset,
+  calculateInvestedPerAsset,
   type Trade,
 } from "@/lib/portfolio/portfolio-utils"
 import Link from "next/link"
@@ -63,6 +64,11 @@ export function PnLBreakdown({ holdings, currency = 'USD' }: PnLBreakdownProps) 
   // Calculate realized PnL per asset
   const realizedPnLMap = useMemo(() => {
     return calculateRealizedPnLPerAsset(trades)
+  }, [trades])
+
+  // Calculate invested amount per asset from buy transactions
+  const investedPerAssetMap = useMemo(() => {
+    return calculateInvestedPerAsset(trades)
   }, [trades])
 
   // Get all unique assets (from holdings + closed positions with realized PnL)
@@ -119,6 +125,7 @@ export function PnLBreakdown({ holdings, currency = 'USD' }: PnLBreakdownProps) 
     return allAssets
       .map(({ holding, assetKey, assetType, symbol, name, currency: assetCurrency }) => {
         const realizedPnL = realizedPnLMap.get(assetKey) || 0
+        const totalInvestedFromTrades = investedPerAssetMap.get(assetKey) || 0
         
         if (holding) {
           // Active position
@@ -126,6 +133,8 @@ export function PnLBreakdown({ holdings, currency = 'USD' }: PnLBreakdownProps) 
           const currentValue = calculateCurrentValue(holding)
           const unrealizedPnL = calculateGainLoss(holding)
           const totalPnL = realizedPnL + unrealizedPnL
+          // For active positions, use current invested amount
+          // But we could also show total invested from all trades (including sold shares)
           const totalInvested = invested
           const totalPnLPercent = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0
 
@@ -146,6 +155,11 @@ export function PnLBreakdown({ holdings, currency = 'USD' }: PnLBreakdownProps) 
           }
         } else {
           // Closed position (only realized PnL)
+          // Use total invested from buy transactions to calculate ROI
+          const invested = totalInvestedFromTrades
+          const totalPnL = realizedPnL
+          const totalPnLPercent = invested > 0 ? (totalPnL / invested) * 100 : 0
+
           return {
             holding: null,
             assetKey,
@@ -154,17 +168,17 @@ export function PnLBreakdown({ holdings, currency = 'USD' }: PnLBreakdownProps) 
             name,
             currency: assetCurrency,
             status: 'closed' as const,
-            invested: 0,
+            invested,
             currentValue: 0,
             realizedPnL,
             unrealizedPnL: 0,
-            totalPnL: realizedPnL,
-            totalPnLPercent: 0, // Can't calculate % for closed positions without original invested amount
+            totalPnL,
+            totalPnLPercent,
           }
         }
       })
       .sort((a, b) => b.totalPnL - a.totalPnL) // Sort by total PnL descending
-  }, [allAssets, realizedPnLMap])
+  }, [allAssets, realizedPnLMap, investedPerAssetMap])
 
   const totalPnL = useMemo(() => {
     return pnlData.reduce((sum, item) => sum + item.totalPnL, 0)
@@ -272,7 +286,7 @@ export function PnLBreakdown({ holdings, currency = 'USD' }: PnLBreakdownProps) 
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        {invested > 0 ? formatCurrency(invested, assetCurrency) : '-'}
+                        {invested > 0 ? formatCurrency(invested, assetCurrency) : (status === 'closed' && invested === 0 ? '-' : formatCurrency(invested, assetCurrency))}
                       </TableCell>
                       <TableCell className="text-right">
                         {currentValue > 0 ? formatCurrency(currentValue, assetCurrency) : '-'}
@@ -287,7 +301,7 @@ export function PnLBreakdown({ holdings, currency = 'USD' }: PnLBreakdownProps) 
                         {formatCurrency(assetTotalPnL, assetCurrency)}
                       </TableCell>
                       <TableCell className={`text-right font-semibold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                        {assetTotalPnLPercent !== 0 ? formatPercent(assetTotalPnLPercent) : '-'}
+                        {invested > 0 ? formatPercent(assetTotalPnLPercent) : '-'}
                       </TableCell>
                     </TableRow>
                   )

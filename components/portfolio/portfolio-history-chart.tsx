@@ -23,7 +23,23 @@ export function PortfolioHistoryChart({ currency = "USD" }: PortfolioHistoryProp
       setError(null)
       try {
         // 1. Fetch Portfolio Holdings History
-        const historyRes = await fetch(`/api/user/portfolio/history?days=${period}&currency=${currency}`)
+        // Get token from localStorage to ensure we are authenticated
+        const token = localStorage.getItem('auth_token')
+        const historyRes = await fetch(`/api/user/portfolio/history?days=${period}&currency=${currency}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        })
+        
+        if (historyRes.status === 401) {
+          throw new Error('Authentication required. Please log in again.')
+        }
+        
+        if (!historyRes.ok) {
+          const errorData = await historyRes.json().catch(() => ({}))
+          throw new Error(errorData.error || `Server error: ${historyRes.status}`)
+        }
+        
         const historyData = await historyRes.json()
         
         if (!historyData.success) throw new Error(historyData.error)
