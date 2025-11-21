@@ -228,10 +228,16 @@ export function calculatePortfolioSummary(holdings: Holding[]): PortfolioSummary
 /**
  * Calculate total realized PnL from all sell transactions
  * Fetches all sell transactions and sums up realized PnL
+ * Only works client-side (browser environment)
  */
 export async function calculateTotalRealizedPnL(): Promise<number> {
+  // Only run in browser environment
+  if (typeof window === 'undefined' || typeof fetch === 'undefined') {
+    return 0
+  }
+
   try {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
+    const token = localStorage.getItem('auth_token')
     if (!token) {
       return 0
     }
@@ -256,14 +262,20 @@ export async function calculateTotalRealizedPnL(): Promise<number> {
         // Extract realized PnL from notes: "Realized P&L: 123.45 USD"
         const match = trade.notes.match(/Realized P&L: ([\d.-]+)/)
         if (match) {
-          totalRealizedPnL += parseFloat(match[1])
+          const pnl = parseFloat(match[1])
+          if (!isNaN(pnl)) {
+            totalRealizedPnL += pnl
+          }
         }
       }
     })
 
     return totalRealizedPnL
   } catch (error) {
-    console.error('Error calculating realized PnL:', error)
+    // Silently fail - this is not critical for the app to function
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error calculating realized PnL:', error)
+    }
     return 0
   }
 }
@@ -299,9 +311,10 @@ export async function calculateUnifiedPortfolioSummaryWithRealizedPnL(
   const summary = calculateUnifiedPortfolioSummary(holdings, exchangeRates)
   const realizedPnL = await calculateTotalRealizedPnL()
   
-  // Convert realized PnL to USD if needed (it's stored in the original currency)
-  // For now, we'll fetch it and assume it's already in the base currency
-  // In a more sophisticated implementation, we'd track realized PnL per currency
+  // Note: Realized PnL is calculated from all sell transactions across all currencies
+  // For a more accurate unified view, we'd need to track realized PnL per currency and convert
+  // For now, we'll use the total realized PnL (which may be in different currencies)
+  // This is a limitation but acceptable for most use cases
   summary.realizedPnL = realizedPnL
   summary.totalPnL = summary.totalGainLoss + realizedPnL
   

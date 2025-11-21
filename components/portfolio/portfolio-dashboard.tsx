@@ -291,17 +291,24 @@ export function PortfolioDashboard() {
       
       // Calculate unified USD summary with dividends and realized PnL
       if (viewMode === 'unified' && allExchangeRatesAvailable) {
-        const { calculateUnifiedPortfolioSummaryWithRealizedPnL } = await import('@/lib/portfolio/portfolio-utils')
-        const unified = await calculateUnifiedPortfolioSummaryWithRealizedPnL(holdings, exchangeRates)
-        // Add dividends to unified summary
-        const pkEquityHoldings = holdings.filter(h => h.assetType === 'pk-equity')
-        if (pkEquityHoldings.length > 0) {
-          const { calculateTotalDividendsCollected } = await import('@/lib/portfolio/portfolio-utils')
-          const dividendsCollected = await calculateTotalDividendsCollected(holdings)
-          unified.dividendsCollected = dividendsCollected
-          unified.dividendsCollectedPercent = unified.totalInvested > 0 ? (dividendsCollected / unified.totalInvested) * 100 : 0
+        try {
+          const { calculateUnifiedPortfolioSummaryWithRealizedPnL } = await import('@/lib/portfolio/portfolio-utils')
+          const unified = await calculateUnifiedPortfolioSummaryWithRealizedPnL(holdings, exchangeRates)
+          // Add dividends to unified summary
+          const pkEquityHoldings = holdings.filter(h => h.assetType === 'pk-equity')
+          if (pkEquityHoldings.length > 0) {
+            const { calculateTotalDividendsCollected } = await import('@/lib/portfolio/portfolio-utils')
+            const dividendsCollected = await calculateTotalDividendsCollected(holdings)
+            unified.dividendsCollected = dividendsCollected
+            unified.dividendsCollectedPercent = unified.totalInvested > 0 ? (dividendsCollected / unified.totalInvested) * 100 : 0
+          }
+          setUnifiedSummary(unified)
+        } catch (error) {
+          console.error('Error calculating unified summary:', error)
+          // Fallback to basic unified summary without realized PnL
+          const { calculateUnifiedPortfolioSummary } = await import('@/lib/portfolio/portfolio-utils')
+          setUnifiedSummary(calculateUnifiedPortfolioSummary(holdings, exchangeRates))
         }
-        setUnifiedSummary(unified)
       } else {
         setUnifiedSummary(null)
       }
