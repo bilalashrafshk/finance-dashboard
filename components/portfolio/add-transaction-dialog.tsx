@@ -741,8 +741,15 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     e.preventDefault()
     
     const quantityNum = parseFloat(quantity)
-    // For buy transactions, use purchasePrice; for sell/add, use price
-    const priceNum = tradeType === 'buy' ? parseFloat(purchasePrice) : parseFloat(price)
+    // For buy transactions, use purchasePrice; for cash add, price is 1; for sell, use price
+    let priceNum: number
+    if (tradeType === 'buy') {
+      priceNum = parseFloat(purchasePrice)
+    } else if (tradeType === 'add') {
+      priceNum = 1
+    } else {
+      priceNum = parseFloat(price)
+    }
     
     if (!quantityNum || !priceNum || !symbol || !name || !tradeDate) {
       return
@@ -794,7 +801,11 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     quantity && 
     quantityNum > 0 &&
     !exceedsAvailable &&
-    ((tradeType === 'buy' && purchasePrice && parseFloat(purchasePrice) > 0) || (tradeType !== 'buy' && price && parseFloat(price) > 0)) &&
+    (
+      (tradeType === 'buy' && purchasePrice && parseFloat(purchasePrice) > 0) || 
+      (tradeType === 'add') || 
+      (tradeType === 'sell' && price && parseFloat(price) > 0)
+    ) &&
     tradeDate &&
     (tradeType !== 'sell' || selectedHoldingId) && // For sell, must select a holding
     (!needsPriceFetch || priceFetched) && // For buy, price must be fetched
@@ -1032,7 +1043,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="quantity">
-                  {tradeType === 'sell' ? 'Number of Shares to Sell *' : 'Quantity *'}
+                  {tradeType === 'sell' ? 'Number of Shares to Sell *' : tradeType === 'add' ? 'Amount *' : 'Quantity *'}
                 </Label>
                 <Input
                   id="quantity"
@@ -1224,37 +1235,21 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                     </TabsContent>
                   </Tabs>
               </div>
-            ) : tradeType === 'add' ? (
-              // ADD TRANSACTION: Single price field (for cash deposits, etc.)
-              <div className="space-y-2">
-                <Label htmlFor="price">Amount *</Label>
-                <Input
-                  id="price"
-                  type="number"
-                  step="any"
-                  value={price}
-                  onChange={(e) => {
-                    setPrice(e.target.value)
-                    setPriceFetched(false) // Reset fetched flag if manually changed
-                  }}
-                  placeholder="0.00"
-                  required
-                  className="flex-1"
-                />
-              </div>
             ) : null}
 
-            <div className="space-y-2">
-              <Label>Total Amount</Label>
-              <div className="h-10 px-3 py-2 bg-muted rounded-md flex items-center">
-                {quantity && ((tradeType === 'buy' && purchasePrice && parseFloat(purchasePrice) > 0) || (tradeType !== 'buy' && price && parseFloat(price) > 0)) && parseFloat(quantity) > 0
-                  ? (parseFloat(quantity) * (tradeType === 'buy' ? parseFloat(purchasePrice) : parseFloat(price))).toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })
-                  : '0.00'}
+            {tradeType !== 'add' && (
+              <div className="space-y-2">
+                <Label>Total Amount</Label>
+                <div className="h-10 px-3 py-2 bg-muted rounded-md flex items-center">
+                  {quantity && ((tradeType === 'buy' && purchasePrice && parseFloat(purchasePrice) > 0) || (tradeType !== 'buy' && price && parseFloat(price) > 0)) && parseFloat(quantity) > 0
+                    ? (parseFloat(quantity) * (tradeType === 'buy' ? parseFloat(purchasePrice) : parseFloat(price))).toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    : '0.00'}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="notes">Notes (Optional)</Label>
