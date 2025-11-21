@@ -123,9 +123,13 @@ export async function GET(request: NextRequest) {
       const dailyHoldings: Record<string, { date: string, cash: number, assets: Record<string, number> }> = {}
       
       // Generate daily points
-      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      // Start from the first trade date or requested start date, whichever is earlier
+      const firstTradeDate = new Date(trades[0].tradeDate)
+      const actualStartDate = firstTradeDate < startDate ? firstTradeDate : startDate
+      
+      for (let d = new Date(actualStartDate); d <= endDate; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().split('T')[0]
-        // Filter trades up to this date
+        // Filter trades up to this date (inclusive)
         const tradesUntilDate = trades.filter(t => t.tradeDate <= dateStr)
         const holdings = calculateHoldingsFromTransactions(tradesUntilDate)
         
@@ -135,15 +139,16 @@ export async function GET(request: NextRequest) {
         holdings.forEach(h => {
           if (h.assetType === 'cash') {
              // For cash, quantity is the value
-             if (h.currency === currency) {
+             // Normalize currency comparison (PKR vs PKR, USD vs USD)
+             if (h.currency.toUpperCase() === currency.toUpperCase()) {
                cashBalance += h.quantity
                investedBalance += h.quantity
              }
           } else {
              // For assets, we calculate the Cost Basis (Invested Amount)
              // This represents "Book Value"
-             // We only sum up if currency matches, or we'd need conversion
-             if (h.currency === currency) {
+             // We only sum up if currency matches
+             if (h.currency.toUpperCase() === currency.toUpperCase()) {
                 investedBalance += (h.purchasePrice * h.quantity)
              }
           }
@@ -157,7 +162,12 @@ export async function GET(request: NextRequest) {
         }
       }
       
-      return NextResponse.json({ success: true, history: Object.values(dailyHoldings) })
+      // Sort by date to ensure chronological order
+      const sortedHistory = Object.values(dailyHoldings).sort((a: any, b: any) => 
+        new Date(a.date).getTime() - new Date(b.date).getTime()
+      )
+      
+      return NextResponse.json({ success: true, history: sortedHistory })
       
     } finally {
       client.release()

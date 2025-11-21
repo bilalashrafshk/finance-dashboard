@@ -35,7 +35,16 @@ export function PortfolioSummary({ summary, currency = 'USD', showDividends = fa
     ? (totalReturn / summary.totalInvested) * 100
     : 0
 
-  const isPositive = totalReturn >= 0
+  // ROI should include both unrealized AND realized PnL
+  // If we have totalPnL (which includes realized), use that for ROI
+  const roiValue = summary.totalPnL !== undefined 
+    ? summary.totalPnL 
+    : totalReturn
+  const roiPercent = summary.totalInvested > 0
+    ? (roiValue / summary.totalInvested) * 100
+    : 0
+
+  const isPositive = roiValue >= 0
   const hasDividends = summary.dividendsCollected !== undefined && summary.dividendsCollected > 0
 
   return (
@@ -112,10 +121,14 @@ export function PortfolioSummary({ summary, currency = 'USD', showDividends = fa
           </CardHeader>
           <CardContent>
             <div className={`text-2xl font-bold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-              {formatPercent(totalReturnPercent)}
+              {formatPercent(roiPercent)}
             </div>
             <p className="text-xs text-muted-foreground">
-              {includeDividends ? 'Total return (with dividends)' : 'Price return'}
+              {summary.totalPnL !== undefined 
+                ? 'Total return (Unrealized + Realized)' 
+                : includeDividends 
+                  ? 'Total return (with dividends)' 
+                  : 'Price return'}
             </p>
           </CardContent>
         </Card>
