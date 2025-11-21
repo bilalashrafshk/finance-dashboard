@@ -230,6 +230,51 @@ export function calculatePortfolioSummary(holdings: Holding[]): PortfolioSummary
  * Fetches all sell transactions and sums up realized PnL
  * Only works client-side (browser environment)
  */
+export interface Trade {
+  id: number
+  userId: number
+  holdingId: number | null
+  tradeType: 'buy' | 'sell' | 'add' | 'remove'
+  assetType: string
+  symbol: string
+  name: string
+  quantity: number
+  price: number
+  totalAmount: number
+  currency: string
+  tradeDate: string
+  notes: string | null
+  createdAt: string
+}
+
+/**
+ * Calculate realized PnL per asset from trades
+ * Groups by asset key (assetType:symbol:currency) and sums realized PnL from sell transactions
+ * @param trades - Array of all trades
+ * @returns Map of asset key to realized PnL amount
+ */
+export function calculateRealizedPnLPerAsset(trades: Trade[]): Map<string, number> {
+  const realizedPnLMap = new Map<string, number>()
+
+  trades.forEach((trade) => {
+    if (trade.tradeType === 'sell' && trade.notes) {
+      // Extract realized PnL from notes: "Realized P&L: 123.45 USD"
+      const match = trade.notes.match(/Realized P&L: ([\d.-]+)/)
+      if (match) {
+        const pnl = parseFloat(match[1])
+        if (!isNaN(pnl)) {
+          // Group by asset key (assetType:symbol:currency)
+          const assetKey = `${trade.assetType}:${trade.symbol.toUpperCase()}:${trade.currency}`
+          const currentPnL = realizedPnLMap.get(assetKey) || 0
+          realizedPnLMap.set(assetKey, currentPnL + pnl)
+        }
+      }
+    }
+  })
+
+  return realizedPnLMap
+}
+
 export async function calculateTotalRealizedPnL(): Promise<number> {
   // Only run in browser environment
   if (typeof window === 'undefined' || typeof fetch === 'undefined') {
