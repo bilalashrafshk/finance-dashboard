@@ -84,7 +84,7 @@ export function PortfolioSummary({ summary, currency = 'USD', showDividends = fa
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Gain/Loss</CardTitle>
+            <CardTitle className="text-sm font-medium">Unrealized P&L</CardTitle>
             {isPositive ? (
               <TrendingUp className="h-4 w-4 text-green-600" />
             ) : (
@@ -137,6 +137,49 @@ export function PortfolioSummary({ summary, currency = 'USD', showDividends = fa
             </p>
           </CardContent>
         </Card>
+      )}
+
+      {/* Realized PnL Card */}
+      {summary.realizedPnL !== undefined && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Realized P&L</CardTitle>
+              {summary.realizedPnL >= 0 ? (
+                <TrendingUp className="h-4 w-4 text-green-600" />
+              ) : (
+                <TrendingDown className="h-4 w-4 text-red-600" />
+              )}
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${summary.realizedPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {formatCurrency(summary.realizedPnL, currency)}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                From closed positions
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total P&L</CardTitle>
+              {summary.totalPnL !== undefined && summary.totalPnL >= 0 ? (
+                <TrendingUp className="h-4 w-4 text-green-600" />
+              ) : (
+                <TrendingDown className="h-4 w-4 text-red-600" />
+              )}
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${summary.totalPnL !== undefined && summary.totalPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {summary.totalPnL !== undefined ? formatCurrency(summary.totalPnL, currency) : formatCurrency(totalReturn, currency)}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Unrealized + Realized
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* CAGR Card */}

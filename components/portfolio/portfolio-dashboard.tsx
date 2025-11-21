@@ -289,9 +289,10 @@ export function PortfolioDashboard() {
       }
       setSummariesByCurrency(newSummaries)
       
-      // Calculate unified USD summary with dividends
+      // Calculate unified USD summary with dividends and realized PnL
       if (viewMode === 'unified' && allExchangeRatesAvailable) {
-        const unified = calculateUnifiedPortfolioSummary(holdings, exchangeRates)
+        const { calculateUnifiedPortfolioSummaryWithRealizedPnL } = await import('@/lib/portfolio/portfolio-utils')
+        const unified = await calculateUnifiedPortfolioSummaryWithRealizedPnL(holdings, exchangeRates)
         // Add dividends to unified summary
         const pkEquityHoldings = holdings.filter(h => h.assetType === 'pk-equity')
         if (pkEquityHoldings.length > 0) {

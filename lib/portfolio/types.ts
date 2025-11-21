@@ -29,12 +29,14 @@ export interface Portfolio {
 export interface PortfolioSummary {
   totalInvested: number
   currentValue: number
-  totalGainLoss: number
+  totalGainLoss: number // Unrealized PnL
   totalGainLossPercent: number
   holdingsCount: number
   dividendsCollected?: number
   dividendsCollectedPercent?: number
   cagr?: number // Compound Annual Growth Rate as percentage
+  realizedPnL?: number // Realized PnL from sell transactions
+  totalPnL?: number // Total PnL = Unrealized + Realized
 }
 
 export interface AssetTypeAllocation {

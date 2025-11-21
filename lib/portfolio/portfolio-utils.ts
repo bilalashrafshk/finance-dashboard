@@ -226,7 +226,50 @@ export function calculatePortfolioSummary(holdings: Holding[]): PortfolioSummary
 }
 
 /**
- * Calculate portfolio summary statistics with dividends
+ * Calculate total realized PnL from all sell transactions
+ * Fetches all sell transactions and sums up realized PnL
+ */
+export async function calculateTotalRealizedPnL(): Promise<number> {
+  try {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
+    if (!token) {
+      return 0
+    }
+
+    const response = await fetch('/api/user/trades', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    })
+
+    if (!response.ok) {
+      return 0
+    }
+
+    const data = await response.json()
+    const trades = data.trades || []
+
+    // Sum realized PnL from all sell transactions
+    let totalRealizedPnL = 0
+    trades.forEach((trade: any) => {
+      if (trade.tradeType === 'sell' && trade.notes) {
+        // Extract realized PnL from notes: "Realized P&L: 123.45 USD"
+        const match = trade.notes.match(/Realized P&L: ([\d.-]+)/)
+        if (match) {
+          totalRealizedPnL += parseFloat(match[1])
+        }
+      }
+    })
+
+    return totalRealizedPnL
+  } catch (error) {
+    console.error('Error calculating realized PnL:', error)
+    return 0
+  }
+}
+
+/**
+ * Calculate portfolio summary statistics with dividends and realized PnL
  * @param holdings - Holdings to calculate summary for
  */
 export async function calculatePortfolioSummaryWithDividends(
@@ -234,8 +277,34 @@ export async function calculatePortfolioSummaryWithDividends(
 ): Promise<PortfolioSummary> {
   const summary = calculatePortfolioSummary(holdings)
   const dividendsCollected = await calculateTotalDividendsCollected(holdings)
+  const realizedPnL = await calculateTotalRealizedPnL()
+  
   summary.dividendsCollected = dividendsCollected
   summary.dividendsCollectedPercent = summary.totalInvested > 0 ? (dividendsCollected / summary.totalInvested) * 100 : 0
+  summary.realizedPnL = realizedPnL
+  summary.totalPnL = summary.totalGainLoss + realizedPnL // Total = Unrealized + Realized
+  
+  return summary
+}
+
+/**
+ * Calculate unified portfolio summary with realized PnL
+ * @param holdings - All holdings to calculate summary for
+ * @param exchangeRates - Map of currency to exchange rate (1 USD = X currency)
+ */
+export async function calculateUnifiedPortfolioSummaryWithRealizedPnL(
+  holdings: Holding[],
+  exchangeRates: Map<string, number>
+): Promise<PortfolioSummary> {
+  const summary = calculateUnifiedPortfolioSummary(holdings, exchangeRates)
+  const realizedPnL = await calculateTotalRealizedPnL()
+  
+  // Convert realized PnL to USD if needed (it's stored in the original currency)
+  // For now, we'll fetch it and assume it's already in the base currency
+  // In a more sophisticated implementation, we'd track realized PnL per currency
+  summary.realizedPnL = realizedPnL
+  summary.totalPnL = summary.totalGainLoss + realizedPnL
+  
   return summary
 }
 
