@@ -172,6 +172,11 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     }
   }, [open, currency, assetType, tradeType, editingTrade, fetchCashBalance])
 
+  // Reset error when inputs change
+  useEffect(() => {
+    if (error) setError(null)
+  }, [quantity, purchasePrice, tradeType, assetType, currency, symbol, name, tradeDate])
+
   // Reset auto-deposit when quantity or price changes
   useEffect(() => {
     if (quantity || purchasePrice) {

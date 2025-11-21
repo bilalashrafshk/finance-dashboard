@@ -120,18 +120,23 @@ export async function POST(request: NextRequest) {
         const { autoDeposit } = body
         const assetCurrency = currency || 'USD'
         
-        // Get cash balance from holdings
+        // Get cash balance from holdings - order by quantity DESC to prioritize funded accounts if duplicates exist
         const cashResult = await client.query(
           `SELECT quantity FROM user_holdings
-           WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND currency = $2`,
+           WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND currency = $2
+           ORDER BY quantity DESC`,
           [user.id, assetCurrency]
         )
         
         const cashBalance = cashResult.rows.length > 0 ? Math.max(0, parseFloat(cashResult.rows[0].quantity) || 0) : 0
         
-        if (cashBalance < totalAmount) {
+        // Use epsilon for float comparison to match frontend
+        const EPSILON = 0.0001
+        if (totalAmount - cashBalance > EPSILON) {
           const shortfall = totalAmount - cashBalance
           
+          console.log(`[Trade] Insufficient cash: Required ${totalAmount}, Available ${cashBalance}, Shortfall ${shortfall}, Currency ${assetCurrency}, AutoDeposit ${autoDeposit}`)
+
           if (!autoDeposit) {
             await client.query('ROLLBACK')
             return NextResponse.json(
@@ -148,9 +153,11 @@ export async function POST(request: NextRequest) {
           }
           
           // Auto-deposit: Create cash transaction
+          // Order by quantity DESC to use the main cash account
           const cashHoldingResult = await client.query(
             `SELECT id FROM user_holdings
-             WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND currency = $2`,
+             WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND currency = $2
+             ORDER BY quantity DESC`,
             [user.id, assetCurrency]
           )
           
@@ -294,7 +301,8 @@ export async function POST(request: NextRequest) {
         const assetCurrency = currency || 'USD'
         const cashHoldingResult = await client.query(
           `SELECT id, quantity FROM user_holdings
-           WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND currency = $2`,
+           WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND currency = $2
+           ORDER BY quantity DESC`,
           [user.id, assetCurrency]
         )
         
