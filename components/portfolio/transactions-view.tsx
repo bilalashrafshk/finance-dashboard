@@ -598,14 +598,14 @@ export function TransactionsView({
         }}
         onSave={async (tradeData) => {
           try {
-            if (editingTrade) {
-              await updateTransaction(editingTrade.id, tradeData)
-            } else {
+          if (editingTrade) {
+            await updateTransaction(editingTrade.id, tradeData)
+          } else {
               await addTransaction(tradeData as any)
-            }
-            loadTransactions()
-            setIsAddTransactionOpen(false)
-            setEditingTrade(null)
+          }
+          loadTransactions()
+          setIsAddTransactionOpen(false)
+          setEditingTrade(null)
           } catch (error) {
             console.error('Error saving transaction:', error)
             // Re-throw to let the dialog handle it (e.g. stop loading state)

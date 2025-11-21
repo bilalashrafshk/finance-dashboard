@@ -72,9 +72,11 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
   const [cashBalance, setCashBalance] = useState<number | null>(null)
   const [loadingCashBalance, setLoadingCashBalance] = useState(false)
   const [autoDeposit, setAutoDeposit] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (editingTrade) {
+      setError(null)
       setTradeType(editingTrade.tradeType)
       setAssetType(editingTrade.assetType as AssetType)
       setSymbol(editingTrade.symbol)
@@ -114,6 +116,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
       setCashBalance(null)
       setLoadingCashBalance(false)
       setAutoDeposit(false)
+      setError(null)
     }
   }, [editingTrade, open])
 
@@ -830,6 +833,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     const totalAmount = quantityNum * priceNum
 
     setSaving(true)
+    setError(null)
     try {
       await onSave({
         tradeType,
@@ -845,8 +849,9 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
         autoDeposit,
       })
       onOpenChange(false)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving transaction:', error)
+      setError(error.message || 'Failed to save transaction')
     } finally {
       setSaving(false)
     }
@@ -862,11 +867,12 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
 
   // Validation for cash balance
   const buyTotalAmount = quantityNum * (parseFloat(purchasePrice) || 0)
+  const ROUNDING_EPSILON = 0.0001 // Allow small floating point differences
   const hasInsufficientCash = tradeType === 'buy' && 
                               assetType !== 'cash' && 
                               !editingTrade && 
                               cashBalance !== null && 
-                              cashBalance < buyTotalAmount
+                              (buyTotalAmount - cashBalance > ROUNDING_EPSILON)
 
   const isFormValid = 
     symbol && 
@@ -874,6 +880,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     quantity && 
     quantityNum > 0 &&
     !exceedsAvailable &&
+    !loadingCashBalance && // Ensure cash balance is loaded
     !(hasInsufficientCash && !autoDeposit) && // Prevent submission if insufficient cash and auto-deposit not checked
     (
       (tradeType === 'buy' && purchasePrice && parseFloat(purchasePrice) > 0) || 
@@ -1365,9 +1372,10 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                   <div className="space-y-2">
                     {(() => {
                       const totalAmount = (parseFloat(quantity) || 0) * parseFloat(purchasePrice)
-                      const affordableQuantity = Math.floor(cashBalance / parseFloat(purchasePrice))
-                      const shortfall = totalAmount - cashBalance
-                      const hasInsufficientCash = cashBalance < totalAmount
+                      const ROUNDING_EPSILON = 0.0001
+                      const affordableQuantity = Math.floor((cashBalance + ROUNDING_EPSILON) / parseFloat(purchasePrice))
+                      const shortfall = Math.max(0, totalAmount - cashBalance)
+                      const hasInsufficientCash = (totalAmount - cashBalance) > ROUNDING_EPSILON
 
                       return (
                         <>
@@ -1447,6 +1455,16 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
                 Please click "Refresh Price" to fetch historical data before adding this transaction.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Show error message if save failed */}
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                {error}
               </AlertDescription>
             </Alert>
           )}
