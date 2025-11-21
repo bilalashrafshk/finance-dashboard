@@ -19,7 +19,7 @@ import { combineHoldingsByAsset } from "@/lib/portfolio/portfolio-utils"
 
 interface Trade {
   id: number
-  tradeType: 'buy' | 'sell' | 'add' | 'remove'
+  tradeType: 'buy' | 'sell' | 'add'
   assetType: string
   symbol: string
   name: string
@@ -40,7 +40,7 @@ interface AddTransactionDialogProps {
 }
 
 export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade, holdings = [] }: AddTransactionDialogProps) {
-  const [tradeType, setTradeType] = useState<'buy' | 'sell' | 'add' | 'remove'>('buy')
+  const [tradeType, setTradeType] = useState<'buy' | 'sell' | 'add'>('buy')
   const [assetType, setAssetType] = useState<AssetType>('us-equity')
   const [symbol, setSymbol] = useState('')
   const [name, setName] = useState('')
@@ -205,7 +205,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
           <DialogDescription>
             {editingTrade 
               ? 'Update the transaction details.' 
-              : 'Record a new transaction (buy, sell, add, or remove).'}
+              : 'Record a new transaction (buy, sell, or add cash/deposit).'}
           </DialogDescription>
         </DialogHeader>
         
@@ -215,7 +215,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
               <div className="space-y-2">
                 <Label htmlFor="tradeType">Transaction Type *</Label>
                 <Select value={tradeType} onValueChange={(value) => {
-                  setTradeType(value as 'buy' | 'sell' | 'add' | 'remove')
+                  setTradeType(value as 'buy' | 'sell' | 'add')
                   setSelectedHoldingId('') // Reset holding selection when changing type
                 }}>
                   <SelectTrigger id="tradeType">
@@ -225,12 +225,11 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                     <SelectItem value="buy">Buy</SelectItem>
                     <SelectItem value="sell">Sell</SelectItem>
                     <SelectItem value="add">Add (Cash/Deposit)</SelectItem>
-                    <SelectItem value="remove">Remove (Withdrawal)</SelectItem>
                   </SelectContent>
                 </Select>
-                {tradeType === 'remove' && (
+                {tradeType === 'add' && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    Withdrawal: Remove cash/currency from your portfolio (not for selling assets)
+                    Add cash or deposits to your portfolio
                   </p>
                 )}
               </div>
