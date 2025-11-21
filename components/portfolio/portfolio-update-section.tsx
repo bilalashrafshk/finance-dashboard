@@ -5,13 +5,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, Trash2, Edit2 } from "lucide-react"
+import { RefreshCw, Loader2, TrendingUp, TrendingDown, Minus, Trash2, Edit2, Plus } from "lucide-react"
 import type { Holding, AssetType } from "@/lib/portfolio/types"
+import { ASSET_TYPE_LABELS } from "@/lib/portfolio/types"
 import { formatCurrency } from "@/lib/portfolio/portfolio-utils"
 import { parseSymbolToBinance } from "@/lib/portfolio/binance-api"
 import Link from "next/link"
 import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
-import { AssetHoldingsDialog } from "./asset-holdings-dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { TransactionsView } from "./transactions-view"
+import { SellHoldingDialog } from "./sell-holding-dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,7 +50,9 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit, o
   const [updateStatuses, setUpdateStatuses] = useState<Map<string, HoldingUpdateStatus>>(new Map())
   const [isUpdatingAll, setIsUpdatingAll] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
-  const [selectedAssetHoldings, setSelectedAssetHoldings] = useState<{ holdings: Holding[], assetName: string, symbol: string } | null>(null)
+  const [selectedAsset, setSelectedAsset] = useState<{ assetType: string; symbol: string; currency: string; name: string } | null>(null)
+  const [activeTab, setActiveTab] = useState<'updates' | 'transactions'>('updates')
+  const [sellingHolding, setSellingHolding] = useState<Holding | null>(null)
   const isUpdatingRef = useRef(false)
   const holdingsIdsRef = useRef<string>('')
 
@@ -496,13 +502,29 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit, o
           <div>
             <CardTitle>Portfolio Updates</CardTitle>
             <CardDescription>
-              View last updated dates and day changes for all holdings
+              {activeTab === 'updates' 
+                ? 'View last updated dates and day changes for all holdings'
+                : selectedAsset
+                  ? `Transaction history for ${selectedAsset.name || selectedAsset.symbol}`
+                  : 'View all transactions and transaction history'}
             </CardDescription>
           </div>
         </div>
       </CardHeader>
       <CardContent>
-        <div className="overflow-x-auto">
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'updates' | 'transactions')}>
+          <TabsList>
+            <TabsTrigger value="updates">Portfolio Updates</TabsTrigger>
+            <TabsTrigger value="transactions">
+              Transactions
+              {selectedAsset && (
+                <span className="ml-2 text-xs">({selectedAsset.symbol})</span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="updates" className="space-y-4">
+            <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -541,15 +563,16 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit, o
                     <TableCell className="font-medium">
                       <button
                         onClick={() => {
-                          const individualHoldings = getIndividualHoldings()
-                          setSelectedAssetHoldings({
-                            holdings: individualHoldings,
-                            assetName: status.holding.name || status.holding.symbol,
+                          setSelectedAsset({
+                            assetType: status.holding.assetType,
                             symbol: status.holding.symbol,
+                            currency: status.holding.currency,
+                            name: status.holding.name || status.holding.symbol,
                           })
+                          setActiveTab('transactions')
                         }}
                         className="hover:underline hover:text-primary transition-colors cursor-pointer text-left"
-                        title="View individual holdings"
+                        title="View transaction history"
                       >
                         {status.holding.name || status.holding.symbol}
                       </button>
@@ -601,9 +624,30 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit, o
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  {(onDelete || onEdit) && (
+                  {(onDelete || onEdit || onSell) && (
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
+                        {onSell && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              // For combined holdings, use first holding for sell
+                              let holdingToSell = status.holding
+                              if (status.originalHoldingIds && status.originalHoldingIds.length > 1) {
+                                const firstHolding = holdings.find(h => h.id === status.originalHoldingIds![0])
+                                if (firstHolding) {
+                                  holdingToSell = firstHolding
+                                }
+                              }
+                              setSellingHolding(holdingToSell)
+                            }}
+                            title="Sell holding"
+                            className="hover:bg-orange-50 dark:hover:bg-orange-950/20"
+                          >
+                            <TrendingDown className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                          </Button>
+                        )}
                         {onEdit && (
                           <Button
                             variant="ghost"
@@ -657,6 +701,19 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit, o
             </TableBody>
           </Table>
         </div>
+          </TabsContent>
+
+          <TabsContent value="transactions" className="space-y-4">
+            <TransactionsView
+              holdings={holdings}
+              onSell={onSell}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              selectedAsset={selectedAsset}
+              onClearAssetFilter={() => setSelectedAsset(null)}
+            />
+          </TabsContent>
+        </Tabs>
       </CardContent>
 
       <AlertDialog open={deleteConfirmId !== null} onOpenChange={() => setDeleteConfirmId(null)}>
@@ -692,20 +749,22 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit, o
         </AlertDialogContent>
       </AlertDialog>
 
-      <AssetHoldingsDialog
-        open={selectedAssetHoldings !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedAssetHoldings(null)
-          }
-        }}
-        holdings={selectedAssetHoldings?.holdings || []}
-        assetName={selectedAssetHoldings?.assetName || ''}
-        symbol={selectedAssetHoldings?.symbol || ''}
-        onEdit={onEdit}
-        onDelete={onDelete}
-        onSell={onSell}
-      />
+      {onSell && (
+        <SellHoldingDialog
+          open={sellingHolding !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSellingHolding(null)
+            }
+          }}
+          holding={sellingHolding}
+          onSell={async (holding, quantity, price, date, fees, notes) => {
+            await onSell(holding, quantity, price, date, fees, notes)
+            setSellingHolding(null)
+            onUpdate() // Refresh holdings
+          }}
+        />
+      )}
     </Card>
   )
 }

@@ -597,7 +597,7 @@ export function PortfolioDashboard() {
               <CardHeader>
                 <CardTitle>{currency} Portfolio</CardTitle>
                 <CardDescription>
-                  {currencyHoldings.length} {currencyHoldings.length === 1 ? 'holding' : 'holdings'} in {currency}
+                  {summary.holdingsCount} {summary.holdingsCount === 1 ? 'holding' : 'holdings'} in {currency}
                 </CardDescription>
               </CardHeader>
               <CardContent>
