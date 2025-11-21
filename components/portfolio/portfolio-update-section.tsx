@@ -11,6 +11,7 @@ import { formatCurrency } from "@/lib/portfolio/portfolio-utils"
 import { parseSymbolToBinance } from "@/lib/portfolio/binance-api"
 import Link from "next/link"
 import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
+import { AssetHoldingsDialog } from "./asset-holdings-dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,6 +45,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
   const [updateStatuses, setUpdateStatuses] = useState<Map<string, HoldingUpdateStatus>>(new Map())
   const [isUpdatingAll, setIsUpdatingAll] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [selectedAssetHoldings, setSelectedAssetHoldings] = useState<{ holdings: Holding[], assetName: string, symbol: string } | null>(null)
   const isUpdatingRef = useRef(false)
   const holdingsIdsRef = useRef<string>('')
 
@@ -525,10 +527,31 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
                   ? `${status.holding.assetType}:${status.holding.symbol.toUpperCase()}:${status.holding.currency}`
                   : status.holding.id
 
+                // Get individual holdings for this asset
+                const getIndividualHoldings = () => {
+                  if (status.originalHoldingIds && status.originalHoldingIds.length > 1) {
+                    return holdings.filter(h => status.originalHoldingIds!.includes(h.id))
+                  }
+                  return [status.holding]
+                }
+
                 return (
                   <TableRow key={uniqueKey}>
                     <TableCell className="font-medium">
-                      {status.holding.name || status.holding.symbol}
+                      <button
+                        onClick={() => {
+                          const individualHoldings = getIndividualHoldings()
+                          setSelectedAssetHoldings({
+                            holdings: individualHoldings,
+                            assetName: status.holding.name || status.holding.symbol,
+                            symbol: status.holding.symbol,
+                          })
+                        }}
+                        className="hover:underline hover:text-primary transition-colors cursor-pointer text-left"
+                        title="View individual holdings"
+                      >
+                        {status.holding.name || status.holding.symbol}
+                      </button>
                     </TableCell>
                     <TableCell>
                       {assetSlug ? (
@@ -667,6 +690,20 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AssetHoldingsDialog
+        open={selectedAssetHoldings !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedAssetHoldings(null)
+          }
+        }}
+        holdings={selectedAssetHoldings?.holdings || []}
+        assetName={selectedAssetHoldings?.assetName || ''}
+        symbol={selectedAssetHoldings?.symbol || ''}
+        onEdit={onEdit}
+        onDelete={onDelete}
+      />
     </Card>
   )
 }

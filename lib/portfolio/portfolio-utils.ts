@@ -8,6 +8,57 @@ import type { Holding, PortfolioSummary, AssetTypeAllocation, AssetType } from '
 import { ASSET_TYPE_LABELS } from './types'
 import { convertDividendToRupees, filterDividendsByPurchaseDate, calculateTotalDividendsForHolding } from './dividend-utils'
 
+/**
+ * Combine holdings by asset (assetType + symbol + currency)
+ * Returns a single holding per asset with weighted average purchase price and combined quantity
+ */
+export function combineHoldingsByAsset(holdings: Holding[]): Holding[] {
+  const groupedMap = new Map<string, Holding[]>()
+  
+  // Group holdings by assetType + symbol + currency (case-insensitive)
+  holdings.forEach(holding => {
+    const key = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
+    if (!groupedMap.has(key)) {
+      groupedMap.set(key, [])
+    }
+    groupedMap.get(key)!.push(holding)
+  })
+  
+  // Combine each group into a single holding
+  const combinedHoldings: Holding[] = []
+  
+  groupedMap.forEach((groupHoldings, key) => {
+    if (groupHoldings.length === 1) {
+      // Single holding, no need to combine
+      combinedHoldings.push(groupHoldings[0])
+    } else {
+      // Multiple holdings of same asset - combine them
+      const firstHolding = groupHoldings[0]
+      const totalQuantity = groupHoldings.reduce((sum, h) => sum + h.quantity, 0)
+      const totalInvested = groupHoldings.reduce((sum, h) => sum + (h.purchasePrice * h.quantity), 0)
+      const averagePurchasePrice = totalQuantity > 0 ? totalInvested / totalQuantity : firstHolding.purchasePrice
+      
+      // Use earliest purchase date
+      const earliestPurchaseDate = groupHoldings.reduce((earliest, h) => {
+        return new Date(h.purchaseDate) < new Date(earliest) ? h.purchaseDate : earliest
+      }, groupHoldings[0].purchaseDate)
+      
+      // Create combined holding
+      const combinedHolding: Holding = {
+        ...firstHolding,
+        id: key, // Use key as ID for combined holdings
+        quantity: totalQuantity,
+        purchasePrice: averagePurchasePrice,
+        purchaseDate: earliestPurchaseDate,
+      }
+      
+      combinedHoldings.push(combinedHolding)
+    }
+  })
+  
+  return combinedHoldings
+}
+
 export interface HoldingDividend {
   holdingId: string
   symbol: string
@@ -37,12 +88,16 @@ export function calculateCurrentValue(holding: Holding): number {
  * Calculate portfolio value for a specific date
  * Uses currentPrice for today's date, historical prices for past dates
  * This ensures consistency between summary stats and charts
+ * Combines holdings by asset (assetType + symbol + currency) before calculation
  */
 export function calculatePortfolioValueForDate(
   holdings: Holding[],
   date: string | Date,
   historicalPriceMap?: Map<string, { date: string; price: number }[]>
 ): number {
+  // Combine holdings by asset before calculation
+  const combinedHoldings = combineHoldingsByAsset(holdings)
+  
   const dateStr = typeof date === 'string' ? date : date.toISOString().split('T')[0]
   const dateObj = typeof date === 'string' ? new Date(date) : date
   const today = new Date()
@@ -50,7 +105,7 @@ export function calculatePortfolioValueForDate(
   
   let totalValue = 0
   
-  for (const holding of holdings) {
+  for (const holding of combinedHoldings) {
     const purchaseDate = new Date(holding.purchaseDate)
     
     // Only include holdings purchased on or before this date
@@ -148,20 +203,24 @@ export function calculatePortfolioCAGR(holdings: Holding[], currentValue: number
 /**
  * Calculate portfolio summary statistics
  * Uses centralized calculateCurrentPortfolioValue for consistency
+ * Combines holdings by asset (assetType + symbol + currency) before calculation
  */
 export function calculatePortfolioSummary(holdings: Holding[]): PortfolioSummary {
-  const totalInvested = holdings.reduce((sum, h) => sum + calculateInvested(h), 0)
-  const currentValue = calculateCurrentPortfolioValue(holdings) // Use centralized function
+  // Combine holdings by asset before calculation
+  const combinedHoldings = combineHoldingsByAsset(holdings)
+  
+  const totalInvested = combinedHoldings.reduce((sum, h) => sum + calculateInvested(h), 0)
+  const currentValue = calculateCurrentPortfolioValue(combinedHoldings) // Use centralized function
   const totalGainLoss = currentValue - totalInvested
   const totalGainLossPercent = totalInvested > 0 ? (totalGainLoss / totalInvested) * 100 : 0
-  const cagr = calculatePortfolioCAGR(holdings, currentValue, totalInvested)
+  const cagr = calculatePortfolioCAGR(combinedHoldings, currentValue, totalInvested)
 
   return {
     totalInvested,
     currentValue,
     totalGainLoss,
     totalGainLossPercent,
-    holdingsCount: holdings.length,
+    holdingsCount: combinedHoldings.length, // Count of unique assets, not individual holdings
     cagr,
   }
 }
@@ -182,9 +241,13 @@ export async function calculatePortfolioSummaryWithDividends(
 
 /**
  * Calculate asset type allocation
+ * Combines holdings by asset (assetType + symbol + currency) before calculation
  */
 export function calculateAssetAllocation(holdings: Holding[]): AssetTypeAllocation[] {
-  const totalValue = holdings.reduce((sum, h) => sum + calculateCurrentValue(h), 0)
+  // Combine holdings by asset before calculation
+  const combinedHoldings = combineHoldingsByAsset(holdings)
+  
+  const totalValue = combinedHoldings.reduce((sum, h) => sum + calculateCurrentValue(h), 0)
   
   if (totalValue === 0) {
     return []
@@ -192,7 +255,7 @@ export function calculateAssetAllocation(holdings: Holding[]): AssetTypeAllocati
 
   const allocationMap = new Map<AssetType, { value: number; count: number }>()
 
-  holdings.forEach((holding) => {
+  combinedHoldings.forEach((holding) => {
     const value = calculateCurrentValue(holding)
     const existing = allocationMap.get(holding.assetType) || { value: 0, count: 0 }
     allocationMap.set(holding.assetType, {
@@ -213,6 +276,7 @@ export function calculateAssetAllocation(holdings: Holding[]): AssetTypeAllocati
 
 /**
  * Calculate asset type allocation with currency conversion to USD
+ * Combines holdings by asset (assetType + symbol + currency) before calculation
  * @param holdings - All holdings to calculate allocation for
  * @param exchangeRates - Map of currency to exchange rate (1 USD = X currency)
  */
@@ -220,10 +284,13 @@ export function calculateUnifiedAssetAllocation(
   holdings: Holding[],
   exchangeRates: Map<string, number>
 ): AssetTypeAllocation[] {
+  // Combine holdings by asset before calculation
+  const combinedHoldings = combineHoldingsByAsset(holdings)
+  
   let totalValue = 0
   const allocationMap = new Map<AssetType, { value: number; count: number }>()
 
-  holdings.forEach((holding) => {
+  combinedHoldings.forEach((holding) => {
     const exchangeRate = holding.currency === 'USD' 
       ? 1 
       : (exchangeRates.get(holding.currency) || 1)
@@ -334,6 +401,7 @@ export function convertToUSD(value: number, fromCurrency: string, exchangeRate: 
 
 /**
  * Calculate unified portfolio summary in USD
+ * Combines holdings by asset (assetType + symbol + currency) before calculation
  * @param holdings - All holdings to calculate summary for
  * @param exchangeRates - Map of currency to exchange rate (1 USD = X currency)
  */
@@ -341,10 +409,13 @@ export function calculateUnifiedPortfolioSummary(
   holdings: Holding[],
   exchangeRates: Map<string, number> // Map of currency to exchange rate (1 USD = X currency)
 ): PortfolioSummary {
+  // Combine holdings by asset before calculation
+  const combinedHoldings = combineHoldingsByAsset(holdings)
+  
   let totalInvested = 0
   let currentValue = 0
 
-  holdings.forEach((holding) => {
+  combinedHoldings.forEach((holding) => {
     const exchangeRate = holding.currency === 'USD' 
       ? 1 
       : (exchangeRates.get(holding.currency) || 1)
@@ -358,14 +429,14 @@ export function calculateUnifiedPortfolioSummary(
 
   const totalGainLoss = currentValue - totalInvested
   const totalGainLossPercent = totalInvested > 0 ? (totalGainLoss / totalInvested) * 100 : 0
-  const cagr = calculatePortfolioCAGR(holdings, currentValue, totalInvested)
+  const cagr = calculatePortfolioCAGR(combinedHoldings, currentValue, totalInvested)
 
   return {
     totalInvested,
     currentValue,
     totalGainLoss,
     totalGainLossPercent,
-    holdingsCount: holdings.length,
+    holdingsCount: combinedHoldings.length, // Count of unique assets, not individual holdings
     cagr,
   }
 }

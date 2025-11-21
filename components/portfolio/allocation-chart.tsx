@@ -14,7 +14,7 @@ import {
 import type { AssetTypeAllocation, AssetType, Holding } from "@/lib/portfolio/types"
 import { ASSET_TYPE_LABELS, ASSET_TYPE_COLORS } from "@/lib/portfolio/types"
 import { getThemeColors } from "@/lib/charts/theme-colors"
-import { formatCurrency, calculateCurrentValue } from "@/lib/portfolio/portfolio-utils"
+import { formatCurrency, calculateCurrentValue, combineHoldingsByAsset } from "@/lib/portfolio/portfolio-utils"
 import { X } from "lucide-react"
 
 ChartJS.register(ArcElement, Tooltip, Legend)
@@ -70,7 +70,9 @@ export function AllocationChart({ allocation, holdings, currency = 'USD' }: Allo
   const holdingsBreakdown = useMemo(() => {
     if (!expandedAssetType) return null
     
-    const assetHoldings = holdings.filter(h => h.assetType === expandedAssetType)
+    // Combine holdings by asset before filtering
+    const combinedHoldings = combineHoldingsByAsset(holdings)
+    const assetHoldings = combinedHoldings.filter(h => h.assetType === expandedAssetType)
     if (assetHoldings.length === 0) return null
     
     const totalValue = assetHoldings.reduce((sum, h) => sum + calculateCurrentValue(h), 0)
