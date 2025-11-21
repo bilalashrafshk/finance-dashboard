@@ -145,9 +145,11 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
         const data = await response.json()
         if (data.success && data.holdings) {
           const cashHolding = data.holdings.find(
-            (h: any) => h.assetType === 'cash' && h.symbol === 'CASH' && h.currency === currency
+            (h: any) => h.assetType === 'cash' && h.symbol === 'CASH' && h.currency?.toUpperCase().trim() === currency?.toUpperCase().trim()
           )
-          setCashBalance(cashHolding ? cashHolding.quantity : 0)
+          const foundBalance = cashHolding ? cashHolding.quantity : 0
+          console.log(`[AddTransaction] Cash balance fetch - Currency: "${currency}", Found: ${foundBalance}, All cash holdings:`, data.holdings.filter((h: any) => h.assetType === 'cash'))
+          setCashBalance(foundBalance)
         } else {
           setCashBalance(0)
         }

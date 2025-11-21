@@ -118,21 +118,33 @@ export async function POST(request: NextRequest) {
       // For buy transactions of non-cash assets, check cash balance
       if (tradeType === 'buy' && assetType !== 'cash') {
         const { autoDeposit } = body
-        const assetCurrency = currency || 'USD'
+        const assetCurrency = (currency || 'USD').toUpperCase().trim()
+        
+        console.log(`[Trade] Checking cash balance - Trade Currency: "${currency}", Normalized: "${assetCurrency}", TotalAmount: ${totalAmount}, TradeType: ${tradeType}, AssetType: ${assetType}`)
         
         // Get cash balance from holdings - order by quantity DESC to prioritize funded accounts if duplicates exist
         const cashResult = await client.query(
-          `SELECT quantity FROM user_holdings
-           WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND currency = $2
+          `SELECT quantity, currency FROM user_holdings
+           WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND UPPER(TRIM(currency)) = $2
            ORDER BY quantity DESC`,
           [user.id, assetCurrency]
         )
+        
+        console.log(`[Trade] Cash query result - Found ${cashResult.rows.length} cash holdings for currency "${assetCurrency}"`)
+        if (cashResult.rows.length > 0) {
+          cashResult.rows.forEach((row, idx) => {
+            console.log(`[Trade] Cash holding ${idx}: quantity=${row.quantity}, currency="${row.currency}"`)
+          })
+        }
         
         const cashBalance = cashResult.rows.length > 0 ? Math.max(0, parseFloat(cashResult.rows[0].quantity) || 0) : 0
         
         // Use epsilon for float comparison to match frontend
         const EPSILON = 0.0001
-        if (totalAmount - cashBalance > EPSILON) {
+        const difference = totalAmount - cashBalance
+        console.log(`[Trade] Cash validation - Required: ${totalAmount}, Available: ${cashBalance}, Difference: ${difference}, Epsilon: ${EPSILON}, Insufficient: ${difference > EPSILON}`)
+        
+        if (difference > EPSILON) {
           const shortfall = totalAmount - cashBalance
           
           console.log(`[Trade] Insufficient cash: Required ${totalAmount}, Available ${cashBalance}, Shortfall ${shortfall}, Currency ${assetCurrency}, AutoDeposit ${autoDeposit}`)
@@ -156,7 +168,7 @@ export async function POST(request: NextRequest) {
           // Order by quantity DESC to use the main cash account
           const cashHoldingResult = await client.query(
             `SELECT id FROM user_holdings
-             WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND currency = $2
+             WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND UPPER(TRIM(currency)) = $2
              ORDER BY quantity DESC`,
             [user.id, assetCurrency]
           )
@@ -298,10 +310,10 @@ export async function POST(request: NextRequest) {
       
       // Deduct cash for buy transactions
       if (tradeType === 'buy' && assetType !== 'cash') {
-        const assetCurrency = currency || 'USD'
+        const assetCurrency = (currency || 'USD').toUpperCase().trim()
         const cashHoldingResult = await client.query(
           `SELECT id, quantity FROM user_holdings
-           WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND currency = $2
+           WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND UPPER(TRIM(currency)) = $2
            ORDER BY quantity DESC`,
           [user.id, assetCurrency]
         )
