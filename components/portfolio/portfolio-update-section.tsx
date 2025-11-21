@@ -28,6 +28,7 @@ interface PortfolioUpdateSectionProps {
   onUpdate: () => void
   onDelete?: (id: string) => void
   onEdit?: (holding: Holding) => void
+  onSell?: (holding: Holding, quantity: number, price: number, date: string, fees?: number, notes?: string) => Promise<void>
 }
 
 interface HoldingUpdateStatus {
@@ -41,7 +42,7 @@ interface HoldingUpdateStatus {
   originalHoldingIds?: string[] // For combined holdings, track all original IDs
 }
 
-export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }: PortfolioUpdateSectionProps) {
+export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit, onSell }: PortfolioUpdateSectionProps) {
   const [updateStatuses, setUpdateStatuses] = useState<Map<string, HoldingUpdateStatus>>(new Map())
   const [isUpdatingAll, setIsUpdatingAll] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
@@ -703,6 +704,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
         symbol={selectedAssetHoldings?.symbol || ''}
         onEdit={onEdit}
         onDelete={onDelete}
+        onSell={onSell}
       />
     </Card>
   )

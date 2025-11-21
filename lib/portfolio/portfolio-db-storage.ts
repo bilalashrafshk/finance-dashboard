@@ -176,3 +176,57 @@ export async function getHolding(id: string): Promise<Holding | null> {
   return portfolio.holdings.find((h) => h.id === id) || null
 }
 
+/**
+ * Sell a holding
+ */
+export async function sellHolding(
+  holdingId: string,
+  quantity: number,
+  price: number,
+  date: string,
+  fees?: number,
+  notes?: string
+): Promise<{ realizedPnL: number; proceeds: number; message: string }> {
+  const token = getAuthToken()
+  if (!token) {
+    throw new Error('Authentication required')
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/sell`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        holdingId,
+        quantity,
+        price,
+        date,
+        fees,
+        notes,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to sell holding')
+    }
+
+    const data = await response.json()
+    if (data.success) {
+      return {
+        realizedPnL: data.realizedPnL,
+        proceeds: data.proceeds,
+        message: data.message,
+      }
+    }
+
+    throw new Error('Failed to sell holding')
+  } catch (error: any) {
+    console.error('Error selling holding:', error)
+    throw error
+  }
+}
+

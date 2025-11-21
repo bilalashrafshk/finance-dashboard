@@ -23,7 +23,7 @@ import { MetalsPortfolioChart } from "./metals-portfolio-chart"
 import { PortfolioUpdateSection } from "./portfolio-update-section"
 import { MyDividends } from "./my-dividends"
 import type { Holding, AssetType } from "@/lib/portfolio/types"
-import { loadPortfolio, addHolding, updateHolding, deleteHolding } from "@/lib/portfolio/portfolio-db-storage"
+import { loadPortfolio, addHolding, updateHolding, deleteHolding, sellHolding } from "@/lib/portfolio/portfolio-db-storage"
 import { 
   calculatePortfolioSummary, 
   calculatePortfolioSummaryWithDividends,
@@ -142,6 +142,19 @@ export function PortfolioDashboard() {
       await loadHoldings()
     } catch (error) {
       console.error('Error deleting holding:', error)
+    }
+  }
+
+  const handleSellHolding = async (holding: Holding, quantity: number, price: number, date: string, fees?: number, notes?: string) => {
+    try {
+      const result = await sellHolding(holding.id, quantity, price, date, fees, notes)
+      await loadHoldings()
+      // Show success message (could use toast here)
+      console.log(result.message)
+      return result
+    } catch (error: any) {
+      console.error('Error selling holding:', error)
+      throw error
     }
   }
 
@@ -385,6 +398,7 @@ export function PortfolioDashboard() {
           onUpdate={loadHoldings} 
           onDelete={handleDeleteHolding}
           onEdit={handleEditHolding}
+          onSell={handleSellHolding}
         />
       )}
 

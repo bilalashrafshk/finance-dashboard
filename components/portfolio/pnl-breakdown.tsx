@@ -13,6 +13,7 @@ import {
   calculateGainLossPercent,
   formatCurrency,
   formatPercent,
+  combineHoldingsByAsset,
 } from "@/lib/portfolio/portfolio-utils"
 import Link from "next/link"
 import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
@@ -25,7 +26,10 @@ interface PnLBreakdownProps {
 
 export function PnLBreakdown({ holdings, currency = 'USD' }: PnLBreakdownProps) {
   const pnlData = useMemo(() => {
-    return holdings
+    // Combine holdings by asset (treat 1 asset as 1)
+    const combinedHoldings = combineHoldingsByAsset(holdings)
+    
+    return combinedHoldings
       .map(holding => {
         const invested = calculateInvested(holding)
         const currentValue = calculateCurrentValue(holding)

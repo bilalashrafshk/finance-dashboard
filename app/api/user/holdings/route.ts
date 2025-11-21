@@ -114,6 +114,22 @@ export async function POST(request: NextRequest) {
         createdAt: row.created_at.toISOString(),
         updatedAt: row.updated_at.toISOString(),
       }
+
+      // Record buy transaction (unless it's cash, which uses 'add' type)
+      const tradeType = assetType === 'cash' ? 'add' : 'buy'
+      const totalAmount = quantity * purchasePrice
+      
+      try {
+        await client.query(
+          `INSERT INTO user_trades 
+           (user_id, holding_id, trade_type, asset_type, symbol, name, quantity, price, total_amount, currency, trade_date, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          [user.id, row.id, tradeType, assetType, symbol, name, quantity, purchasePrice, totalAmount, currency || 'USD', purchaseDate, notes || null]
+        )
+      } catch (tradeError) {
+        // Log but don't fail - transaction recording is optional
+        console.error('Failed to record buy transaction:', tradeError)
+      }
       
       return NextResponse.json({ success: true, holding }, { status: 201 })
     } finally {
