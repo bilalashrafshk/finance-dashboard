@@ -173,14 +173,6 @@ export function TransactionsView({
     return holding || null
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
   // Get holdings for selected asset
   const assetHoldings = useMemo(() => {
     if (!selectedAsset) return []
@@ -214,6 +206,15 @@ export function TransactionsView({
       currency,
     }
   }, [assetHoldings])
+
+  // Show loading state after all hooks
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
     <Fragment>
