@@ -112,7 +112,6 @@ export function AssetHoldingsDialog({
   const totalGainLossPercent = totalInvested > 0 ? (totalGainLoss / totalInvested) * 100 : 0
   const averagePurchasePrice = totalQuantity > 0 ? totalInvested / totalQuantity : 0
   const currentPrice = holdings[0]?.currentPrice || 0
-  const currency = holdings[0]?.currency || 'USD'
 
   return (
     <>
