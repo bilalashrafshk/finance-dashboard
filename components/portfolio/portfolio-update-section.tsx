@@ -531,7 +531,14 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
               </TableRow>
             </TableHeader>
             <TableBody>
-              {combinedStatuses.map((status) => {
+              {combinedStatuses.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    No holdings found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                combinedStatuses.map((status) => {
                 // Check if asset type is supported in asset screener
                 const supportedTypes: AssetType[] = ['us-equity', 'pk-equity', 'crypto', 'metals', 'kse100', 'spx500']
                 const isSupportedInScreener = supportedTypes.includes(status.holding.assetType)
@@ -618,7 +625,8 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
                   </TableCell>
                 </TableRow>
                 )
-              })}
+                })
+              )}
             </TableBody>
           </Table>
         </div>
