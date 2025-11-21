@@ -211,18 +211,16 @@ export function TransactionsView({
     }
   }, [assetHoldings])
 
-  // Show loading state after all hooks
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
   return (
     <Fragment>
       <div className="space-y-4">
+        {/* Show loading indicator only when loading, but don't block the UI */}
+        {loading && (
+          <div className="flex items-center justify-center py-4">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />
+            <span className="text-sm text-muted-foreground">Loading transactions...</span>
+          </div>
+        )}
         {/* Asset Summary and Clear Filter (when asset is selected) */}
         {selectedAsset && assetTotals && (
           <Fragment>
@@ -418,8 +416,16 @@ export function TransactionsView({
           </Tabs>
         ) : (
           <Fragment>
+            {/* Add Transaction Button and Filters */}
+            <div className="flex items-center justify-between mb-4">
+              <Button onClick={() => setIsAddTransactionOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Transaction
+              </Button>
+            </div>
+            
             {/* Filters */}
-            <div className="flex gap-4 items-center">
+            <div className="flex gap-4 items-center mb-4">
               <div className="flex-1">
                 <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
                   <SelectTrigger className="w-[180px]">
