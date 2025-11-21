@@ -662,12 +662,8 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
 
   // Fetch historical price when trade date, symbol, or asset type changes (for buy and sell transactions)
   useEffect(() => {
-    // Only fetch historical price for Buy if purchase price is entered (to validate it)
-    // For Sell, fetch immediately to show historical price options
-    const shouldFetchForBuy = tradeType === 'buy' && purchasePrice && purchasePrice.length > 0
-    const shouldFetchForSell = tradeType === 'sell'
-    
-    if (tradeDate && symbol && (shouldFetchForBuy || shouldFetchForSell) && (assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500')) {
+    // Fetch whenever we have the necessary data (Date + Symbol) to ensure validation is ready.
+    if (tradeDate && symbol && (tradeType === 'buy' || tradeType === 'sell') && (assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500')) {
       const timeoutId = setTimeout(() => {
         fetchHistoricalPriceForDate()
       }, 500)
@@ -676,7 +672,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
       setHistoricalPrice(null)
       setPriceRange(null)
     }
-  }, [tradeDate, symbol, assetType, tradeType, purchasePrice, fetchHistoricalPriceForDate])
+  }, [tradeDate, symbol, assetType, tradeType, fetchHistoricalPriceForDate])
 
   // For buy transactions: When trade date changes, the purchase price needs to be re-validated
   // The priceRange will update via fetchHistoricalPriceForDate, and getPriceValidation will re-run
