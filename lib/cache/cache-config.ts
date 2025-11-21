@@ -69,6 +69,9 @@ class DefaultCacheConfig implements CacheConfig {
     
     // Risk metrics: 5 minutes
     'risk-metrics': 5 * 60 * 1000, // 5 minutes
+    
+    // Holdings: 30 seconds (calculated from transactions, invalidated on transaction changes)
+    'holdings': 30 * 1000, // 30 seconds
   } as const
 
   /**
@@ -161,6 +164,11 @@ class DefaultCacheConfig implements CacheConfig {
       }
       
       return this.BASE_TTL.indices
+    }
+
+    // Holdings: short TTL since they're invalidated on transaction changes
+    if (assetType === 'holdings') {
+      return this.BASE_TTL.holdings || 30 * 1000 // 30 seconds default
     }
 
     // Default: use base TTL

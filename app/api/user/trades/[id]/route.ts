@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/middleware'
 import { Pool } from 'pg'
 import type { Trade } from '../route'
+import { cacheManager } from '@/lib/cache/cache-manager'
+import { revalidateTag } from 'next/cache'
 
 function getPool(): Pool {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
@@ -84,6 +86,16 @@ export async function PUT(
         createdAt: row.created_at.toISOString(),
       }
       
+      // Invalidate holdings cache for this user (transaction changed)
+      const holdingsCacheKey = `holdings-${user.id}`
+      cacheManager.delete(holdingsCacheKey)
+      
+      try {
+        revalidateTag(`holdings-${user.id}`)
+      } catch (error) {
+        console.log('[Trade Update] Next.js cache revalidation skipped')
+      }
+      
       return NextResponse.json({ success: true, trade })
     } finally {
       client.release()
@@ -135,6 +147,16 @@ export async function DELETE(
         'DELETE FROM user_trades WHERE id = $1 AND user_id = $2',
         [tradeId, user.id]
       )
+      
+      // Invalidate holdings cache for this user (transaction deleted)
+      const holdingsCacheKey = `holdings-${user.id}`
+      cacheManager.delete(holdingsCacheKey)
+      
+      try {
+        revalidateTag(`holdings-${user.id}`)
+      } catch (error) {
+        console.log('[Trade Delete] Next.js cache revalidation skipped')
+      }
       
       return NextResponse.json({ success: true })
     } finally {

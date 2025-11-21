@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/middleware'
 import { Pool } from 'pg'
+import { calculateHoldingsFromTransactions } from '@/lib/portfolio/transaction-utils'
+import { revalidateTag } from 'next/cache'
+import { cacheManager } from '@/lib/cache/cache-manager'
 
 function getPool(): Pool {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
@@ -118,33 +121,45 @@ export async function POST(request: NextRequest) {
       // For buy transactions of non-cash assets, check cash balance
       if (tradeType === 'buy' && assetType !== 'cash') {
         const { autoDeposit } = body
-        const assetCurrency = (currency || 'USD').toUpperCase().trim()
+        const assetCurrency = currency || 'USD'
         
-        console.log(`[Trade] Checking cash balance - Trade Currency: "${currency}", Normalized: "${assetCurrency}", TotalAmount: ${totalAmount}, TradeType: ${tradeType}, AssetType: ${assetType}`)
-        
-        // Get cash balance from holdings - order by quantity DESC to prioritize funded accounts if duplicates exist
-        const cashResult = await client.query(
-          `SELECT quantity, currency FROM user_holdings
-           WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND UPPER(TRIM(currency)) = $2
-           ORDER BY quantity DESC`,
-          [user.id, assetCurrency]
+        // Calculate cash balance from transactions (same method as holdings API)
+        const existingTradesResult = await client.query(
+          `SELECT id, user_id, holding_id, trade_type, asset_type, symbol, name, quantity,
+                  price, total_amount, currency, trade_date, notes, created_at
+           FROM user_trades
+           WHERE user_id = $1
+           ORDER BY trade_date ASC, created_at ASC`,
+          [user.id]
         )
         
-        console.log(`[Trade] Cash query result - Found ${cashResult.rows.length} cash holdings for currency "${assetCurrency}"`)
-        if (cashResult.rows.length > 0) {
-          cashResult.rows.forEach((row, idx) => {
-            console.log(`[Trade] Cash holding ${idx}: quantity=${row.quantity}, currency="${row.currency}"`)
-          })
-        }
+        const existingTrades = existingTradesResult.rows.map(row => ({
+          id: row.id,
+          userId: row.user_id,
+          holdingId: row.holding_id,
+          tradeType: row.trade_type,
+          assetType: row.asset_type,
+          symbol: row.symbol,
+          name: row.name,
+          quantity: parseFloat(row.quantity),
+          price: parseFloat(row.price),
+          totalAmount: parseFloat(row.total_amount),
+          currency: row.currency,
+          tradeDate: row.trade_date.toISOString().split('T')[0],
+          notes: row.notes,
+          createdAt: row.created_at.toISOString(),
+        }))
         
-        const cashBalance = cashResult.rows.length > 0 ? Math.max(0, parseFloat(cashResult.rows[0].quantity) || 0) : 0
+        // Calculate holdings from transactions to get accurate cash balance
+        const calculatedHoldings = calculateHoldingsFromTransactions(existingTrades)
+        const cashHolding = calculatedHoldings.find(
+          h => h.assetType === 'cash' && h.symbol === 'CASH' && h.currency === assetCurrency
+        )
+        const cashBalance = cashHolding ? cashHolding.quantity : 0
         
         // Use epsilon for float comparison to match frontend
         const EPSILON = 0.0001
-        const difference = totalAmount - cashBalance
-        console.log(`[Trade] Cash validation - Required: ${totalAmount}, Available: ${cashBalance}, Difference: ${difference}, Epsilon: ${EPSILON}, Insufficient: ${difference > EPSILON}`)
-        
-        if (difference > EPSILON) {
+        if (totalAmount - cashBalance > EPSILON) {
           const shortfall = totalAmount - cashBalance
           
           console.log(`[Trade] Insufficient cash: Required ${totalAmount}, Available ${cashBalance}, Shortfall ${shortfall}, Currency ${assetCurrency}, AutoDeposit ${autoDeposit}`)
@@ -168,7 +183,7 @@ export async function POST(request: NextRequest) {
           // Order by quantity DESC to use the main cash account
           const cashHoldingResult = await client.query(
             `SELECT id FROM user_holdings
-             WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND UPPER(TRIM(currency)) = $2
+             WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND currency = $2
              ORDER BY quantity DESC`,
             [user.id, assetCurrency]
           )
@@ -309,29 +324,84 @@ export async function POST(request: NextRequest) {
       }
       
       // Deduct cash for buy transactions
+      // Note: Since holdings are calculated from transactions, we don't strictly need to update user_holdings
+      // But we keep it for backward compatibility and other parts of the system
       if (tradeType === 'buy' && assetType !== 'cash') {
-        const assetCurrency = (currency || 'USD').toUpperCase().trim()
+        const assetCurrency = currency || 'USD'
+        
+        // Calculate current cash balance from transactions (including the new trade we just added)
+        const allTradesResult = await client.query(
+          `SELECT id, user_id, holding_id, trade_type, asset_type, symbol, name, quantity,
+                  price, total_amount, currency, trade_date, notes, created_at
+           FROM user_trades
+           WHERE user_id = $1
+           ORDER BY trade_date ASC, created_at ASC`,
+          [user.id]
+        )
+        
+        const allTrades = allTradesResult.rows.map(row => ({
+          id: row.id,
+          userId: row.user_id,
+          holdingId: row.holding_id,
+          tradeType: row.trade_type,
+          assetType: row.asset_type,
+          symbol: row.symbol,
+          name: row.name,
+          quantity: parseFloat(row.quantity),
+          price: parseFloat(row.price),
+          totalAmount: parseFloat(row.total_amount),
+          currency: row.currency,
+          tradeDate: row.trade_date.toISOString().split('T')[0],
+          notes: row.notes,
+          createdAt: row.created_at.toISOString(),
+        }))
+        
+        const calculatedHoldings = calculateHoldingsFromTransactions(allTrades)
+        const cashHolding = calculatedHoldings.find(
+          h => h.assetType === 'cash' && h.symbol === 'CASH' && h.currency === assetCurrency
+        )
+        const newCashQuantity = cashHolding ? Math.max(0, cashHolding.quantity) : 0
+        
+        // Update or create cash holding in user_holdings for backward compatibility
         const cashHoldingResult = await client.query(
-          `SELECT id, quantity FROM user_holdings
-           WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND UPPER(TRIM(currency)) = $2
+          `SELECT id FROM user_holdings
+           WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND currency = $2
            ORDER BY quantity DESC`,
           [user.id, assetCurrency]
         )
         
         if (cashHoldingResult.rows.length > 0) {
-          const cashHolding = cashHoldingResult.rows[0]
-          const newCashQuantity = Math.max(0, parseFloat(cashHolding.quantity) - totalAmount)
-          
+          // Update existing cash holding
           await client.query(
             `UPDATE user_holdings 
              SET quantity = $1, updated_at = NOW()
              WHERE id = $2`,
-            [newCashQuantity, cashHolding.id]
+            [newCashQuantity, cashHoldingResult.rows[0].id]
+          )
+        } else {
+          // Create cash holding if it doesn't exist (for backward compatibility)
+          await client.query(
+            `INSERT INTO user_holdings 
+             (user_id, asset_type, symbol, name, quantity, purchase_price, purchase_date, current_price, currency)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [user.id, 'cash', 'CASH', `Cash (${assetCurrency})`, newCashQuantity, 1, tradeDate, 1, assetCurrency]
           )
         }
       }
       
       await client.query('COMMIT')
+      
+      // Invalidate holdings cache for this user (transactions changed)
+      const holdingsCacheKey = `holdings-${user.id}`
+      cacheManager.delete(holdingsCacheKey)
+      
+      // Also try Next.js revalidation (if available)
+      try {
+        revalidateTag(`holdings-${user.id}`)
+      } catch (error) {
+        // revalidateTag might not be available in all contexts, ignore if it fails
+        console.log('[Trade] Next.js cache revalidation skipped (not available in this context)')
+      }
       
       return NextResponse.json({ success: true, trade, realizedPnL }, { status: 201 })
     } catch (error: any) {

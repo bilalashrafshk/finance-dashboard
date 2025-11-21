@@ -59,6 +59,7 @@ export function PortfolioDashboard() {
 
   const loadHoldings = async () => {
     try {
+      // Use cache-busting to ensure fresh data after transactions
       const portfolio = await loadPortfolio()
       setHoldings(portfolio.holdings)
     } catch (error) {

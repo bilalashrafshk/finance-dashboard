@@ -677,6 +677,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
               holdings={holdings}
               selectedAsset={selectedAsset}
               onClearAssetFilter={() => setSelectedAsset(null)}
+              onHoldingsUpdate={onUpdate}
             />
           </TabsContent>
         </Tabs>

@@ -3,6 +3,8 @@ import { requireAuth } from '@/lib/auth/middleware'
 import { Pool } from 'pg'
 import type { Holding } from '@/lib/portfolio/types'
 import { calculateHoldingsFromTransactions, getCurrentPrice } from '@/lib/portfolio/transaction-utils'
+import { revalidateTag } from 'next/cache'
+import { cacheManager } from '@/lib/cache/cache-manager'
 
 function getPool(): Pool {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
@@ -24,41 +26,60 @@ function getPool(): Pool {
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth(request)
-    const pool = getPool()
-    const client = await pool.connect()
     
-    try {
-      // Get all transactions for the user
-      const tradesResult = await client.query(
-        `SELECT id, user_id, holding_id, trade_type, asset_type, symbol, name, quantity,
-                price, total_amount, currency, trade_date, notes, created_at
-         FROM user_trades
-         WHERE user_id = $1
-         ORDER BY trade_date ASC, created_at ASC`,
-        [user.id]
-      )
+    // Cache key per user - holdings change when transactions change
+    const cacheKey = `holdings-${user.id}`
+    const HOLDINGS_CACHE_TTL = 30 * 1000 // 30 seconds
+    
+    // Try to get from cache first
+    let calculatedHoldings = cacheManager.get<any[]>(cacheKey)
+    let fromCache = calculatedHoldings !== null
+    
+    if (!fromCache) {
+      // Cache miss - calculate holdings
+      const pool = getPool()
+      const client = await pool.connect()
       
-      const trades = tradesResult.rows.map(row => ({
-        id: row.id,
-        userId: row.user_id,
-        holdingId: row.holding_id,
-        tradeType: row.trade_type,
-        assetType: row.asset_type,
-        symbol: row.symbol,
-        name: row.name,
-        quantity: parseFloat(row.quantity),
-        price: parseFloat(row.price),
-        totalAmount: parseFloat(row.total_amount),
-        currency: row.currency,
-        tradeDate: row.trade_date.toISOString().split('T')[0],
-        notes: row.notes,
-        createdAt: row.created_at.toISOString(),
-      }))
-      
-      // Calculate holdings from transactions
-      const calculatedHoldings = calculateHoldingsFromTransactions(trades)
-      
-      // OPTIMIZATION: Use batch price API instead of individual calls
+      try {
+        // Get all transactions for the user
+        const tradesResult = await client.query(
+          `SELECT id, user_id, holding_id, trade_type, asset_type, symbol, name, quantity,
+                  price, total_amount, currency, trade_date, notes, created_at
+           FROM user_trades
+           WHERE user_id = $1
+           ORDER BY trade_date ASC, created_at ASC`,
+          [user.id]
+        )
+        
+        const trades = tradesResult.rows.map(row => ({
+          id: row.id,
+          userId: row.user_id,
+          holdingId: row.holding_id,
+          tradeType: row.trade_type,
+          assetType: row.asset_type,
+          symbol: row.symbol,
+          name: row.name,
+          quantity: parseFloat(row.quantity),
+          price: parseFloat(row.price),
+          totalAmount: parseFloat(row.total_amount),
+          currency: row.currency,
+          tradeDate: row.trade_date.toISOString().split('T')[0],
+          notes: row.notes,
+          createdAt: row.created_at.toISOString(),
+        }))
+        
+        // Calculate holdings from transactions
+        calculatedHoldings = calculateHoldingsFromTransactions(trades)
+        
+        // Cache the result for 30 seconds
+        cacheManager.setWithCustomTTL(cacheKey, calculatedHoldings, HOLDINGS_CACHE_TTL)
+      } finally {
+        client.release()
+      }
+    }
+    
+    // OPTIMIZATION: Use batch price API instead of individual calls
+    // Prices are cached separately in the price API, so this is fast
       const currentPrices = new Map<string, number>()
       
       if (calculatedHoldings.length > 0) {
@@ -130,10 +151,16 @@ export async function GET(request: NextRequest) {
         }
       })
       
-      return NextResponse.json({ success: true, holdings })
-    } finally {
-      client.release()
-    }
+      return NextResponse.json(
+        { success: true, holdings },
+        {
+          headers: {
+            'Cache-Control': 'private, max-age=30, must-revalidate', // Cache for 30 seconds
+            'X-Holdings-Count': holdings.length.toString(),
+            'X-Cache': fromCache ? 'HIT' : 'MISS',
+          },
+        }
+      )
   } catch (error: any) {
     if (error.message === 'Authentication required') {
       return NextResponse.json(

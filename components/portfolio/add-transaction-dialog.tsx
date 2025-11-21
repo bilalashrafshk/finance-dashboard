@@ -145,11 +145,9 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
         const data = await response.json()
         if (data.success && data.holdings) {
           const cashHolding = data.holdings.find(
-            (h: any) => h.assetType === 'cash' && h.symbol === 'CASH' && h.currency?.toUpperCase().trim() === currency?.toUpperCase().trim()
+            (h: any) => h.assetType === 'cash' && h.symbol === 'CASH' && h.currency === currency
           )
-          const foundBalance = cashHolding ? cashHolding.quantity : 0
-          console.log(`[AddTransaction] Cash balance fetch - Currency: "${currency}", Found: ${foundBalance}, All cash holdings:`, data.holdings.filter((h: any) => h.assetType === 'cash'))
-          setCashBalance(foundBalance)
+          setCashBalance(cashHolding ? cashHolding.quantity : 0)
         } else {
           setCashBalance(0)
         }
@@ -186,14 +184,14 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     }
   }, [quantity, purchasePrice])
 
-  // Get available holdings for sell (combined by asset) - show ALL holdings user owns
+  // Get available holdings for sell (combined by asset) - show ALL holdings user owns except cash
   const availableHoldings = useMemo(() => {
     if (tradeType !== 'sell' || holdings.length === 0) {
       return []
     }
-    // Combine holdings by asset and show only those with quantity > 0
+    // Combine holdings by asset and show only those with quantity > 0, excluding cash
     const combined = combineHoldingsByAsset(holdings)
-    return combined.filter(h => h.quantity > 0) // Only show holdings with quantity > 0
+    return combined.filter(h => h.quantity > 0 && h.assetType !== 'cash') // Exclude cash - cash cannot be sold
   }, [holdings, tradeType])
 
   // Get selected holding for validation (defined early for useEffects)

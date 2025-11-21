@@ -47,6 +47,7 @@ interface TransactionsViewProps {
   onDelete?: (id: string) => void
   selectedAsset?: { assetType: string; symbol: string; currency: string; name?: string } | null
   onClearAssetFilter?: () => void
+  onHoldingsUpdate?: () => void // Callback to refresh holdings after transaction changes
 }
 
 export function TransactionsView({ 
@@ -55,7 +56,8 @@ export function TransactionsView({
   onEdit, 
   onDelete,
   selectedAsset,
-  onClearAssetFilter
+  onClearAssetFilter,
+  onHoldingsUpdate
 }: TransactionsViewProps) {
   const [trades, setTrades] = useState<Trade[]>([])
   const [loading, setLoading] = useState(false)
@@ -604,6 +606,10 @@ export function TransactionsView({
               await addTransaction(tradeData as any)
           }
           loadTransactions()
+          // Refresh holdings immediately after transaction change
+          if (onHoldingsUpdate) {
+            onHoldingsUpdate()
+          }
           setIsAddTransactionOpen(false)
           setEditingTrade(null)
           } catch (error) {
@@ -633,6 +639,10 @@ export function TransactionsView({
                   await deleteTransaction(parseInt(deleteConfirmId))
                   setDeleteConfirmId(null)
                   loadTransactions()
+                  // Refresh holdings immediately after transaction deletion
+                  if (onHoldingsUpdate) {
+                    onHoldingsUpdate()
+                  }
                 }
               }}
               className="bg-red-600 hover:bg-red-700"

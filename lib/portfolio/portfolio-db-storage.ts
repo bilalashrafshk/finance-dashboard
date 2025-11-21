@@ -23,6 +23,7 @@ export async function loadPortfolio(): Promise<Portfolio> {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
+      cache: 'no-store', // Prevent browser caching - holdings are calculated from transactions in real-time
     })
 
     if (!response.ok) {

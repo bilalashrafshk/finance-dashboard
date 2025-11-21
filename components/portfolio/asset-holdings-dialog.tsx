@@ -197,7 +197,7 @@ export function AssetHoldingsDialog({
                         {(onEdit || onDelete || onSell) && (
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              {onSell && (
+                              {onSell && holding.assetType !== 'cash' && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
