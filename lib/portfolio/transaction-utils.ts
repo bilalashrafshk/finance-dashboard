@@ -92,6 +92,33 @@ export function calculateHoldingsFromTransactions(
       holding.quantity += newQuantity
       holding.totalInvested += newInvested
       holding.lastPurchaseDate = trade.tradeDate
+
+      // If it's a BUY of a non-cash asset, decrease CASH holding
+      if (trade.tradeType === 'buy' && trade.assetType !== 'cash') {
+        const cashKey = `cash:CASH:${trade.currency}`
+        let cashHolding = holdingsMap.get(cashKey)
+        
+        if (!cashHolding) {
+          // If cash doesn't exist, create it (will be negative)
+          cashHolding = {
+            assetType: 'cash',
+            symbol: 'CASH',
+            name: 'Cash',
+            currency: trade.currency,
+            quantity: 0,
+            totalInvested: 0,
+            averagePurchasePrice: 1,
+            firstPurchaseDate: trade.tradeDate,
+            lastPurchaseDate: trade.tradeDate,
+          }
+          holdingsMap.set(cashKey, cashHolding)
+        }
+        
+        cashHolding.quantity -= trade.totalAmount
+        cashHolding.totalInvested -= trade.totalAmount
+        cashHolding.lastPurchaseDate = trade.tradeDate
+      }
+
     } else if (trade.tradeType === 'sell' || trade.tradeType === 'remove') {
       // Reduce position (FIFO or average cost basis)
       // For simplicity, we'll use average cost basis
@@ -107,6 +134,31 @@ export function calculateHoldingsFromTransactions(
         holding.totalInvested = 0
         holding.averagePurchasePrice = 0
       }
+
+      // If it's a SELL of a non-cash asset, increase CASH holding
+      if (trade.tradeType === 'sell' && trade.assetType !== 'cash') {
+        const cashKey = `cash:CASH:${trade.currency}`
+        let cashHolding = holdingsMap.get(cashKey)
+        
+        if (!cashHolding) {
+          cashHolding = {
+            assetType: 'cash',
+            symbol: 'CASH',
+            name: 'Cash',
+            currency: trade.currency,
+            quantity: 0,
+            totalInvested: 0,
+            averagePurchasePrice: 1,
+            firstPurchaseDate: trade.tradeDate,
+            lastPurchaseDate: trade.tradeDate,
+          }
+          holdingsMap.set(cashKey, cashHolding)
+        }
+        
+        cashHolding.quantity += trade.totalAmount
+        cashHolding.totalInvested += trade.totalAmount
+        cashHolding.lastPurchaseDate = trade.tradeDate
+      }
     }
     
     // Update name if it's more recent
@@ -120,7 +172,8 @@ export function calculateHoldingsFromTransactions(
   
   for (const [key, calculated] of holdingsMap.entries()) {
     // Skip holdings with zero quantity
-    if (calculated.quantity <= 0) {
+    // Allow negative quantity only for Cash (to represent liabilities/overspending)
+    if (calculated.quantity === 0 || (calculated.quantity < 0 && calculated.assetType !== 'cash')) {
       continue
     }
     

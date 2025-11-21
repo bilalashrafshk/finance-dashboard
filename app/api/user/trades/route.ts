@@ -116,18 +116,57 @@ export async function POST(request: NextRequest) {
       let realizedPnL: number | null = null
       
       // Calculate realized PnL for sell transactions
-      if (tradeType === 'sell' && holdingId) {
-        // Get the holding to calculate average purchase price
-        const holdingResult = await client.query(
-          `SELECT purchase_price FROM user_holdings WHERE id = $1 AND user_id = $2`,
-          [holdingId, user.id]
+      if (tradeType === 'sell') {
+        // Fetch all previous trades for this asset to calculate average purchase price
+        // Note: We use <= tradeDate to get trades up to the current trade date
+        // For same date trades, we should ideally order by ID, but we don't have the current ID yet.
+        // Since this is a new trade, it will be "after" any existing trades on the same day in terms of logic usually.
+        // We sort by date ASC, createdAt ASC
+        const tradesResult = await client.query(
+          `SELECT trade_type, quantity, price, total_amount
+           FROM user_trades
+           WHERE user_id = $1 AND asset_type = $2 AND symbol = $3 AND trade_date <= $4
+           ORDER BY trade_date ASC, created_at ASC`,
+          [user.id, assetType, symbol, tradeDate]
         )
         
-        if (holdingResult.rows.length > 0) {
-          const purchasePrice = parseFloat(holdingResult.rows[0].purchase_price)
-          const sellPrice = parseFloat(price)
-          const sellQuantity = parseFloat(quantity)
-          realizedPnL = (sellPrice - purchasePrice) * sellQuantity
+        // Calculate average purchase price from previous trades
+        let currentQuantity = 0
+        let currentInvested = 0
+        
+        for (const t of tradesResult.rows) {
+           const tQuantity = parseFloat(t.quantity)
+           const tTotal = parseFloat(t.total_amount)
+           const tType = t.trade_type
+           
+           if (tType === 'buy' || tType === 'add') {
+             // Add to position
+             currentQuantity += tQuantity
+             currentInvested += tTotal
+           } else if (tType === 'sell' || tType === 'remove') {
+             // Reduce position - using average cost basis
+             // Logic matches calculateHoldingsFromTransactions in transaction-utils.ts
+             const quantityToRemove = Math.min(tQuantity, currentQuantity)
+             const avgPrice = currentQuantity > 0 ? currentInvested / currentQuantity : 0
+             const costBasis = avgPrice * quantityToRemove
+             
+             currentQuantity -= quantityToRemove
+             currentInvested -= costBasis
+             
+             if (currentQuantity <= 0) {
+               currentQuantity = 0
+               currentInvested = 0
+             }
+           }
+        }
+        
+        // Now calculate PnL for THIS trade
+        if (currentQuantity > 0) {
+           const avgPurchasePrice = currentInvested / currentQuantity
+           const sellPrice = parseFloat(price)
+           const sellQuantity = parseFloat(quantity)
+           // Realized PnL = (Sell Price - Avg Buy Price) * Sell Quantity
+           realizedPnL = (sellPrice - avgPurchasePrice) * sellQuantity
         }
       }
       
