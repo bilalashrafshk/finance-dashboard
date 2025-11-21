@@ -14,7 +14,7 @@ import { AddCommodityDialog } from "./add-commodity-dialog"
 import { AssetTypeSelectorDialog } from "./asset-type-selector-dialog"
 import { PortfolioSummary } from "./portfolio-summary"
 import { AllocationChart } from "./allocation-chart"
-import { PerformanceChart } from "./performance-chart"
+import { PortfolioHistoryChart } from "./portfolio-history-chart"
 import { PnLBreakdown } from "./pnl-breakdown"
 import { PKEquityPortfolioChart } from "./pk-equity-portfolio-chart"
 import { CryptoPortfolioChart } from "./crypto-portfolio-chart"
@@ -530,7 +530,7 @@ export function PortfolioDashboard() {
               <div className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-2">
                     <AllocationChart allocation={calculateUnifiedAssetAllocation(holdings, exchangeRates)} holdings={holdings} currency="USD" />
-                    <PerformanceChart allocation={calculateUnifiedAssetAllocation(holdings, exchangeRates)} currency="USD" />
+                    <PortfolioHistoryChart currency="USD" />
                   </div>
                   <PnLBreakdown holdings={holdings} currency="USD" />
                   {/* US Equities Portfolio Chart */}
@@ -638,7 +638,7 @@ export function PortfolioDashboard() {
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <AllocationChart allocation={calculateAssetAllocation(currencyHoldings)} holdings={currencyHoldings} currency={currency} />
-                <PerformanceChart allocation={calculateAssetAllocation(currencyHoldings)} currency={currency} />
+                <PortfolioHistoryChart currency={currency} />
               </div>
               <PnLBreakdown holdings={currencyHoldings} currency={currency} />
               {/* PK Equities Portfolio Chart - only show for PKR currency with actual PK equity holdings */}

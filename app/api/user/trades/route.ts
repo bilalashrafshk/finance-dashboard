@@ -163,8 +163,8 @@ export async function POST(request: NextRequest) {
         // Now calculate PnL for THIS trade
         if (currentQuantity > 0) {
            const avgPurchasePrice = currentInvested / currentQuantity
-           const sellPrice = parseFloat(price)
-           const sellQuantity = parseFloat(quantity)
+          const sellPrice = parseFloat(price)
+          const sellQuantity = parseFloat(quantity)
            // Realized PnL = (Sell Price - Avg Buy Price) * Sell Quantity
            realizedPnL = (sellPrice - avgPurchasePrice) * sellQuantity
         }

@@ -296,6 +296,21 @@ export async function calculatePortfolioSummaryWithDividends(
   summary.realizedPnL = realizedPnL
   summary.totalPnL = summary.totalGainLoss + realizedPnL // Total = Unrealized + Realized
   
+  // Adjust Total Invested to be Net Deposits (Current Cost Basis - Realized Gains)
+  // This ensures that if you sell and hold Cash, your "Invested" amount reflects original principal
+  // Formula: Total Invested = Current Value - Total PnL (Realized + Unrealized)
+  // Note: summary.totalInvested (calculated earlier) is Sum(Cost Basis).
+  // Since Cash Cost Basis = Quantity, it includes Realized Gains.
+  // So: Adjusted Invested = Sum(Cost Basis) - Realized PnL.
+  if (realizedPnL !== 0) {
+    summary.totalInvested = summary.totalInvested - realizedPnL
+    // Recalculate percentages based on new invested amount
+    if (summary.totalInvested !== 0) {
+      summary.totalGainLossPercent = (summary.totalGainLoss / summary.totalInvested) * 100
+      summary.dividendsCollectedPercent = (dividendsCollected / summary.totalInvested) * 100
+    }
+  }
+
   return summary
 }
 
@@ -317,6 +332,15 @@ export async function calculateUnifiedPortfolioSummaryWithRealizedPnL(
   // This is a limitation but acceptable for most use cases
   summary.realizedPnL = realizedPnL
   summary.totalPnL = summary.totalGainLoss + realizedPnL
+  
+  // Adjust Total Invested to be Net Deposits (see explanation above)
+  if (realizedPnL !== 0) {
+    summary.totalInvested = summary.totalInvested - realizedPnL
+    // Recalculate percentages based on new invested amount
+    if (summary.totalInvested !== 0) {
+      summary.totalGainLossPercent = (summary.totalGainLoss / summary.totalInvested) * 100
+    }
+  }
   
   return summary
 }
