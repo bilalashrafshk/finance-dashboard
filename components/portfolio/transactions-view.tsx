@@ -369,12 +369,19 @@ export function TransactionsView({
                         <TableHead className="text-right">Quantity</TableHead>
                         <TableHead className="text-right">Price</TableHead>
                         <TableHead className="text-right">Total Amount</TableHead>
+                        {filteredTrades.some(t => t.tradeType === 'sell') && (
+                          <TableHead className="text-right">Realized P&L</TableHead>
+                        )}
                         <TableHead>Notes</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredTrades.map((trade) => {
                         const isBuy = trade.tradeType === 'buy' || trade.tradeType === 'add'
+                        // Extract realized PnL from notes if present
+                        const realizedPnLMatch = trade.notes?.match(/Realized P&L: ([\d.-]+)/)
+                        const realizedPnL = realizedPnLMatch ? parseFloat(realizedPnLMatch[1]) : null
+                        
                         return (
                           <TableRow key={trade.id}>
                             <TableCell>
@@ -402,8 +409,19 @@ export function TransactionsView({
                             <TableCell className={`text-right font-semibold ${getTradeTypeColor(trade.tradeType)}`}>
                               {isBuy ? '+' : '-'}{formatCurrency(trade.totalAmount, trade.currency)}
                             </TableCell>
+                            {filteredTrades.some(t => t.tradeType === 'sell') && (
+                              <TableCell className={`text-right font-semibold ${realizedPnL !== null ? (realizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400') : ''}`}>
+                                {realizedPnL !== null ? (
+                                  <>
+                                    {realizedPnL >= 0 ? '+' : ''}{formatCurrency(realizedPnL, trade.currency)}
+                                  </>
+                                ) : (
+                                  '—'
+                                )}
+                              </TableCell>
+                            )}
                             <TableCell className="text-sm text-muted-foreground max-w-xs truncate">
-                              {trade.notes || '—'}
+                              {trade.notes?.replace(/Realized P&L: [\d.-]+ [A-Z]+\.?/g, '').trim() || '—'}
                             </TableCell>
                           </TableRow>
                         )
@@ -475,6 +493,9 @@ export function TransactionsView({
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead className="text-right">Total Amount</TableHead>
+                  {filteredTrades.some(t => t.tradeType === 'sell') && (
+                    <TableHead className="text-right">Realized P&L</TableHead>
+                  )}
                   <TableHead>Notes</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -483,6 +504,9 @@ export function TransactionsView({
                 {filteredTrades.map((trade) => {
                   const isBuy = trade.tradeType === 'buy' || trade.tradeType === 'add'
                   const holding = getHoldingForTrade(trade)
+                  // Extract realized PnL from notes if present
+                  const realizedPnLMatch = trade.notes?.match(/Realized P&L: ([\d.-]+)/)
+                  const realizedPnL = realizedPnLMatch ? parseFloat(realizedPnLMatch[1]) : null
 
                   return (
                     <TableRow key={trade.id}>
@@ -517,8 +541,19 @@ export function TransactionsView({
                       <TableCell className={`text-right font-semibold ${getTradeTypeColor(trade.tradeType)}`}>
                         {isBuy ? '+' : '-'}{formatCurrency(trade.totalAmount, trade.currency)}
                       </TableCell>
+                      {filteredTrades.some(t => t.tradeType === 'sell') && (
+                        <TableCell className={`text-right font-semibold ${realizedPnL !== null ? (realizedPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400') : ''}`}>
+                          {realizedPnL !== null ? (
+                            <>
+                              {realizedPnL >= 0 ? '+' : ''}{formatCurrency(realizedPnL, trade.currency)}
+                            </>
+                          ) : (
+                            '—'
+                          )}
+                        </TableCell>
+                      )}
                       <TableCell className="text-sm text-muted-foreground max-w-xs truncate">
-                        {trade.notes || '—'}
+                        {trade.notes?.replace(/Realized P&L: [\d.-]+ [A-Z]+\.?/g, '').trim() || '—'}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">

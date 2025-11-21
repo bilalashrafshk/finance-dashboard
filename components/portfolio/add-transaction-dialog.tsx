@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Loader2, RefreshCw, AlertCircle } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CryptoSelector } from "./crypto-selector"
 import { MetalsSelector } from "./metals-selector"
 import type { AssetType } from "@/lib/portfolio/types"
@@ -60,6 +61,8 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
   const [historicalPrice, setHistoricalPrice] = useState<number | null>(null)
   const [priceRange, setPriceRange] = useState<{ min: number; max: number; center: number } | null>(null)
   const [historicalDataReady, setHistoricalDataReady] = useState(false)
+  const [currentPrice, setCurrentPrice] = useState<number | null>(null) // For sell: current market price
+  const [priceTab, setPriceTab] = useState<'current' | 'historical'>('historical') // For sell: which price to use
 
   useEffect(() => {
     if (editingTrade) {
@@ -112,7 +115,15 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
         setSymbol(holding.symbol)
         setName(holding.name)
         setCurrency(holding.currency)
-        setPrice(holding.currentPrice.toString())
+        setCurrentPrice(holding.currentPrice)
+        // Set price based on selected tab (default to historical)
+        if (priceTab === 'current') {
+          setPrice(holding.currentPrice.toString())
+        } else if (historicalPrice !== null) {
+          setPrice(historicalPrice.toString())
+        } else {
+          setPrice(holding.currentPrice.toString()) // Fallback to current
+        }
         setPriceFetched(true) // Price is already known from holding
         // Pre-fill quantity with available quantity (user can change)
         setQuantity(holding.quantity.toString())
@@ -122,8 +133,20 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
       setPriceFetched(false)
       setPrice('')
       setQuantity('')
+      setCurrentPrice(null)
     }
-  }, [selectedHoldingId, tradeType, availableHoldings])
+  }, [selectedHoldingId, tradeType, availableHoldings, priceTab, historicalPrice])
+  
+  // Update price when switching tabs for sell
+  useEffect(() => {
+    if (tradeType === 'sell' && selectedHolding) {
+      if (priceTab === 'current' && currentPrice !== null) {
+        setPrice(currentPrice.toString())
+      } else if (priceTab === 'historical' && historicalPrice !== null) {
+        setPrice(historicalPrice.toString())
+      }
+    }
+  }, [priceTab, currentPrice, historicalPrice, tradeType, selectedHolding])
 
   // Auto-set currency based on asset type (for buy/add, and when asset type changes)
   useEffect(() => {
@@ -163,12 +186,12 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     setName(displayName)
   }
 
-  // Fetch historical price for transaction date validation
+  // Fetch historical price for transaction date validation (for both buy and sell)
   const fetchHistoricalPriceForDate = useCallback(async () => {
     // Only fetch for asset types that support historical data
     const supportsHistoricalData = assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500'
     
-    if (!supportsHistoricalData || !symbol || !tradeDate || tradeType === 'sell' || tradeType === 'add') {
+    if (!supportsHistoricalData || !symbol || !tradeDate || tradeType === 'add') {
       setHistoricalPrice(null)
       setPriceRange(null)
       return
@@ -267,9 +290,9 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     }
   }, [assetType, symbol, tradeDate, tradeType])
 
-  // Fetch historical price when trade date, symbol, or asset type changes (for buy transactions)
+  // Fetch historical price when trade date, symbol, or asset type changes (for buy and sell transactions)
   useEffect(() => {
-    if (tradeDate && symbol && tradeType === 'buy' && (assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500')) {
+    if (tradeDate && symbol && (tradeType === 'buy' || tradeType === 'sell') && (assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500')) {
       const timeoutId = setTimeout(() => {
         fetchHistoricalPriceForDate()
       }, 500)
@@ -279,6 +302,16 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
       setPriceRange(null)
     }
   }, [tradeDate, symbol, assetType, tradeType, fetchHistoricalPriceForDate])
+  
+  // Fetch current price for sell transactions
+  useEffect(() => {
+    if (tradeType === 'sell' && selectedHoldingId && selectedHolding) {
+      // Current price is already available from the holding
+      setCurrentPrice(selectedHolding.currentPrice)
+    } else if (tradeType === 'sell' && !selectedHoldingId) {
+      setCurrentPrice(null)
+    }
+  }, [tradeType, selectedHoldingId, selectedHolding])
 
   // Fetch current price for buy transactions
   const fetchCurrentPrice = async () => {
@@ -358,9 +391,15 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     }
   }, [symbol, assetType, tradeType, editingTrade, open])
 
-  // Validate price against range
+  // Validate price against range (for both buy and sell when using historical price)
   const getPriceValidation = () => {
-    if (!priceRange || !price || tradeType !== 'buy') {
+    // Only validate if we have a price range and we're using historical price tab (for sell) or it's a buy
+    const shouldValidate = priceRange && price && (
+      (tradeType === 'buy') || 
+      (tradeType === 'sell' && priceTab === 'historical')
+    )
+    
+    if (!shouldValidate) {
       return { isValid: true, message: null, isWarning: false }
     }
 
@@ -434,11 +473,13 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
   const quantityNum = parseFloat(quantity) || 0
   const exceedsAvailable = tradeType === 'sell' && selectedHolding && quantityNum > maxQuantity
 
-  // Form validation - for buy transactions, require price fetch
+  // Form validation - for buy transactions, require price fetch; for sell, require historical price if using historical tab
   const needsPriceFetch = tradeType === 'buy' && (assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500')
-  const needsHistoricalData = tradeType === 'buy' && (assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500')
+  const needsHistoricalData = (tradeType === 'buy' || tradeType === 'sell') && (assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500')
   const hasTradeDate = !!tradeDate
-  const needsTradeDatePrice = needsHistoricalData && hasTradeDate
+  const needsTradeDatePrice = needsHistoricalData && hasTradeDate && (
+    tradeType === 'buy' || (tradeType === 'sell' && priceTab === 'historical')
+  )
 
   const isFormValid = 
     symbol && 
@@ -452,8 +493,8 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     (tradeType !== 'sell' || selectedHoldingId) && // For sell, must select a holding
     (!needsPriceFetch || priceFetched) && // For buy, price must be fetched
     (!needsHistoricalData || historicalDataReady) && // Historical data must be ready
-    (!needsTradeDatePrice || historicalPrice !== null) && // Trade date price must be available
-    priceValidation.isValid // Price must be within expected range
+    (!needsTradeDatePrice || historicalPrice !== null) && // Trade date price must be available (for buy or sell with historical tab)
+    priceValidation.isValid // Price must be within expected range (when applicable)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -707,63 +748,133 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
 
               <div className="space-y-2">
                 <Label htmlFor="price">Price per Unit *</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="price"
-                    type="number"
-                    step="any"
-                    value={price}
-                    onChange={(e) => {
-                      setPrice(e.target.value)
-                      setPriceFetched(false) // Reset fetched flag if manually changed
-                    }}
-                    placeholder="0.00"
-                    required
-                    className="flex-1"
-                  />
-                  {tradeType === 'buy' && (assetType === 'crypto' || assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500') && symbol && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={fetchCurrentPrice}
-                      disabled={fetchingPrice || !symbol}
-                      title="Fetch current market price"
-                    >
-                      {fetchingPrice ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-4 w-4" />
+                {tradeType === 'sell' && selectedHolding && (assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500') ? (
+                  <Tabs value={priceTab} onValueChange={(v) => setPriceTab(v as 'current' | 'historical')}>
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="current">Current Price</TabsTrigger>
+                      <TabsTrigger value="historical">Price on {tradeDate}</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="current" className="space-y-2 mt-2">
+                      <div className="flex gap-2">
+                        <Input
+                          id="price"
+                          type="number"
+                          step="any"
+                          value={price}
+                          onChange={(e) => {
+                            const newPrice = e.target.value
+                            setPrice(newPrice)
+                            setPriceFetched(false) // Reset fetched flag if manually changed
+                          }}
+                          placeholder="0.00"
+                          required
+                          className="flex-1"
+                          disabled={currentPrice === null}
+                        />
+                      </div>
+                      {currentPrice !== null && (
+                        <p className="text-xs text-muted-foreground">
+                          Current market price: {currentPrice.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })}
+                        </p>
                       )}
-                    </Button>
-                  )}
-                </div>
-                {fetchingPrice && (
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Fetching current price...
-                  </p>
-                )}
-                {priceFetched && tradeType === 'buy' && (
-                  <p className="text-xs text-green-600 dark:text-green-400">
-                    ✓ Current price fetched
-                  </p>
-                )}
-                {fetchingHistoricalPrice && tradeType === 'buy' && tradeDate && symbol && (assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals') && (
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Fetching historical price for {tradeDate}...
-                  </p>
-                )}
-                {priceRange && !fetchingHistoricalPrice && tradeType === 'buy' && (
-                  <p className="text-xs text-muted-foreground">
-                    Expected range: {priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - {priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} (±5% of {priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})
-                  </p>
-                )}
-                {priceValidation.message && (
-                  <p className={`text-xs ${priceValidation.isWarning ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'}`}>
-                    {priceValidation.message}
-                  </p>
+                    </TabsContent>
+                    <TabsContent value="historical" className="space-y-2 mt-2">
+                      <div className="flex gap-2">
+                        <Input
+                          id="price"
+                          type="number"
+                          step="any"
+                          value={price}
+                          onChange={(e) => {
+                            const newPrice = e.target.value
+                            setPrice(newPrice)
+                            setPriceFetched(false) // Reset fetched flag if manually changed
+                          }}
+                          placeholder="0.00"
+                          required
+                          className={`flex-1 ${priceValidation.isWarning ? 'border-yellow-500 focus-visible:ring-yellow-500' : ''}`}
+                          disabled={historicalPrice === null}
+                        />
+                      </div>
+                      {fetchingHistoricalPrice && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Fetching historical price for {tradeDate}...
+                        </p>
+                      )}
+                      {priceRange && !fetchingHistoricalPrice && (
+                        <p className="text-xs text-muted-foreground">
+                          Expected range: {priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - {priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} (±5% of {priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})
+                        </p>
+                      )}
+                      {priceValidation.message && priceTab === 'historical' && (
+                        <p className={`text-xs ${priceValidation.isWarning ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'}`}>
+                          {priceValidation.message}
+                        </p>
+                      )}
+                    </TabsContent>
+                  </Tabs>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <Input
+                        id="price"
+                        type="number"
+                        step="any"
+                        value={price}
+                        onChange={(e) => {
+                          setPrice(e.target.value)
+                          setPriceFetched(false) // Reset fetched flag if manually changed
+                        }}
+                        placeholder="0.00"
+                        required
+                        className={`flex-1 ${priceValidation.isWarning ? 'border-yellow-500 focus-visible:ring-yellow-500' : ''}`}
+                      />
+                      {tradeType === 'buy' && (assetType === 'crypto' || assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500') && symbol && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={fetchCurrentPrice}
+                          disabled={fetchingPrice || !symbol}
+                          title="Fetch current market price"
+                        >
+                          {fetchingPrice ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-4 w-4" />
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                    {fetchingPrice && tradeType === 'buy' && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Fetching current price...
+                      </p>
+                    )}
+                    {priceFetched && tradeType === 'buy' && (
+                      <p className="text-xs text-green-600 dark:text-green-400">
+                        ✓ Current price fetched
+                      </p>
+                    )}
+                    {fetchingHistoricalPrice && tradeType === 'buy' && tradeDate && symbol && (assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals') && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Fetching historical price for {tradeDate}...
+                      </p>
+                    )}
+                    {priceRange && !fetchingHistoricalPrice && tradeType === 'buy' && (
+                      <p className="text-xs text-muted-foreground">
+                        Expected range: {priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - {priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} (±5% of {priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})
+                      </p>
+                    )}
+                    {priceValidation.message && tradeType === 'buy' && (
+                      <p className={`text-xs ${priceValidation.isWarning ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'}`}>
+                        {priceValidation.message}
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
 

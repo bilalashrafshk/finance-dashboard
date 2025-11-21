@@ -113,13 +113,39 @@ export async function POST(request: NextRequest) {
     const client = await pool.connect()
     
     try {
+      let realizedPnL: number | null = null
+      
+      // Calculate realized PnL for sell transactions
+      if (tradeType === 'sell' && holdingId) {
+        // Get the holding to calculate average purchase price
+        const holdingResult = await client.query(
+          `SELECT purchase_price FROM user_holdings WHERE id = $1 AND user_id = $2`,
+          [holdingId, user.id]
+        )
+        
+        if (holdingResult.rows.length > 0) {
+          const purchasePrice = parseFloat(holdingResult.rows[0].purchase_price)
+          const sellPrice = parseFloat(price)
+          const sellQuantity = parseFloat(quantity)
+          realizedPnL = (sellPrice - purchasePrice) * sellQuantity
+        }
+      }
+      
+      // Check if realized_pnl column exists, if not, we'll add it via migration
+      // For now, store it in notes if column doesn't exist
+      let notesWithPnL = notes || null
+      if (realizedPnL !== null) {
+        const pnlText = `Realized P&L: ${realizedPnL.toFixed(2)} ${currency}`
+        notesWithPnL = notes ? `${notes}. ${pnlText}` : pnlText
+      }
+      
       const result = await client.query(
         `INSERT INTO user_trades 
          (user_id, holding_id, trade_type, asset_type, symbol, name, quantity, price, total_amount, currency, trade_date, notes)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING id, user_id, holding_id, trade_type, asset_type, symbol, name, quantity,
                    price, total_amount, currency, trade_date, notes, created_at`,
-        [user.id, holdingId || null, tradeType, assetType, symbol, name, quantity, price, totalAmount, currency || 'USD', tradeDate, notes || null]
+        [user.id, holdingId || null, tradeType, assetType, symbol, name, quantity, price, totalAmount, currency || 'USD', tradeDate, notesWithPnL]
       )
       
       const row = result.rows[0]
@@ -140,7 +166,7 @@ export async function POST(request: NextRequest) {
         createdAt: row.created_at.toISOString(),
       }
       
-      return NextResponse.json({ success: true, trade }, { status: 201 })
+      return NextResponse.json({ success: true, trade, realizedPnL }, { status: 201 })
     } finally {
       client.release()
     }

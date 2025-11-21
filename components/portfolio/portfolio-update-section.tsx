@@ -523,6 +523,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
               <TableRow>
                 <TableHead>Asset</TableHead>
                 <TableHead>Symbol</TableHead>
+                <TableHead className="text-right">Quantity</TableHead>
                 <TableHead>Current Price</TableHead>
                 <TableHead>Last Updated</TableHead>
                 <TableHead className="text-right">Day Change</TableHead>
@@ -533,7 +534,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
             <TableBody>
               {combinedStatuses.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                     No holdings found
                   </TableCell>
                 </TableRow>
@@ -587,6 +588,9 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
                       ) : (
                         <Badge variant="outline">{status.holding.symbol.toUpperCase()}</Badge>
                       )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {status.holding.quantity.toLocaleString()}
                     </TableCell>
                   <TableCell>
                     {formatCurrency(status.holding.currentPrice || 0, status.holding.currency)}
