@@ -64,15 +64,12 @@ export interface RiskMetrics {
 
 export async function fetchEthHistoricalData(): Promise<ProcessedData[]> {
   const fetchBinanceKlines = async (symbol: string, startDate: Date): Promise<any[]> => {
+    const url = "https://binance.com/api/v3/klines"
     const startTimestamp = startDate.getTime()
     const allData: any[] = []
     let currentStart = startTimestamp
     const maxIterations = 50 // Prevent infinite loops
     let iterations = 0
-
-    const buildUrl = (baseUrl: string, params: URLSearchParams) => {
-      return `${baseUrl}/api/v3/klines?${params}`
-    }
 
     while (iterations < maxIterations) {
       iterations++
@@ -88,70 +85,35 @@ export async function fetchEthHistoricalData(): Promise<ProcessedData[]> {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
 
-        // Try api.binance.com first, fallback to api.binance.us
-        let response = await fetch(buildUrl("https://api.binance.com", params), {
+        const response = await fetch(`${url}?${params}`, {
           signal: controller.signal,
           headers: {
             'User-Agent': 'Mozilla/5.0 (compatible; RiskDashboard/1.0)',
             'Accept': 'application/json',
             'Accept-Language': 'en-US,en;q=0.9',
           },
-        }).catch(() => null)
+        })
+        clearTimeout(timeoutId)
 
-        // Fallback to Binance US if main API fails
-        if (!response || !response.ok) {
-          clearTimeout(timeoutId)
-          const fallbackController = new AbortController()
-          const fallbackTimeoutId = setTimeout(() => fallbackController.abort(), 30000)
-          response = await fetch(buildUrl("https://api.binance.us", params), {
-            signal: fallbackController.signal,
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (compatible; RiskDashboard/1.0)',
-              'Accept': 'application/json',
-              'Accept-Language': 'en-US,en;q=0.9',
-            },
-          }).catch(() => null)
-          clearTimeout(fallbackTimeoutId)
-        } else {
-          clearTimeout(timeoutId)
-        }
-
-        if (!response || !response.ok) {
+        if (!response.ok) {
           // Handle 451 specifically - might be rate limiting or geographic restriction
-          if (response && response.status === 451) {
+          if (response.status === 451) {
             // Retry with longer delay
             await new Promise((resolve) => setTimeout(resolve, 2000))
             // Retry the request once with new controller
             const retryController = new AbortController()
             const retryTimeoutId = setTimeout(() => retryController.abort(), 30000)
-            let retryResponse = await fetch(buildUrl("https://api.binance.com", params), {
+            const retryResponse = await fetch(`${url}?${params}`, {
               signal: retryController.signal,
               headers: {
                 'User-Agent': 'Mozilla/5.0 (compatible; RiskDashboard/1.0)',
                 'Accept': 'application/json',
                 'Accept-Language': 'en-US,en;q=0.9',
               },
-            }).catch(() => null)
-            
-            if (!retryResponse || !retryResponse.ok) {
-              clearTimeout(retryTimeoutId)
-              const fallbackRetryController = new AbortController()
-              const fallbackRetryTimeoutId = setTimeout(() => fallbackRetryController.abort(), 30000)
-              retryResponse = await fetch(buildUrl("https://api.binance.us", params), {
-                signal: fallbackRetryController.signal,
-                headers: {
-                  'User-Agent': 'Mozilla/5.0 (compatible; RiskDashboard/1.0)',
-                  'Accept': 'application/json',
-                  'Accept-Language': 'en-US,en;q=0.9',
-                },
-              }).catch(() => null)
-              clearTimeout(fallbackRetryTimeoutId)
-            } else {
-              clearTimeout(retryTimeoutId)
-            }
-            
-            if (!retryResponse || !retryResponse.ok) {
-              throw new Error(`Failed to fetch ${symbol} data: ${retryResponse ? retryResponse.status : 'Network error'} ${retryResponse ? retryResponse.statusText : ''}. This may be due to rate limiting or geographic restrictions on Vercel.`)
+            })
+            clearTimeout(retryTimeoutId)
+            if (!retryResponse.ok) {
+              throw new Error(`Failed to fetch ${symbol} data: ${retryResponse.status} ${retryResponse.statusText}. This may be due to rate limiting or geographic restrictions on Vercel.`)
             }
             const retryBatch = await retryResponse.json()
             if (!retryBatch || retryBatch.length === 0) break
@@ -161,8 +123,7 @@ export async function fetchEthHistoricalData(): Promise<ProcessedData[]> {
             await new Promise((resolve) => setTimeout(resolve, 200))
             continue
           }
-          const errorStatus = response ? `${response.status} ${response.statusText}` : 'Network error'
-          throw new Error(`Failed to fetch ${symbol} data: ${errorStatus}`)
+          throw new Error(`Failed to fetch ${symbol} data: ${response.status} ${response.statusText}`)
         }
 
         const batch = await response.json()

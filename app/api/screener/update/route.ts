@@ -67,18 +67,23 @@ export async function GET(request: Request) {
     console.log(`[Screener Update] Received data for ${Object.keys(batchData).length} symbols`)
     
     // 3. Calculate Metrics per Company
+    // Process ALL stocks with price data, even if profile/financials are missing
     const companyMetrics = []
     
     for (const [symbol, data] of Object.entries(batchData)) {
       const { price, profile, financials } = data
       
-      if (!price || !profile) continue // Skip if missing critical data
+      // Require price (critical), but allow missing profile/financials
+      if (!price) {
+        console.log(`[Screener Update] Skipping ${symbol}: No price data`)
+        continue
+      }
       
-      // Calculate TTM EPS from last 4 quarters
+      // Calculate TTM EPS from last 4 quarters (if available)
       let ttmEps = 0
       let peRatio = null
       
-      if (financials.length === 4) {
+      if (financials && financials.length === 4) {
         // Calculate TTM EPS
         ttmEps = financials.reduce((sum, row) => sum + (row.eps_diluted || row.eps_basic || 0), 0)
         
@@ -90,17 +95,20 @@ export async function GET(request: Request) {
       // Note: Dividend yield calculation removed as per user request
       // Screener doesn't need dividends
 
+      // Create entry with whatever data we have
       companyMetrics.push({
         symbol: symbol,
-        sector: profile.sector || 'Unknown',
-        industry: profile.industry || 'Unknown',
+        sector: profile?.sector || 'Unknown',
+        industry: profile?.industry || 'Unknown',
         price: price.price,
         priceDate: price.date,
-        peRatio: peRatio, // Can be null or negative
+        peRatio: peRatio, // Can be null if financials missing
         dividendYield: 0, // Not calculated anymore
-        marketCap: profile.market_cap
+        marketCap: profile?.market_cap || null
       })
     }
+    
+    console.log(`[Screener Update] Processing ${companyMetrics.length} companies (${companyMetrics.filter(m => m.peRatio !== null).length} with P/E ratios)`)
     
     // 3. Calculate Sector Averages (Median P/E)
     // Median is robust against outliers (e.g. one company with P/E 500)
@@ -136,9 +144,12 @@ export async function GET(request: Request) {
     })
     
     // 4. Prepare Final Data & Upsert
+    // Create entries for ALL stocks with price data, even if P/E is NULL
     let upsertCount = 0
+    let skippedCount = 0
     
     for (const metric of companyMetrics) {
+       // Calculate sector/industry averages only if we have valid P/E ratios
        const sectorPe = sectorAverages.get(metric.sector) || null
        const industryPe = industryAverages.get(metric.industry) || null
        
@@ -152,44 +163,57 @@ export async function GET(request: Request) {
          relativePeIndustry = metric.peRatio / industryPe
        }
        
-       // Upsert to DB
-       await client.query(`
-         INSERT INTO screener_metrics 
-         (asset_type, symbol, sector, industry, price, price_date, pe_ratio, dividend_yield, sector_pe, relative_pe, industry_pe, relative_pe_industry, market_cap, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
-         ON CONFLICT (asset_type, symbol)
-         DO UPDATE SET
-           price = EXCLUDED.price,
-           price_date = EXCLUDED.price_date,
-           pe_ratio = EXCLUDED.pe_ratio,
-           dividend_yield = EXCLUDED.dividend_yield,
-           sector_pe = EXCLUDED.sector_pe,
-           relative_pe = EXCLUDED.relative_pe,
-           industry = EXCLUDED.industry,
-           industry_pe = EXCLUDED.industry_pe,
-           relative_pe_industry = EXCLUDED.relative_pe_industry,
-           market_cap = EXCLUDED.market_cap,
-           updated_at = NOW()
-       `, [
-         'pk-equity',
-         metric.symbol,
-         metric.sector,
-         metric.industry,
-         metric.price,
-         metric.priceDate,
-         metric.peRatio,
-         metric.dividendYield,
-         sectorPe,
-         relativePe,
-         industryPe,
-         relativePeIndustry,
-         metric.marketCap
-       ])
-       upsertCount++
+       // Upsert to DB - create entry even if P/E is NULL
+       // This ensures all stocks with price data appear in screener
+       try {
+         await client.query(`
+           INSERT INTO screener_metrics 
+           (asset_type, symbol, sector, industry, price, price_date, pe_ratio, dividend_yield, sector_pe, relative_pe, industry_pe, relative_pe_industry, market_cap, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+           ON CONFLICT (asset_type, symbol)
+           DO UPDATE SET
+             price = EXCLUDED.price,
+             price_date = EXCLUDED.price_date,
+             pe_ratio = EXCLUDED.pe_ratio,
+             dividend_yield = EXCLUDED.dividend_yield,
+             sector_pe = EXCLUDED.sector_pe,
+             relative_pe = EXCLUDED.relative_pe,
+             sector = EXCLUDED.sector,
+             industry = EXCLUDED.industry,
+             industry_pe = EXCLUDED.industry_pe,
+             relative_pe_industry = EXCLUDED.relative_pe_industry,
+             market_cap = EXCLUDED.market_cap,
+             updated_at = NOW()
+         `, [
+           'pk-equity',
+           metric.symbol,
+           metric.sector,
+           metric.industry,
+           metric.price,
+           metric.priceDate,
+           metric.peRatio,
+           metric.dividendYield,
+           sectorPe,
+           relativePe,
+           industryPe,
+           relativePeIndustry,
+           metric.marketCap
+         ])
+         upsertCount++
+       } catch (error: any) {
+         console.error(`[Screener Update] Failed to upsert ${metric.symbol}:`, error.message)
+         skippedCount++
+       }
     }
     
-    console.log(`[Screener Update] Successfully updated metrics for ${upsertCount} companies.`)
-    return NextResponse.json({ success: true, count: upsertCount })
+    console.log(`[Screener Update] Successfully updated metrics for ${upsertCount} companies. ${skippedCount > 0 ? `${skippedCount} failed.` : ''}`)
+    return NextResponse.json({ 
+      success: true, 
+      count: upsertCount,
+      skipped: skippedCount,
+      withPE: companyMetrics.filter(m => m.peRatio !== null).length,
+      withoutPE: companyMetrics.filter(m => m.peRatio === null).length
+    })
     
   } catch (error: any) {
     console.error('[Screener Update] Failed:', error)

@@ -11,6 +11,8 @@ export const revalidate = 3600 // Cache for 1 hour
 export async function GET() {
   const client = await pool.connect()
   try {
+    // Return ALL entries from screener_metrics, not just those with P/E ratios
+    // This ensures stocks with price but no P/E still appear in the screener
     const res = await client.query(`
       SELECT 
         symbol, 
@@ -25,8 +27,11 @@ export async function GET() {
         dividend_yield,
         market_cap
       FROM screener_metrics
-      WHERE pe_ratio IS NOT NULL
-      ORDER BY relative_pe ASC
+      WHERE asset_type = 'pk-equity'
+      ORDER BY 
+        CASE WHEN relative_pe IS NOT NULL THEN 0 ELSE 1 END,
+        relative_pe ASC NULLS LAST,
+        symbol ASC
     `)
     
     return NextResponse.json({ data: res.rows })
