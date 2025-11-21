@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Plus, RefreshCw, Loader2, DollarSign, ChevronDown, ChevronRight } from "lucide-react"
-import { AddHoldingDialog } from "./add-holding-dialog"
 import { AddCashDialog } from "./add-cash-dialog"
 import { AddFDDialog } from "./add-fd-dialog"
 import { AddCommodityDialog } from "./add-commodity-dialog"
@@ -158,11 +157,6 @@ export function PortfolioDashboard() {
     }
   }
 
-  const handleEditHolding = (holding: Holding) => {
-    setEditingHolding(holding)
-    setSelectedAssetType(holding.assetType)
-    setIsAddDialogOpen(true)
-  }
 
   const handleDeleteHolding = async (id: string) => {
     try {
@@ -759,19 +753,6 @@ export function PortfolioDashboard() {
         editingHolding={editingHolding?.assetType === 'commodities' ? editingHolding : null}
       />
       
-      {/* Standard dialog for other asset types */}
-      <AddHoldingDialog
-        open={isAddDialogOpen && selectedAssetType !== 'cash' && selectedAssetType !== 'fd' && selectedAssetType !== 'commodities' && (!editingHolding || (editingHolding.assetType !== 'cash' && editingHolding.assetType !== 'fd' && editingHolding.assetType !== 'commodities'))}
-        onOpenChange={(open) => {
-          setIsAddDialogOpen(open)
-          if (!open) {
-            setSelectedAssetType(null)
-            setEditingHolding(null)
-          }
-        }}
-        onSave={handleAddHolding}
-        editingHolding={editingHolding && editingHolding.assetType !== 'cash' && editingHolding.assetType !== 'fd' && editingHolding.assetType !== 'commodities' ? editingHolding : null}
-      />
     </div>
   )
 }

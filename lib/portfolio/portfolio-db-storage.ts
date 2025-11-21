@@ -273,7 +273,10 @@ export async function addTransaction(trade: Omit<Trade, 'id'>): Promise<Trade> {
 
     if (!response.ok) {
       const error = await response.json()
-      throw new Error(error.error || 'Failed to add transaction')
+      // Preserve error details for cash checking
+      const errorObj: any = new Error(error.error || 'Failed to add transaction')
+      errorObj.details = error
+      throw errorObj
     }
 
     const data = await response.json()

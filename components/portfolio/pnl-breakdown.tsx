@@ -129,25 +129,25 @@ export function PnLBreakdown({ holdings, currency = 'USD' }: PnLBreakdownProps) 
         
         if (holding) {
           // Active position
-          const invested = calculateInvested(holding)
-          const currentValue = calculateCurrentValue(holding)
+        const invested = calculateInvested(holding)
+        const currentValue = calculateCurrentValue(holding)
           const unrealizedPnL = calculateGainLoss(holding)
           const totalPnL = realizedPnL + unrealizedPnL
           // For active positions, use current invested amount
           // But we could also show total invested from all trades (including sold shares)
           const totalInvested = invested
           const totalPnLPercent = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0
-
-          return {
-            holding,
+        
+        return {
+          holding,
             assetKey,
             assetType,
             symbol,
             name,
             currency: assetCurrency,
             status: 'active' as const,
-            invested,
-            currentValue,
+          invested,
+          currentValue,
             realizedPnL,
             unrealizedPnL,
             totalPnL,
@@ -233,51 +233,51 @@ export function PnLBreakdown({ holdings, currency = 'USD' }: PnLBreakdownProps) 
             Loading trades...
           </div>
         ) : (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Symbol</TableHead>
-                  <TableHead>Type</TableHead>
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Symbol</TableHead>
+                <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Invested</TableHead>
-                  <TableHead className="text-right">Current Value</TableHead>
+                <TableHead className="text-right">Invested</TableHead>
+                <TableHead className="text-right">Current Value</TableHead>
                   <TableHead className="text-right">Realized PnL</TableHead>
                   <TableHead className="text-right">Unrealized PnL</TableHead>
                   <TableHead className="text-right">Total PnL</TableHead>
                   <TableHead className="text-right">Total PnL %</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
                 {pnlData.map(({ holding, assetKey, assetType, symbol, name, currency: assetCurrency, status, invested, currentValue, realizedPnL, unrealizedPnL, totalPnL: assetTotalPnL, totalPnLPercent: assetTotalPnLPercent }) => {
                   const isPositive = assetTotalPnL >= 0
-                  const supportedTypes: AssetType[] = ['us-equity', 'pk-equity', 'crypto', 'metals', 'kse100', 'spx500']
+                const supportedTypes: AssetType[] = ['us-equity', 'pk-equity', 'crypto', 'metals', 'kse100', 'spx500']
                   const isSupportedInScreener = supportedTypes.includes(assetType as AssetType)
                   const assetSlug = isSupportedInScreener ? generateAssetSlug(assetType as AssetType, symbol) : null
 
-                  return (
+                return (
                     <TableRow key={assetKey}>
-                      <TableCell className="font-medium">
-                        {assetSlug ? (
-                          <Link 
-                            href={`/asset-screener/${assetSlug}`}
-                            className="hover:underline hover:text-primary transition-colors"
-                          >
+                    <TableCell className="font-medium">
+                      {assetSlug ? (
+                        <Link 
+                          href={`/asset-screener/${assetSlug}`}
+                          className="hover:underline hover:text-primary transition-colors"
+                        >
                             <div>{symbol}</div>
                             {name !== symbol && (
                               <div className="text-xs text-muted-foreground">{name}</div>
-                            )}
-                          </Link>
-                        ) : (
-                          <>
+                          )}
+                        </Link>
+                      ) : (
+                        <>
                             <div>{symbol}</div>
                             {name !== symbol && (
                               <div className="text-xs text-muted-foreground">{name}</div>
-                            )}
-                          </>
-                        )}
-                      </TableCell>
-                      <TableCell>
+                          )}
+                        </>
+                      )}
+                    </TableCell>
+                    <TableCell>
                         <Badge variant="outline">{ASSET_TYPE_LABELS[assetType as AssetType]}</Badge>
                       </TableCell>
                       <TableCell>
@@ -296,19 +296,19 @@ export function PnLBreakdown({ holdings, currency = 'USD' }: PnLBreakdownProps) 
                       </TableCell>
                       <TableCell className={`text-right ${unrealizedPnL !== 0 ? (unrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600') : ''}`}>
                         {unrealizedPnL !== 0 ? formatCurrency(unrealizedPnL, assetCurrency) : '-'}
-                      </TableCell>
-                      <TableCell className={`text-right font-semibold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                    </TableCell>
+                    <TableCell className={`text-right font-semibold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
                         {formatCurrency(assetTotalPnL, assetCurrency)}
-                      </TableCell>
-                      <TableCell className={`text-right font-semibold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                    </TableCell>
+                    <TableCell className={`text-right font-semibold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
                         {invested > 0 ? formatPercent(assetTotalPnLPercent) : '-'}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
         )}
       </CardContent>
     </Card>

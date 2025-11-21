@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Loader2, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react"
+import { Loader2, RefreshCw, AlertCircle, CheckCircle2, Wallet, AlertTriangle } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CryptoSelector } from "./crypto-selector"
 import { MetalsSelector } from "./metals-selector"
@@ -16,7 +16,7 @@ import { ASSET_TYPE_LABELS } from "@/lib/portfolio/types"
 import { formatSymbolForDisplay, parseSymbolToBinance } from "@/lib/portfolio/binance-api"
 import { formatMetalForDisplay } from "@/lib/portfolio/metals-api"
 import type { Holding } from "@/lib/portfolio/types"
-import { combineHoldingsByAsset } from "@/lib/portfolio/portfolio-utils"
+import { combineHoldingsByAsset, formatCurrency } from "@/lib/portfolio/portfolio-utils"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface Trade {
@@ -36,7 +36,7 @@ interface Trade {
 interface AddTransactionDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSave: (trade: Omit<Trade, 'id'>) => Promise<void>
+  onSave: (trade: Omit<Trade, 'id'> & { autoDeposit?: boolean }) => Promise<void>
   editingTrade?: Trade | null
   holdings?: Holding[] // Holdings to show when selling
 }
@@ -69,6 +69,9 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
   const [currentPriceBuy, setCurrentPriceBuy] = useState<string>('') // For buy: current market price (separate from purchase price)
   const [purchasePrice, setPurchasePrice] = useState<string>('') // For buy: purchase price (validated against historical)
   const [priceTab, setPriceTab] = useState<'current' | 'historical'>('historical') // For sell: which price to use
+  const [cashBalance, setCashBalance] = useState<number | null>(null)
+  const [loadingCashBalance, setLoadingCashBalance] = useState(false)
+  const [autoDeposit, setAutoDeposit] = useState(false)
 
   useEffect(() => {
     if (editingTrade) {
@@ -108,8 +111,70 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
       setPriceRange(null)
       setCachedHistoricalData(null)
       setInitializingHistoricalData(false)
+      setCashBalance(null)
+      setLoadingCashBalance(false)
+      setAutoDeposit(false)
     }
   }, [editingTrade, open])
+
+  // Fetch cash balance for the selected currency
+  const fetchCashBalance = useCallback(async () => {
+    if (tradeType !== 'buy' || assetType === 'cash' || editingTrade) {
+      setCashBalance(null)
+      return
+    }
+
+    try {
+      setLoadingCashBalance(true)
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        setCashBalance(0)
+        return
+      }
+
+      const response = await fetch('/api/user/holdings', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.holdings) {
+          const cashHolding = data.holdings.find(
+            (h: any) => h.assetType === 'cash' && h.symbol === 'CASH' && h.currency === currency
+          )
+          setCashBalance(cashHolding ? cashHolding.quantity : 0)
+        } else {
+          setCashBalance(0)
+        }
+      } else {
+        setCashBalance(0)
+      }
+    } catch (error) {
+      console.error('Error fetching cash balance:', error)
+      setCashBalance(0)
+    } finally {
+      setLoadingCashBalance(false)
+    }
+  }, [currency, assetType, tradeType, editingTrade])
+
+  // Fetch cash balance when dialog opens or currency/tradeType changes
+  useEffect(() => {
+    if (open && !editingTrade && tradeType === 'buy' && assetType !== 'cash') {
+      fetchCashBalance()
+    } else {
+      setCashBalance(null)
+      setAutoDeposit(false)
+    }
+  }, [open, currency, assetType, tradeType, editingTrade, fetchCashBalance])
+
+  // Reset auto-deposit when quantity or price changes
+  useEffect(() => {
+    if (quantity || purchasePrice) {
+      setAutoDeposit(false)
+    }
+  }, [quantity, purchasePrice])
 
   // Get available holdings for sell (combined by asset) - show ALL holdings user owns
   const availableHoldings = useMemo(() => {
@@ -421,7 +486,6 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
         }
         
         // For metals, historical data is fetched client-side in fetchHistoricalPriceForDate (or cached here?)
-        // AddHoldingDialog logic checks cache.
         // Wait for historical data if DB was empty
         if (data && data.price) {
            setHistoricalDataReady(true)
@@ -778,6 +842,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
         currency,
         tradeDate,
         notes: notes || null,
+        autoDeposit,
       })
       onOpenChange(false)
     } catch (error) {
@@ -1042,9 +1107,28 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="quantity">
-                  {tradeType === 'sell' ? 'Number of Shares to Sell *' : tradeType === 'add' ? 'Amount *' : 'Quantity *'}
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="quantity">
+                    {tradeType === 'sell' ? 'Number of Shares to Sell *' : tradeType === 'add' ? 'Amount *' : 'Quantity *'}
+                  </Label>
+                  {tradeType === 'buy' && cashBalance !== null && purchasePrice && parseFloat(purchasePrice) > 0 && assetType !== 'cash' && !editingTrade && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const maxQuantity = Math.floor(cashBalance / parseFloat(purchasePrice))
+                        if (maxQuantity > 0) {
+                          setQuantity(maxQuantity.toString())
+                        }
+                      }}
+                      className="h-7 px-2 text-xs"
+                      disabled={!purchasePrice || parseFloat(purchasePrice) <= 0 || cashBalance <= 0}
+                    >
+                      Max ({cashBalance > 0 && purchasePrice ? Math.floor(cashBalance / parseFloat(purchasePrice)).toLocaleString() : '0'})
+                    </Button>
+                  )}
+                </div>
                 <Input
                   id="quantity"
                   type="number"
@@ -1248,6 +1332,81 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                       })
                     : '0.00'}
                 </div>
+              </div>
+            )}
+
+            {/* Cash Balance & Affordability - Only show for buy transactions of non-cash assets */}
+            {tradeType === 'buy' && assetType !== 'cash' && !editingTrade && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-2">
+                    <Wallet className="h-4 w-4" />
+                    Available Cash ({currency})
+                  </Label>
+                  {loadingCashBalance ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : (
+                    <span className={`font-semibold ${cashBalance !== null && cashBalance > 0 ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                      {cashBalance !== null ? formatCurrency(cashBalance, currency) : 'Loading...'}
+                    </span>
+                  )}
+                </div>
+                
+                {cashBalance !== null && purchasePrice && parseFloat(purchasePrice) > 0 && (
+                  <div className="space-y-2">
+                    {(() => {
+                      const totalAmount = (parseFloat(quantity) || 0) * parseFloat(purchasePrice)
+                      const affordableQuantity = Math.floor(cashBalance / parseFloat(purchasePrice))
+                      const shortfall = totalAmount - cashBalance
+                      const hasInsufficientCash = cashBalance < totalAmount
+
+                      return (
+                        <>
+                          {affordableQuantity > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              You can buy up to <span className="font-semibold">{affordableQuantity.toLocaleString()}</span> shares with available cash
+                            </p>
+                          )}
+                          
+                          {hasInsufficientCash && totalAmount > 0 && (
+                            <Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
+                              <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                              <AlertDescription className="text-yellow-800 dark:text-yellow-200">
+                                <div className="space-y-1">
+                                  <p className="font-semibold">Insufficient cash balance!</p>
+                                  <p className="text-sm">
+                                    Required: {formatCurrency(totalAmount, currency)}<br />
+                                    Available: {formatCurrency(cashBalance, currency)}<br />
+                                    Shortfall: {formatCurrency(shortfall, currency)}
+                                  </p>
+                                  <div className="flex items-center gap-2 mt-2">
+                                    <input
+                                      type="checkbox"
+                                      id="autoDeposit"
+                                      checked={autoDeposit}
+                                      onChange={(e) => setAutoDeposit(e.target.checked)}
+                                      className="rounded border-gray-300"
+                                    />
+                                    <label htmlFor="autoDeposit" className="text-sm cursor-pointer">
+                                      Auto-deposit {formatCurrency(shortfall, currency)} to complete purchase
+                                    </label>
+                                  </div>
+                                </div>
+                              </AlertDescription>
+                            </Alert>
+                          )}
+                          
+                          {!hasInsufficientCash && totalAmount > 0 && cashBalance > 0 && (
+                            <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Sufficient cash available
+                            </p>
+                          )}
+                        </>
+                      )
+                    })()}
+                  </div>
+                )}
               </div>
             )}
 
