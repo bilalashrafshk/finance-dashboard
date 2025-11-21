@@ -78,19 +78,15 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     }
   }, [editingTrade, open])
 
-  // Get available holdings for sell (combined by asset)
+  // Get available holdings for sell (combined by asset) - show ALL holdings user owns
   const availableHoldings = useMemo(() => {
     if (tradeType !== 'sell' || holdings.length === 0) {
       return []
     }
-    // Combine holdings by asset and filter by selected asset type and currency if set
+    // Combine holdings by asset and show only those with quantity > 0
     const combined = combineHoldingsByAsset(holdings)
-    return combined.filter(h => {
-      if (assetType && h.assetType !== assetType) return false
-      if (currency && h.currency !== currency) return false
-      return h.quantity > 0 // Only show holdings with quantity > 0
-    })
-  }, [holdings, tradeType, assetType, currency])
+    return combined.filter(h => h.quantity > 0) // Only show holdings with quantity > 0
+  }, [holdings, tradeType])
 
   // When holding is selected for sell, auto-fill fields
   useEffect(() => {
@@ -107,9 +103,15 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     }
   }, [selectedHoldingId, tradeType, availableHoldings])
 
-  // Auto-set currency based on asset type (only for buy/add, not sell)
+  // Auto-set currency based on asset type (for buy/add, and when asset type changes)
   useEffect(() => {
-    if (!editingTrade && open && tradeType !== 'sell') {
+    if (!editingTrade && open) {
+      // For sell, currency is set when holding is selected, so skip auto-setting
+      if (tradeType === 'sell' && selectedHoldingId) {
+        return
+      }
+      
+      // Auto-set currency based on asset type
       if (assetType === 'pk-equity' || assetType === 'kse100') {
         setCurrency('PKR')
         if (assetType === 'kse100') {
@@ -123,8 +125,9 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
           setName('S&P 500 Index')
         }
       }
+      // Cash and FD can be in any currency, don't auto-set
     }
-  }, [assetType, editingTrade, open, tradeType])
+  }, [assetType, editingTrade, open, tradeType, selectedHoldingId])
 
   const handleCryptoSelect = (crypto: string) => {
     setSymbol(crypto)
@@ -236,18 +239,28 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
 
               <div className="space-y-2">
                 <Label htmlFor="assetType">Asset Type *</Label>
-                <Select value={assetType} onValueChange={(value) => setAssetType(value as AssetType)}>
-                  <SelectTrigger id="assetType">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(ASSET_TYPE_LABELS).map(([key, label]) => (
-                      <SelectItem key={key} value={key}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {tradeType === 'sell' && selectedHoldingId ? (
+                  <Input
+                    id="assetType"
+                    value={ASSET_TYPE_LABELS[assetType as AssetType]}
+                    disabled
+                    className="bg-muted cursor-not-allowed"
+                    required
+                  />
+                ) : (
+                  <Select value={assetType} onValueChange={(value) => setAssetType(value as AssetType)}>
+                    <SelectTrigger id="assetType">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(ASSET_TYPE_LABELS).map(([key, label]) => (
+                        <SelectItem key={key} value={key}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
 
