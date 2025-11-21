@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -97,6 +97,42 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
     }
   }, [assetType, editingHolding, open])
 
+  // Auto-fetch asset name when symbol changes (debounced)
+  useEffect(() => {
+    if (!symbol || !open || editingHolding) return
+    
+    // Don't auto-fetch if name is already set (user may have manually entered it)
+    if (name && name !== symbol.toUpperCase()) return
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        // Try to fetch name from company_profiles for PK/US equities
+        if (assetType === 'pk-equity' || assetType === 'us-equity') {
+          const response = await fetch(`/api/user/tracked-assets`)
+          if (response.ok) {
+            const data = await response.json()
+            if (data.success && data.assets) {
+              const asset = data.assets.find((a: any) => 
+                a.assetType === assetType && a.symbol.toUpperCase() === symbol.toUpperCase()
+              )
+              if (asset && asset.name) {
+                setName(asset.name)
+                return
+              }
+            }
+          }
+        }
+        
+        // If not found in tracked assets, try fetching price which may include name
+        // This will be handled by fetchCurrentPrice
+      } catch (error) {
+        console.error('Error auto-fetching asset name:', error)
+      }
+    }, 500)
+
+    return () => clearTimeout(timeoutId)
+  }, [symbol, assetType, open, editingHolding, name])
+
   // Auto-fetch removed - user must explicitly click refresh button
 
   // Fetch historical price for purchase date validation
@@ -134,7 +170,7 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
               const { dbRecordToStockAnalysis } = await import('@/lib/portfolio/db-to-chart-format')
               historicalData = dbRecords.map(dbRecordToStockAnalysis)
               // Mark as ready if we have data
-              if (historicalData.length > 0) {
+              if (historicalData && historicalData.length > 0) {
                 setHistoricalDataReady(true)
               }
             }
@@ -148,7 +184,7 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
               const { dbRecordToStockAnalysis } = await import('@/lib/portfolio/db-to-chart-format')
               historicalData = dbRecords.map(dbRecordToStockAnalysis)
               // Mark as ready if we have data
-              if (historicalData.length > 0) {
+              if (historicalData && historicalData.length > 0) {
                 setHistoricalDataReady(true)
               }
             }
@@ -163,7 +199,7 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
               const { dbRecordToBinance } = await import('@/lib/portfolio/db-to-chart-format')
               historicalData = dbRecords.map(dbRecordToBinance)
               // Mark as ready if we have data
-              if (historicalData.length > 0) {
+              if (historicalData && historicalData.length > 0) {
                 setHistoricalDataReady(true)
             }
             }
@@ -197,8 +233,8 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
                   const { getMetalInstrumentId } = await import('@/lib/portfolio/metals-api')
                     instrumentId = getMetalInstrumentId(symbol.toUpperCase())
                   } else if (assetType === 'kse100' || assetType === 'spx500') {
-                    const { getInvestingInstrumentId } = await import('@/lib/portfolio/investing-api')
-                    instrumentId = getInvestingInstrumentId(symbol.toUpperCase())
+                    const { KSE100_INSTRUMENT_ID, SPX500_INSTRUMENT_ID } = await import('@/lib/portfolio/investing-client-api')
+                    instrumentId = assetType === 'kse100' ? KSE100_INSTRUMENT_ID : SPX500_INSTRUMENT_ID
                   }
                   
                   if (instrumentId) {
@@ -356,22 +392,24 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
     }
   }, [purchaseDate, symbol, assetType, fetchHistoricalPriceForDate])
 
-  // Validate purchase price against range
-  const getPriceValidation = () => {
+  // Validate purchase price against range - STRICT: only allow ±5%
+  // Use useMemo to recompute validation whenever purchasePrice, priceRange, or purchaseDate changes
+  const priceValidation = useMemo(() => {
     if (!priceRange || !purchasePrice) {
-      return { isValid: true, message: null, isWarning: false }
+      return { isValid: true, message: null, isWarning: false, isError: false }
     }
 
     const enteredPrice = parseFloat(purchasePrice)
-    if (isNaN(enteredPrice)) {
-      return { isValid: true, message: null, isWarning: false }
+    if (isNaN(enteredPrice) || enteredPrice <= 0) {
+      return { isValid: true, message: null, isWarning: false, isError: false }
     }
 
     if (enteredPrice < priceRange.min || enteredPrice > priceRange.max) {
       return {
         isValid: false,
-        message: `Price outside expected range (${formatCurrency(priceRange.min, currency)} - ${formatCurrency(priceRange.max, currency)})`,
-        isWarning: true,
+        message: `Price must be within ±5% of ${formatCurrency(priceRange.center, currency)} (Range: ${formatCurrency(priceRange.min, currency)} - ${formatCurrency(priceRange.max, currency)})`,
+        isWarning: false,
+        isError: true,
       }
     }
 
@@ -379,10 +417,9 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
       isValid: true,
       message: `Price within expected range (±5% of ${formatCurrency(priceRange.center, currency)})`,
       isWarning: false,
+      isError: false,
     }
-  }
-
-  const priceValidation = getPriceValidation()
+  }, [priceRange, purchasePrice, currency])
 
   // Check if historical data exists in DB and wait for it to be ready
   const waitForHistoricalData = async (
@@ -396,9 +433,8 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
     // For indices and metals, if DB is empty, fetch all historical data first
     if (assetType === 'kse100' || assetType === 'spx500' || assetType === 'metals') {
       try {
-        // Check if DB has data
-        const market = assetType === 'pk-equity' ? 'PSX' : assetType === 'us-equity' ? 'US' : null
-        const checkUrl = `/api/historical-data?assetType=${assetType}&symbol=${encodeURIComponent(symbol)}${market ? `&market=${market}` : ''}&limit=1`
+        // Check if DB has data (no market parameter for indices/metals)
+        const checkUrl = `/api/historical-data?assetType=${assetType}&symbol=${encodeURIComponent(symbol)}&limit=1`
         const checkResponse = await deduplicatedFetch(checkUrl)
         const hasData = checkResponse.ok && (await checkResponse.json()).data?.length > 0
         
@@ -670,17 +706,20 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
   // 1. All required fields are filled
   // 2. Historical data is ready (for assets that need it)
   // 3. Purchase date price is available (for assets that support historical data and have a purchase date)
+  // 4. Purchase price is within ±5% of historical price (if validation is enabled)
   const needsHistoricalData = assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500'
   const hasPurchaseDate = !!purchaseDate
   const needsPurchaseDatePrice = needsHistoricalData && hasPurchaseDate
   
   const isFormValid = symbol.trim() && 
+                      name.trim() && // Require name (auto-fetched or user-entered)
                       quantity && 
                       purchasePrice && 
                       currentPrice && 
                       purchaseDate &&
                       (!needsHistoricalData || historicalDataReady) &&
-                      (!needsPurchaseDatePrice || historicalPrice !== null)
+                      (!needsPurchaseDatePrice || historicalPrice !== null) &&
+                      priceValidation.isValid // STRICT: Block if price outside ±5%
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -774,17 +813,25 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
+                <Label htmlFor="name">Name *</Label>
                 <Input
                   id="name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Optional - auto-filled from symbol"
+                  placeholder="Auto-fetched from symbol"
+                  required
+                  disabled={!name && (fetchingPrice || fetchingHistoricalPrice)} // Disable if auto-fetching
                 />
+                {fetchingPrice && !name && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Auto-fetching asset name...
+                  </p>
+                )}
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="quantity">Quantity *</Label>
                 <Input
@@ -799,101 +846,127 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="purchasePrice">Purchase Price *</Label>
-                <div className="space-y-1">
-                  <Input
-                    id="purchasePrice"
-                    type="number"
-                    step="any"
-                    value={purchasePrice}
-                    onChange={(e) => setPurchasePrice(e.target.value)}
-                    placeholder="0.00"
-                    required
-                    className={priceValidation.isWarning ? "border-yellow-500 focus-visible:ring-yellow-500" : ""}
-                  />
-                  {fetchingHistoricalPrice && purchaseDate && symbol && (assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals') && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Fetching historical price for {purchaseDate}...
-                    </p>
-                  )}
-                  {priceRange && !fetchingHistoricalPrice && (
-                    <p className="text-xs text-muted-foreground">
-                      Expected range: {formatCurrency(priceRange.min, currency)} - {formatCurrency(priceRange.max, currency)} (±5% of {formatCurrency(priceRange.center, currency)})
-                    </p>
-                  )}
-                  {priceValidation.message && (
-                    <Alert className={priceValidation.isWarning ? "border-yellow-500 bg-yellow-50 dark:bg-yellow-950" : "border-green-500 bg-green-50 dark:bg-green-950"}>
-                      <div className="flex items-center gap-2">
-                        {priceValidation.isWarning ? (
-                          <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-                        ) : (
-                          <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                        )}
-                        <AlertDescription className={priceValidation.isWarning ? "text-yellow-800 dark:text-yellow-200" : "text-green-800 dark:text-green-200"}>
-                          {priceValidation.message}
-                        </AlertDescription>
-                      </div>
-                    </Alert>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="currentPrice">Current Price *</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="currentPrice"
-                    type="number"
-                    step="any"
-                    value={currentPrice}
-                    onChange={(e) => setCurrentPrice(e.target.value)}
-                    placeholder="0.00"
-                    required
-                    className="flex-1"
-                  />
-                  {(assetType === 'crypto' || assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500') && symbol && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={fetchCurrentPrice}
-                      disabled={fetchingPrice || !symbol}
-                      title={
-                        assetType === 'crypto'
-                          ? 'Fetch current price from Binance'
-                          : assetType === 'pk-equity'
-                          ? 'Fetch current bid price from PSX'
-                          : assetType === 'us-equity'
-                          ? 'Fetch current price from StockAnalysis.com'
-                          : assetType === 'kse100'
-                          ? 'Fetch current KSE 100 index value'
-                          : assetType === 'spx500'
-                          ? 'Fetch current S&P 500 index value'
-                          : 'Fetch current price from Investing.com'
-                      }
-                    >
-                      {fetchingPrice ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-4 w-4" />
-                      )}
-                    </Button>
-                  )}
-                </div>
+                <Label htmlFor="purchaseDate">Purchase Date *</Label>
+                <Input
+                  id="purchaseDate"
+                  type="date"
+                  value={purchaseDate}
+                  onChange={(e) => setPurchaseDate(e.target.value)}
+                  required
+                />
               </div>
             </div>
 
+            {/* Purchase Price Field - Main field, validated against historical price */}
             <div className="space-y-2">
-              <Label htmlFor="purchaseDate">Purchase Date *</Label>
+              <Label htmlFor="purchasePrice">Purchase Price per Unit *</Label>
+              <div className="space-y-1">
+                <Input
+                  id="purchasePrice"
+                  type="number"
+                  step="any"
+                  value={purchasePrice}
+                  onChange={(e) => setPurchasePrice(e.target.value)}
+                  placeholder="0.00"
+                  required
+                  className={priceValidation.isError ? "border-red-500 focus-visible:ring-red-500" : priceValidation.isWarning ? "border-yellow-500 focus-visible:ring-yellow-500" : ""}
+                />
+                {fetchingHistoricalPrice && purchaseDate && symbol && (assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals') && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    {priceRange ? `Updating historical price for ${purchaseDate}...` : `Fetching historical price for ${purchaseDate}...`}
+                  </p>
+                )}
+                {priceRange && purchaseDate && (
+                  <p className="text-xs text-muted-foreground">
+                    Expected range: {formatCurrency(priceRange.min, currency)} - {formatCurrency(priceRange.max, currency)} (±5% of {formatCurrency(priceRange.center, currency)} on {purchaseDate})
+                  </p>
+                )}
+                {priceValidation.message && (
+                  <Alert className={priceValidation.isError ? "border-red-500 bg-red-50 dark:bg-red-950" : priceValidation.isWarning ? "border-yellow-500 bg-yellow-50 dark:bg-yellow-950" : "border-green-500 bg-green-50 dark:bg-green-950"}>
+                    <div className="flex items-center gap-2">
+                      {priceValidation.isError ? (
+                        <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                      ) : priceValidation.isWarning ? (
+                        <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                      )}
+                      <AlertDescription className={priceValidation.isError ? "text-red-800 dark:text-red-200" : priceValidation.isWarning ? "text-yellow-800 dark:text-yellow-200" : "text-green-800 dark:text-green-200"}>
+                        {priceValidation.message}
+                      </AlertDescription>
+                    </div>
+                  </Alert>
+                )}
+              </div>
+            </div>
+
+            {/* Current Price - Reference only, less prominent - Auto-fetched */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="currentPrice" className="text-sm text-muted-foreground">Current Market Price (Auto-fetched for reference)</Label>
+                {(assetType === 'crypto' || assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500') && symbol && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={fetchCurrentPrice}
+                    disabled={fetchingPrice || !symbol}
+                    title={
+                      assetType === 'crypto'
+                        ? 'Fetch current price from Binance'
+                        : assetType === 'pk-equity'
+                        ? 'Fetch current bid price from PSX'
+                        : assetType === 'us-equity'
+                        ? 'Fetch current price from StockAnalysis.com'
+                        : assetType === 'kse100'
+                        ? 'Fetch current KSE 100 index value'
+                        : assetType === 'spx500'
+                        ? 'Fetch current S&P 500 index value'
+                        : 'Fetch current price from Investing.com'
+                    }
+                    className="h-7 px-2"
+                  >
+                    {fetchingPrice ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3 w-3" />
+                    )}
+                  </Button>
+                )}
+              </div>
               <Input
-                id="purchaseDate"
-                type="date"
-                value={purchaseDate}
-                onChange={(e) => setPurchaseDate(e.target.value)}
-                required
+                id="currentPrice"
+                type="number"
+                step="any"
+                value={currentPrice}
+                onChange={(e) => setCurrentPrice(e.target.value)}
+                placeholder="Click refresh to fetch"
+                className="bg-muted text-muted-foreground"
+                disabled={!currentPrice}
+              />
+              {currentPrice && !fetchingPrice && (
+                <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Current price fetched
+                </p>
+              )}
+            </div>
+
+            {/* Total Amount - Calculated */}
+            <div className="space-y-2">
+              <Label htmlFor="totalAmount">Total Amount</Label>
+              <Input
+                id="totalAmount"
+                type="number"
+                step="any"
+                value={(parseFloat(quantity) || 0) * (parseFloat(purchasePrice) || 0)}
+                disabled
+                className="bg-muted"
+                placeholder="0.00"
               />
             </div>
+
 
             <div className="space-y-2">
               <Label htmlFor="notes">Notes</Label>

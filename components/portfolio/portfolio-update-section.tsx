@@ -53,115 +53,137 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
       h.assetType === 'pk-equity' || h.assetType === 'us-equity' || h.assetType === 'crypto' || h.assetType === 'metals'
     )
     
-    // Process all in parallel for speed
-    const loadPromises = holdingsToLoad.map(async (holding) => {
-      let lastUpdatedDate: string | null = null
-      let dayChange: number | null = null
-      let dayChangePercent: number | null = null
-      let error: string | null = null
+    if (holdingsToLoad.length === 0) {
+      // No holdings to load, just set empty statuses
+      setUpdateStatuses(new Map(holdings.map(h => [h.id, {
+        holding: h,
+        lastUpdatedDate: null,
+        dayChange: null,
+        dayChangePercent: null,
+        dayPnL: null,
+        isUpdating: false,
+        error: null,
+      }])))
+      return
+    }
 
-      try {
-        // Auto-fetch current price using unified API
-        // This uses the centralized logic (cache check + refresh if stale)
-        let newPrice: number | null = null
-        let priceDate: string | null = null
-        
+    try {
+      // OPTIMIZATION: Use batch price API instead of individual calls
+      const { parseSymbolToBinance } = await import('@/lib/portfolio/binance-api')
+      
+      // Prepare assets for batch API
+      const assets = holdingsToLoad.map(holding => {
         if (holding.assetType === 'crypto') {
-          const { parseSymbolToBinance } = await import('@/lib/portfolio/binance-api')
           const binanceSymbol = parseSymbolToBinance(holding.symbol)
-          const { fetchCryptoPrice } = await import('@/lib/portfolio/unified-price-api')
-          const data = await fetchCryptoPrice(binanceSymbol)
-          if (data && data.price !== null) {
-            newPrice = data.price
-            priceDate = data.date
-          }
-        } else if (holding.assetType === 'pk-equity') {
-          const { fetchPKEquityPrice } = await import('@/lib/portfolio/unified-price-api')
-          const data = await fetchPKEquityPrice(holding.symbol)
-          if (data && data.price !== null) {
-            newPrice = data.price
-            priceDate = data.date
-          }
-        } else if (holding.assetType === 'us-equity') {
-          const { fetchUSEquityPrice } = await import('@/lib/portfolio/unified-price-api')
-          const data = await fetchUSEquityPrice(holding.symbol)
-          if (data && data.price !== null) {
-            newPrice = data.price
-            priceDate = data.date
-          }
-        } else if (holding.assetType === 'metals') {
-          const { fetchMetalsPrice } = await import('@/lib/portfolio/unified-price-api')
-          const data = await fetchMetalsPrice(holding.symbol)
-          if (data && data.price !== null) {
-            newPrice = data.price
-            priceDate = data.date
-          }
+          return { type: 'crypto', symbol: binanceSymbol }
         }
+        return { type: holding.assetType, symbol: holding.symbol }
+      })
 
-        // Update holding if we got a new price
-        if (newPrice !== null && newPrice !== holding.currentPrice) {
-           // Update locally and in storage
-           holding.currentPrice = newPrice
-           const { updateHolding } = await import('@/lib/portfolio/portfolio-storage')
-           updateHolding(holding.id, { currentPrice: newPrice })
-        }
+      // Fetch all prices in one batch call
+      const priceResponse = await fetch('/api/prices/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assets }),
+      })
 
-        if (priceDate) {
-           lastUpdatedDate = priceDate
-        }
+      const priceData: Record<string, { price: number; date: string; source: string }> = {}
+      if (priceResponse.ok) {
+        const batchResult = await priceResponse.json()
+        holdingsToLoad.forEach((holding, index) => {
+          const asset = assets[index]
+          const key = `${asset.type}:${asset.symbol.toUpperCase()}`
+          const result = batchResult.results?.[key]
+          if (result && result.price !== null && !result.error) {
+            priceData[holding.id] = {
+              price: result.price,
+              date: result.date || new Date().toISOString().split('T')[0],
+              source: result.source || 'api'
+            }
+          }
+        })
+      }
 
-        // Fetch historical data for day change calculation (using existing logic)
+      // Fetch historical data for day change calculation in parallel
+      const historicalPromises = holdingsToLoad.map(async (holding) => {
         const assetType = holding.assetType
-        const symbol = holding.symbol.toUpperCase()
+        const symbol = holding.assetType === 'crypto' 
+          ? parseSymbolToBinance(holding.symbol)
+          : holding.symbol.toUpperCase()
         const market = assetType === 'pk-equity' ? 'PSX' : assetType === 'us-equity' ? 'US' : null
         
-        // Only fetch latest 5 records (enough for last updated date and day change calculation)
-        const url = `/api/historical-data?assetType=${assetType}&symbol=${encodeURIComponent(symbol)}${market ? `&market=${market}` : ''}&limit=5`
-        
-        const response = await fetch(url)
-        
-        if (response.ok) {
-          const data = await response.json()
-          const records = data.data || []
+        try {
+          const url = `/api/historical-data?assetType=${assetType}&symbol=${encodeURIComponent(symbol)}${market ? `&market=${market}` : ''}&limit=5`
+          const response = await fetch(url)
           
-          if (records.length > 0) {
-            // Records are already sorted ASC from API, so last item is latest
-            const sortedRecords = [...records].sort((a: any, b: any) => b.date.localeCompare(a.date))
+          if (response.ok) {
+            const data = await response.json()
+            const records = data.data || []
             
-            // If we didn't get a date from the price API, use the DB date
-            if (!lastUpdatedDate) {
-                lastUpdatedDate = sortedRecords[0].date
-            }
-            
-            if (sortedRecords.length >= 2) {
-              const latest = sortedRecords[0]
-              const previous = sortedRecords[1]
-              dayChange = latest.close - previous.close
-              dayChangePercent = previous.close > 0 ? ((dayChange / previous.close) * 100) : 0
+            if (records.length > 0) {
+              const sortedRecords = [...records].sort((a: any, b: any) => b.date.localeCompare(a.date))
+              
+              let dayChange: number | null = null
+              let dayChangePercent: number | null = null
+              
+              if (sortedRecords.length >= 2) {
+                const latest = sortedRecords[0]
+                const previous = sortedRecords[1]
+                dayChange = latest.close - previous.close
+                dayChangePercent = previous.close > 0 ? ((dayChange / previous.close) * 100) : 0
+              }
+              
+              return {
+                holdingId: holding.id,
+                lastUpdatedDate: sortedRecords[0].date,
+                dayChange,
+                dayChangePercent,
+              }
             }
           }
+        } catch (err) {
+          console.error(`[LOAD STATUSES] Historical data fetch failed for ${holding.assetType}/${holding.symbol}:`, err)
         }
-      } catch (err: any) {
-        console.error(`[LOAD STATUSES] ${holding.assetType}/${holding.symbol}: Error:`, err)
-        error = err.message || "Update failed"
-      }
+        
+        return {
+          holdingId: holding.id,
+          lastUpdatedDate: priceData[holding.id]?.date || null,
+          dayChange: null,
+          dayChangePercent: null,
+        }
+      })
 
-      // Calculate day PnL: dayChange * quantity
-      const dayPnL = dayChange !== null ? dayChange * holding.quantity : null
+      const historicalResults = await Promise.all(historicalPromises)
+      const historicalMap = new Map(historicalResults.map(r => [r.holdingId, r]))
 
-      return {
-        holdingId: holding.id,
-        holding,
-        lastUpdatedDate,
-        dayChange,
-        dayChangePercent,
-        dayPnL,
-        error
-      }
-    })
-    
-    // Wait for all to complete
-    const batchResults = await Promise.all(loadPromises)
+      // Combine price and historical data
+      const batchResults = holdingsToLoad.map((holding) => {
+        const priceInfo = priceData[holding.id]
+        const historicalInfo = historicalMap.get(holding.id)
+        
+        // Update holding if we got a new price
+        if (priceInfo && priceInfo.price !== null && priceInfo.price !== holding.currentPrice) {
+          holding.currentPrice = priceInfo.price
+          // Update in storage (fire and forget)
+          import('@/lib/portfolio/portfolio-storage').then(({ updateHolding }) => {
+            updateHolding(holding.id, { currentPrice: priceInfo.price }).catch(err => 
+              console.error(`Failed to update holding ${holding.id}:`, err)
+            )
+          })
+        }
+
+        const dayPnL = historicalInfo?.dayChange !== null ? historicalInfo.dayChange * holding.quantity : null
+
+        return {
+          holdingId: holding.id,
+          holding,
+          lastUpdatedDate: historicalInfo?.lastUpdatedDate || priceInfo?.date || null,
+          dayChange: historicalInfo?.dayChange || null,
+          dayChangePercent: historicalInfo?.dayChangePercent || null,
+          dayPnL,
+          error: null
+        }
+      })
     
     // Update statuses incrementally - only update what changed, preserve existing
     setUpdateStatuses(prevStatuses => {
@@ -227,6 +249,19 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
       // Only return new Map if there are changes, otherwise return existing to maintain stability
       return hasChanges ? updatedStatuses : prevStatuses
     })
+    } catch (err: any) {
+      console.error('[LOAD STATUSES] Error:', err)
+      // On error, still set statuses for holdings (with null values)
+      setUpdateStatuses(new Map(holdings.map(h => [h.id, {
+        holding: h,
+        lastUpdatedDate: null,
+        dayChange: null,
+        dayChangePercent: null,
+        dayPnL: null,
+        isUpdating: false,
+        error: err.message || "Update failed",
+      }])))
+    }
   }, [holdings])
 
   // Load last updated dates and calculate day changes on mount

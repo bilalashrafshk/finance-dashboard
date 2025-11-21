@@ -58,21 +58,68 @@ export async function GET(request: NextRequest) {
       // Calculate holdings from transactions
       const calculatedHoldings = calculateHoldingsFromTransactions(trades)
       
-      // Fetch current prices for all holdings
+      // OPTIMIZATION: Use batch price API instead of individual calls
       const currentPrices = new Map<string, number>()
-      const pricePromises = calculatedHoldings.map(async (holding) => {
-        const priceKey = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
-        try {
-          const price = await getCurrentPrice(holding.assetType, holding.symbol, holding.currency)
-          currentPrices.set(priceKey, price)
-        } catch (error) {
-          console.error(`Error fetching price for ${priceKey}:`, error)
-          // Use average purchase price as fallback
-          currentPrices.set(priceKey, holding.purchasePrice)
-        }
-      })
       
-      await Promise.all(pricePromises)
+      if (calculatedHoldings.length > 0) {
+        try {
+          // Prepare assets for batch API
+          const { parseSymbolToBinance } = await import('@/lib/portfolio/binance-api')
+          const assets = calculatedHoldings.map(holding => {
+            if (holding.assetType === 'crypto') {
+              const binanceSymbol = parseSymbolToBinance(holding.symbol)
+              return { type: 'crypto', symbol: binanceSymbol }
+            }
+            return { type: holding.assetType, symbol: holding.symbol }
+          })
+
+          // Fetch all prices in one batch call
+          const baseUrl = request.nextUrl.origin
+          const priceResponse = await fetch(`${baseUrl}/api/prices/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ assets }),
+          })
+
+          if (priceResponse.ok) {
+            const batchResult = await priceResponse.json()
+            calculatedHoldings.forEach((holding, index) => {
+              const asset = assets[index]
+              const key = `${asset.type}:${asset.symbol.toUpperCase()}`
+              const result = batchResult.results?.[key]
+              const priceKey = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
+              
+              if (result && result.price !== null && !result.error) {
+                currentPrices.set(priceKey, result.price)
+              } else {
+                // Fallback to average purchase price
+                currentPrices.set(priceKey, holding.purchasePrice)
+              }
+            })
+          } else {
+            // Batch API failed, fallback to individual calls
+            console.warn('[Holdings API] Batch price fetch failed, falling back to individual calls')
+            const pricePromises = calculatedHoldings.map(async (holding) => {
+              const priceKey = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
+              try {
+                const price = await getCurrentPrice(holding.assetType, holding.symbol, holding.currency)
+                currentPrices.set(priceKey, price)
+              } catch (error) {
+                console.error(`Error fetching price for ${priceKey}:`, error)
+                currentPrices.set(priceKey, holding.purchasePrice)
+              }
+            })
+            await Promise.all(pricePromises)
+          }
+        } catch (error) {
+          console.error('[Holdings API] Error in batch price fetch:', error)
+          // Fallback: use purchase prices
+          calculatedHoldings.forEach(holding => {
+            const priceKey = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
+            currentPrices.set(priceKey, holding.purchasePrice)
+          })
+        }
+      }
       
       // Update holdings with current prices
       const holdings: Holding[] = calculatedHoldings.map(holding => {
