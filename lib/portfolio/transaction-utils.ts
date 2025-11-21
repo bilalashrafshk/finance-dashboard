@@ -94,12 +94,13 @@ export function calculateHoldingsFromTransactions(
       holding.lastPurchaseDate = trade.tradeDate
 
       // If it's a BUY of a non-cash asset, decrease CASH holding
+      // Logic change: prevent cash from going negative. Assume implicit deposit for difference.
       if (trade.tradeType === 'buy' && trade.assetType !== 'cash') {
         const cashKey = `cash:CASH:${trade.currency}`
         let cashHolding = holdingsMap.get(cashKey)
         
         if (!cashHolding) {
-          // If cash doesn't exist, create it (will be negative)
+          // If cash doesn't exist, create it
           cashHolding = {
             assetType: 'cash',
             symbol: 'CASH',
@@ -114,9 +115,16 @@ export function calculateHoldingsFromTransactions(
           holdingsMap.set(cashKey, cashHolding)
         }
         
-        cashHolding.quantity -= trade.totalAmount
-        cashHolding.totalInvested -= trade.totalAmount
-        cashHolding.lastPurchaseDate = trade.tradeDate
+        // Only deduct what we have available (if positive)
+        // This treats any excess cost as an "implicit deposit"
+        const availableCash = Math.max(0, cashHolding.quantity)
+        const amountToDeduct = Math.min(availableCash, trade.totalAmount)
+        
+        if (amountToDeduct > 0) {
+          cashHolding.quantity -= amountToDeduct
+          cashHolding.totalInvested -= amountToDeduct
+          cashHolding.lastPurchaseDate = trade.tradeDate
+        }
       }
 
     } else if (trade.tradeType === 'sell' || trade.tradeType === 'remove') {
