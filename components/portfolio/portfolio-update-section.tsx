@@ -37,6 +37,7 @@ interface HoldingUpdateStatus {
   dayPnL: number | null // Day PnL = dayChange * quantity
   isUpdating: boolean
   error: string | null
+  originalHoldingIds?: string[] // For combined holdings, track all original IDs
 }
 
 export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }: PortfolioUpdateSectionProps) {
@@ -419,6 +420,71 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
   }
 
   const statusArray = Array.from(updateStatuses.values())
+  
+  // Group holdings by assetType + symbol + currency (case-insensitive)
+  // Only combine holdings with same asset type, symbol, and currency
+  const groupedStatuses = new Map<string, HoldingUpdateStatus[]>()
+  
+  statusArray.forEach(status => {
+    const key = `${status.holding.assetType}:${status.holding.symbol.toUpperCase()}:${status.holding.currency}`
+    if (!groupedStatuses.has(key)) {
+      groupedStatuses.set(key, [])
+    }
+    groupedStatuses.get(key)!.push(status)
+  })
+  
+  // Combine grouped holdings into single entries
+  const combinedStatuses: HoldingUpdateStatus[] = []
+  
+  groupedStatuses.forEach((statuses, key) => {
+    if (statuses.length === 1) {
+      // Single holding, no need to combine
+      combinedStatuses.push(statuses[0])
+    } else {
+      // Multiple holdings of same asset - combine them
+      const firstStatus = statuses[0]
+      const totalQuantity = statuses.reduce((sum, s) => sum + s.holding.quantity, 0)
+      const totalInvested = statuses.reduce((sum, s) => sum + (s.holding.purchasePrice * s.holding.quantity), 0)
+      const averagePurchasePrice = totalQuantity > 0 ? totalInvested / totalQuantity : firstStatus.holding.purchasePrice
+      
+      // Sum day PnL from all holdings
+      const combinedDayPnL = statuses.reduce((sum, s) => {
+        return sum + (s.dayPnL || 0)
+      }, 0)
+      
+      // Use the most recent last updated date
+      const mostRecentDate = statuses.reduce((latest, s) => {
+        if (!s.lastUpdatedDate) return latest
+        if (!latest) return s.lastUpdatedDate
+        return s.lastUpdatedDate > latest ? s.lastUpdatedDate : latest
+      }, null as string | null)
+      
+      // Day change and day change percent are per-share, so use from first (they should be same)
+      const dayChange = firstStatus.dayChange
+      const dayChangePercent = firstStatus.dayChangePercent
+      
+      // Current price should be same for all (same asset), use first
+      const currentPrice = firstStatus.holding.currentPrice
+      
+      // Create combined holding
+      const combinedHolding: Holding = {
+        ...firstStatus.holding,
+        quantity: totalQuantity,
+        purchasePrice: averagePurchasePrice,
+      }
+      
+      combinedStatuses.push({
+        holding: combinedHolding,
+        lastUpdatedDate: mostRecentDate,
+        dayChange,
+        dayChangePercent,
+        dayPnL: combinedDayPnL,
+        isUpdating: statuses.some(s => s.isUpdating),
+        error: statuses.find(s => s.error)?.error || null,
+        originalHoldingIds: statuses.map(s => s.holding.id), // Track all original IDs for delete
+      })
+    }
+  })
 
   return (
     <Card>
@@ -448,14 +514,19 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
               </TableRow>
             </TableHeader>
             <TableBody>
-              {statusArray.map((status) => {
+              {combinedStatuses.map((status) => {
                 // Check if asset type is supported in asset screener
                 const supportedTypes: AssetType[] = ['us-equity', 'pk-equity', 'crypto', 'metals', 'kse100', 'spx500']
                 const isSupportedInScreener = supportedTypes.includes(status.holding.assetType)
                 const assetSlug = isSupportedInScreener ? generateAssetSlug(status.holding.assetType, status.holding.symbol) : null
 
+                // Use a unique key based on asset type, symbol, and currency for combined holdings
+                const uniqueKey = status.originalHoldingIds && status.originalHoldingIds.length > 1
+                  ? `${status.holding.assetType}:${status.holding.symbol.toUpperCase()}:${status.holding.currency}`
+                  : status.holding.id
+
                 return (
-                  <TableRow key={status.holding.id}>
+                  <TableRow key={uniqueKey}>
                     <TableCell className="font-medium">
                       {status.holding.name || status.holding.symbol}
                     </TableCell>
@@ -513,8 +584,21 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => onEdit(status.holding)}
-                            title="Edit holding"
+                            onClick={() => {
+                              // For combined holdings, edit the first underlying holding
+                              if (status.originalHoldingIds && status.originalHoldingIds.length > 1) {
+                                // Find the first original holding
+                                const firstStatus = statusArray.find(s => s.holding.id === status.originalHoldingIds![0])
+                                if (firstStatus) {
+                                  onEdit(firstStatus.holding)
+                                }
+                              } else {
+                                onEdit(status.holding)
+                              }
+                            }}
+                            title={status.originalHoldingIds && status.originalHoldingIds.length > 1 
+                              ? "Edit holding (showing combined entry)" 
+                              : "Edit holding"}
                           >
                             <Edit2 className="h-4 w-4" />
                           </Button>
@@ -523,8 +607,18 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setDeleteConfirmId(status.holding.id)}
-                            title="Delete holding"
+                            onClick={() => {
+                              // For combined holdings, delete all underlying holdings
+                              if (status.originalHoldingIds && status.originalHoldingIds.length > 1) {
+                                // Store IDs to delete all at once
+                                setDeleteConfirmId(status.originalHoldingIds.join(','))
+                              } else {
+                                setDeleteConfirmId(status.holding.id)
+                              }
+                            }}
+                            title={status.originalHoldingIds && status.originalHoldingIds.length > 1 
+                              ? `Delete ${status.originalHoldingIds.length} holdings` 
+                              : "Delete holding"}
                             className="hover:bg-red-50 dark:hover:bg-red-950/20"
                           >
                             <Trash2 className="h-4 w-4 text-red-600 dark:text-red-400" />
@@ -546,7 +640,9 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete this holding from your portfolio.
+              {deleteConfirmId && deleteConfirmId.includes(',') 
+                ? `This action cannot be undone. This will permanently delete ${deleteConfirmId.split(',').length} holdings from your portfolio.`
+                : 'This action cannot be undone. This will permanently delete this holding from your portfolio.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -554,7 +650,13 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onDelete, onEdit }:
             <AlertDialogAction
               onClick={() => {
                 if (deleteConfirmId && onDelete) {
-                  onDelete(deleteConfirmId)
+                  // Handle multiple IDs (comma-separated) for combined holdings
+                  if (deleteConfirmId.includes(',')) {
+                    const ids = deleteConfirmId.split(',')
+                    ids.forEach(id => onDelete(id))
+                  } else {
+                    onDelete(deleteConfirmId)
+                  }
                   setDeleteConfirmId(null)
                 }
               }}
