@@ -52,22 +52,35 @@ export async function GET(request: NextRequest) {
         [user.id]
       )
       
-      const trades: Trade[] = tradesResult.rows.map(row => ({
-        id: row.id,
-        userId: row.user_id,
-        holdingId: row.holding_id,
-        tradeType: row.trade_type,
-        assetType: row.asset_type,
-        symbol: row.symbol,
-        name: row.name,
-        quantity: parseFloat(row.quantity),
-        price: parseFloat(row.price),
-        totalAmount: parseFloat(row.total_amount),
-        currency: row.currency,
-        tradeDate: row.trade_date.toISOString().split('T')[0],
-        notes: row.notes,
-        createdAt: row.created_at.toISOString(),
-      }))
+      const trades: Trade[] = tradesResult.rows.map(row => {
+        // Ensure trade_date is properly formatted
+        let tradeDate: string
+        if (row.trade_date instanceof Date) {
+          tradeDate = row.trade_date.toISOString().split('T')[0]
+        } else if (typeof row.trade_date === 'string') {
+          tradeDate = row.trade_date.split('T')[0]
+        } else {
+          // Fallback: use current date if invalid
+          tradeDate = new Date().toISOString().split('T')[0]
+        }
+        
+        return {
+          id: row.id,
+          userId: row.user_id,
+          holdingId: row.holding_id,
+          tradeType: row.trade_type,
+          assetType: row.asset_type,
+          symbol: row.symbol || '',
+          name: row.name || '',
+          quantity: parseFloat(row.quantity) || 0,
+          price: parseFloat(row.price) || 0,
+          totalAmount: parseFloat(row.total_amount) || 0,
+          currency: row.currency || 'USD',
+          tradeDate: tradeDate,
+          notes: row.notes,
+          createdAt: row.created_at ? row.created_at.toISOString() : new Date().toISOString(),
+        }
+      }).filter(t => t.tradeDate) // Filter out any trades with invalid dates
 
       if (trades.length === 0) {
         return NextResponse.json({ success: true, history: [] })
@@ -115,46 +128,93 @@ export async function GET(request: NextRequest) {
       // Frontend combines Holdings * Price + Cash to draw the chart.
       // This distributes the load.
       
-      const dailyHoldings: Record<string, { date: string, cash: number, assets: Record<string, number> }> = {}
+      const dailyHoldings: Record<string, { date: string, cash: number, invested: number }> = {}
       
       // Generate daily points
       // Start from the first trade date or requested start date, whichever is earlier
       const firstTradeDate = new Date(trades[0].tradeDate)
       const actualStartDate = firstTradeDate < startDate ? firstTradeDate : startDate
       
-      for (let d = new Date(actualStartDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-        const dateStr = d.toISOString().split('T')[0]
-        // Filter trades up to this date (inclusive)
-        const tradesUntilDate = trades.filter(t => t.tradeDate <= dateStr)
-        const holdings = calculateHoldingsFromTransactions(tradesUntilDate)
+      // Ensure we don't go beyond today
+      const today = new Date()
+      today.setHours(23, 59, 59, 999)
+      const finalEndDate = endDate > today ? today : endDate
+      
+      // Generate date range safely
+      let currentDate = new Date(actualStartDate)
+      currentDate.setHours(0, 0, 0, 0)
+      
+      const maxIterations = 1000 // Safety limit to prevent infinite loops
+      let iterationCount = 0
+      
+      while (currentDate <= finalEndDate && iterationCount < maxIterations) {
+        iterationCount++
+        const dateStr = currentDate.toISOString().split('T')[0]
         
-        let cashBalance = 0
-        let investedBalance = 0
-        
-        holdings.forEach(h => {
-          if (h.assetType === 'cash') {
-             // For cash, quantity is the value
-             // Normalize currency comparison (PKR vs PKR, USD vs USD)
-             if (h.currency.toUpperCase() === currency.toUpperCase()) {
-               cashBalance += h.quantity
-               investedBalance += h.quantity
-             }
+        try {
+          // Filter trades up to this date (inclusive)
+          const tradesUntilDate = trades.filter(t => t.tradeDate <= dateStr)
+          
+          if (tradesUntilDate.length === 0) {
+            // No trades yet, set to zero
+            dailyHoldings[dateStr] = {
+              date: dateStr,
+              cash: 0,
+              invested: 0
+            }
           } else {
-             // For assets, we calculate the Cost Basis (Invested Amount)
-             // This represents "Book Value"
-             // We only sum up if currency matches
-             if (h.currency.toUpperCase() === currency.toUpperCase()) {
-                investedBalance += (h.purchasePrice * h.quantity)
-             }
+            // Calculate holdings for this date
+            const holdings = calculateHoldingsFromTransactions(tradesUntilDate)
+            
+            let cashBalance = 0
+            let investedBalance = 0
+            
+            holdings.forEach(h => {
+              try {
+                if (h.assetType === 'cash') {
+                  // For cash, quantity is the value
+                  // Normalize currency comparison (PKR vs PKR, USD vs USD)
+                  if (h.currency && h.currency.toUpperCase() === currency.toUpperCase()) {
+                    cashBalance += h.quantity || 0
+                    investedBalance += h.quantity || 0
+                  }
+                } else {
+                  // For assets, we calculate the Cost Basis (Invested Amount)
+                  // This represents "Book Value"
+                  // We only sum up if currency matches
+                  if (h.currency && h.currency.toUpperCase() === currency.toUpperCase()) {
+                    const costBasis = (h.purchasePrice || 0) * (h.quantity || 0)
+                    investedBalance += costBasis
+                  }
+                }
+              } catch (holdingError) {
+                console.error(`Error processing holding ${h.symbol}:`, holdingError)
+                // Continue with other holdings
+              }
+            })
+            
+            dailyHoldings[dateStr] = {
+              date: dateStr,
+              cash: cashBalance,
+              invested: investedBalance // This is effectively (Cash + Cost Basis of Assets)
+            }
           }
-        })
-        
-        dailyHoldings[dateStr] = {
-          date: dateStr,
-          cash: cashBalance,
-          invested: investedBalance, // This is effectively (Cash + Cost Basis of Assets)
-          assets: {} // We can omit detailed asset breakdown for now to save bandwidth
+        } catch (dateError) {
+          console.error(`Error processing date ${dateStr}:`, dateError)
+          // Set default values for this date
+          dailyHoldings[dateStr] = {
+            date: dateStr,
+            cash: 0,
+            invested: 0
+          }
         }
+        
+        // Move to next day
+        currentDate.setDate(currentDate.getDate() + 1)
+      }
+      
+      if (iterationCount >= maxIterations) {
+        console.warn('Date loop reached max iterations, possible infinite loop prevented')
       }
       
       // Sort by date to ensure chronological order
@@ -169,8 +229,14 @@ export async function GET(request: NextRequest) {
     }
   } catch (error: any) {
     console.error('Get portfolio history error:', error)
+    console.error('Error stack:', error.stack)
+    console.error('Error message:', error.message)
     return NextResponse.json(
-      { success: false, error: 'Failed to get portfolio history' },
+      { 
+        success: false, 
+        error: error.message || 'Failed to get portfolio history',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      },
       { status: 500 }
     )
   }
