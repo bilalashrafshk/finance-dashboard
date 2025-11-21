@@ -63,13 +63,71 @@ export interface RiskMetrics {
 }
 
 export async function fetchEthHistoricalData(): Promise<ProcessedData[]> {
+  // Fallback URLs in order of preference
+  const binanceUrls = [
+    "https://api.binance.com/api/v3/klines",
+    "https://api.binance.us/api/v3/klines",
+    "https://api1.binance.com/api/v3/klines",
+    "https://api2.binance.com/api/v3/klines",
+    "https://api3.binance.com/api/v3/klines",
+  ]
+
   const fetchBinanceKlines = async (symbol: string, startDate: Date): Promise<any[]> => {
-    const url = "https://binance.com/api/v3/klines"
     const startTimestamp = startDate.getTime()
     const allData: any[] = []
     let currentStart = startTimestamp
     const maxIterations = 50 // Prevent infinite loops
     let iterations = 0
+    let currentUrlIndex = 0
+
+    const tryFetchWithFallback = async (params: URLSearchParams): Promise<Response | null> => {
+      let lastError: Error | null = null
+      
+      // Try each URL in sequence
+      for (let i = currentUrlIndex; i < binanceUrls.length; i++) {
+        const url = binanceUrls[i]
+        try {
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+
+          const response = await fetch(`${url}?${params}`, {
+            signal: controller.signal,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; RiskDashboard/1.0)',
+              'Accept': 'application/json',
+              'Accept-Language': 'en-US,en;q=0.9',
+            },
+          })
+          clearTimeout(timeoutId)
+
+          if (response.ok) {
+            // If this URL works, use it for subsequent requests
+            currentUrlIndex = i
+            return response
+          }
+
+          // If 404, try next URL immediately
+          if (response.status === 404) {
+            console.warn(`[ETHBTC Fetch] URL ${url} returned 404, trying next fallback...`)
+            continue
+          }
+
+          // For other errors, store and continue
+          lastError = new Error(`HTTP ${response.status}: ${response.statusText}`)
+          continue
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            lastError = new Error("Request timeout")
+            continue
+          }
+          lastError = error instanceof Error ? error : new Error(String(error))
+          continue
+        }
+      }
+
+      // All URLs failed
+      throw lastError || new Error(`Failed to fetch ${symbol} data from all Binance endpoints`)
+    }
 
     while (iterations < maxIterations) {
       iterations++
@@ -81,49 +139,27 @@ export async function fetchEthHistoricalData(): Promise<ProcessedData[]> {
       })
 
       try {
-        // Add timeout to fetch
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+        const response = await tryFetchWithFallback(params)
 
-        const response = await fetch(`${url}?${params}`, {
-          signal: controller.signal,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; RiskDashboard/1.0)',
-            'Accept': 'application/json',
-            'Accept-Language': 'en-US,en;q=0.9',
-          },
-        })
-        clearTimeout(timeoutId)
+        if (!response) {
+          throw new Error(`Failed to fetch ${symbol} data: All fallback URLs failed`)
+        }
 
-        if (!response.ok) {
-          // Handle 451 specifically - might be rate limiting or geographic restriction
-          if (response.status === 451) {
-            // Retry with longer delay
-            await new Promise((resolve) => setTimeout(resolve, 2000))
-            // Retry the request once with new controller
-            const retryController = new AbortController()
-            const retryTimeoutId = setTimeout(() => retryController.abort(), 30000)
-            const retryResponse = await fetch(`${url}?${params}`, {
-              signal: retryController.signal,
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (compatible; RiskDashboard/1.0)',
-                'Accept': 'application/json',
-                'Accept-Language': 'en-US,en;q=0.9',
-              },
-            })
-            clearTimeout(retryTimeoutId)
-            if (!retryResponse.ok) {
-              throw new Error(`Failed to fetch ${symbol} data: ${retryResponse.status} ${retryResponse.statusText}. This may be due to rate limiting or geographic restrictions on Vercel.`)
-            }
-            const retryBatch = await retryResponse.json()
-            if (!retryBatch || retryBatch.length === 0) break
-            allData.push(...retryBatch)
-            currentStart = retryBatch[retryBatch.length - 1][6] + 1
-            if (retryBatch.length < 1000) break
-            await new Promise((resolve) => setTimeout(resolve, 200))
-            continue
+        // Handle 451 specifically - might be rate limiting or geographic restriction
+        if (response.status === 451) {
+          // Retry with longer delay
+          await new Promise((resolve) => setTimeout(resolve, 2000))
+          const retryResponse = await tryFetchWithFallback(params)
+          if (!retryResponse || !retryResponse.ok) {
+            throw new Error(`Failed to fetch ${symbol} data: ${retryResponse?.status || 'unknown'} ${retryResponse?.statusText || 'unknown'}. This may be due to rate limiting or geographic restrictions.`)
           }
-          throw new Error(`Failed to fetch ${symbol} data: ${response.status} ${response.statusText}`)
+          const retryBatch = await retryResponse.json()
+          if (!retryBatch || retryBatch.length === 0) break
+          allData.push(...retryBatch)
+          currentStart = retryBatch[retryBatch.length - 1][6] + 1
+          if (retryBatch.length < 1000) break
+          await new Promise((resolve) => setTimeout(resolve, 200))
+          continue
         }
 
         const batch = await response.json()
