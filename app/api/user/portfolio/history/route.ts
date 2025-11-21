@@ -79,11 +79,6 @@ export async function GET(request: NextRequest) {
       const startDate = new Date()
       startDate.setDate(endDate.getDate() - days)
       
-      // Find first trade date to not show empty graph before start
-      const firstTradeDate = new Date(trades[0].tradeDate)
-      const effectiveStartDate = firstTradeDate > startDate ? startDate : firstTradeDate // Actually we want to show from requested start date, or if trades started later? usually graph shows requested range.
-      // Let's just use the requested range for now, but handle empty data.
-      
       // Identify all unique assets to fetch history for
       const uniqueAssets = new Set<string>()
       trades.forEach(t => {
