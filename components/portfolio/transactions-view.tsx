@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, Fragment } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -216,11 +216,11 @@ export function TransactionsView({
   }, [assetHoldings])
 
   return (
-    <>
+    <Fragment>
       <div className="space-y-4">
         {/* Asset Summary and Clear Filter (when asset is selected) */}
         {selectedAsset && assetTotals && (
-          <>
+          <Fragment>
             <div className="flex items-center justify-between p-3 bg-muted rounded-lg mb-4">
               <div>
                 <div className="font-semibold">{selectedAsset.name || selectedAsset.symbol} ({selectedAsset.symbol.toUpperCase()})</div>
@@ -258,7 +258,7 @@ export function TransactionsView({
                 </div>
               </div>
             </div>
-          </>
+          </Fragment>
         )}
 
         {/* Holdings and Transactions Tabs (when asset is selected) */}
@@ -412,7 +412,7 @@ export function TransactionsView({
             </TabsContent>
           </Tabs>
         ) : (
-          <>
+          <Fragment>
             {/* Filters */}
             <div className="flex gap-4 items-center">
               <div className="flex-1">
@@ -543,6 +543,8 @@ export function TransactionsView({
             </Table>
           </div>
         )}
+          </Fragment>
+        )}
       </div>
 
       {/* Sell Dialog */}
@@ -589,7 +591,7 @@ export function TransactionsView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </Fragment>
   )
 }
 
