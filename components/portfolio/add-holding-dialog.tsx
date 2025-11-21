@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Loader2, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react"
+import { Loader2, RefreshCw, AlertCircle, CheckCircle2, Wallet, AlertTriangle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { CryptoSelector } from "./crypto-selector"
 import { MetalsSelector } from "./metals-selector"
@@ -20,7 +20,7 @@ import { formatCurrency } from "@/lib/portfolio/portfolio-utils"
 interface AddHoldingDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSave: (holding: Omit<Holding, 'id' | 'createdAt' | 'updatedAt'>) => void
+  onSave: (holding: Omit<Holding, 'id' | 'createdAt' | 'updatedAt'> & { autoDeposit?: boolean }) => void | Promise<void>
   editingHolding?: Holding | null
 }
 
@@ -43,6 +43,9 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
   // Track if we're initializing historical data (fetching and storing all historical data)
   const [initializingHistoricalData, setInitializingHistoricalData] = useState(false)
   const [historicalDataReady, setHistoricalDataReady] = useState(false)
+  const [cashBalance, setCashBalance] = useState<number | null>(null)
+  const [loadingCashBalance, setLoadingCashBalance] = useState(false)
+  const [autoDeposit, setAutoDeposit] = useState(false)
 
   useEffect(() => {
     if (editingHolding) {
@@ -134,6 +137,65 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
   }, [symbol, assetType, open, editingHolding, name])
 
   // Auto-fetch removed - user must explicitly click refresh button
+
+  // Fetch cash balance for the selected currency
+  const fetchCashBalance = useCallback(async () => {
+    if (assetType === 'cash' || editingHolding) {
+      setCashBalance(null)
+      return
+    }
+
+    try {
+      setLoadingCashBalance(true)
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        setCashBalance(0)
+        return
+      }
+
+      const response = await fetch('/api/user/holdings', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.holdings) {
+          const cashHolding = data.holdings.find(
+            (h: any) => h.assetType === 'cash' && h.symbol === 'CASH' && h.currency === currency
+          )
+          setCashBalance(cashHolding ? cashHolding.quantity : 0)
+        } else {
+          setCashBalance(0)
+        }
+      } else {
+        setCashBalance(0)
+      }
+    } catch (error) {
+      console.error('Error fetching cash balance:', error)
+      setCashBalance(0)
+    } finally {
+      setLoadingCashBalance(false)
+    }
+  }, [currency, assetType, editingHolding])
+
+  // Fetch cash balance when dialog opens or currency changes
+  useEffect(() => {
+    if (open && !editingHolding && assetType !== 'cash') {
+      fetchCashBalance()
+    } else if (editingHolding || assetType === 'cash') {
+      setCashBalance(null)
+      setAutoDeposit(false)
+    }
+  }, [open, currency, assetType, editingHolding, fetchCashBalance])
+
+  // Reset auto-deposit when quantity or price changes
+  useEffect(() => {
+    if (quantity || purchasePrice) {
+      setAutoDeposit(false)
+    }
+  }, [quantity, purchasePrice])
 
   // Fetch historical price for purchase date validation
   const fetchHistoricalPriceForDate = useCallback(async () => {
@@ -683,7 +745,7 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     const holding: Omit<Holding, 'id' | 'createdAt' | 'updatedAt'> = {
@@ -698,8 +760,13 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
       notes: notes.trim() || undefined,
     }
 
-    onSave(holding)
-    onOpenChange(false)
+    try {
+      await onSave({ ...holding, autoDeposit })
+      onOpenChange(false)
+    } catch (error: any) {
+      // Error is handled by parent component (portfolio-dashboard)
+      console.error('Error saving holding:', error)
+    }
   }
 
   // Form is valid only if:
@@ -833,7 +900,26 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="quantity">Quantity *</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="quantity">Quantity *</Label>
+                  {cashBalance !== null && purchasePrice && parseFloat(purchasePrice) > 0 && assetType !== 'cash' && !editingHolding && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const maxQuantity = Math.floor(cashBalance / parseFloat(purchasePrice))
+                        if (maxQuantity > 0) {
+                          setQuantity(maxQuantity.toString())
+                        }
+                      }}
+                      className="h-7 px-2 text-xs"
+                      disabled={!purchasePrice || parseFloat(purchasePrice) <= 0 || cashBalance <= 0}
+                    >
+                      Max ({cashBalance > 0 && purchasePrice ? Math.floor(cashBalance / parseFloat(purchasePrice)).toLocaleString() : '0'})
+                    </Button>
+                  )}
+                </div>
                 <Input
                   id="quantity"
                   type="number"
@@ -966,6 +1052,81 @@ export function AddHoldingDialog({ open, onOpenChange, onSave, editingHolding }:
                 placeholder="0.00"
               />
             </div>
+
+            {/* Cash Balance & Affordability - Only show for non-cash assets */}
+            {assetType !== 'cash' && !editingHolding && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-2">
+                    <Wallet className="h-4 w-4" />
+                    Available Cash ({currency})
+                  </Label>
+                  {loadingCashBalance ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : (
+                    <span className={`font-semibold ${cashBalance !== null && cashBalance > 0 ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                      {cashBalance !== null ? formatCurrency(cashBalance, currency) : 'Loading...'}
+                    </span>
+                  )}
+                </div>
+                
+                {cashBalance !== null && purchasePrice && parseFloat(purchasePrice) > 0 && (
+                  <div className="space-y-2">
+                    {(() => {
+                      const totalAmount = (parseFloat(quantity) || 0) * parseFloat(purchasePrice)
+                      const affordableQuantity = Math.floor(cashBalance / parseFloat(purchasePrice))
+                      const shortfall = totalAmount - cashBalance
+                      const hasInsufficientCash = cashBalance < totalAmount
+
+                      return (
+                        <>
+                          {affordableQuantity > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              You can buy up to <span className="font-semibold">{affordableQuantity.toLocaleString()}</span> shares with available cash
+                            </p>
+                          )}
+                          
+                          {hasInsufficientCash && totalAmount > 0 && (
+                            <Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
+                              <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                              <AlertDescription className="text-yellow-800 dark:text-yellow-200">
+                                <div className="space-y-1">
+                                  <p className="font-semibold">Insufficient cash balance!</p>
+                                  <p className="text-sm">
+                                    Required: {formatCurrency(totalAmount, currency)}<br />
+                                    Available: {formatCurrency(cashBalance, currency)}<br />
+                                    Shortfall: {formatCurrency(shortfall, currency)}
+                                  </p>
+                                  <div className="flex items-center gap-2 mt-2">
+                                    <input
+                                      type="checkbox"
+                                      id="autoDeposit"
+                                      checked={autoDeposit}
+                                      onChange={(e) => setAutoDeposit(e.target.checked)}
+                                      className="rounded border-gray-300"
+                                    />
+                                    <label htmlFor="autoDeposit" className="text-sm cursor-pointer">
+                                      Auto-deposit {formatCurrency(shortfall, currency)} to complete purchase
+                                    </label>
+                                  </div>
+                                </div>
+                              </AlertDescription>
+                            </Alert>
+                          )}
+                          
+                          {!hasInsufficientCash && totalAmount > 0 && cashBalance > 0 && (
+                            <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Sufficient cash available
+                            </p>
+                          )}
+                        </>
+                      )
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
 
 
             <div className="space-y-2">

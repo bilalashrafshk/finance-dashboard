@@ -69,13 +69,14 @@ export function PortfolioDashboard() {
     }
   }
 
-  const handleAddHolding = async (holdingData: Omit<Holding, 'id' | 'createdAt' | 'updatedAt'>, autoDeposit = false) => {
+  const handleAddHolding = async (holdingData: Omit<Holding, 'id' | 'createdAt' | 'updatedAt'> & { autoDeposit?: boolean }) => {
+    const autoDeposit = holdingData.autoDeposit || false
     try {
       if (editingHolding) {
         await updateHolding(editingHolding.id, holdingData)
       } else {
         try {
-          await addHolding({ ...holdingData, autoDeposit } as any)
+          await addHolding({ ...holdingData, autoDeposit })
         } catch (error: any) {
           // Check if it's a cash balance error
           if (error.details?.error === 'Insufficient cash balance' && !autoDeposit) {
@@ -95,7 +96,7 @@ export function PortfolioDashboard() {
             
             if (confirmed) {
               // Retry with auto-deposit
-              return handleAddHolding(holdingData, true)
+              return handleAddHolding({ ...holdingData, autoDeposit: true })
             } else {
               throw error
             }
