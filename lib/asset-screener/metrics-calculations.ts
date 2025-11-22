@@ -12,11 +12,21 @@ export interface PriceDataPoint {
   close: number
 }
 
+export interface MonthlyObservation {
+  year: number
+  return: number // Monthly return as percentage
+  startDate: string // First day of month date
+  endDate: string // Last day of month date
+  startPrice: number
+  endPrice: number
+}
+
 export interface MonthlySeasonality {
   month: number // 0-11 (January = 0)
   monthName: string
   avgReturn: number // Average return as percentage
   count: number // Number of observations
+  observations: MonthlyObservation[] // Detailed observations for each year
 }
 
 export interface DrawdownPeriod {
@@ -653,8 +663,9 @@ export function calculateMonthlySeasonality(
     dataByYearMonth.get(key)!.push(point)
   })
   
-  // For each month (0-11), collect monthly returns across all years
+  // For each month (0-11), collect monthly returns and detailed observations across all years
   const monthlyReturnsByMonth: Map<number, number[]> = new Map()
+  const monthlyObservationsByMonth: Map<number, MonthlyObservation[]> = new Map()
   
   dataByYearMonth.forEach((points, key) => {
     if (points.length === 0) return
@@ -700,8 +711,19 @@ export function calculateMonthlySeasonality(
       
       if (!monthlyReturnsByMonth.has(month)) {
         monthlyReturnsByMonth.set(month, [])
+        monthlyObservationsByMonth.set(month, [])
       }
       monthlyReturnsByMonth.get(month)!.push(monthlyReturn)
+      
+      // Store detailed observation
+      monthlyObservationsByMonth.get(month)!.push({
+        year,
+        return: monthlyReturn,
+        startDate: sortedPoints[0].date,
+        endDate: sortedPoints[sortedPoints.length - 1].date,
+        startPrice: firstDayPrice,
+        endPrice: lastDayPrice
+      })
     }
   })
   
@@ -713,13 +735,18 @@ export function calculateMonthlySeasonality(
   
   for (let month = 0; month < 12; month++) {
     const returns = monthlyReturnsByMonth.get(month) || []
+    const observations = monthlyObservationsByMonth.get(month) || []
     const avgReturn = returns.length > 0 ? mean(returns) : 0
+    
+    // Sort observations by year (descending - most recent first)
+    const sortedObservations = [...observations].sort((a, b) => b.year - a.year)
     
     seasonality.push({
       month,
       monthName: monthNames[month],
       avgReturn,
-      count: returns.length // Number of years with data for this month
+      count: returns.length, // Number of years with data for this month
+      observations: sortedObservations
     })
   }
   
