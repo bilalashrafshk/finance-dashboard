@@ -258,7 +258,9 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
                       // Sum EPS of last 4 quarters for TTM EPS
                       if (financials && financials.length >= 4) {
                           const ttmEps = financials.slice(0, 4).reduce((sum: number, f: any) => sum + (parseFloat(f.eps_diluted) || 0), 0)
-                          if (ttmEps > 0) {
+                          // Calculate PE ratio even if EPS is negative (negative PE is valid for loss-making companies)
+                          // Only skip if EPS is exactly 0 to avoid division by zero
+                          if (ttmEps !== 0) {
                               peRatio = currentPrice / ttmEps
                           }
                       }
