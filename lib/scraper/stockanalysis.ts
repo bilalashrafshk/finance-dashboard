@@ -181,32 +181,83 @@ export async function scrapeFinancials(symbol: string, period: 'quarterly' | 'an
   
   const statements: Record<string, Partial<FinancialStatement>> = {};
   
-  // Helper to extract dates from thead (first row with date IDs)
-  // Returns dates in the order they appear in the header, along with column indices
-  const extractDatesFromHeader = (html: string): { dates: string[], dateColumnIndices: number[], ttmOffset: number } => {
+  // Helper to extract dates and quarter labels from thead
+  // Returns dates, quarter labels, and column indices
+  const extractDatesFromHeader = (html: string): { dates: string[], fiscalQuarters: string[], dateColumnIndices: number[], ttmOffset: number } => {
     const dates: string[] = [];
+    const fiscalQuarters: string[] = [];
     const dateColumnIndices: number[] = [];
     let ttmOffset = 0;
     
     // Find thead section
     const theadMatch = html.match(/<thead>([\s\S]*?)<\/thead>/);
-    if (!theadMatch) return { dates, dateColumnIndices, ttmOffset };
+    if (!theadMatch) return { dates, fiscalQuarters, dateColumnIndices, ttmOffset };
     
-    // Find first <tr> in thead (Fiscal Quarter/Fiscal Year row)
-    const firstRowMatch = theadMatch[0].match(/<tr[^>]*>([\s\S]*?)<\/tr>/);
-    if (!firstRowMatch) return { dates, dateColumnIndices, ttmOffset };
+    // Extract all rows from thead
+    const allRows = theadMatch[0].match(/<tr[^>]*>([\s\S]*?)<\/tr>/g);
+    if (!allRows || allRows.length === 0) return { dates, fiscalQuarters, dateColumnIndices, ttmOffset };
     
-    // Extract all <th> elements from first row
-    const allThMatches = firstRowMatch[0].match(/<th[^>]*>([\s\S]*?)<\/th>/g);
-    if (!allThMatches) return { dates, dateColumnIndices, ttmOffset };
+    // First, find the row with date IDs (usually first or second row)
+    let dateRowIndex = -1;
+    let dateRowThs: string[] = [];
+    for (let i = 0; i < allRows.length; i++) {
+      const thMatches = allRows[i].match(/<th[^>]*>([\s\S]*?)<\/th>/g);
+      if (thMatches) {
+        // Check if this row has date IDs
+        const hasDateId = thMatches.some(th => th.match(/id="\d{4}-\d{2}-\d{2}"/));
+        if (hasDateId) {
+          dateRowIndex = i;
+          dateRowThs = thMatches;
+          break;
+        }
+      }
+    }
     
-    // Iterate through all <th> elements and find which ones have date IDs
-    // This ensures we map data cells to dates correctly based on column position
-    allThMatches.forEach((th, index) => {
+    if (dateRowIndex === -1 || dateRowThs.length === 0) return { dates, fiscalQuarters, dateColumnIndices, ttmOffset };
+    
+    // Now find the row with quarter labels (usually the row before or after the date row)
+    let quarterRowThs: string[] = [];
+    for (let i = 0; i < allRows.length; i++) {
+      const thMatches = allRows[i].match(/<th[^>]*>([\s\S]*?)<\/th>/g);
+      if (thMatches && thMatches.length === dateRowThs.length) {
+        // Check if this row has quarter labels
+        const hasQuarter = thMatches.some(th => {
+          const text = th.replace(/<[^>]+>/g, '').trim();
+          return /Q[1-4]\s+\d{4}/i.test(text);
+        });
+        if (hasQuarter) {
+          quarterRowThs = thMatches;
+          break;
+        }
+      }
+    }
+    
+    // Extract dates and map to quarter labels
+    dateRowThs.forEach((th, index) => {
       const dateMatch = th.match(/id="(\d{4}-\d{2}-\d{2})"/);
       if (dateMatch) {
         dates.push(dateMatch[1]);
-        dateColumnIndices.push(index); // Store the column index where this date appears
+        dateColumnIndices.push(index);
+        
+        // Try to find quarter label from the quarter row at the same index
+        let quarterLabel = '';
+        if (quarterRowThs.length > index) {
+          const quarterTh = quarterRowThs[index];
+          const quarterMatch = quarterTh.replace(/<[^>]+>/g, '').trim().match(/(Q[1-4]\s+\d{4})/i);
+          if (quarterMatch) {
+            quarterLabel = quarterMatch[1].trim();
+          }
+        }
+        
+        // If not found in quarter row, try in the same th element
+        if (!quarterLabel) {
+          const quarterMatch = th.replace(/<[^>]+>/g, '').trim().match(/(Q[1-4]\s+\d{4})/i);
+          if (quarterMatch) {
+            quarterLabel = quarterMatch[1].trim();
+          }
+        }
+        
+        fiscalQuarters.push(quarterLabel);
       }
     });
     
@@ -237,20 +288,28 @@ export async function scrapeFinancials(symbol: string, period: 'quarterly' | 'an
       }
     }
     
-    return { dates, dateColumnIndices, ttmOffset };
+    return { dates, fiscalQuarters, dateColumnIndices, ttmOffset };
   };
   
   // Helper to process a page and extract rows
   const processPage = (html: string, type: 'income' | 'balance' | 'cashflow') => {
     // 1. Extract Dates (Columns) from Header and TTM offset
-    const { dates, dateColumnIndices, ttmOffset: headerTtmOffset } = extractDatesFromHeader(html);
+    const { dates, fiscalQuarters, dateColumnIndices, ttmOffset: headerTtmOffset } = extractDatesFromHeader(html);
     
     if (dates.length === 0) return;
     
     // Initialize objects for these dates
-    dates.forEach(date => {
+    dates.forEach((date, index) => {
       if (!statements[date]) {
-        statements[date] = { symbol, periodEndDate: date, periodType: period };
+        statements[date] = { 
+          symbol, 
+          periodEndDate: date, 
+          periodType: period,
+          fiscalQuarter: fiscalQuarters[index] || undefined
+        };
+      } else if (fiscalQuarters[index] && !statements[date].fiscalQuarter) {
+        // Update fiscal quarter if not already set
+        statements[date].fiscalQuarter = fiscalQuarters[index];
       }
     });
 

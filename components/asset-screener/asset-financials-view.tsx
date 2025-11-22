@@ -33,17 +33,26 @@ interface Profile {
 interface FinancialStatement {
   period_end_date: string
   period_type: string
+  fiscal_quarter?: string
   // ... all the fields we defined in schema
   [key: string]: any
 }
 
 /**
  * Format date as fiscal quarter (e.g., "Q1 2026")
+ * Uses stored fiscal_quarter if available, otherwise calculates from date
  * Pakistani companies use fiscal year July-June:
  * Q1: Jul-Sep (months 7-9), Q2: Oct-Dec (months 10-12), 
  * Q3: Jan-Mar (months 1-3), Q4: Apr-Jun (months 4-6)
  */
-function formatFiscalQuarter(dateStr: string): string {
+function formatFiscalQuarter(financial: FinancialStatement): string {
+  // Use stored fiscal_quarter if available (preferred - comes directly from source)
+  if (financial.fiscal_quarter) {
+    return financial.fiscal_quarter;
+  }
+  
+  // Fallback: calculate from date if fiscal_quarter not available
+  const dateStr = financial.period_end_date;
   const date = new Date(dateStr)
   const month = date.getMonth() + 1 // 1-12
   const calendarYear = date.getFullYear()
@@ -289,7 +298,7 @@ export function AssetFinancialsView({ symbol, assetType }: AssetFinancialsViewPr
                     <TableRow>
                         <TableHead>Metric</TableHead>
                         {financials.slice(0, visibleCount).map((f, i) => (
-                            <TableHead key={i}>{formatFiscalQuarter(f.period_end_date)}</TableHead>
+                            <TableHead key={i}>{formatFiscalQuarter(f)}</TableHead>
                         ))}
                     </TableRow>
                 </TableHeader>

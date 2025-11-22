@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
         try {
           await client.query(`
             INSERT INTO financial_statements (
-              symbol, asset_type, period_end_date, period_type,
+              symbol, asset_type, period_end_date, period_type, fiscal_quarter,
               revenue, cost_of_revenue, gross_profit, operating_expenses, operating_income,
               interest_expense, interest_income, currency_gain_loss,
               pretax_income, income_tax_expense, net_income, eps_diluted,
@@ -114,20 +114,21 @@ export async function GET(request: NextRequest) {
               total_equity, retained_earnings,
               operating_cash_flow, capital_expenditures, free_cash_flow, dividends_paid, change_in_working_capital
             ) VALUES (
-              $1, $2, $3, $4,
-              $5, $6, $7, $8, $9,
-              $10, $11, $12,
-              $13, $14, $15, $16,
-              $17, $18, $19, $20, $21, $22, $23, $24,
-              $25, $26, $27, $28, $29, $30, $31,
-              $32, $33, $34, $35, $36, $37,
-              $38, $39, $40, $41, $42,
-              $43, $44, $45, $46, $47,
-              $48, $49, $50, $51,
-              $52, $53,
-              $54, $55, $56, $57, $58
+              $1, $2, $3, $4, $5,
+              $6, $7, $8, $9, $10,
+              $11, $12, $13,
+              $14, $15, $16, $17,
+              $18, $19, $20, $21, $22, $23, $24, $25,
+              $26, $27, $28, $29, $30, $31, $32,
+              $33, $34, $35, $36, $37, $38,
+              $39, $40, $41, $42, $43,
+              $44, $45, $46, $47, $48,
+              $49, $50, $51, $52,
+              $53, $54,
+              $55, $56, $57, $58, $59
             )
           ON CONFLICT (asset_type, symbol, period_end_date, period_type) DO UPDATE SET
+            fiscal_quarter = EXCLUDED.fiscal_quarter,
             revenue = EXCLUDED.revenue,
             cost_of_revenue = EXCLUDED.cost_of_revenue,
             gross_profit = EXCLUDED.gross_profit,
@@ -217,7 +218,7 @@ export async function GET(request: NextRequest) {
         try {
           await client.query(`
             INSERT INTO financial_statements (
-              symbol, asset_type, period_end_date, period_type,
+              symbol, asset_type, period_end_date, period_type, fiscal_quarter,
               revenue, cost_of_revenue, gross_profit, operating_expenses, operating_income,
               interest_expense, interest_income, currency_gain_loss,
               pretax_income, income_tax_expense, net_income, eps_diluted,
@@ -230,20 +231,21 @@ export async function GET(request: NextRequest) {
               total_equity, retained_earnings,
               operating_cash_flow, capital_expenditures, free_cash_flow, dividends_paid, change_in_working_capital
             ) VALUES (
-              $1, $2, $3, $4,
-              $5, $6, $7, $8, $9,
-              $10, $11, $12,
-              $13, $14, $15, $16,
-              $17, $18, $19, $20, $21, $22, $23, $24,
-              $25, $26, $27, $28, $29, $30, $31,
-              $32, $33, $34, $35, $36, $37,
-              $38, $39, $40, $41, $42,
-              $43, $44, $45, $46, $47,
-              $48, $49, $50, $51,
-              $52, $53,
-              $54, $55, $56, $57, $58
+              $1, $2, $3, $4, $5,
+              $6, $7, $8, $9, $10,
+              $11, $12, $13,
+              $14, $15, $16, $17,
+              $18, $19, $20, $21, $22, $23, $24, $25,
+              $26, $27, $28, $29, $30, $31, $32,
+              $33, $34, $35, $36, $37, $38,
+              $39, $40, $41, $42, $43,
+              $44, $45, $46, $47, $48,
+              $49, $50, $51, $52,
+              $53, $54,
+              $55, $56, $57, $58, $59
             )
           ON CONFLICT (asset_type, symbol, period_end_date, period_type) DO UPDATE SET
+            fiscal_quarter = EXCLUDED.fiscal_quarter,
             revenue = EXCLUDED.revenue,
             cost_of_revenue = EXCLUDED.cost_of_revenue,
             gross_profit = EXCLUDED.gross_profit,
@@ -300,7 +302,7 @@ export async function GET(request: NextRequest) {
             change_in_working_capital = EXCLUDED.change_in_working_capital,
             updated_at = NOW()
           `, [
-            stat.symbol, 'pk-equity', stat.periodEndDate, stat.periodType,
+            stat.symbol, 'pk-equity', stat.periodEndDate, stat.periodType, stat.fiscalQuarter || null,
             stat.revenue, stat.costOfRevenue, stat.grossProfit, stat.operatingExpenses, stat.operatingIncome,
             stat.interestExpense, stat.interestIncome, stat.currencyGainLoss,
             stat.pretaxIncome, stat.incomeTaxExpense, stat.netIncome, stat.epsDiluted,

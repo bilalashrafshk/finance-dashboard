@@ -12,6 +12,7 @@ export interface FinancialStatement {
   symbol: string;
   periodEndDate: string; // YYYY-MM-DD
   periodType: 'quarterly' | 'annual' | 'ttm';
+  fiscalQuarter?: string; // e.g., "Q3 2025", "Q4 2024"
   
   // Income Statement
   revenue?: number;
