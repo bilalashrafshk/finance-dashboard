@@ -64,71 +64,79 @@ export function SeasonalityTable({ monthlySeasonality }: SeasonalityTableProps) 
       </Card>
 
       <Dialog open={selectedMonth !== null} onOpenChange={(open) => !open && setSelectedMonth(null)}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{selectedMonth?.monthName} Breakdown</DialogTitle>
-            <DialogDescription>
-              Detailed monthly returns for {selectedMonth?.monthName} across all years
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-[95vw] sm:max-w-[90vw] md:max-w-4xl lg:max-w-5xl xl:max-w-6xl w-full h-[90vh] sm:h-[85vh] md:h-[80vh] flex flex-col p-0 gap-0">
+          <div className="px-6 pt-6 pb-4 border-b">
+            <DialogHeader>
+              <DialogTitle>{selectedMonth?.monthName} Breakdown</DialogTitle>
+              <DialogDescription>
+                Detailed monthly returns for {selectedMonth?.monthName} across all years
+              </DialogDescription>
+            </DialogHeader>
+          </div>
           {selectedMonth && selectedMonth.observations.length > 0 ? (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Year</TableHead>
-                    <TableHead className="text-right">Start Date</TableHead>
-                    <TableHead className="text-right">End Date</TableHead>
-                    <TableHead className="text-right">Start Price</TableHead>
-                    <TableHead className="text-right">End Price</TableHead>
-                    <TableHead className="text-right">Return</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {selectedMonth.observations.map((obs, idx) => (
-                    <TableRow key={`${obs.year}-${idx}`}>
-                      <TableCell className="font-medium">
-                        {new Date(obs.startDate).toLocaleDateString('en-US', { 
-                          month: 'short', 
-                          year: 'numeric'
-                        })}
-                      </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
-                        {new Date(obs.startDate).toLocaleDateString('en-US', { 
-                          month: 'short', 
-                          day: 'numeric',
-                          year: 'numeric'
-                        })}
-                      </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
-                        {new Date(obs.endDate).toLocaleDateString('en-US', { 
-                          month: 'short', 
-                          day: 'numeric',
-                          year: 'numeric'
-                        })}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(obs.startPrice)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(obs.endPrice)}
-                      </TableCell>
-                      <TableCell className={`text-right font-semibold ${
-                        obs.return >= 0 
-                          ? 'text-green-600 dark:text-green-400' 
-                          : 'text-red-600 dark:text-red-400'
-                      }`}>
-                        {formatPercentage(obs.return)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            <div className="flex-1 overflow-hidden flex flex-col px-6 pb-6 pt-4">
+              <div className="flex-1 overflow-auto">
+                <div className="overflow-x-auto min-w-full">
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-background z-10">
+                      <TableRow>
+                        <TableHead className="whitespace-nowrap">Year</TableHead>
+                        <TableHead className="text-right whitespace-nowrap">Start Date</TableHead>
+                        <TableHead className="text-right whitespace-nowrap">End Date</TableHead>
+                        <TableHead className="text-right whitespace-nowrap">Start Price</TableHead>
+                        <TableHead className="text-right whitespace-nowrap">End Price</TableHead>
+                        <TableHead className="text-right whitespace-nowrap">Return</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedMonth.observations.map((obs, idx) => (
+                        <TableRow key={`${obs.year}-${idx}`}>
+                          <TableCell className="font-medium whitespace-nowrap">
+                            {new Date(obs.startDate).toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              year: 'numeric'
+                            })}
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground whitespace-nowrap">
+                            {new Date(obs.startDate).toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground whitespace-nowrap">
+                            {new Date(obs.endDate).toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </TableCell>
+                          <TableCell className="text-right whitespace-nowrap">
+                            {formatCurrency(obs.startPrice)}
+                          </TableCell>
+                          <TableCell className="text-right whitespace-nowrap">
+                            {formatCurrency(obs.endPrice)}
+                          </TableCell>
+                          <TableCell className={`text-right font-semibold whitespace-nowrap ${
+                            obs.return >= 0 
+                              ? 'text-green-600 dark:text-green-400' 
+                              : 'text-red-600 dark:text-red-400'
+                          }`}>
+                            {formatPercentage(obs.return)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
             </div>
           ) : (
-            <p className="text-muted-foreground text-center py-4">
-              No detailed observations available
-            </p>
+            <div className="flex-1 flex items-center justify-center px-6 pb-6">
+              <p className="text-muted-foreground text-center py-4">
+                No detailed observations available
+              </p>
+            </div>
           )}
         </DialogContent>
       </Dialog>
