@@ -263,9 +263,9 @@ export async function scrapeFinancials(symbol: string, period: 'quarterly' | 'an
     
     // Calculate TTM offset by checking if second column (index 1) has a date ID
     // If not, it's likely a TTM or "+X Quarters" column
-    if (allThMatches.length > 1) {
-      const firstTh = allThMatches[0];
-      const secondTh = allThMatches[1];
+    if (dateRowThs.length > 1) {
+      const firstTh = dateRowThs[0];
+      const secondTh = dateRowThs[1];
       
       const firstThText = firstTh.replace(/<[^>]+>/g, '').toLowerCase();
       const isLabelColumn = firstThText.includes('fiscal') || firstThText.includes('item') || firstThText.includes('period');

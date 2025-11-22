@@ -356,7 +356,7 @@ export function AssetFinancialsView({ symbol, assetType }: AssetFinancialsViewPr
                             <TableRow>
                                 <TableHead className="w-[200px]">Item ({period})</TableHead>
                                 {financials.slice(0, visibleCount).map((f, i) => (
-                                    <TableHead key={i}>{formatFiscalQuarter(f.period_end_date)}</TableHead>
+                                    <TableHead key={i}>{formatFiscalQuarter(f)}</TableHead>
                                 ))}
                             </TableRow>
                         </TableHeader>

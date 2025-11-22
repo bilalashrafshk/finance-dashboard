@@ -185,7 +185,7 @@ export async function GET(request: NextRequest) {
             change_in_working_capital = EXCLUDED.change_in_working_capital,
             updated_at = NOW()
           `, [
-            stat.symbol, 'pk-equity', stat.periodEndDate, stat.periodType,
+            stat.symbol, 'pk-equity', stat.periodEndDate, stat.periodType, stat.fiscalQuarter || null,
             stat.revenue, stat.costOfRevenue, stat.grossProfit, stat.operatingExpenses, stat.operatingIncome,
             stat.interestExpense, stat.interestIncome, stat.currencyGainLoss,
             stat.pretaxIncome, stat.incomeTaxExpense, stat.netIncome, stat.epsDiluted,
