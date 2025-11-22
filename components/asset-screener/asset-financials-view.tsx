@@ -301,6 +301,14 @@ export function AssetFinancialsView({ symbol, assetType }: AssetFinancialsViewPr
                             <TableHead key={i}>{formatFiscalQuarter(f)}</TableHead>
                         ))}
                     </TableRow>
+                    <TableRow>
+                        <TableHead></TableHead>
+                        {financials.slice(0, visibleCount).map((f, i) => (
+                            <TableHead key={i} className="text-xs text-muted-foreground font-normal">
+                                {new Date(f.period_end_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                            </TableHead>
+                        ))}
+                    </TableRow>
                 </TableHeader>
                 <TableBody>
                     {[
@@ -357,6 +365,14 @@ export function AssetFinancialsView({ symbol, assetType }: AssetFinancialsViewPr
                                 <TableHead className="w-[200px]">Item ({period})</TableHead>
                                 {financials.slice(0, visibleCount).map((f, i) => (
                                     <TableHead key={i}>{formatFiscalQuarter(f)}</TableHead>
+                                ))}
+                            </TableRow>
+                            <TableRow>
+                                <TableHead className="w-[200px]"></TableHead>
+                                {financials.slice(0, visibleCount).map((f, i) => (
+                                    <TableHead key={i} className="text-xs text-muted-foreground font-normal">
+                                        {new Date(f.period_end_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                    </TableHead>
                                 ))}
                             </TableRow>
                         </TableHeader>
