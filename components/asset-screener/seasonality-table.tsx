@@ -112,10 +112,10 @@ export function SeasonalityTable({ monthlySeasonality }: SeasonalityTableProps) 
                             })}
                           </TableCell>
                           <TableCell className="text-right whitespace-nowrap">
-                            {formatCurrency(obs.startPrice)}
+                            {obs.startPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </TableCell>
                           <TableCell className="text-right whitespace-nowrap">
-                            {formatCurrency(obs.endPrice)}
+                            {obs.endPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </TableCell>
                           <TableCell className={`text-right font-semibold whitespace-nowrap ${
                             obs.return >= 0 
