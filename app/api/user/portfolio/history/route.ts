@@ -6,6 +6,7 @@ import { calculateHoldingsFromTransactions, getCurrentPrice } from '@/lib/portfo
 import { Trade } from '@/lib/portfolio/transaction-utils'
 import { Holding } from '@/lib/portfolio/types'
 import { getHistoricalDataWithMetadata } from '@/lib/portfolio/db-client'
+import { parseSymbolToBinance } from '@/lib/portfolio/binance-api'
 
 function getPool(): Pool {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
@@ -117,10 +118,17 @@ export async function GET(request: NextRequest) {
         try {
           const priceMap = new Map<string, number>()
           
+          // For crypto assets, normalize symbol to Binance format (ETH -> ETHUSDT)
+          let symbolToFetch = asset.symbol
+          if (asset.assetType === 'crypto') {
+            symbolToFetch = parseSymbolToBinance(asset.symbol)
+            console.log(`[Portfolio History] Normalizing crypto symbol: ${asset.symbol} -> ${symbolToFetch} for ${assetKey}`)
+          }
+          
           // Get historical data for the date range
           const historicalData = await getHistoricalDataWithMetadata(
             asset.assetType,
-            asset.symbol,
+            symbolToFetch,
             startDate.toISOString().split('T')[0],
             todayStr
           )
@@ -133,12 +141,15 @@ export async function GET(request: NextRequest) {
             }
           })
           
+          console.log(`[Portfolio History] Fetched ${priceMap.size} historical prices for ${assetKey} (${asset.assetType}:${symbolToFetch})`)
+          
           // If today's price is not in historical data, try to fetch current price
           if (!priceMap.has(todayStr)) {
             try {
               const currentPrice = await getCurrentPrice(asset.assetType, asset.symbol, asset.currency)
               if (currentPrice && currentPrice > 0) {
                 priceMap.set(todayStr, currentPrice)
+                console.log(`[Portfolio History] Added current price ${currentPrice} for ${assetKey} on ${todayStr}`)
               }
             } catch (error) {
               console.error(`Error fetching current price for ${assetKey}:`, error)
@@ -159,6 +170,7 @@ export async function GET(request: NextRequest) {
         const priceMap = historicalPriceMap.get(assetKey)
         if (!priceMap) {
           // No historical data, use fallback (purchase price)
+          console.warn(`[Portfolio History] No price map found for ${assetKey} on ${dateStr}, using fallback ${fallbackPrice}`)
           return fallbackPrice
         }
         
@@ -171,11 +183,14 @@ export async function GET(request: NextRequest) {
         const dates = Array.from(priceMap.keys()).sort().reverse()
         for (const date of dates) {
           if (date <= dateStr) {
-            return priceMap.get(date)!
+            const price = priceMap.get(date)!
+            console.log(`[Portfolio History] Using closest earlier price for ${assetKey} on ${dateStr}: ${price} from ${date}`)
+            return price
           }
         }
         
         // No historical price found, use fallback
+        console.warn(`[Portfolio History] No historical price found for ${assetKey} on ${dateStr}, using fallback ${fallbackPrice}`)
         return fallbackPrice
       }
       
