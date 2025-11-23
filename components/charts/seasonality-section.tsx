@@ -1,23 +1,18 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { useAuth } from "@/lib/auth/auth-context"
 import { SeasonalityTable } from "@/components/asset-screener/seasonality-table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Search, Plus } from "lucide-react"
+import { Loader2, Search } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { LoginDialog } from "@/components/auth/login-dialog"
-import { RegisterDialog } from "@/components/auth/register-dialog"
 import { useToast } from "@/hooks/use-toast"
-import type { TrackedAsset } from "@/components/asset-screener/add-asset-dialog"
 import { calculateMonthlySeasonality, type PriceDataPoint } from "@/lib/asset-screener/metrics-calculations"
 import { ASSET_TYPE_LABELS } from "@/lib/portfolio/types"
 import type { AssetType } from "@/lib/portfolio/types"
-import { CryptoSelector } from "@/components/portfolio/crypto-selector"
 import { parseSymbolToBinance } from "@/lib/portfolio/binance-api"
 
 interface StockInfo {
@@ -31,15 +26,10 @@ interface AssetOption {
   symbol: string
   name: string
   assetType: AssetType
-  isInList: boolean
-  trackedAssetId?: string
 }
 
 export function SeasonalitySection() {
-  const { user, loading: authLoading } = useAuth()
   const { toast } = useToast()
-  const [trackedAssets, setTrackedAssets] = useState<TrackedAsset[]>([])
-  const [loadingTrackedAssets, setLoadingTrackedAssets] = useState(true)
   
   // Asset class selection (required)
   const [selectedAssetClass, setSelectedAssetClass] = useState<AssetType | ''>('')
@@ -54,11 +44,10 @@ export function SeasonalitySection() {
   
   // US Equity state
   const [usSymbol, setUsSymbol] = useState('')
-  const [usName, setUsName] = useState('')
   const [validatingUsSymbol, setValidatingUsSymbol] = useState(false)
+  const [usAssetName, setUsAssetName] = useState('')
   
   // Crypto state
-  const [cryptoSymbol, setCryptoSymbol] = useState('')
   const [cryptoOptions, setCryptoOptions] = useState<string[]>([])
   
   // Selected asset and seasonality
@@ -67,47 +56,7 @@ export function SeasonalitySection() {
   const [loadingSeasonality, setLoadingSeasonality] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Load tracked assets
-  useEffect(() => {
-    if (!authLoading && user) {
-      loadTrackedAssets()
-    } else if (!authLoading && !user) {
-      setLoadingTrackedAssets(false)
-    }
-  }, [authLoading, user])
-
-  const loadTrackedAssets = async () => {
-    try {
-      setLoadingTrackedAssets(true)
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        setTrackedAssets([])
-        return
-      }
-
-      const response = await fetch('/api/user/tracked-assets', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          setTrackedAssets(data.assets)
-        }
-      } else if (response.status === 401) {
-        setTrackedAssets([])
-      }
-    } catch (error) {
-      console.error('Error loading tracked assets:', error)
-      setTrackedAssets([])
-    } finally {
-      setLoadingTrackedAssets(false)
-    }
-  }
-
-  // Load PK stocks when asset class is selected
+  // Load assets when asset class is selected
   useEffect(() => {
     if (selectedAssetClass === 'pk-equity') {
       loadPkStocks()
@@ -130,23 +79,21 @@ export function SeasonalitySection() {
           const stocks = data.stocks || []
           setPkStocks(stocks)
           // Convert to AssetOption format
-          const assets: AssetOption[] = stocks.map((stock: StockInfo) => {
-            const tracked = trackedAssets.find(
-              a => a.assetType === 'pk-equity' && a.symbol.toUpperCase() === stock.symbol.toUpperCase()
-            )
-            return {
-              symbol: stock.symbol,
-              name: stock.name,
-              assetType: 'pk-equity' as AssetType,
-              isInList: !!tracked,
-              trackedAssetId: tracked?.id,
-            }
-          })
+          const assets: AssetOption[] = stocks.map((stock: StockInfo) => ({
+            symbol: stock.symbol,
+            name: stock.name,
+            assetType: 'pk-equity' as AssetType,
+          }))
           setAvailableAssets(assets)
         }
       }
     } catch (error) {
       console.error('Error loading PK stocks:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load PK equities",
+        variant: "destructive",
+      })
     } finally {
       setLoadingAssets(false)
     }
@@ -162,58 +109,24 @@ export function SeasonalitySection() {
       // Convert to AssetOption format (show first 100)
       const assets: AssetOption[] = symbols.slice(0, 100).map((symbol: string) => {
         const displaySymbol = symbol.replace('USDT', '')
-        const tracked = trackedAssets.find(
-          a => a.assetType === 'crypto' && a.symbol.toUpperCase() === displaySymbol.toUpperCase()
-        )
         return {
           symbol: displaySymbol,
           name: displaySymbol,
           assetType: 'crypto' as AssetType,
-          isInList: !!tracked,
-          trackedAssetId: tracked?.id,
         }
       })
       setAvailableAssets(assets)
     } catch (error) {
       console.error('Error loading crypto options:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load cryptocurrencies",
+        variant: "destructive",
+      })
     } finally {
       setLoadingAssets(false)
     }
   }
-
-  // Update available assets when tracked assets change
-  useEffect(() => {
-    if (selectedAssetClass === 'pk-equity' && pkStocks.length > 0) {
-      const assets: AssetOption[] = pkStocks.map((stock: StockInfo) => {
-        const tracked = trackedAssets.find(
-          a => a.assetType === 'pk-equity' && a.symbol.toUpperCase() === stock.symbol.toUpperCase()
-        )
-        return {
-          symbol: stock.symbol,
-          name: stock.name,
-          assetType: 'pk-equity' as AssetType,
-          isInList: !!tracked,
-          trackedAssetId: tracked?.id,
-        }
-      })
-      setAvailableAssets(assets)
-    } else if (selectedAssetClass === 'crypto' && cryptoOptions.length > 0) {
-      const assets: AssetOption[] = cryptoOptions.slice(0, 100).map((symbol: string) => {
-        const displaySymbol = symbol.replace('USDT', '')
-        const tracked = trackedAssets.find(
-          a => a.assetType === 'crypto' && a.symbol.toUpperCase() === displaySymbol.toUpperCase()
-        )
-        return {
-          symbol: displaySymbol,
-          name: displaySymbol,
-          assetType: 'crypto' as AssetType,
-          isInList: !!tracked,
-          trackedAssetId: tracked?.id,
-        }
-      })
-      setAvailableAssets(assets)
-    }
-  }, [trackedAssets, selectedAssetClass, pkStocks, cryptoOptions])
 
   // Filter assets by search
   const filteredAssets = useMemo(() => {
@@ -241,18 +154,15 @@ export function SeasonalitySection() {
         const data = await response.json()
         if (data.price !== undefined) {
           // Symbol is valid, create asset option
-          const tracked = trackedAssets.find(
-            a => a.assetType === 'us-equity' && a.symbol.toUpperCase() === usSymbol.toUpperCase()
-          )
           const assetOption: AssetOption = {
             symbol: usSymbol.toUpperCase(),
-            name: usName.trim() || usSymbol.toUpperCase(),
+            name: usAssetName.trim() || usSymbol.toUpperCase(),
             assetType: 'us-equity',
-            isInList: !!tracked,
-            trackedAssetId: tracked?.id,
           }
           setAvailableAssets([assetOption])
           setSearchQuery(usSymbol.toUpperCase())
+          // Auto-select and load seasonality
+          loadSeasonality(assetOption)
         } else {
           throw new Error('Invalid symbol')
         }
@@ -268,65 +178,6 @@ export function SeasonalitySection() {
       setAvailableAssets([])
     } finally {
       setValidatingUsSymbol(false)
-    }
-  }
-
-  // Add asset to list
-  const handleAddAsset = async (asset: AssetOption) => {
-    try {
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        toast({
-          title: "Authentication required",
-          description: "Please log in to add assets.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      let requestBody: any = {
-        assetType: asset.assetType,
-        symbol: asset.symbol,
-        name: asset.name,
-      }
-
-      if (asset.assetType === 'pk-equity') {
-        requestBody.currency = 'PKR'
-      } else if (asset.assetType === 'us-equity' || asset.assetType === 'crypto') {
-        requestBody.currency = 'USD'
-      }
-
-      const response = await fetch('/api/user/tracked-assets', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(requestBody),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success && data.asset) {
-          setTrackedAssets(prev => [...prev, data.asset])
-          // Update the asset option
-          asset.isInList = true
-          asset.trackedAssetId = data.asset.id
-          toast({
-            title: "Asset added",
-            description: `${asset.symbol} has been added to your list.`,
-          })
-        }
-      } else {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to add asset')
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || 'Failed to add asset',
-        variant: "destructive",
-      })
     }
   }
 
@@ -395,43 +246,12 @@ export function SeasonalitySection() {
     }
   }
 
-  if (authLoading || loadingTrackedAssets) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
-  if (!user) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Asset Seasonality</CardTitle>
-          <CardDescription>
-            View monthly seasonality patterns for assets. Sign in to get started.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2">
-            <LoginDialog>
-              <Button>Login</Button>
-            </LoginDialog>
-            <RegisterDialog>
-              <Button variant="outline">Sign Up</Button>
-            </RegisterDialog>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold mb-2">Asset Seasonality</h2>
         <p className="text-muted-foreground">
-          Analyze monthly seasonality patterns to identify recurring trends in asset returns.
+          Analyze monthly seasonality patterns to identify recurring trends in asset returns. Select an asset class and search for any asset.
         </p>
       </div>
 
@@ -447,9 +267,12 @@ export function SeasonalitySection() {
           <Select value={selectedAssetClass} onValueChange={(value) => {
             setSelectedAssetClass(value as AssetType)
             setSearchQuery('')
+            setUsSymbol('')
+            setUsAssetName('')
             setSelectedAsset(null)
             setSeasonalityData(null)
             setError(null)
+            setAvailableAssets([])
           }}>
             <SelectTrigger>
               <SelectValue placeholder="Select asset class..." />
@@ -470,7 +293,7 @@ export function SeasonalitySection() {
             <CardTitle>Search Assets</CardTitle>
             <CardDescription>
               {selectedAssetClass === 'pk-equity' && 'Search from all PK equities'}
-              {selectedAssetClass === 'us-equity' && 'Enter a US equity symbol to validate and view seasonality'}
+              {selectedAssetClass === 'us-equity' && 'Enter a US equity symbol to view seasonality'}
               {selectedAssetClass === 'crypto' && 'Search from available cryptocurrencies'}
             </CardDescription>
           </CardHeader>
@@ -502,13 +325,13 @@ export function SeasonalitySection() {
                     </Button>
                   </div>
                 </div>
-                {usName && (
+                {usAssetName && (
                   <div className="space-y-2">
                     <Label>Company Name (Optional)</Label>
                     <Input
                       placeholder="Auto-filled if left empty"
-                      value={usName}
-                      onChange={(e) => setUsName(e.target.value)}
+                      value={usAssetName}
+                      onChange={(e) => setUsAssetName(e.target.value)}
                     />
                   </div>
                 )}
@@ -558,28 +381,13 @@ export function SeasonalitySection() {
                       <div className="flex items-center gap-3 flex-1">
                         <span className="font-mono font-medium">{asset.symbol}</span>
                         <span className="text-sm text-muted-foreground">{asset.name}</span>
-                        {asset.isInList && (
-                          <Badge variant="outline" className="text-xs">In List</Badge>
-                        )}
+                        <Badge variant="outline" className="text-xs">
+                          {ASSET_TYPE_LABELS[asset.assetType]}
+                        </Badge>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {isSelected && loadingSeasonality && (
-                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                        )}
-                        {!asset.isInList && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleAddAsset(asset)
-                            }}
-                          >
-                            <Plus className="h-4 w-4 mr-1" />
-                            Add
-                          </Button>
-                        )}
-                      </div>
+                      {isSelected && loadingSeasonality && (
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      )}
                     </div>
                   )
                 })}
@@ -591,7 +399,7 @@ export function SeasonalitySection() {
             ) : (
               <p className="text-sm text-muted-foreground text-center py-8">
                 {selectedAssetClass === 'us-equity' 
-                  ? 'Enter a stock symbol above to validate and view seasonality'
+                  ? 'Enter a stock symbol above to view seasonality'
                   : 'Start typing to search for assets'}
               </p>
             )}
