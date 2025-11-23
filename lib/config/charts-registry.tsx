@@ -45,9 +45,12 @@ const InterestRatesSection = dynamic(() => import("@/components/charts/interest-
 const BalanceOfPaymentsSection = dynamic(() => import("@/components/charts/balance-of-payments-section").then(mod => mod.BalanceOfPaymentsSection), {
     loading: () => <ChartLoader />,
 })
+const InterestRateEquitiesSection = dynamic(() => import("@/components/charts/interest-rate-equities-section").then(mod => mod.InterestRateEquitiesSection), {
+    loading: () => <ChartLoader />,
+})
 
 // Types
-export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments"
+export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments" | "interest-rate-equities"
 
 export interface ChartDefinition {
     id: ChartId
@@ -98,6 +101,13 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 icon: ScatterChart,
                 component: <PERatioScatterSection />,
                 keywords: ["pe", "ratio", "valuation", "scatter", "stocks", "sector", "industry"],
+            },
+            {
+                id: "interest-rate-equities",
+                title: "Interest Rate and Equities",
+                icon: TrendingUp,
+                component: <InterestRateEquitiesSection />,
+                keywords: ["interest", "rate", "equities", "stocks", "sbp", "price", "correlation", "kse100"],
             },
         ],
     },

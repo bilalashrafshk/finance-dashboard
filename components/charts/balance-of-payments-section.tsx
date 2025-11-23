@@ -4,8 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { Loader2, TrendingUp, TrendingDown, RefreshCw, DollarSign } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Loader2, TrendingUp, TrendingDown, DollarSign } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Line } from "react-chartjs-2"
 import {
@@ -122,24 +121,37 @@ export function BalanceOfPaymentsSection() {
     loadBOPData()
   }, [selectedSeries])
 
-  const handleRefresh = () => {
-    loadBOPData(true)
-  }
-
-  // Prepare chart data
+  // Prepare chart data with color coding: green for surplus (>=0), red for deficit (<0)
   const chartData = {
     labels: data.map(d => format(new Date(d.date), 'MMM yyyy')),
     datasets: [
       {
         label: selectedSeriesInfo.label,
         data: data.map(d => d.value),
-        borderColor: selectedSeriesInfo.color,
-        backgroundColor: `${selectedSeriesInfo.color}20`,
-        fill: true,
+        borderColor: 'rgb(34, 197, 94)', // default, overridden by segment
+        backgroundColor: (ctx: any) => {
+          const value = ctx.parsed?.y ?? ctx.raw
+          return value >= 0 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'
+        },
+        segment: {
+          borderColor: (ctx: any) => {
+            // Color each segment based on the second point (destination)
+            const p2 = ctx.p2.parsed.y
+            return p2 >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
+          },
+        },
+        fill: {
+          target: 'origin',
+          above: 'rgba(34, 197, 94, 0.2)', // green fill above zero
+          below: 'rgba(239, 68, 68, 0.2)', // red fill below zero
+        },
         tension: 0.4,
         pointRadius: 2,
         pointHoverRadius: 5,
-        pointBackgroundColor: selectedSeriesInfo.color,
+        pointBackgroundColor: (ctx: any) => {
+          const value = ctx.parsed?.y ?? ctx.raw
+          return value >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
+        },
         pointBorderColor: '#fff',
         pointBorderWidth: 2,
       },
@@ -169,7 +181,8 @@ export function BalanceOfPaymentsSection() {
           label: function(context: any) {
             const value = context.parsed.y
             const sign = value >= 0 ? '+' : ''
-            return `${context.dataset.label}: ${sign}${value.toFixed(2)} Million USD`
+            const status = value >= 0 ? ' (Surplus)' : ' (Deficit)'
+            return `${context.dataset.label}: ${sign}${value.toFixed(2)} Million USD${status}`
           },
         },
       },
@@ -227,22 +240,11 @@ export function BalanceOfPaymentsSection() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Pakistan's Balance of Payments</CardTitle>
-              <CardDescription>
-                Current account balance data from SBP EasyData API
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={loading}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
+          <div>
+            <CardTitle>Pakistan's Balance of Payments</CardTitle>
+            <CardDescription>
+              Current account balance data from SBP EasyData API
+            </CardDescription>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -334,9 +336,25 @@ export function BalanceOfPaymentsSection() {
               </div>
             </div>
           ) : (
-            <div className="h-[500px] w-full">
-              <Line data={chartData} options={chartOptions} />
-            </div>
+            <>
+              <div className="h-[500px] w-full">
+                <Line data={chartData} options={chartOptions} />
+              </div>
+              
+              {/* Visual indicator below chart */}
+              <div className="mt-4 p-4 border rounded-lg bg-muted/30">
+                <div className="flex items-center justify-center gap-6 text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-green-500"></div>
+                    <span className="text-muted-foreground">Surplus (≥ 0)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-red-500"></div>
+                    <span className="text-muted-foreground">Deficit (&lt; 0)</span>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

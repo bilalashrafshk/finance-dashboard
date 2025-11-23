@@ -4,8 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { Loader2, TrendingUp, TrendingDown, RefreshCw } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Loader2, TrendingUp, TrendingDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Line } from "react-chartjs-2"
 import {
@@ -142,10 +141,6 @@ export function InterestRatesSection() {
     loadInterestRates()
   }, [selectedSeries])
 
-  const handleRefresh = () => {
-    loadInterestRates(true)
-  }
-
   // Prepare chart data
   const chartData = {
     labels: data.map(d => format(new Date(d.date), 'MMM yyyy')),
@@ -230,22 +225,11 @@ export function InterestRatesSection() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>State Bank of Pakistan Interest Rates</CardTitle>
-              <CardDescription>
-                Historical interest rate data from SBP EasyData API
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={loading}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
+          <div>
+            <CardTitle>State Bank of Pakistan Interest Rates</CardTitle>
+            <CardDescription>
+              Historical interest rate data from SBP EasyData API
+            </CardDescription>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
