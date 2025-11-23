@@ -133,10 +133,11 @@ export function InterestRateEquitiesSection() {
     }
   }, [selectedSymbol])
 
-  // Filter data based on selected time frame
-  const { priceData, interestRateData } = useMemo(() => {
-    if (allPriceData.length === 0 || allInterestRateData.length === 0) {
-      return { priceData: [], interestRateData: [] }
+  // Filter price data based on selected time frame
+  // Keep all interest rate data for proper forward-filling alignment
+  const priceData = useMemo(() => {
+    if (allPriceData.length === 0) {
+      return []
     }
 
     const now = new Date()
@@ -152,21 +153,14 @@ export function InterestRateEquitiesSection() {
 
     const cutoffDate = periodCutoffs[chartPeriod]
     
-    const filteredPrices = allPriceData.filter(point => {
+    return allPriceData.filter(point => {
       const pointDate = new Date(point.date)
       return pointDate >= cutoffDate
     })
+  }, [allPriceData, chartPeriod])
 
-    const filteredRates = allInterestRateData.filter(point => {
-      const pointDate = new Date(point.date)
-      return pointDate >= cutoffDate
-    })
-
-    return {
-      priceData: filteredPrices,
-      interestRateData: filteredRates
-    }
-  }, [allPriceData, allInterestRateData, chartPeriod])
+  // Use all interest rate data for alignment (rates are forward-filled)
+  const interestRateData = allInterestRateData
 
   const loadChartData = async () => {
     if (!selectedSymbol) return
@@ -236,14 +230,15 @@ export function InterestRateEquitiesSection() {
 
   // Prepare chart data
   const chartData = useMemo(() => {
-    if (priceData.length === 0 || interestRateData.length === 0) {
+    if (priceData.length === 0 || allInterestRateData.length === 0) {
       return null
     }
 
     // Align data by date - use price dates as base
     // Interest rates are "as-needed" (not daily), so we forward-fill the rate until next change
+    // Use all interest rate data for proper alignment, even if it's before the time frame
     const priceDates = priceData.map(p => p.date)
-    const sortedRates = [...interestRateData].sort((a, b) => a.date.localeCompare(b.date))
+    const sortedRates = [...allInterestRateData].sort((a, b) => a.date.localeCompare(b.date))
     
     // Create aligned rates: for each price date, use the most recent interest rate
     const alignedRates = priceDates.map(date => {
@@ -288,7 +283,7 @@ export function InterestRateEquitiesSection() {
         },
       ],
     }
-  }, [priceData, interestRateData, selectedSymbol, colors, theme])
+  }, [priceData, allInterestRateData, selectedSymbol, colors, theme])
 
   const chartOptions = useMemo(() => ({
     responsive: true,
