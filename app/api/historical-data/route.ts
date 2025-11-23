@@ -136,37 +136,39 @@ async function fetchNewDataInBackground(
     let source: 'scstrade' | 'stockanalysis' | 'binance' | 'investing' = 'stockanalysis'
 
     if (assetType === 'pk-equity') {
-      // Try SCSTrade first (primary source), then fallback to StockAnalysis
-      try {
-        const scstradeData = await retryWithBackoff(
-          () => fetchSCSTradeData(symbol, fetchStartDate, today),
-          2, // 2 retries for SCSTrade
-          1000,
-          5000
-        )
-        
-        if (scstradeData && scstradeData.length > 0) {
-          newData = scstradeData
-          source = 'scstrade'
-        }
-      } catch (scstradeError) {
-        console.error(`[${assetType}-${symbol}] SCSTrade fetch failed, falling back to StockAnalysis:`, scstradeError)
+      // Try StockAnalysis first (primary source - fetches full 10Y history to fill all gaps including middle gaps)
+      // Then fallback to SCSTrade if StockAnalysis fails
+      const apiData = await retryWithBackoff(
+        () => fetchStockAnalysisData(symbol, 'PSX'),
+        3, // 3 retries
+        1000, // 1 second initial delay
+        10000 // 10 second max delay
+      )
+      
+      if (apiData) {
+        const filtered = fetchStartDate
+          ? apiData.filter(d => d.t >= fetchStartDate)
+          : apiData
+        newData = filtered.map(convertStockAnalysisToRecord)
+        source = 'stockanalysis'
       }
       
-      // Fallback to StockAnalysis if SCSTrade failed or returned no data
+      // Fallback to SCSTrade if StockAnalysis failed or returned no data
       if (newData.length === 0) {
-        const apiData = await retryWithBackoff(
-          () => fetchStockAnalysisData(symbol, 'PSX'),
-          3, // 3 retries
-          1000, // 1 second initial delay
-          10000 // 10 second max delay
-        )
-        if (apiData) {
-          const filtered = fetchStartDate
-            ? apiData.filter(d => d.t >= fetchStartDate)
-            : apiData
-          newData = filtered.map(convertStockAnalysisToRecord)
-          source = 'stockanalysis'
+        try {
+          const scstradeData = await retryWithBackoff(
+            () => fetchSCSTradeData(symbol, fetchStartDate, today),
+            2, // 2 retries for SCSTrade
+            1000,
+            5000
+          )
+          
+          if (scstradeData && scstradeData.length > 0) {
+            newData = scstradeData
+            source = 'scstrade'
+          }
+        } catch (scstradeError) {
+          console.error(`[${assetType}-${symbol}] SCSTrade fallback also failed:`, scstradeError)
         }
       }
     } else if (assetType === 'us-equity') {
