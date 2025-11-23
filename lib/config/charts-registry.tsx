@@ -1,5 +1,5 @@
 import dynamic from "next/dynamic"
-import { BarChart3, TrendingUp, Activity, Globe, LayoutGrid, Loader2, ScatterChart, PieChart, Calendar, LineChart } from "lucide-react"
+import { BarChart3, TrendingUp, Activity, Globe, LayoutGrid, Loader2, ScatterChart, PieChart, Calendar, LineChart, DollarSign } from "lucide-react"
 import React from "react"
 
 // Loading component
@@ -39,9 +39,12 @@ const SeasonalitySection = dynamic(() => import("@/components/charts/seasonality
 const PriceChartSection = dynamic(() => import("@/components/charts/price-chart-section").then(mod => mod.PriceChartSection), {
     loading: () => <ChartLoader />,
 })
+const InterestRatesSection = dynamic(() => import("@/components/charts/interest-rates-section").then(mod => mod.InterestRatesSection), {
+    loading: () => <ChartLoader />,
+})
 
 // Types
-export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart"
+export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates"
 
 export interface ChartDefinition {
     id: ChartId
@@ -154,6 +157,20 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 icon: LineChart,
                 component: <PriceChartSection />,
                 keywords: ["price", "chart", "historical", "pe", "ratio", "trends", "analysis"],
+            },
+        ],
+    },
+    {
+        id: "macros",
+        title: "Macros",
+        icon: DollarSign,
+        charts: [
+            {
+                id: "interest-rates",
+                title: "SBP Interest Rates",
+                icon: TrendingUp,
+                component: <InterestRatesSection />,
+                keywords: ["interest", "rates", "sbp", "policy", "repo", "reverse repo", "macro", "pakistan", "monetary"],
             },
         ],
     },

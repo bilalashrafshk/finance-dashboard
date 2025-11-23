@@ -49,13 +49,30 @@ All API routes are automatically deployed with your Next.js app. No additional c
 ✅ `/api/indices/price` - Indices prices (Investing.com)
 ✅ `/api/historical-data` - Historical data retrieval
 ✅ `/api/historical-data/store` - Store historical data
+✅ `/api/sbp/interest-rates` - SBP interest rates (requires SBP_API_KEY)
 
-## No API Keys Required
+## API Keys
 
-The portfolio uses public APIs that don't require authentication:
+### Public APIs (No Key Required)
+The portfolio uses these public APIs that don't require authentication:
 - **Binance API** - Public, no key needed
 - **StockAnalysis.com API** - Public, no key needed
 - **Investing.com API** - Public, no key needed
+
+### SBP EasyData API (REQUIRED for Interest Rates)
+For the SBP Interest Rates feature, you need to add:
+
+```
+SBP_API_KEY=EE4D300822A1DA67800823DAADBA299D2962FE07
+```
+
+**In Vercel Dashboard:**
+1. Go to your project settings
+2. Navigate to **Environment Variables**
+3. Add `SBP_API_KEY` with your API key value
+4. Add to **all environments** (Production, Preview, Development)
+
+**Note:** You can generate a new API key from https://easydata.sbp.org.pk (My Data Basket → My Account)
 
 ## Verification Steps
 
@@ -64,6 +81,7 @@ After deploying to Vercel:
 1. **Check Environment Variables:**
    - Go to Vercel Dashboard → Your Project → Settings → Environment Variables
    - Verify `DATABASE_URL` or `POSTGRES_URL` is set
+   - Verify `SBP_API_KEY` is set (for interest rates feature)
 
 2. **Check Database Schema:**
    - Connect to your Neon database
@@ -109,15 +127,24 @@ After deploying to Vercel:
 - Verify database connection is working
 - Check that database schema is initialized
 
+### Issue: "SBP_API_KEY environment variable is not set"
+
+**Solution:**
+- Add `SBP_API_KEY` to Vercel environment variables
+- Make sure it's added to all environments (Production, Preview, Development)
+- Redeploy the application after adding the variable
+
 ## Deployment Checklist
 
 - [ ] Add `DATABASE_URL` or `POSTGRES_URL` to Vercel environment variables
+- [ ] Add `SBP_API_KEY` to Vercel environment variables (for interest rates feature)
 - [ ] Initialize database schema in Neon (run `lib/portfolio/db-schema.sql`)
 - [ ] Verify database connection works
 - [ ] Deploy to Vercel
 - [ ] Test portfolio page loads
 - [ ] Test adding a holding
 - [ ] Test price updates
+- [ ] Test SBP interest rates chart (Charts → Macros → SBP Interest Rates)
 - [ ] Check Vercel logs for any errors
 
 ## Next Steps

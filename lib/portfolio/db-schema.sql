@@ -310,3 +310,39 @@ CREATE TABLE IF NOT EXISTS market_cycles (
 CREATE INDEX IF NOT EXISTS idx_market_cycles_asset_symbol ON market_cycles(asset_type, symbol);
 CREATE INDEX IF NOT EXISTS idx_market_cycles_asset_symbol_cycle ON market_cycles(asset_type, symbol, cycle_id);
 CREATE INDEX IF NOT EXISTS idx_market_cycles_end_date ON market_cycles(end_date DESC);
+
+-- SBP Interest Rates Table
+-- Stores State Bank of Pakistan interest rate data (Policy Rate, Repo Rate, Reverse Repo Rate)
+CREATE TABLE IF NOT EXISTS sbp_interest_rates (
+  id SERIAL PRIMARY KEY,
+  series_key VARCHAR(100) NOT NULL,  -- 'TS_GP_IR_SIRPR_AH.SBPOL0010', 'TS_GP_IR_SIRPR_AH.SBPOL0020', 'TS_GP_IR_SIRPR_AH.SBPOL0030'
+  series_name VARCHAR(255) NOT NULL,  -- 'State Bank of Pakistan's Policy (Target) Rate'
+  date DATE NOT NULL,                  -- Observation date (YYYY-MM-DD)
+  value DECIMAL(10, 2) NOT NULL,       -- Interest rate value (percentage)
+  unit VARCHAR(50) NOT NULL DEFAULT 'Percent',
+  observation_status VARCHAR(50) DEFAULT 'Normal',
+  status_comments TEXT,
+  source VARCHAR(50) NOT NULL DEFAULT 'sbp-easydata',
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  
+  -- Unique constraint: one record per series+date
+  UNIQUE(series_key, date)
+);
+
+-- Indexes for fast queries
+CREATE INDEX IF NOT EXISTS idx_sbp_rates_series_key ON sbp_interest_rates(series_key);
+CREATE INDEX IF NOT EXISTS idx_sbp_rates_date ON sbp_interest_rates(date);
+CREATE INDEX IF NOT EXISTS idx_sbp_rates_series_date ON sbp_interest_rates(series_key, date DESC);
+
+-- Metadata table to track last update time per series (for 3-day caching)
+CREATE TABLE IF NOT EXISTS sbp_rates_metadata (
+  id SERIAL PRIMARY KEY,
+  series_key VARCHAR(100) NOT NULL UNIQUE,
+  last_stored_date DATE,              -- Latest date we have data for
+  last_updated TIMESTAMP DEFAULT NOW(),  -- When we last fetched from API
+  total_records INTEGER DEFAULT 0,     -- Count of records for this series
+  source VARCHAR(50) NOT NULL DEFAULT 'sbp-easydata'
+);
+
+CREATE INDEX IF NOT EXISTS idx_sbp_metadata_series_key ON sbp_rates_metadata(series_key);
