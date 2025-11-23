@@ -98,6 +98,21 @@ export async function GET(request: NextRequest) {
 
       const result = await client.query(query, [limit, date])
 
+      // Get list of all top stocks to identify missing ones
+      const topStocksCheckQuery = `
+        SELECT symbol, name, market_cap
+        FROM company_profiles
+        WHERE asset_type = 'pk-equity'
+          AND market_cap IS NOT NULL
+          AND market_cap > 0
+        ORDER BY market_cap DESC
+        LIMIT $1
+      `
+      const topStocksCheck = await client.query(topStocksCheckQuery, [limit])
+      const allTopStocks = topStocksCheck.rows.map((r: any) => r.symbol)
+      const stocksWithData = result.rows.map((r: any) => r.symbol)
+      const missingStocks = allTopStocks.filter((s: string) => !stocksWithData.includes(s))
+
       const stocks: MarketHeatmapStock[] = result.rows.map(row => {
         const price = parseFloat(row.price)
         const previousPrice = row.previous_price ? parseFloat(row.previous_price) : null
@@ -122,6 +137,8 @@ export async function GET(request: NextRequest) {
         date,
         stocks,
         count: stocks.length,
+        missingStocks, // Include list of missing stocks
+        totalRequested: limit,
       })
 
       // Add cache headers

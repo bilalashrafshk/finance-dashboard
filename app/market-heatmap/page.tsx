@@ -129,6 +129,32 @@ function MarketHeatmapPageContent() {
 
         if (data.success) {
           setAllStocks(data.stocks || [])
+          
+          // Log data availability information
+          const totalRequested = data.totalRequested || 100
+          const stocksWithData = data.stocks?.length || 0
+          const missingStocks = data.missingStocks || []
+          
+          console.log('=== Market Heatmap Data Availability ===')
+          console.log(`Date: ${selectedDate}`)
+          console.log(`Requested: ${totalRequested} stocks`)
+          console.log(`With Data: ${stocksWithData} stocks`)
+          console.log(`Missing: ${missingStocks.length} stocks`)
+          
+          if (missingStocks.length > 0) {
+            console.log('\nMissing Stocks:')
+            missingStocks.forEach((symbol: string, index: number) => {
+              console.log(`  ${index + 1}. ${symbol}`)
+            })
+          }
+          
+          const stocksWithDataSymbols = data.stocks?.map((s: any) => s.symbol) || []
+          console.log('\nStocks WITH Data:')
+          stocksWithDataSymbols.forEach((symbol: string, index: number) => {
+            console.log(`  ${index + 1}. ${symbol}`)
+          })
+          
+          console.log('========================================')
         } else {
           throw new Error(data.error || 'Failed to fetch market heatmap data')
         }
