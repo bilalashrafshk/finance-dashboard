@@ -1,5 +1,5 @@
 import dynamic from "next/dynamic"
-import { BarChart3, TrendingUp, Activity, Globe, LayoutGrid, Loader2, ScatterChart, PieChart, Calendar } from "lucide-react"
+import { BarChart3, TrendingUp, Activity, Globe, LayoutGrid, Loader2, ScatterChart, PieChart, Calendar, LineChart } from "lucide-react"
 import React from "react"
 
 // Loading component
@@ -36,9 +36,12 @@ const MPTSection = dynamic(() => import("@/components/charts/mpt-section").then(
 const SeasonalitySection = dynamic(() => import("@/components/charts/seasonality-section").then(mod => mod.SeasonalitySection), {
     loading: () => <ChartLoader />,
 })
+const PriceChartSection = dynamic(() => import("@/components/charts/price-chart-section").then(mod => mod.PriceChartSection), {
+    loading: () => <ChartLoader />,
+})
 
 // Types
-export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality"
+export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart"
 
 export interface ChartDefinition {
     id: ChartId
@@ -144,6 +147,13 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 icon: Calendar,
                 component: <SeasonalitySection />,
                 keywords: ["seasonality", "monthly", "patterns", "returns", "trends", "calendar"],
+            },
+            {
+                id: "price-chart",
+                title: "Price Chart",
+                icon: LineChart,
+                component: <PriceChartSection />,
+                keywords: ["price", "chart", "historical", "pe", "ratio", "trends", "analysis"],
             },
         ],
     },
