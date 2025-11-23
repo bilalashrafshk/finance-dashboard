@@ -841,3 +841,122 @@ export async function updateMarketCapFromPrice(
     console.error(`[Market Cap] Error updating market cap for ${assetType}-${symbol}:`, error.message)
   }
 }
+
+/**
+ * Market Cycles Storage Functions
+ * Stores completed cycles for efficient retrieval
+ */
+
+export interface MarketCycleRecord {
+  cycleId: number
+  cycleName: string
+  startDate: string
+  endDate: string
+  startPrice: number
+  endPrice: number
+  roi: number
+  durationTradingDays: number
+}
+
+/**
+ * Save a completed market cycle to the database
+ */
+export async function saveMarketCycle(
+  assetType: string,
+  symbol: string,
+  cycle: MarketCycleRecord
+): Promise<void> {
+  const pool = getPool()
+  
+  try {
+    await pool.query(
+      `INSERT INTO market_cycles 
+       (asset_type, symbol, cycle_id, cycle_name, start_date, end_date, start_price, end_price, roi, duration_trading_days)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (asset_type, symbol, cycle_id) 
+       DO UPDATE SET
+         cycle_name = EXCLUDED.cycle_name,
+         start_date = EXCLUDED.start_date,
+         end_date = EXCLUDED.end_date,
+         start_price = EXCLUDED.start_price,
+         end_price = EXCLUDED.end_price,
+         roi = EXCLUDED.roi,
+         duration_trading_days = EXCLUDED.duration_trading_days,
+         updated_at = NOW()`,
+      [
+        assetType,
+        symbol,
+        cycle.cycleId,
+        cycle.cycleName,
+        cycle.startDate,
+        cycle.endDate,
+        cycle.startPrice,
+        cycle.endPrice,
+        cycle.roi,
+        cycle.durationTradingDays
+      ]
+    )
+  } catch (error: any) {
+    console.error(`Error saving market cycle ${cycle.cycleId} for ${assetType}-${symbol}:`, error.message)
+    throw error
+  }
+}
+
+/**
+ * Load all saved market cycles for an asset
+ */
+export async function loadMarketCycles(
+  assetType: string,
+  symbol: string
+): Promise<MarketCycleRecord[]> {
+  const pool = getPool()
+  
+  try {
+    const result = await pool.query(
+      `SELECT cycle_id, cycle_name, start_date, end_date, start_price, end_price, roi, duration_trading_days
+       FROM market_cycles
+       WHERE asset_type = $1 AND symbol = $2
+       ORDER BY cycle_id ASC`,
+      [assetType, symbol]
+    )
+    
+    return result.rows.map(row => ({
+      cycleId: row.cycle_id,
+      cycleName: row.cycle_name,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      startPrice: parseFloat(row.start_price),
+      endPrice: parseFloat(row.end_price),
+      roi: parseFloat(row.roi),
+      durationTradingDays: row.duration_trading_days
+    }))
+  } catch (error: any) {
+    console.error(`Error loading market cycles for ${assetType}-${symbol}:`, error.message)
+    throw error
+  }
+}
+
+/**
+ * Get the last saved cycle's end date for an asset
+ * Returns null if no cycles are saved yet
+ */
+export async function getLastCycleEndDate(
+  assetType: string,
+  symbol: string
+): Promise<string | null> {
+  const pool = getPool()
+  
+  try {
+    const result = await pool.query(
+      `SELECT MAX(end_date) as last_end_date
+       FROM market_cycles
+       WHERE asset_type = $1 AND symbol = $2`,
+      [assetType, symbol]
+    )
+    
+    return result.rows[0]?.last_end_date || null
+  } catch (error: any) {
+    console.error(`Error getting last cycle end date for ${assetType}-${symbol}:`, error.message)
+    return null
+  }
+}

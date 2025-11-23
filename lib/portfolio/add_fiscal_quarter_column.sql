@@ -10,3 +10,4 @@ CREATE INDEX IF NOT EXISTS idx_financials_fiscal_quarter ON financial_statements
 -- Add comment
 COMMENT ON COLUMN financial_statements.fiscal_quarter IS 'Fiscal quarter label from source (e.g., "Q3 2025", "Q4 2024")';
 
+

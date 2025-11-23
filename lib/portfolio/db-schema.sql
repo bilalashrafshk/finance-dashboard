@@ -283,3 +283,30 @@ CREATE TABLE IF NOT EXISTS screener_metrics (
 CREATE INDEX IF NOT EXISTS idx_screener_sector ON screener_metrics(sector);
 CREATE INDEX IF NOT EXISTS idx_screener_pe ON screener_metrics(pe_ratio);
 CREATE INDEX IF NOT EXISTS idx_screener_relative_pe ON screener_metrics(relative_pe);
+
+-- Market Cycles Table
+-- Stores completed market cycles (trough-to-peak) for efficient retrieval
+-- Only completed cycles are stored; current/ongoing cycle is calculated on-the-fly
+CREATE TABLE IF NOT EXISTS market_cycles (
+  id SERIAL PRIMARY KEY,
+  asset_type VARCHAR(50) NOT NULL,  -- 'kse100', 'spx500', etc.
+  symbol VARCHAR(50) NOT NULL,       -- 'KSE100', 'SPX500', etc.
+  cycle_id INTEGER NOT NULL,          -- Cycle number (1, 2, 3, etc.)
+  cycle_name VARCHAR(50) NOT NULL,   -- 'Cycle 1', 'Cycle 2', etc.
+  start_date DATE NOT NULL,          -- Trough date
+  end_date DATE NOT NULL,            -- Peak date
+  start_price DECIMAL(20, 8) NOT NULL,
+  end_price DECIMAL(20, 8) NOT NULL,
+  roi DECIMAL(10, 2) NOT NULL,       -- ROI percentage
+  duration_trading_days INTEGER NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  
+  -- Unique constraint: one cycle per asset+symbol+cycle_id
+  UNIQUE(asset_type, symbol, cycle_id)
+);
+
+-- Indexes for fast queries
+CREATE INDEX IF NOT EXISTS idx_market_cycles_asset_symbol ON market_cycles(asset_type, symbol);
+CREATE INDEX IF NOT EXISTS idx_market_cycles_asset_symbol_cycle ON market_cycles(asset_type, symbol, cycle_id);
+CREATE INDEX IF NOT EXISTS idx_market_cycles_end_date ON market_cycles(end_date DESC);

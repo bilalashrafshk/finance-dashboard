@@ -14,7 +14,7 @@ import {
   Legend,
   CartesianGrid
 } from "recharts"
-import { detectMarketCycles, normalizeCyclesForChart, type MarketCycle } from "@/lib/algorithms/market-cycle-detection"
+import { normalizeCyclesForChart, type MarketCycle } from "@/lib/algorithms/market-cycle-detection"
 import type { PriceDataPoint } from "@/lib/asset-screener/metrics-calculations"
 
 interface MarketCycleChartProps {
@@ -128,20 +128,73 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
     loadData()
   }, [providedData])
 
-  // Detect cycles when price data is available
+  // Load cycles from API (saved cycles + current cycle)
   useEffect(() => {
-    if (priceData.length > 0) {
+    const loadCycles = async () => {
+      if (priceData.length === 0) {
+        return
+      }
+
+      setLoading(true)
       try {
-        const detectedCycles = detectMarketCycles(priceData)
-        setCycles(detectedCycles)
+        // Fetch cycles from API (handles saved cycles + detects new ones)
+        const response = await fetch('/api/market-cycles?assetType=kse100&symbol=KSE100')
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch market cycles')
+        }
+        
+        const data = await response.json()
+        
+        // Convert saved cycles to MarketCycle format
+        const allCycles: MarketCycle[] = data.allCycles.map((c: any) => ({
+          cycleId: c.cycleId,
+          cycleName: c.cycleName,
+          startDate: c.startDate,
+          endDate: c.endDate,
+          startPrice: c.startPrice,
+          endPrice: c.endPrice,
+          roi: c.roi,
+          durationTradingDays: c.durationTradingDays,
+          // For charting, we need to generate priceData from historical data
+          priceData: []
+        }))
+        
+        // Generate priceData for each cycle from historical data
+        const cyclesWithData = allCycles.map(cycle => {
+          const startDate = new Date(cycle.startDate)
+          const endDate = new Date(cycle.endDate)
+          
+          const cyclePriceData = priceData
+            .filter(p => {
+              const pDate = new Date(p.date)
+              return pDate >= startDate && pDate <= endDate
+            })
+            .map((p, idx) => ({
+              date: p.date,
+              price: p.close,
+              tradingDay: idx
+            }))
+          
+          return {
+            ...cycle,
+            priceData: cyclePriceData
+          }
+        })
+        
+        setCycles(cyclesWithData)
         
         // Initialize all cycles as visible
-        setVisibleCycles(new Set(detectedCycles.map(c => c.cycleName)))
+        setVisibleCycles(new Set(cyclesWithData.map(c => c.cycleName)))
       } catch (error) {
-        console.error('Error detecting cycles:', error)
+        console.error('Error loading cycles:', error)
         setCycles([])
+      } finally {
+        setLoading(false)
       }
     }
+
+    loadCycles()
   }, [priceData])
 
   // Prepare chart data
@@ -152,13 +205,6 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
 
     const normalizedCycles = normalizeCyclesForChart(cycles)
     
-    // Find max trading days across all cycles
-    const maxTradingDays = Math.max(
-      ...normalizedCycles.map(c => 
-        c.data.length > 0 ? Math.max(...c.data.map(d => d.tradingDay)) : 0
-      )
-    )
-
     // Create a map of all unique trading days from all visible cycles
     const tradingDaySet = new Set<number>()
     normalizedCycles.forEach(cycle => {
@@ -182,26 +228,9 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
       normalizedCycles.forEach(cycle => {
         if (visibleCycles.has(cycle.cycleName)) {
           // Find exact match or closest data point for this trading day
-          let value: number | undefined
-          
-          // First try exact match
           const exactMatch = cycle.data.find(d => d.tradingDay === day)
           if (exactMatch) {
-            value = exactMatch.normalizedPrice
-          } else {
-            // Find closest
-            const closest = cycle.data.reduce((prev, curr) => {
-              return Math.abs(curr.tradingDay - day) < Math.abs(prev.tradingDay - day) ? curr : prev
-            })
-            
-            // Only include if within reasonable distance (e.g., 5 days)
-            if (Math.abs(closest.tradingDay - day) <= 5) {
-              value = closest.normalizedPrice
-            }
-          }
-          
-          if (value !== undefined) {
-            point[cycle.cycleName] = value
+            point[cycle.cycleName] = exactMatch.normalizedPrice
           }
         }
       })
@@ -404,6 +433,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
                       activeDot={{ r: 4 }}
                       name={`${cycle.cycleName} (${cycle.roi >= 0 ? '+' : ''}${cycle.roi.toFixed(1)}%)`}
                       legendType="none"
+                      connectNulls
                     />
                   )
                 })}
@@ -441,4 +471,3 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
     </Card>
   )
 }
-

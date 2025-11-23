@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { TrendingUp, Menu, X, LogOut, BarChart3, Wallet, Search, User, Settings, Crown, Filter } from 'lucide-react'
+import { TrendingUp, Menu, X, LogOut, BarChart3, Wallet, Search, User, Settings, Crown, Filter, Grid3x3 } from 'lucide-react'
 import { useAuth } from '@/lib/auth/auth-context'
 import LoginModal from '@/components/landing/login-modal'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -116,6 +116,32 @@ export function SharedNavbar() {
                     <div className="flex items-center gap-2">
                       <Filter className="w-4 h-4" />
                       <span>Screener</span>
+                    </div>
+                  </Link>
+                  <Link 
+                    href="/market-heatmap" 
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      isActive('/market-heatmap') 
+                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30' 
+                        : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Grid3x3 className="w-4 h-4" />
+                      <span>Heatmap</span>
+                    </div>
+                  </Link>
+                  <Link 
+                    href="/kse100-cycles" 
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      isActive('/kse100-cycles') 
+                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30' 
+                        : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4" />
+                      <span>KSE100 Cycles</span>
                     </div>
                   </Link>
                 </>
@@ -248,6 +274,32 @@ export function SharedNavbar() {
                     <div className="flex items-center gap-2">
                       <Filter className="w-4 h-4" />
                       <span>Screener</span>
+                    </div>
+                  </Link>
+                  <Link 
+                    href="/market-heatmap" 
+                    className={`block px-4 py-2 rounded-lg transition-colors ${
+                      isActive('/market-heatmap') 
+                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30' 
+                        : 'text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Grid3x3 className="w-4 h-4" />
+                      <span>Heatmap</span>
+                    </div>
+                  </Link>
+                  <Link 
+                    href="/kse100-cycles" 
+                    className={`block px-4 py-2 rounded-lg transition-colors ${
+                      isActive('/kse100-cycles') 
+                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30' 
+                        : 'text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4" />
+                      <span>KSE100 Cycles</span>
                     </div>
                   </Link>
                 </div>
