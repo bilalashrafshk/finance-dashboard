@@ -586,6 +586,13 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
     const minRet = allReturns.length > 0 ? Math.min(...allReturns) : 0
     const maxRet = allReturns.length > 0 ? Math.max(...allReturns) : 1
 
+    // Theme-aware colors
+    const textColor = theme === 'dark' ? 'rgba(250, 250, 250, 0.9)' : 'rgba(23, 23, 23, 0.9)'
+    const mutedTextColor = theme === 'dark' ? 'rgba(163, 163, 163, 0.9)' : 'rgba(115, 115, 115, 0.9)'
+    const gridColor = theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+    const borderColor = theme === 'dark' ? 'rgba(64, 64, 64, 1)' : 'rgba(229, 229, 229, 1)'
+    const backgroundColor = theme === 'dark' ? 'rgba(23, 23, 23, 0.95)' : 'rgba(255, 255, 255, 0.95)'
+
     return {
       responsive: true,
       maintainAspectRatio: false,
@@ -593,8 +600,23 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
         legend: {
           display: true,
           position: 'top' as const,
+          labels: {
+            color: textColor,
+            usePointStyle: true,
+            padding: 15,
+            font: {
+              size: 12,
+            },
+          },
         },
         tooltip: {
+          backgroundColor: backgroundColor,
+          titleColor: textColor,
+          bodyColor: textColor,
+          borderColor: borderColor,
+          borderWidth: 1,
+          padding: 12,
+          displayColors: true,
           callbacks: {
             label: (context: any) => {
               const datasetIndex = context.datasetIndex
@@ -685,12 +707,20 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
           title: {
             display: true,
             text: 'Volatility (Annualized %)',
+            color: textColor,
+            font: {
+              size: 13,
+              weight: '500' as const,
+            },
           },
           grid: {
-            color: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+            color: gridColor,
           },
           ticks: {
-            color: theme === 'dark' ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)',
+            color: mutedTextColor,
+            font: {
+              size: 11,
+            },
             callback: (value: any) => {
               const num = Number(value)
               return `${(num * 100).toFixed(1)}%`
@@ -708,12 +738,20 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
           title: {
             display: true,
             text: 'Expected Return (Annualized %)',
+            color: textColor,
+            font: {
+              size: 13,
+              weight: '500' as const,
+            },
           },
           grid: {
-            color: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+            color: gridColor,
           },
           ticks: {
-            color: theme === 'dark' ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)',
+            color: mutedTextColor,
+            font: {
+              size: 11,
+            },
             callback: (value: any) => {
               const num = Number(value)
               return `${(num * 100).toFixed(1)}%`
@@ -744,7 +782,7 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
           {assets.length > 0 && (
             <div className="space-y-2">
               <Label>Select Assets (minimum 2)</Label>
-              <div className="border rounded-md p-4 max-h-60 overflow-y-auto">
+              <div className="border border-border rounded-md p-4 max-h-60 overflow-y-auto bg-card">
                 {availableAssets.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No assets of this type available</p>
                 ) : (
