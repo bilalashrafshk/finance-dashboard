@@ -66,82 +66,52 @@ export function SharedNavbar() {
             <div className="hidden md:flex items-center gap-6">
               {user && (
                 <>
-                  <Link 
-                    href="/eth-risk" 
-                    className={`px-4 py-2 rounded-lg transition-colors ${
-                      isActive('/eth-risk') 
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30' 
+                  <Link
+                    href="/charts"
+                    className={`px-4 py-2 rounded-lg transition-colors ${isActive('/charts')
+                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
                         : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2">
                       <BarChart3 className="w-4 h-4" />
-                      <span>ETH Risk</span>
+                      <span>Charts</span>
                     </div>
                   </Link>
-                  <Link 
-                    href="/portfolio" 
-                    className={`px-4 py-2 rounded-lg transition-colors ${
-                      isActive('/portfolio') 
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30' 
+                  <Link
+                    href="/portfolio"
+                    className={`px-4 py-2 rounded-lg transition-colors ${isActive('/portfolio')
+                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
                         : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2">
                       <Wallet className="w-4 h-4" />
                       <span>Portfolio</span>
                     </div>
                   </Link>
-                  <Link 
-                    href="/asset-screener" 
-                    className={`px-4 py-2 rounded-lg transition-colors ${
-                      isActive('/asset-screener') 
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30' 
+                  <Link
+                    href="/asset-screener"
+                    className={`px-4 py-2 rounded-lg transition-colors ${isActive('/asset-screener')
+                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
                         : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2">
                       <Search className="w-4 h-4" />
                       <span>Asset Screener</span>
                     </div>
                   </Link>
-                  <Link 
-                    href="/screener" 
-                    className={`px-4 py-2 rounded-lg transition-colors ${
-                      isActive('/screener') 
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30' 
+                  <Link
+                    href="/screener"
+                    className={`px-4 py-2 rounded-lg transition-colors ${isActive('/screener')
+                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
                         : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2">
                       <Filter className="w-4 h-4" />
                       <span>Screener</span>
-                    </div>
-                  </Link>
-                  <Link 
-                    href="/market-heatmap" 
-                    className={`px-4 py-2 rounded-lg transition-colors ${
-                      isActive('/market-heatmap') 
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30' 
-                        : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Grid3x3 className="w-4 h-4" />
-                      <span>Heatmap</span>
-                    </div>
-                  </Link>
-                  <Link 
-                    href="/kse100-cycles" 
-                    className={`px-4 py-2 rounded-lg transition-colors ${
-                      isActive('/kse100-cycles') 
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30' 
-                        : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <TrendingUp className="w-4 h-4" />
-                      <span>KSE100 Cycles</span>
                     </div>
                   </Link>
                 </>
@@ -175,7 +145,7 @@ export function SharedNavbar() {
                       <Crown className="mr-2 h-4 w-4 text-yellow-500" />
                       <span>Subscription & Tiers</span>
                     </DropdownMenuItem>
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       className="cursor-pointer"
                       onClick={() => setSettingsDialogOpen(true)}
                     >
@@ -183,7 +153,7 @@ export function SharedNavbar() {
                       <span>Settings</span>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       onClick={handleLogout}
                       className="cursor-pointer text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400"
                     >
@@ -224,82 +194,52 @@ export function SharedNavbar() {
             <div className="md:hidden border-t border-border py-4 space-y-4">
               {user && (
                 <div className="space-y-2">
-                  <Link 
-                    href="/eth-risk" 
-                    className={`block px-4 py-2 rounded-lg transition-colors ${
-                      isActive('/eth-risk') 
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30' 
+                  <Link
+                    href="/charts"
+                    className={`block px-4 py-2 rounded-lg transition-colors ${isActive('/charts')
+                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
                         : 'text-foreground hover:bg-muted'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2">
                       <BarChart3 className="w-4 h-4" />
-                      <span>ETH Risk</span>
+                      <span>Charts</span>
                     </div>
                   </Link>
-                  <Link 
-                    href="/portfolio" 
-                    className={`block px-4 py-2 rounded-lg transition-colors ${
-                      isActive('/portfolio') 
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30' 
+                  <Link
+                    href="/portfolio"
+                    className={`block px-4 py-2 rounded-lg transition-colors ${isActive('/portfolio')
+                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
                         : 'text-foreground hover:bg-muted'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2">
                       <Wallet className="w-4 h-4" />
                       <span>Portfolio</span>
                     </div>
                   </Link>
-                  <Link 
-                    href="/asset-screener" 
-                    className={`block px-4 py-2 rounded-lg transition-colors ${
-                      isActive('/asset-screener') 
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30' 
+                  <Link
+                    href="/asset-screener"
+                    className={`block px-4 py-2 rounded-lg transition-colors ${isActive('/asset-screener')
+                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
                         : 'text-foreground hover:bg-muted'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2">
                       <Search className="w-4 h-4" />
                       <span>Asset Screener</span>
                     </div>
                   </Link>
-                  <Link 
-                    href="/screener" 
-                    className={`block px-4 py-2 rounded-lg transition-colors ${
-                      isActive('/screener') 
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30' 
+                  <Link
+                    href="/screener"
+                    className={`block px-4 py-2 rounded-lg transition-colors ${isActive('/screener')
+                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
                         : 'text-foreground hover:bg-muted'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2">
                       <Filter className="w-4 h-4" />
                       <span>Screener</span>
-                    </div>
-                  </Link>
-                  <Link 
-                    href="/market-heatmap" 
-                    className={`block px-4 py-2 rounded-lg transition-colors ${
-                      isActive('/market-heatmap') 
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30' 
-                        : 'text-foreground hover:bg-muted'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Grid3x3 className="w-4 h-4" />
-                      <span>Heatmap</span>
-                    </div>
-                  </Link>
-                  <Link 
-                    href="/kse100-cycles" 
-                    className={`block px-4 py-2 rounded-lg transition-colors ${
-                      isActive('/kse100-cycles') 
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30' 
-                        : 'text-foreground hover:bg-muted'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <TrendingUp className="w-4 h-4" />
-                      <span>KSE100 Cycles</span>
                     </div>
                   </Link>
                 </div>
@@ -332,7 +272,7 @@ export function SharedNavbar() {
                           <Crown className="mr-2 h-4 w-4 text-yellow-500" />
                           <span>Subscription & Tiers</span>
                         </DropdownMenuItem>
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           className="cursor-pointer"
                           onClick={() => setSettingsDialogOpen(true)}
                         >
@@ -340,7 +280,7 @@ export function SharedNavbar() {
                           <span>Settings</span>
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           onClick={handleLogout}
                           className="cursor-pointer text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400"
                         >
@@ -376,7 +316,7 @@ export function SharedNavbar() {
         isOpen={loginModalOpen}
         onClose={() => setLoginModalOpen(false)}
       />
-      
+
       <SettingsDialog
         open={settingsDialogOpen}
         onOpenChange={setSettingsDialogOpen}

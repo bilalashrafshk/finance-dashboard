@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { 
+import {
   getHistoricalDataWithMetadata,
   insertHistoricalData,
-  type HistoricalPriceRecord 
+  type HistoricalPriceRecord
 } from '@/lib/portfolio/db-client'
 import { fetchStockAnalysisData } from '@/lib/portfolio/stockanalysis-api'
 import { fetchBinanceHistoricalData } from '@/lib/portfolio/binance-historical-api'
@@ -87,21 +87,21 @@ function isWeekend(date: Date): boolean {
 function calculateTradingDaysBetween(startDate: string, endDate: string): number {
   const start = new Date(startDate)
   const end = new Date(endDate)
-  
+
   if (start >= end) {
     return 0
   }
-  
+
   let tradingDays = 0
   const current = new Date(start)
-  
+
   while (current <= end) {
     if (!isWeekend(current)) {
       tradingDays++
     }
     current.setDate(current.getDate() + 1)
   }
-  
+
   return tradingDays
 }
 
@@ -122,7 +122,7 @@ async function fetchNewDataInBackground(
     if (marketForCheck) {
       const marketClosed = isMarketClosed(marketForCheck)
       const todayInMarketTimezone = getTodayInMarketTimezone(marketForCheck)
-      
+
       // If market is closed and we're only trying to fetch today's data, skip it
       // (Today's data won't be available until market closes)
       // But if we're fetching a range that includes historical dates, proceed (they might be missing)
@@ -131,7 +131,7 @@ async function fetchNewDataInBackground(
         return
       }
     }
-    
+
     let newData: HistoricalPriceRecord[] = []
     let source: 'scstrade' | 'stockanalysis' | 'binance' | 'investing' = 'stockanalysis'
 
@@ -240,21 +240,21 @@ function logHistoricalDataRequest(assetType: string, symbol: string, responseTim
   const timestamp = new Date().toISOString()
   const logEntry = { id, timestamp, assetType, symbol, responseTime }
   historicalDataRequestLog.push(logEntry)
-  
+
   // Keep only last 100 entries
   if (historicalDataRequestLog.length > 100) {
     historicalDataRequestLog.shift()
   }
-  
+
   console.log(`[Historical Data API #${id}] ${timestamp} - ${assetType}/${symbol} (${responseTime}ms)`)
-  
+
   // Make log accessible globally
   if (typeof global !== 'undefined') {
     (global as any).__historicalDataRequestLog = historicalDataRequestLog
-    ;(global as any).getHistoricalDataRequestLog = () => {
-      console.table(historicalDataRequestLog)
-      return historicalDataRequestLog
-    }
+      ; (global as any).getHistoricalDataRequestLog = () => {
+        console.table(historicalDataRequestLog)
+        return historicalDataRequestLog
+      }
   }
 }
 
@@ -280,45 +280,62 @@ export async function GET(request: NextRequest) {
     const { cacheManager } = await import('@/lib/cache/cache-manager')
     const cacheKey = generateHistoricalCacheKey(assetType as any, symbol, undefined, undefined, limit)
     const cacheContext = { isHistorical: true }
-    
-    const { data: storedData, latestStoredDate } = await cacheManager.getOrSet(
-      cacheKey,
-      async () => {
+
+    const skipCache = searchParams.get('skipCache') === 'true'
+
+    let storedData, latestStoredDate;
+
+    if (skipCache) {
+      const result = await getHistoricalDataWithMetadata(assetType, symbol, undefined, undefined, limit)
+      storedData = result
+    } else {
+      // Manual get/set to prevent caching empty data
+      const cached = await cacheManager.get<any>(cacheKey)
+
+      if (cached) {
+        storedData = cached
+      } else {
         const result = await getHistoricalDataWithMetadata(assetType, symbol, undefined, undefined, limit)
-        return result
-      },
-      assetType as any,
-      cacheContext
-    )
-    
-    const responseTime = Date.now() - requestStartTime
-    logHistoricalDataRequest(assetType, symbol, responseTime)
+
+        // Only cache if we actually got data
+        if (result && result.data && result.data.length > 0) {
+          await cacheManager.set(cacheKey, result, assetType as any, cacheContext)
+        } else {
+          console.warn(`[Cache] Skipping cache for ${assetType}/${symbol} because data is empty`)
+        }
+
+        storedData = result
+      }
+
+      const responseTime = Date.now() - requestStartTime
+      logHistoricalDataRequest(assetType, symbol, responseTime)
+    }
 
     // Step 2: Determine what dates we need to fetch
     const today = new Date().toISOString().split('T')[0]
-    
+
     // Check if today's date exists in stored data
     const todayRecord = storedData.data.find((r: any) => r.date === today)
     const hasTodayData = !!todayRecord
-    
-    const fetchStartDate = storedData.latestStoredDate 
+
+    const fetchStartDate = storedData.latestStoredDate
       ? new Date(new Date(storedData.latestStoredDate).getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0] // Day after last stored
       : undefined // No stored data, fetch from beginning
 
     // Step 3: Gap Detection - Check for missing dates and trigger fetch
     // Only fetch for asset types that support server-side fetching (pk-equity, us-equity, crypto)
     const supportsServerSideFetch = assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto'
-    
+
     if (supportsServerSideFetch) {
       // Get today's date in the appropriate market timezone
       const marketForTimezone = assetType === 'pk-equity' ? 'PSX' : assetType === 'us-equity' ? 'US' : 'crypto'
       const todayInMarketTimezone = getTodayInMarketTimezone(marketForTimezone)
-      
+
       // Handle both cases: empty DB (fetchStartDate is undefined) and gaps (fetchStartDate exists)
       if (!storedData.latestStoredDate || (fetchStartDate && fetchStartDate <= todayInMarketTimezone)) {
         let shouldFetch = false
         let tradingDays = 0
-        
+
         if (!storedData.latestStoredDate) {
           // DB is empty - fetch full history
           shouldFetch = true
@@ -331,20 +348,20 @@ export async function GET(request: NextRequest) {
             console.log(`[Gap Detection] ${assetType}/${symbol}: Detected ${tradingDays} potential trading days missing between ${fetchStartDate} and ${todayInMarketTimezone}`)
           }
         }
-        
+
         if (shouldFetch) {
           // Fetch data (blocking - await completion)
           await fetchNewDataInBackground(assetType, symbol, market, fetchStartDate, todayInMarketTimezone)
           console.log(`[Gap Detection] ${assetType}/${symbol}: Fetch completed successfully`)
-          
+
           // Invalidate cache to ensure fresh data
           cacheManager.delete(cacheKey)
-          
+
           // Reload data from DB after fetch
           const { data: updatedData } = await getHistoricalDataWithMetadata(assetType, symbol, undefined, undefined, limit)
           storedData.data = updatedData
-          storedData.latestStoredDate = updatedData.length > 0 
-            ? updatedData[updatedData.length - 1].date 
+          storedData.latestStoredDate = updatedData.length > 0
+            ? updatedData[updatedData.length - 1].date
             : null
         }
       }
@@ -353,7 +370,7 @@ export async function GET(request: NextRequest) {
     // Step 4: Return stored data (after fetch completes if data was fetched)
     const cached = cacheManager.get(cacheKey)
     const fromCache = cached !== null
-    
+
     return NextResponse.json({
       assetType,
       symbol: symbol.toUpperCase(),
