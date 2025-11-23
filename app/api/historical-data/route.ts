@@ -6,6 +6,7 @@ import {
 } from '@/lib/portfolio/db-client'
 import { fetchStockAnalysisData } from '@/lib/portfolio/stockanalysis-api'
 import { fetchBinanceHistoricalData } from '@/lib/portfolio/binance-historical-api'
+import { fetchSCSTradeData } from '@/lib/portfolio/scstrade-api'
 import { retryWithBackoff } from '@/lib/portfolio/retry-utils'
 import { getTodayInMarketTimezone, isMarketClosed } from '@/lib/portfolio/market-hours'
 import type { StockAnalysisDataPoint } from '@/lib/portfolio/stockanalysis-api'
@@ -39,7 +40,7 @@ function convertStockAnalysisToRecord(data: StockAnalysisDataPoint): HistoricalP
     high: data.h,
     low: data.l,
     close: data.c,
-    volume: data.v || null,
+    volume: data.v || null, // Volume is included from StockAnalysis
     adjusted_close: data.a || null,
     change_pct: data.ch || null,
   }
@@ -132,19 +133,61 @@ async function fetchNewDataInBackground(
     }
     
     let newData: HistoricalPriceRecord[] = []
-    let source: 'stockanalysis' | 'binance' | 'investing' = 'stockanalysis'
+    let source: 'scstrade' | 'stockanalysis' | 'binance' | 'investing' = 'stockanalysis'
 
-    if (assetType === 'pk-equity' || assetType === 'us-equity') {
-      // StockAnalysis API doesn't support date ranges, so we fetch all data and filter client-side
+    if (assetType === 'pk-equity') {
+      // Try SCSTrade first (primary source), then fallback to StockAnalysis
+      console.log(`[${assetType}-${symbol}] Attempting to fetch from SCSTrade API first (dates: ${fetchStartDate || 'beginning'} to ${today})`)
+      
+      try {
+        const scstradeData = await retryWithBackoff(
+          () => fetchSCSTradeData(symbol, fetchStartDate, today),
+          2, // 2 retries for SCSTrade
+          1000,
+          5000
+        )
+        
+        if (scstradeData && scstradeData.length > 0) {
+          console.log(`[${assetType}-${symbol}] ✅ Successfully fetched ${scstradeData.length} records from SCSTrade`)
+          newData = scstradeData
+          source = 'scstrade'
+        } else {
+          console.log(`[${assetType}-${symbol}] ⚠️ SCSTrade returned no data, falling back to StockAnalysis`)
+        }
+      } catch (scstradeError) {
+        console.error(`[${assetType}-${symbol}] ❌ SCSTrade fetch failed, falling back to StockAnalysis:`, scstradeError)
+      }
+      
+      // Fallback to StockAnalysis if SCSTrade failed or returned no data
+      if (newData.length === 0) {
+        console.log(`[${assetType}-${symbol}] Fetching from StockAnalysis API (full 10Y history, will filter to dates >= ${fetchStartDate || 'beginning'})`)
+        const apiData = await retryWithBackoff(
+          () => fetchStockAnalysisData(symbol, 'PSX'),
+          3, // 3 retries
+          1000, // 1 second initial delay
+          10000 // 10 second max delay
+        )
+        if (apiData) {
+          console.log(`[${assetType}-${symbol}] Received ${apiData.length} records from StockAnalysis API`)
+          const filtered = fetchStartDate
+            ? apiData.filter(d => d.t >= fetchStartDate)
+            : apiData
+          console.log(`[${assetType}-${symbol}] Filtered to ${filtered.length} new records (dates >= ${fetchStartDate || 'beginning'})`)
+          newData = filtered.map(convertStockAnalysisToRecord)
+          source = 'stockanalysis'
+        }
+      }
+    } else if (assetType === 'us-equity') {
+      // US equity still uses StockAnalysis (no SCSTrade for US stocks)
       console.log(`[${assetType}-${symbol}] Fetching from StockAnalysis API (full 10Y history, will filter to dates >= ${fetchStartDate || 'beginning'})`)
       const apiData = await retryWithBackoff(
-        () => fetchStockAnalysisData(symbol, market || (assetType === 'pk-equity' ? 'PSX' : 'US')),
+        () => fetchStockAnalysisData(symbol, 'US'),
         3, // 3 retries
         1000, // 1 second initial delay
         10000 // 10 second max delay
       )
       if (apiData) {
-        console.log(`[${assetType}-${symbol}] Received ${apiData.length} records from API`)
+        console.log(`[${assetType}-${symbol}] Received ${apiData.length} records from StockAnalysis API`)
         const filtered = fetchStartDate
           ? apiData.filter(d => d.t >= fetchStartDate)
           : apiData

@@ -382,7 +382,7 @@ export async function insertHistoricalData(
   assetType: string,
   symbol: string,
   data: HistoricalPriceRecord[],
-  source: 'stockanalysis' | 'binance' | 'investing' | 'manual'
+  source: 'scstrade' | 'stockanalysis' | 'binance' | 'investing' | 'manual'
 ): Promise<{ inserted: number; skipped: number }> {
   if (!data || data.length === 0) {
     return { inserted: 0, skipped: 0 }

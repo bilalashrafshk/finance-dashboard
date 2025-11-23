@@ -17,9 +17,10 @@ import { fetchAndStoreDividends } from '@/lib/portfolio/dividend-fetcher'
  * 
  * Fetches current or historical price data for PK equity assets.
  * - Checks database first (if market closed and today's data exists)
- * - Fetches from StockAnalysis.com API if not in database
- * - Falls back to PSX scraping if API fails
- * - Automatically stores fetched data in database
+ * - Fetches from SCSTrade.com API (primary source) if not in database
+ * - Falls back to StockAnalysis.com API if SCSTrade fails
+ * - Falls back to PSX scraping if both APIs fail
+ * - Automatically stores fetched data in database (with volume)
  * - Supports date ranges for historical data
  */
 export async function GET(request: NextRequest) {
