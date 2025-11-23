@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
@@ -122,41 +122,47 @@ export function BalanceOfPaymentsSection() {
   }, [selectedSeries])
 
   // Prepare chart data with color coding: green for surplus (>=0), red for deficit (<0)
-  const chartData = {
-    labels: data.map(d => format(new Date(d.date), 'MMM yyyy')),
-    datasets: [
-      {
-        label: selectedSeriesInfo.label,
-        data: data.map(d => d.value),
-        borderColor: 'rgb(34, 197, 94)', // default, overridden by segment
-        backgroundColor: (ctx: any) => {
-          const value = ctx.parsed?.y ?? ctx.raw
-          return value >= 0 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'
-        },
-        segment: {
-          borderColor: (ctx: any) => {
-            // Color each segment based on the second point (destination)
-            const p2 = ctx.p2.parsed.y
-            return p2 >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
+  const chartData = useMemo(() => {
+    if (data.length === 0) {
+      return null
+    }
+
+    return {
+      labels: data.map(d => format(new Date(d.date), 'MMM yyyy')),
+      datasets: [
+        {
+          label: selectedSeriesInfo.label,
+          data: data.map(d => d.value),
+          borderColor: 'rgb(34, 197, 94)', // default, overridden by segment
+          backgroundColor: (ctx: any) => {
+            const value = ctx.parsed?.y ?? ctx.raw
+            return value >= 0 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'
           },
+          segment: {
+            borderColor: (ctx: any) => {
+              // Color each segment based on the second point (destination)
+              const p2 = ctx.p2.parsed.y
+              return p2 >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
+            },
+          },
+          fill: {
+            target: 'origin',
+            above: 'rgba(34, 197, 94, 0.2)', // green fill above zero
+            below: 'rgba(239, 68, 68, 0.2)', // red fill below zero
+          },
+          tension: 0.4,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+          pointBackgroundColor: (ctx: any) => {
+            const value = ctx.parsed?.y ?? ctx.raw
+            return value >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
+          },
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
         },
-        fill: {
-          target: 'origin',
-          above: 'rgba(34, 197, 94, 0.2)', // green fill above zero
-          below: 'rgba(239, 68, 68, 0.2)', // red fill below zero
-        },
-        tension: 0.4,
-        pointRadius: 2,
-        pointHoverRadius: 5,
-        pointBackgroundColor: (ctx: any) => {
-          const value = ctx.parsed?.y ?? ctx.raw
-          return value >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
-        },
-        pointBorderColor: '#fff',
-        pointBorderWidth: 2,
-      },
-    ],
-  }
+      ],
+    }
+  }, [data, selectedSeriesInfo.label])
 
   const chartOptions = {
     responsive: true,
@@ -330,6 +336,12 @@ export function BalanceOfPaymentsSection() {
               </div>
             </div>
           ) : data.length === 0 ? (
+            <div className="flex items-center justify-center h-[500px] border rounded-lg bg-muted/10">
+              <div className="text-center text-muted-foreground">
+                <p>No data available</p>
+              </div>
+            </div>
+          ) : !chartData ? (
             <div className="flex items-center justify-center h-[500px] border rounded-lg bg-muted/10">
               <div className="text-center text-muted-foreground">
                 <p>No data available</p>
