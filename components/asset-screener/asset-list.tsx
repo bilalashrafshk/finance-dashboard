@@ -69,15 +69,15 @@ export function AssetList({ assets, onDelete, loading }: AssetListProps) {
           <Card key={asset.id} className="overflow-hidden hover:shadow-md transition-shadow">
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between gap-4">
-                <Link 
-                  href={`/asset-screener/${generateAssetSlug(asset.assetType, asset.symbol)}`}
+                <Link
+                  href={`/my-list/${generateAssetSlug(asset.assetType, asset.symbol)}`}
                   className="flex-1 hover:opacity-80 transition-opacity cursor-pointer"
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <CardTitle className="text-lg">{asset.name}</CardTitle>
-                    <Badge 
-                      variant="outline" 
-                      style={{ 
+                    <Badge
+                      variant="outline"
+                      style={{
                         borderColor: ASSET_TYPE_COLORS[asset.assetType as keyof typeof ASSET_TYPE_COLORS],
                         color: ASSET_TYPE_COLORS[asset.assetType as keyof typeof ASSET_TYPE_COLORS]
                       }}
@@ -91,7 +91,7 @@ export function AssetList({ assets, onDelete, loading }: AssetListProps) {
                     <span>{asset.currency}</span>
                   </CardDescription>
                   <div className="mt-2">
-                    <LazyMetrics 
+                    <LazyMetrics
                       fallback={
                         <div className="text-sm text-muted-foreground">
                           <span>Loading metrics...</span>

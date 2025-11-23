@@ -6,7 +6,7 @@ import { Plus } from "lucide-react"
 import { useAuth } from "@/lib/auth/auth-context"
 import { SharedNavbar } from "@/components/shared-navbar"
 import { AddAssetDialog } from "@/components/asset-screener/add-asset-dialog"
-import { AssetList } from "@/components/asset-screener/asset-list"
+import { AssetTable } from "@/components/asset-screener/asset-table"
 import { MPTPortfolioView } from "@/components/asset-screener/mpt-portfolio-view"
 import { RiskFreeRateSettings, loadRiskFreeRates, type RiskFreeRates } from "@/components/asset-screener/risk-free-rate-settings"
 import type { TrackedAsset } from "@/components/asset-screener/add-asset-dialog"
@@ -140,24 +140,24 @@ export default function AssetScreenerPage() {
         <main>
           <div className="container mx-auto px-4 py-8">
             <div className="max-w-2xl mx-auto">
-            <Card>
-              <CardHeader>
-                <CardTitle>Asset Screener</CardTitle>
-                <CardDescription>
-                  Track and analyze assets. Sign in to get started.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2">
-                  <LoginDialog>
-                    <Button>Login</Button>
-                  </LoginDialog>
-                  <RegisterDialog>
-                    <Button variant="outline">Sign Up</Button>
-                  </RegisterDialog>
-                </div>
-              </CardContent>
-            </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>My List</CardTitle>
+                  <CardDescription>
+                    Track and analyze assets. Sign in to get started.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-2">
+                    <LoginDialog>
+                      <Button>Login</Button>
+                    </LoginDialog>
+                    <RegisterDialog>
+                      <Button variant="outline">Sign Up</Button>
+                    </RegisterDialog>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
         </main>
@@ -172,10 +172,10 @@ export default function AssetScreenerPage() {
         <div className="container mx-auto px-4 py-8">
           <div className="flex items-center justify-between mb-6">
             <div>
-            <h1 className="text-3xl font-bold">Asset Screener</h1>
-            <p className="text-muted-foreground mt-1">
-              Track and analyze your assets with key metrics
-            </p>
+              <h1 className="text-3xl font-bold">My List</h1>
+              <p className="text-muted-foreground mt-1">
+                Track and analyze your assets with key metrics
+              </p>
             </div>
             <Button onClick={() => setIsAddDialogOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
@@ -183,34 +183,34 @@ export default function AssetScreenerPage() {
             </Button>
           </div>
 
-        <RiskFreeRateSettings onRatesChange={setRiskFreeRates} />
+          <RiskFreeRateSettings onRatesChange={setRiskFreeRates} />
 
-        {!loading && assets.length > 0 && (
-          <div className="mb-6">
-            <p className="text-sm text-muted-foreground">
-              Tracking <span className="font-semibold">{assets.length}</span> asset{assets.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-        )}
+          {!loading && assets.length > 0 && (
+            <div className="mb-6">
+              <p className="text-sm text-muted-foreground">
+                Tracking <span className="font-semibold">{assets.length}</span> asset{assets.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+          )}
 
-        <Tabs defaultValue="assets" className="w-full">
-          <TabsList className="mb-6">
-            <TabsTrigger value="assets">Asset List</TabsTrigger>
-            <TabsTrigger value="mpt">Modern Portfolio Theory</TabsTrigger>
-          </TabsList>
+          <Tabs defaultValue="assets" className="w-full">
+            <TabsList className="mb-6">
+              <TabsTrigger value="assets">Asset List</TabsTrigger>
+              <TabsTrigger value="mpt">Modern Portfolio Theory</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="assets" className="space-y-4">
-            <AssetList 
-              assets={assets} 
-              onDelete={handleDeleteAsset}
-              loading={loading}
-            />
-          </TabsContent>
+            <TabsContent value="assets" className="space-y-4">
+              <AssetTable
+                assets={assets}
+                onDelete={handleDeleteAsset}
+                loading={loading}
+              />
+            </TabsContent>
 
-          <TabsContent value="mpt" className="space-y-4">
-            <MPTPortfolioView assets={assets} />
-          </TabsContent>
-        </Tabs>
+            <TabsContent value="mpt" className="space-y-4">
+              <MPTPortfolioView assets={assets} />
+            </TabsContent>
+          </Tabs>
 
           <AddAssetDialog
             open={isAddDialogOpen}

@@ -51,7 +51,7 @@ export function parseAssetSlug(slug: string): { market: MarketPrefix; ticker: st
   const market = parts[0]
   const ticker = parts.slice(1).join('-') // Handle tickers that might contain hyphens
   const validMarkets: MarketPrefix[] = ['psx', 'us', 'crypto', 'metals', 'indices']
-  
+
   if (!validMarkets.includes(market.toLowerCase() as MarketPrefix)) {
     return null
   }

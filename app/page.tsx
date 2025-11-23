@@ -47,15 +47,15 @@ function DashboardHome() {
 
             {/* Navigation Cards */}
             <div className="grid gap-6 md:grid-cols-3">
-            <Card className="hover:shadow-lg transition-shadow hover:border-blue-600/50">
-              <CardHeader>
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 rounded-lg bg-blue-600/20">
-                    <BarChart3 className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              <Card className="hover:shadow-lg transition-shadow hover:border-blue-600/50">
+                <CardHeader>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2 rounded-lg bg-blue-600/20">
+                      <BarChart3 className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <CardTitle className="text-2xl">ETH Risk</CardTitle>
                   </div>
-                  <CardTitle className="text-2xl">ETH Risk</CardTitle>
-                </div>
-                <CardDescription>
+                  <CardDescription>
                     Real-time Ethereum risk metrics and valuation analysis
                   </CardDescription>
                 </CardHeader>
@@ -103,7 +103,7 @@ function DashboardHome() {
                 </CardHeader>
                 <CardContent>
                   <Button asChild className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700">
-                    <Link href="/asset-screener">
+                    <Link href="/my-list">
                       Open Screener
                     </Link>
                   </Button>

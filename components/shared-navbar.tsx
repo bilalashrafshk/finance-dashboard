@@ -69,8 +69,8 @@ export function SharedNavbar() {
                   <Link
                     href="/charts"
                     className={`px-4 py-2 rounded-lg transition-colors ${isActive('/charts')
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
-                        : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
+                      ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
+                      : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
                       }`}
                   >
                     <div className="flex items-center gap-2">
@@ -81,8 +81,8 @@ export function SharedNavbar() {
                   <Link
                     href="/portfolio"
                     className={`px-4 py-2 rounded-lg transition-colors ${isActive('/portfolio')
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
-                        : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
+                      ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
+                      : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
                       }`}
                   >
                     <div className="flex items-center gap-2">
@@ -91,22 +91,22 @@ export function SharedNavbar() {
                     </div>
                   </Link>
                   <Link
-                    href="/asset-screener"
-                    className={`px-4 py-2 rounded-lg transition-colors ${isActive('/asset-screener')
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
-                        : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
+                    href="/my-list"
+                    className={`px-4 py-2 rounded-lg transition-colors ${isActive('/my-list')
+                      ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
+                      : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
                       }`}
                   >
                     <div className="flex items-center gap-2">
                       <Search className="w-4 h-4" />
-                      <span>Asset Screener</span>
+                      <span>My List</span>
                     </div>
                   </Link>
                   <Link
                     href="/screener"
                     className={`px-4 py-2 rounded-lg transition-colors ${isActive('/screener')
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
-                        : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
+                      ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
+                      : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
                       }`}
                   >
                     <div className="flex items-center gap-2">
@@ -197,8 +197,8 @@ export function SharedNavbar() {
                   <Link
                     href="/charts"
                     className={`block px-4 py-2 rounded-lg transition-colors ${isActive('/charts')
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
-                        : 'text-foreground hover:bg-muted'
+                      ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
+                      : 'text-foreground hover:bg-muted'
                       }`}
                   >
                     <div className="flex items-center gap-2">
@@ -209,8 +209,8 @@ export function SharedNavbar() {
                   <Link
                     href="/portfolio"
                     className={`block px-4 py-2 rounded-lg transition-colors ${isActive('/portfolio')
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
-                        : 'text-foreground hover:bg-muted'
+                      ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
+                      : 'text-foreground hover:bg-muted'
                       }`}
                   >
                     <div className="flex items-center gap-2">
@@ -219,22 +219,22 @@ export function SharedNavbar() {
                     </div>
                   </Link>
                   <Link
-                    href="/asset-screener"
-                    className={`block px-4 py-2 rounded-lg transition-colors ${isActive('/asset-screener')
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
-                        : 'text-foreground hover:bg-muted'
+                    href="/my-list"
+                    className={`block px-4 py-2 rounded-lg transition-colors ${isActive('/my-list')
+                      ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
+                      : 'text-foreground hover:bg-muted'
                       }`}
                   >
                     <div className="flex items-center gap-2">
                       <Search className="w-4 h-4" />
-                      <span>Asset Screener</span>
+                      <span>My List</span>
                     </div>
                   </Link>
                   <Link
                     href="/screener"
                     className={`block px-4 py-2 rounded-lg transition-colors ${isActive('/screener')
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
-                        : 'text-foreground hover:bg-muted'
+                      ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
+                      : 'text-foreground hover:bg-muted'
                       }`}
                   >
                     <div className="flex items-center gap-2">

@@ -27,7 +27,7 @@ export default function AssetDetailPage() {
     try {
       setLoading(true)
       setError(null)
-      
+
       if (!slug) {
         setError('Invalid asset URL')
         return
@@ -42,7 +42,7 @@ export default function AssetDetailPage() {
 
       // First, try to parse as slug format (e.g., "psx-ogdc", "us-aapl")
       const parsed = parseAssetSlug(slug)
-      
+
       if (parsed) {
         // Valid slug format - find asset by market and ticker
         const { market, ticker } = parsed
@@ -57,16 +57,16 @@ export default function AssetDetailPage() {
         if (response.ok) {
           const data = await response.json()
           if (data.success) {
-            let foundAsset = data.assets.find((a: TrackedAsset) => 
+            let foundAsset = data.assets.find((a: TrackedAsset) =>
               a.assetType === assetType && a.symbol.toUpperCase() === ticker
             )
-            
+
             // If asset not found, try to auto-create it
             if (!foundAsset) {
               try {
                 // Determine currency based on asset type
                 const currency = assetType === 'pk-equity' || assetType === 'kse100' ? 'PKR' : 'USD'
-                
+
                 // Determine name based on asset type and symbol
                 let name = ticker
                 if (assetType === 'kse100') {
@@ -74,7 +74,7 @@ export default function AssetDetailPage() {
                 } else if (assetType === 'spx500') {
                   name = 'S&P 500 Index'
                 }
-                
+
                 const createResponse = await fetch('/api/user/tracked-assets', {
                   method: 'POST',
                   headers: {
@@ -88,7 +88,7 @@ export default function AssetDetailPage() {
                     currency,
                   }),
                 })
-                
+
                 if (createResponse.ok) {
                   const createData = await createResponse.json()
                   if (createData.success && createData.asset) {
@@ -100,7 +100,7 @@ export default function AssetDetailPage() {
                 // Continue to show error if creation fails
               }
             }
-            
+
             if (foundAsset) {
               setAsset(foundAsset)
             } else {
@@ -137,7 +137,7 @@ export default function AssetDetailPage() {
             if (foundAsset) {
               // Redirect to new slug format
               const newSlug = generateAssetSlug(foundAsset.assetType, foundAsset.symbol)
-              router.replace(`/asset-screener/${newSlug}`)
+              router.replace(`/my-list/${newSlug}`)
               return
             } else {
               setError('Asset not found')
@@ -192,7 +192,7 @@ export default function AssetDetailPage() {
             <div className="max-w-2xl mx-auto">
               <Button
                 variant="ghost"
-                onClick={() => router.push('/asset-screener')}
+                onClick={() => router.push('/my-list')}
                 className="mb-4"
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
@@ -204,7 +204,7 @@ export default function AssetDetailPage() {
                   <CardDescription>{error || 'Asset not found'}</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button onClick={() => router.push('/asset-screener')}>
+                  <Button onClick={() => router.push('/my-list')}>
                     Go to Asset Screener
                   </Button>
                 </CardContent>
@@ -223,32 +223,32 @@ export default function AssetDetailPage() {
         <div className="container mx-auto px-4 py-8">
           <Button
             variant="ghost"
-            onClick={() => router.push('/asset-screener')}
+            onClick={() => router.push('/my-list')}
             className="mb-6"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Asset Screener
           </Button>
 
-        <div className="mb-6">
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold">{asset.name}</h1>
-            <Badge 
-              variant="outline" 
-              style={{ 
-                borderColor: ASSET_TYPE_COLORS[asset.assetType as keyof typeof ASSET_TYPE_COLORS],
-                color: ASSET_TYPE_COLORS[asset.assetType as keyof typeof ASSET_TYPE_COLORS]
-              }}
-            >
-              {ASSET_TYPE_LABELS[asset.assetType as keyof typeof ASSET_TYPE_LABELS]}
-            </Badge>
+          <div className="mb-6">
+            <div className="flex items-center gap-3 mb-2">
+              <h1 className="text-3xl font-bold">{asset.name}</h1>
+              <Badge
+                variant="outline"
+                style={{
+                  borderColor: ASSET_TYPE_COLORS[asset.assetType as keyof typeof ASSET_TYPE_COLORS],
+                  color: ASSET_TYPE_COLORS[asset.assetType as keyof typeof ASSET_TYPE_COLORS]
+                }}
+              >
+                {ASSET_TYPE_LABELS[asset.assetType as keyof typeof ASSET_TYPE_LABELS]}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <span className="font-mono">{asset.symbol}</span>
+              <span>•</span>
+              <span>{asset.currency}</span>
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <span className="font-mono">{asset.symbol}</span>
-            <span>•</span>
-            <span>{asset.currency}</span>
-          </div>
-        </div>
 
           <AssetDetailView asset={asset} riskFreeRates={loadRiskFreeRates()} />
         </div>
