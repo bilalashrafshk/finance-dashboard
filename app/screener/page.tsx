@@ -3,27 +3,26 @@
 import { useState, useEffect } from "react"
 import { SharedNavbar } from "@/components/shared-navbar"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Loader2, Plus, AlertCircle, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { Loader2, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { useAuth } from "@/lib/auth/auth-context"
-import { AddAssetDialog, type TrackedAsset } from "@/components/asset-screener/add-asset-dialog"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import Link from "next/link"
+import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
 
 export default function ScreenerPage() {
-  const { user, loading: authLoading } = useAuth()
   const [loading, setLoading] = useState(true)
   
-  // All stocks with price data (PK equities only)
+  // All stocks with price data (PK equities and US equities)
   interface StockInfo {
     symbol: string
     name: string
     sector: string
     industry: string
+    assetType?: 'pk-equity' | 'us-equity' // Add asset type
   }
   interface StockWithMetrics extends StockInfo {
     price?: number
@@ -35,16 +34,16 @@ export default function ScreenerPage() {
     dividend_yield?: number
     market_cap?: number
   }
+  
+  // Asset class filter
+  const [assetClassFilter, setAssetClassFilter] = useState<'all' | 'pk-equity' | 'us-equity'>('pk-equity')
+  
+  // Pagination for lazy loading
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 50
   const [allStocks, setAllStocks] = useState<StockInfo[]>([])
   const [stocksWithMetrics, setStocksWithMetrics] = useState<StockWithMetrics[]>([])
   const [loadingStocks, setLoadingStocks] = useState(true)
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [addingKSE100, setAddingKSE100] = useState(false)
-  const [kse100Error, setKse100Error] = useState<string | null>(null)
-  const [kse100Success, setKse100Success] = useState<string | null>(null)
-  const [addingAllPSX, setAddingAllPSX] = useState(false)
-  const [allPSXError, setAllPSXError] = useState<string | null>(null)
-  const [allPSXSuccess, setAllPSXSuccess] = useState<string | null>(null)
   
   // Search, Sort, Filter states for stocks list
   const [searchQuery, setSearchQuery] = useState("")
@@ -80,7 +79,7 @@ export default function ScreenerPage() {
             const merged = allStocks.map(stock => {
               const metric = metrics.find((m: any) => m.symbol === stock.symbol)
               if (!metric) {
-                return { ...stock } as StockWithMetrics
+                return { ...stock, assetType: 'pk-equity' } as StockWithMetrics
               }
               // Convert string numbers to actual numbers (PostgreSQL may return strings)
               const convertToNumber = (val: any): number | undefined => {
@@ -94,6 +93,7 @@ export default function ScreenerPage() {
               }
               return {
                 ...stock,
+                assetType: 'pk-equity', // Default to pk-equity for now
                 price: convertToNumber(metric.price),
                 pe_ratio: convertToNumber(metric.pe_ratio),
                 sector_pe: convertToNumber(metric.sector_pe),
@@ -107,7 +107,7 @@ export default function ScreenerPage() {
             setStocksWithMetrics(merged)
           } else if (allStocks.length > 0) {
             // If metrics not loaded yet, just use stocks
-            setStocksWithMetrics(allStocks.map(s => ({ ...s } as StockWithMetrics)))
+            setStocksWithMetrics(allStocks.map(s => ({ ...s, assetType: 'pk-equity' } as StockWithMetrics)))
           }
         }
       } catch (e) {
@@ -146,149 +146,6 @@ export default function ScreenerPage() {
     }
   }
 
-  const handleAddStock = async (assetData: Omit<TrackedAsset, 'id' | 'createdAt' | 'updatedAt'>) => {
-    // Ensure it's a PK equity
-    if (assetData.assetType !== 'pk-equity') {
-      throw new Error('Only PK equities can be added to the screener')
-    }
-
-    // Check for duplicate symbol (case-insensitive)
-    const symbolUpper = assetData.symbol.toUpperCase().trim()
-    const existingStock = allStocks.find(
-      stock => stock.symbol.toUpperCase() === symbolUpper
-    )
-    
-    if (existingStock) {
-      throw new Error(`Stock "${symbolUpper}" already exists in the database`)
-    }
-
-    try {
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        throw new Error('Authentication required')
-      }
-
-      // Add to user tracked assets (for personal tracking)
-      const response = await fetch('/api/user/tracked-assets', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(assetData),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to add stock')
-      }
-
-      // Reload all stocks to show the newly added one
-      await loadAllStocks()
-    } catch (error: any) {
-      console.error('Error adding stock:', error)
-      throw error
-    }
-  }
-
-  const handleAddAllKSE100 = async () => {
-    try {
-      setAddingKSE100(true)
-      setKse100Error(null)
-      setKse100Success(null)
-
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        throw new Error('Authentication required')
-      }
-
-      const response = await fetch('/api/screener/add-kse100-stocks', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
-
-      // Check content type before parsing
-      const contentType = response.headers.get('content-type')
-      let data
-      
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json()
-      } else {
-        // If not JSON, read as text
-        const text = await response.text()
-        throw new Error(text || 'Failed to add KSE100 stocks')
-      }
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to add KSE100 stocks')
-      }
-
-      if (data.success) {
-      setKse100Success(
-        `Successfully added ${data.added} stocks. ${data.failed > 0 ? `${data.failed} failed.` : ''}`
-      )
-      // Reload all stocks to show newly added ones
-      await loadAllStocks()
-      }
-    } catch (error: any) {
-      console.error('Error adding KSE100 stocks:', error)
-      setKse100Error(error.message || 'Failed to add KSE100 stocks')
-    } finally {
-      setAddingKSE100(false)
-    }
-  }
-
-  const handleAddAllPSX = async () => {
-    try {
-      setAddingAllPSX(true)
-      setAllPSXError(null)
-      setAllPSXSuccess(null)
-
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        throw new Error('Authentication required')
-      }
-
-      const response = await fetch('/api/screener/add-all-psx-stocks', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
-
-      // Check content type before parsing
-      const contentType = response.headers.get('content-type')
-      let data
-      
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json()
-      } else {
-        // If not JSON, read as text
-        const text = await response.text()
-        throw new Error(text || 'Failed to add all PSX stocks')
-      }
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to add all PSX stocks')
-      }
-
-      if (data.success) {
-        setAllPSXSuccess(
-          `Successfully added ${data.added} stocks. ${data.failed > 0 ? `${data.failed} failed.` : ''} Total: ${data.total}`
-        )
-        // Reload all stocks to show newly added ones
-        await loadAllStocks()
-      }
-    } catch (error: any) {
-      console.error('Error adding all PSX stocks:', error)
-      setAllPSXError(error.message || 'Failed to add all PSX stocks')
-    } finally {
-      setAddingAllPSX(false)
-    }
-  }
-  
 
   // Get unique sectors and industries for filters
   const uniqueSectors = Array.from(new Set(allStocks.map(s => s.sector).filter(Boolean))).sort()
@@ -297,6 +154,9 @@ export default function ScreenerPage() {
   // Filter and sort stocks
   const filteredAndSortedStocks = stocksWithMetrics
     .filter(stock => {
+      // Asset class filter
+      const matchesAssetClass = assetClassFilter === 'all' || stock.assetType === assetClassFilter
+      
       // Search filter
       const matchesSearch = searchQuery === "" || 
         stock.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -330,7 +190,7 @@ export default function ScreenerPage() {
       const matchesPrice = (minPrice === "" || price === null || price >= minPrice) && 
                           (maxPrice === "" || price === null || price <= maxPrice)
       
-      return matchesSearch && matchesSector && matchesIndustry && matchesPE && 
+      return matchesAssetClass && matchesSearch && matchesSector && matchesIndustry && matchesPE && 
              matchesRelativePE && matchesMarketCap && matchesPrice
     })
     .sort((a, b) => {
@@ -350,11 +210,23 @@ export default function ScreenerPage() {
       
       // Handle number comparison
       if (typeof aVal === "number" && typeof bVal === "number") {
-        return sortDirection === "asc" ? aVal - bVal : bVal - aVal
+            return sortDirection === "asc" ? aVal - bVal : bVal - aVal
       }
       
       return 0
     })
+  
+  // Pagination
+  const totalPages = Math.ceil(filteredAndSortedStocks.length / itemsPerPage)
+  const paginatedStocks = filteredAndSortedStocks.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  )
+  
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, filterSector, filterIndustry, assetClassFilter, minPE, maxPE, minRelativePE, maxRelativePE, minMarketCap, maxMarketCap, minPrice, maxPrice])
 
   const handleSort = (field: keyof StockWithMetrics) => {
     if (sortField === field) {
@@ -412,79 +284,6 @@ export default function ScreenerPage() {
         </div>
 
         <div className="space-y-4">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-2xl font-semibold">All PK Equities</h2>
-                <p className="text-muted-foreground text-sm mt-1">
-                  Showing {filteredAndSortedStocks.length} of {allStocks.length} stocks
-                </p>
-              </div>
-              {user && (
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline"
-                    onClick={handleAddAllKSE100}
-                    disabled={addingKSE100 || addingAllPSX}
-                  >
-                    {addingKSE100 ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Adding...
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add All KSE100 Stocks
-                      </>
-                    )}
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    onClick={handleAddAllPSX}
-                    disabled={addingKSE100 || addingAllPSX}
-                  >
-                    {addingAllPSX ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Adding...
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add All PSX Stocks
-                      </>
-                    )}
-                  </Button>
-                  <Button onClick={() => setIsAddDialogOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Stock
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            {kse100Error && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{kse100Error}</AlertDescription>
-              </Alert>
-            )}
-            {kse100Success && (
-              <Alert>
-                <AlertDescription>{kse100Success}</AlertDescription>
-              </Alert>
-            )}
-            {allPSXError && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{allPSXError}</AlertDescription>
-              </Alert>
-            )}
-            {allPSXSuccess && (
-              <Alert>
-                <AlertDescription>{allPSXSuccess}</AlertDescription>
-              </Alert>
-            )}
 
             {/* Search and Filter Controls */}
             <Card>
@@ -502,6 +301,19 @@ export default function ScreenerPage() {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                       />
+                    </div>
+                    <div className="w-full md:w-48">
+                      <Label className="mb-2 block">Asset Class</Label>
+                      <Select value={assetClassFilter} onValueChange={(value) => setAssetClassFilter(value as 'all' | 'pk-equity' | 'us-equity')}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="All Asset Classes" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pk-equity">PK Equities</SelectItem>
+                          <SelectItem value="us-equity" disabled>US Equities (Coming Soon)</SelectItem>
+                          <SelectItem value="all">All Asset Classes</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="w-full md:w-48">
                       <Label className="mb-2 block">Filter by Sector</Label>
@@ -678,72 +490,111 @@ export default function ScreenerPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>
+                          <TableHead className="px-2 py-2 text-xs">
                             <SortButton field="symbol">Symbol</SortButton>
                           </TableHead>
-                          <TableHead>
+                          <TableHead className="px-2 py-2 text-xs">
                             <SortButton field="name">Name</SortButton>
                           </TableHead>
-                          <TableHead>
+                          <TableHead className="px-2 py-2 text-xs">
                             <SortButton field="sector">Sector</SortButton>
                           </TableHead>
-                          <TableHead>
+                          <TableHead className="px-2 py-2 text-xs">
                             <SortButton field="industry">Industry</SortButton>
                           </TableHead>
-                          <TableHead className="text-right">
-                            <SortButton field="price">Price (PKR)</SortButton>
+                          <TableHead className="text-right px-2 py-2 text-xs">
+                            <SortButton field="price">Price</SortButton>
                           </TableHead>
-                          <TableHead className="text-right">
-                            <SortButton field="pe_ratio">P/E Ratio</SortButton>
+                          <TableHead className="text-right px-2 py-2 text-xs">
+                            <SortButton field="pe_ratio">P/E</SortButton>
                           </TableHead>
-                          <TableHead className="text-right">
-                            <SortButton field="relative_pe">Relative P/E</SortButton>
+                          <TableHead className="text-right px-2 py-2 text-xs">
+                            <SortButton field="relative_pe">Rel P/E</SortButton>
                           </TableHead>
-                          <TableHead className="text-right">
+                          <TableHead className="text-right px-2 py-2 text-xs">
                             <SortButton field="sector_pe">Sector P/E</SortButton>
                           </TableHead>
-                          <TableHead className="text-right">
-                            <SortButton field="market_cap">Market Cap</SortButton>
+                          <TableHead className="text-right px-2 py-2 text-xs">
+                            <SortButton field="market_cap">Mkt Cap</SortButton>
                           </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredAndSortedStocks.map((stock) => (
-                          <TableRow key={stock.symbol} className="hover:bg-muted/50">
-                            <TableCell className="font-mono font-medium">{stock.symbol}</TableCell>
-                            <TableCell>{stock.name}</TableCell>
-                            <TableCell>{stock.sector || "N/A"}</TableCell>
-                            <TableCell>{stock.industry && stock.industry !== "Unknown" ? stock.industry : "N/A"}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(stock.price)}</TableCell>
-                            <TableCell className="text-right">{formatNumber(stock.pe_ratio)}</TableCell>
-                            <TableCell className="text-right">
-                              {stock.relative_pe !== null && stock.relative_pe !== undefined && !isNaN(stock.relative_pe) ? (
-                                <span className={typeof stock.relative_pe === 'number' && stock.relative_pe < 1 ? "text-green-600 dark:text-green-400 font-medium" : ""}>
-                                  {formatNumber(stock.relative_pe)}
-                                </span>
-                              ) : "N/A"}
-                            </TableCell>
-                            <TableCell className="text-right">{formatNumber(stock.sector_pe)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(stock.market_cap)}</TableCell>
-                          </TableRow>
-                        ))}
+                        {paginatedStocks.map((stock) => {
+                          const assetType = stock.assetType || 'pk-equity'
+                          const assetSlug = generateAssetSlug(assetType, stock.symbol)
+                          return (
+                            <TableRow key={stock.symbol} className="hover:bg-muted/50">
+                              <TableCell className="px-2 py-1.5 text-xs">
+                                <Link 
+                                  href={`/asset/${assetSlug}`}
+                                  className="font-mono font-medium hover:text-primary hover:underline"
+                                >
+                                  {stock.symbol}
+                                </Link>
+                              </TableCell>
+                              <TableCell className="px-2 py-1.5 text-xs">
+                                <Link 
+                                  href={`/asset/${assetSlug}`}
+                                  className="hover:text-primary hover:underline"
+                                >
+                                  {stock.name}
+                                </Link>
+                              </TableCell>
+                              <TableCell className="px-2 py-1.5 text-xs">{stock.sector || "N/A"}</TableCell>
+                              <TableCell className="px-2 py-1.5 text-xs">{stock.industry && stock.industry !== "Unknown" ? stock.industry : "N/A"}</TableCell>
+                              <TableCell className="text-right px-2 py-1.5 text-xs">{formatCurrency(stock.price)}</TableCell>
+                              <TableCell className="text-right px-2 py-1.5 text-xs">{formatNumber(stock.pe_ratio)}</TableCell>
+                              <TableCell className="text-right px-2 py-1.5 text-xs">
+                                {stock.relative_pe !== null && stock.relative_pe !== undefined && !isNaN(stock.relative_pe) ? (
+                                  <span className={typeof stock.relative_pe === 'number' && stock.relative_pe < 1 ? "text-green-600 dark:text-green-400 font-medium" : ""}>
+                                    {formatNumber(stock.relative_pe)}
+                                  </span>
+                                ) : "N/A"}
+                              </TableCell>
+                              <TableCell className="text-right px-2 py-1.5 text-xs">{formatNumber(stock.sector_pe)}</TableCell>
+                              <TableCell className="text-right px-2 py-1.5 text-xs">{formatCurrency(stock.market_cap)}</TableCell>
+                            </TableRow>
+                          )
+                        })}
                       </TableBody>
                     </Table>
-                          </div>
+                  </div>
+                  
+                  {/* Pagination Controls */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-4 py-3 border-t">
+                      <div className="text-sm text-muted-foreground">
+                        Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredAndSortedStocks.length)} of {filteredAndSortedStocks.length} stocks
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                          disabled={currentPage === 1}
+                        >
+                          Previous
+                        </Button>
+                        <div className="text-sm text-muted-foreground">
+                          Page {currentPage} of {totalPages}
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                          disabled={currentPage === totalPages}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
-                  </Card>
+              </Card>
             )}
         </div>
 
-        {user && (
-          <AddAssetDialog
-            open={isAddDialogOpen}
-            onOpenChange={setIsAddDialogOpen}
-            onSave={handleAddStock}
-            defaultAssetType="pk-equity"
-            restrictToAssetType="pk-equity"
-          />
-        )}
       </main>
     </div>
   )
