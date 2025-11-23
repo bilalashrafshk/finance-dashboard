@@ -182,19 +182,28 @@ async function fetchNewDataInBackground(
         }
         
         // Also check for middle gaps in existing data if we have stored dates info
+        // Middle gaps: trading days that exist between stored dates but are missing from both DB and StockAnalysis
         if (existingStoredDates && existingStoredDates.size > 0) {
-          // Find dates that exist in DB but are missing from StockAnalysis
-          // These are middle gaps that StockAnalysis doesn't have
-          for (const storedDate of existingStoredDates) {
-            if (!receivedDates.has(storedDate)) {
-              // This date exists in DB but StockAnalysis doesn't have it
-              // Check if it's a trading day
-              const date = new Date(storedDate)
-              const dayOfWeek = date.getDay()
-              if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-                missingDates.push(storedDate)
+          // Get the earliest and latest stored dates to find the range
+          const sortedStoredDates = Array.from(existingStoredDates).sort()
+          const earliestStored = sortedStoredDates[0]
+          const latestStored = sortedStoredDates[sortedStoredDates.length - 1]
+          
+          // Check for missing trading days between earliest and latest stored dates
+          const start = new Date(earliestStored)
+          const end = new Date(latestStored)
+          let current = new Date(start)
+          
+          while (current <= end) {
+            const dayOfWeek = current.getDay()
+            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+              const dateStr = current.toISOString().split('T')[0]
+              // If this date is NOT in DB and NOT in StockAnalysis, it's a middle gap
+              if (!existingStoredDates.has(dateStr) && !receivedDates.has(dateStr)) {
+                missingDates.push(dateStr)
               }
             }
+            current.setDate(current.getDate() + 1)
           }
         }
         
