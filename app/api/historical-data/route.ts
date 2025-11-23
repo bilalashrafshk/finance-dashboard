@@ -137,7 +137,6 @@ async function fetchNewDataInBackground(
 
     if (assetType === 'pk-equity') {
       // Try StockAnalysis first (primary source - fetches full 10Y history to fill all gaps including middle gaps)
-      // Then fallback to SCSTrade if StockAnalysis fails
       const apiData = await retryWithBackoff(
         () => fetchStockAnalysisData(symbol, 'PSX'),
         3, // 3 retries
@@ -153,7 +152,62 @@ async function fetchNewDataInBackground(
         source = 'stockanalysis'
       }
       
-      // Fallback to SCSTrade if StockAnalysis failed or returned no data
+      // Check for missing dates in the requested range and try SCSTrade to fill them
+      if (fetchStartDate && newData.length > 0) {
+        // Calculate expected trading days in the range
+        const expectedTradingDays = calculateTradingDaysBetween(fetchStartDate, today)
+        const receivedDates = new Set(newData.map(d => d.date))
+        
+        // Find missing dates (only check if we have fewer dates than expected trading days)
+        if (receivedDates.size < expectedTradingDays) {
+          // Generate list of expected trading dates
+          const expectedDates: string[] = []
+          const start = new Date(fetchStartDate)
+          const end = new Date(today)
+          let current = new Date(start)
+          
+          while (current <= end) {
+            const dayOfWeek = current.getDay()
+            // Skip weekends (0 = Sunday, 6 = Saturday)
+            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+              const dateStr = current.toISOString().split('T')[0]
+              if (!receivedDates.has(dateStr)) {
+                expectedDates.push(dateStr)
+              }
+            }
+            current.setDate(current.getDate() + 1)
+          }
+          
+          // If there are missing dates, try SCSTrade to fill them
+          if (expectedDates.length > 0) {
+            try {
+              const scstradeData = await retryWithBackoff(
+                () => fetchSCSTradeData(symbol, fetchStartDate, today),
+                2, // 2 retries for SCSTrade
+                1000,
+                5000
+              )
+              
+              if (scstradeData && scstradeData.length > 0) {
+                // Merge SCSTrade data with StockAnalysis data, avoiding duplicates
+                const scstradeDates = new Set(scstradeData.map(d => d.date))
+                const stockAnalysisOnly = newData.filter(d => !scstradeDates.has(d.date))
+                newData = [...stockAnalysisOnly, ...scstradeData]
+                // Mark source as mixed if we have data from both
+                if (stockAnalysisOnly.length > 0) {
+                  source = 'stockanalysis' // Primary source, but SCSTrade filled gaps
+                } else {
+                  source = 'scstrade'
+                }
+              }
+            } catch (scstradeError) {
+              console.error(`[${assetType}-${symbol}] SCSTrade fallback for missing dates failed:`, scstradeError)
+            }
+          }
+        }
+      }
+      
+      // Fallback to SCSTrade if StockAnalysis completely failed or returned no data
       if (newData.length === 0) {
         try {
           const scstradeData = await retryWithBackoff(
