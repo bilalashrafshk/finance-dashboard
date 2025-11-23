@@ -937,6 +937,15 @@ export async function loadMarketCycles(
 }
 
 /**
+ * Get database client connection from the centralized pool
+ * Use this for custom queries that need direct database access
+ */
+export async function getDbClient() {
+  const pool = getPool()
+  return await pool.connect()
+}
+
+/**
  * Get the last saved cycle's end date for an asset
  * Returns null if no cycles are saved yet
  */
