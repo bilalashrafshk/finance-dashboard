@@ -113,7 +113,8 @@ async function fetchNewDataInBackground(
   symbol: string,
   market: 'PSX' | 'US' | null,
   fetchStartDate: string | undefined,
-  today: string
+  today: string,
+  existingStoredDates?: Set<string> // Optional: existing dates in DB to detect middle gaps
 ): Promise<void> {
   try {
     // Check if market is closed and we're trying to fetch today's data
@@ -137,6 +138,7 @@ async function fetchNewDataInBackground(
 
     if (assetType === 'pk-equity') {
       // Try StockAnalysis first (primary source - fetches full 10Y history to fill all gaps including middle gaps)
+      // Don't filter by fetchStartDate - fetch full history to detect and fill middle gaps too
       const apiData = await retryWithBackoff(
         () => fetchStockAnalysisData(symbol, 'PSX'),
         3, // 3 retries
@@ -145,64 +147,83 @@ async function fetchNewDataInBackground(
       )
       
       if (apiData) {
-        const filtered = fetchStartDate
-          ? apiData.filter(d => d.t >= fetchStartDate)
-          : apiData
-        newData = filtered.map(convertStockAnalysisToRecord)
+        // Use full StockAnalysis data (not filtered) to detect all gaps including middle ones
+        newData = apiData.map(convertStockAnalysisToRecord)
         source = 'stockanalysis'
       }
       
-      // Check for missing dates in the requested range and try SCSTrade to fill them
-      if (fetchStartDate && newData.length > 0) {
-        // Calculate expected trading days in the range
-        const expectedTradingDays = calculateTradingDaysBetween(fetchStartDate, today)
+      // Check for missing dates and try SCSTrade to fill them
+      // This handles both: gaps from last stored date forward AND middle gaps in existing data
+      if (newData.length > 0) {
         const receivedDates = new Set(newData.map(d => d.date))
+        const missingDates: string[] = []
         
-        // Find missing dates (only check if we have fewer dates than expected trading days)
-        if (receivedDates.size < expectedTradingDays) {
-          // Generate list of expected trading dates
-          const expectedDates: string[] = []
-          const start = new Date(fetchStartDate)
-          const end = new Date(today)
-          let current = new Date(start)
+        // Check for missing dates in the range from fetchStartDate to today
+        if (fetchStartDate) {
+          const expectedTradingDays = calculateTradingDaysBetween(fetchStartDate, today)
           
-          while (current <= end) {
-            const dayOfWeek = current.getDay()
-            // Skip weekends (0 = Sunday, 6 = Saturday)
-            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-              const dateStr = current.toISOString().split('T')[0]
-              if (!receivedDates.has(dateStr)) {
-                expectedDates.push(dateStr)
-              }
-            }
-            current.setDate(current.getDate() + 1)
-          }
-          
-          // If there are missing dates, try SCSTrade to fill them
-          if (expectedDates.length > 0) {
-            try {
-              const scstradeData = await retryWithBackoff(
-                () => fetchSCSTradeData(symbol, fetchStartDate, today),
-                2, // 2 retries for SCSTrade
-                1000,
-                5000
-              )
-              
-              if (scstradeData && scstradeData.length > 0) {
-                // Merge SCSTrade data with StockAnalysis data, avoiding duplicates
-                const scstradeDates = new Set(scstradeData.map(d => d.date))
-                const stockAnalysisOnly = newData.filter(d => !scstradeDates.has(d.date))
-                newData = [...stockAnalysisOnly, ...scstradeData]
-                // Mark source as mixed if we have data from both
-                if (stockAnalysisOnly.length > 0) {
-                  source = 'stockanalysis' // Primary source, but SCSTrade filled gaps
-                } else {
-                  source = 'scstrade'
+          // Find missing dates in the forward range
+          if (receivedDates.size < expectedTradingDays) {
+            const start = new Date(fetchStartDate)
+            const end = new Date(today)
+            let current = new Date(start)
+            
+            while (current <= end) {
+              const dayOfWeek = current.getDay()
+              if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                const dateStr = current.toISOString().split('T')[0]
+                if (!receivedDates.has(dateStr)) {
+                  missingDates.push(dateStr)
                 }
               }
-            } catch (scstradeError) {
-              console.error(`[${assetType}-${symbol}] SCSTrade fallback for missing dates failed:`, scstradeError)
+              current.setDate(current.getDate() + 1)
             }
+          }
+        }
+        
+        // Also check for middle gaps in existing data if we have stored dates info
+        if (existingStoredDates && existingStoredDates.size > 0) {
+          // Find dates that exist in DB but are missing from StockAnalysis
+          // These are middle gaps that StockAnalysis doesn't have
+          for (const storedDate of existingStoredDates) {
+            if (!receivedDates.has(storedDate)) {
+              // This date exists in DB but StockAnalysis doesn't have it
+              // Check if it's a trading day
+              const date = new Date(storedDate)
+              const dayOfWeek = date.getDay()
+              if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                missingDates.push(storedDate)
+              }
+            }
+          }
+        }
+        
+        // If there are missing dates, try SCSTrade to fill them
+        if (missingDates.length > 0) {
+          try {
+            // Fetch from the earliest missing date to today to fill all gaps
+            const earliestMissingDate = missingDates.sort()[0]
+            const scstradeData = await retryWithBackoff(
+              () => fetchSCSTradeData(symbol, earliestMissingDate, today),
+              2, // 2 retries for SCSTrade
+              1000,
+              5000
+            )
+            
+            if (scstradeData && scstradeData.length > 0) {
+              // Merge SCSTrade data with StockAnalysis data, avoiding duplicates
+              const scstradeDates = new Set(scstradeData.map(d => d.date))
+              const stockAnalysisOnly = newData.filter(d => !scstradeDates.has(d.date))
+              newData = [...stockAnalysisOnly, ...scstradeData]
+              // Mark source as mixed if we have data from both
+              if (stockAnalysisOnly.length > 0) {
+                source = 'stockanalysis' // Primary source, but SCSTrade filled gaps
+              } else {
+                source = 'scstrade'
+              }
+            }
+          } catch (scstradeError) {
+            console.error(`[${assetType}-${symbol}] SCSTrade fallback for missing dates failed:`, scstradeError)
           }
         }
       }
@@ -390,7 +411,9 @@ export async function GET(request: NextRequest) {
         
         if (shouldFetch) {
           // Fetch data (blocking - await completion)
-          await fetchNewDataInBackground(assetType, symbol, market, fetchStartDate, todayInMarketTimezone)
+          // Get existing stored dates to detect middle gaps
+          const existingStoredDates = new Set(storedData.data.map((r: any) => r.date))
+          await fetchNewDataInBackground(assetType, symbol, market, fetchStartDate, todayInMarketTimezone, existingStoredDates)
           console.log(`[Gap Detection] ${assetType}/${symbol}: Fetch completed successfully`)
           
           // Invalidate cache to ensure fresh data
