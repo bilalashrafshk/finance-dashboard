@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { SharedNavbar } from "@/components/shared-navbar"
 import { MarketHeatmapTreemap, type MarketHeatmapStock, type SizeMode } from "@/components/market-heatmap/treemap"
@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { getTodayInMarketTimezone } from "@/lib/portfolio/market-hours"
 
-export default function MarketHeatmapPage() {
+function MarketHeatmapPageContent() {
   const searchParams = useSearchParams()
   const [stocks, setStocks] = useState<MarketHeatmapStock[]>([])
   const [allStocks, setAllStocks] = useState<MarketHeatmapStock[]>([]) // Store all stocks for filtering
@@ -429,5 +429,22 @@ export default function MarketHeatmapPage() {
         </Card>
       </main>
     </div>
+  )
+}
+
+export default function MarketHeatmapPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background">
+        <SharedNavbar />
+        <main className="container mx-auto p-4 sm:p-6">
+          <div className="flex items-center justify-center h-[400px]">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        </main>
+      </div>
+    }>
+      <MarketHeatmapPageContent />
+    </Suspense>
   )
 }
