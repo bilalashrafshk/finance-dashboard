@@ -55,6 +55,7 @@ export async function GET(request: NextRequest) {
 
       // Step 2: Get all price data with previous day prices using a single optimized query
       // This uses LAG window function to get previous day's price in a single query
+      // IMPORTANT: We need to include one day before startDate to get previous prices
       // Build query with proper parameter placeholders
       let adQuery = `
         WITH top_stocks_data AS (
@@ -71,9 +72,16 @@ export async function GET(request: NextRequest) {
       const queryParams: any[] = [topStockSymbols]
       let paramIndex = 2
       
+      // For date filtering: include one day before startDate to get previous prices
+      // Then filter the final results to only include dates in the requested range
       if (startDate) {
+        // Calculate one day before startDate
+        const startDateObj = new Date(startDate)
+        startDateObj.setDate(startDateObj.getDate() - 1)
+        const dayBeforeStart = startDateObj.toISOString().split('T')[0]
+        
         adQuery += ` AND hpd.date >= $${paramIndex}`
-        queryParams.push(startDate)
+        queryParams.push(dayBeforeStart)
         paramIndex++
       }
       if (endDate) {
@@ -102,6 +110,17 @@ export async function GET(request: NextRequest) {
             unchanged,
             (advancing - declining) as net_advances
           FROM daily_changes
+        ),
+        ad_line_calculated AS (
+          SELECT 
+            date,
+            advancing,
+            declining,
+            unchanged,
+            net_advances,
+            -- AD Line starts at 0, then adds net advances cumulatively
+            COALESCE(SUM(net_advances) OVER (ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), 0) as ad_line
+          FROM daily_net_advances
         )
         SELECT 
           date,
@@ -109,10 +128,19 @@ export async function GET(request: NextRequest) {
           declining,
           unchanged,
           net_advances,
-          SUM(net_advances) OVER (ORDER BY date) as ad_line
-        FROM daily_net_advances
-        ORDER BY date ASC
+          ad_line
+        FROM ad_line_calculated
+        WHERE 1=1
       `
+      
+      // Add filter to exclude the day before startDate from final results (we only needed it for LAG)
+      if (startDate) {
+        adQuery += ` AND date >= $${paramIndex}`
+        queryParams.push(startDate)
+        paramIndex++
+      }
+      
+      adQuery += ` ORDER BY date ASC`
 
       const adResult = await client.query(adQuery, queryParams)
       
@@ -123,14 +151,46 @@ export async function GET(request: NextRequest) {
         }, { status: 404 })
       }
       
-      const adData: AdvanceDeclineDataPoint[] = adResult.rows.map(row => ({
-        date: row.date,
-        advancing: parseInt(row.advancing) || 0,
-        declining: parseInt(row.declining) || 0,
-        unchanged: parseInt(row.unchanged) || 0,
-        netAdvances: parseInt(row.net_advances) || 0,
-        adLine: parseInt(row.ad_line) || 0,
-      }))
+      // Process data and ensure AD Line starts at 0
+      // AD Line formula: AD Line = Previous AD Line + Net Advances
+      // The first day we can calculate net advances should have AD Line = 0 + Net Advances
+      // But to show it starting from 0, we'll add an initial point at 0 (one day before first data point)
+      const adData: AdvanceDeclineDataPoint[] = []
+      
+      if (adResult.rows.length > 0) {
+        // Add initial point at 0 (one day before first calculated day)
+        const firstRow = adResult.rows[0]
+        const firstDate = new Date(firstRow.date)
+        firstDate.setDate(firstDate.getDate() - 1)
+        const initialDate = firstDate.toISOString().split('T')[0]
+        
+        adData.push({
+          date: initialDate,
+          advancing: 0,
+          declining: 0,
+          unchanged: 0,
+          netAdvances: 0,
+          adLine: 0, // AD Line starts at 0
+        })
+        
+        // Now calculate cumulative AD Line starting from 0
+        let cumulativeAdLine = 0
+        
+        for (const row of adResult.rows) {
+          const netAdvances = parseInt(row.net_advances) || 0
+          // AD Line = Previous AD Line + Net Advances
+          cumulativeAdLine = cumulativeAdLine + netAdvances
+          
+          adData.push({
+            date: row.date,
+            advancing: parseInt(row.advancing) || 0,
+            declining: parseInt(row.declining) || 0,
+            unchanged: parseInt(row.unchanged) || 0,
+            netAdvances: netAdvances,
+            adLine: cumulativeAdLine,
+          })
+        }
+      }
 
       return NextResponse.json({
         success: true,
