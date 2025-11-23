@@ -1,23 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Pool } from 'pg'
+import { getDbClient } from '@/lib/portfolio/db-client'
 
 export const revalidate = 3600 // Cache for 1 hour
-
-function getPool(): Pool {
-  const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
-  
-  if (!connectionString) {
-    throw new Error('DATABASE_URL or POSTGRES_URL environment variable is required')
-  }
-  
-  return new Pool({
-    connectionString,
-    ssl: connectionString.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
-    max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-  })
-}
 
 export interface MarketHeatmapStock {
   symbol: string
@@ -58,12 +42,12 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const pool = getPool()
-    const client = await pool.connect()
+    const client = await getDbClient()
 
     try {
       // Get top N stocks by market cap from company_profiles
       // Join with historical_price_data to get prices for the selected date and previous day
+      // Uses centralized database client for connection pooling
       const query = `
         WITH top_stocks AS (
           SELECT 

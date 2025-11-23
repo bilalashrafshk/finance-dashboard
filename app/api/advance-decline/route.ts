@@ -53,44 +53,70 @@ export async function GET(request: NextRequest) {
         }, { status: 404 })
       }
 
-      // Step 2: Get all price data with previous day prices using a single optimized query
-      // This uses LAG window function to get previous day's price in a single query
-      // IMPORTANT: We need to include one day before startDate to get previous prices
-      // Build query with proper parameter placeholders
+      // Step 2: Get all price data with previous day prices
+      // IMPORTANT: Use same logic as heatmap - get most recent previous trading day (not just previous row)
+      // This ensures consistency between heatmap and AD Line calculations
+      // For each date, get the most recent previous trading day's close price (handles gaps correctly)
       let adQuery = `
-        WITH top_stocks_data AS (
-          SELECT 
-            hpd.date,
-            hpd.symbol,
-            hpd.close as price,
-            LAG(hpd.close) OVER (PARTITION BY hpd.symbol ORDER BY hpd.date) as previous_price
-          FROM historical_price_data hpd
-          WHERE hpd.asset_type = 'pk-equity'
-            AND hpd.symbol = ANY($1)
+        WITH all_dates AS (
+          SELECT DISTINCT date
+          FROM historical_price_data
+          WHERE asset_type = 'pk-equity'
+            AND symbol = ANY($1)
       `
       
       const queryParams: any[] = [topStockSymbols]
       let paramIndex = 2
       
-      // For date filtering: include one day before startDate to get previous prices
-      // Then filter the final results to only include dates in the requested range
       if (startDate) {
-        // Calculate one day before startDate
-        const startDateObj = new Date(startDate)
-        startDateObj.setDate(startDateObj.getDate() - 1)
-        const dayBeforeStart = startDateObj.toISOString().split('T')[0]
-        
-        adQuery += ` AND hpd.date >= $${paramIndex}`
-        queryParams.push(dayBeforeStart)
+        adQuery += ` AND date >= $${paramIndex}`
+        queryParams.push(startDate)
         paramIndex++
       }
       if (endDate) {
-        adQuery += ` AND hpd.date <= $${paramIndex}`
+        adQuery += ` AND date <= $${paramIndex}`
         queryParams.push(endDate)
         paramIndex++
       }
       
       adQuery += `
+          ORDER BY date ASC
+        ),
+        current_prices AS (
+          SELECT 
+            hpd.date,
+            hpd.symbol,
+            hpd.close as price
+          FROM historical_price_data hpd
+          WHERE hpd.asset_type = 'pk-equity'
+            AND hpd.symbol = ANY($1)
+            AND hpd.date IN (SELECT date FROM all_dates)
+        ),
+        previous_prices AS (
+          SELECT DISTINCT ON (cp.symbol, cp.date)
+            cp.symbol,
+            cp.date,
+            hpd2.close as previous_price
+          FROM current_prices cp
+          LEFT JOIN LATERAL (
+            SELECT close
+            FROM historical_price_data
+            WHERE asset_type = 'pk-equity'
+              AND symbol = cp.symbol
+              AND date < cp.date
+              AND close IS NOT NULL
+            ORDER BY date DESC
+            LIMIT 1
+          ) hpd2 ON true
+        ),
+        top_stocks_data AS (
+          SELECT 
+            cp.date,
+            cp.symbol,
+            cp.price,
+            pp.previous_price
+          FROM current_prices cp
+          LEFT JOIN previous_prices pp ON cp.symbol = pp.symbol AND cp.date = pp.date
         ),
         daily_changes AS (
           SELECT 
