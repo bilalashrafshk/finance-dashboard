@@ -104,7 +104,9 @@ export default function AssetDetailPage() {
             if (foundAsset) {
               setAsset(foundAsset)
             } else {
-              setError('Asset not found. Please add it to the asset screener first.')
+              // Asset not in user's list - redirect to public asset page
+              router.replace(`/asset/${slug}`)
+              return
             }
           } else {
             setError('Failed to fetch assets')
@@ -163,10 +165,15 @@ export default function AssetDetailPage() {
     if (!authLoading && user && slug) {
       loadAsset()
     } else if (!authLoading && !user) {
-      setLoading(false)
-      setError('Authentication required')
+      // If not authenticated, redirect to public asset page
+      if (slug && parseAssetSlug(slug)) {
+        router.replace(`/asset/${slug}`)
+      } else {
+        setLoading(false)
+        setError('Authentication required')
+      }
     }
-  }, [authLoading, user, slug])
+  }, [authLoading, user, slug, router])
 
   if (authLoading || loading) {
     return (

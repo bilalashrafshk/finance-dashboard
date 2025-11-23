@@ -615,7 +615,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
                             <TableCell>
                               {assetSlug ? (
                                 <Link
-                                  href={`/my-list/${assetSlug}`}
+                                  href={`/asset/${assetSlug}`}
                                   className="hover:underline hover:text-primary transition-colors"
                                 >
                                   <Badge variant="outline" className="cursor-pointer">{status.holding.symbol.toUpperCase()}</Badge>

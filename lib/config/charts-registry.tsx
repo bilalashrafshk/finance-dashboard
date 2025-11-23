@@ -1,5 +1,5 @@
 import dynamic from "next/dynamic"
-import { BarChart3, TrendingUp, Activity, Globe, LayoutGrid, Loader2 } from "lucide-react"
+import { BarChart3, TrendingUp, Activity, Globe, LayoutGrid, Loader2, ScatterChart } from "lucide-react"
 import React from "react"
 
 // Loading component
@@ -27,9 +27,12 @@ const MarketHeatmapSection = dynamic(() => import("@/components/charts/market-he
 const AdvanceDeclineSection = dynamic(() => import("@/components/charts/advance-decline-section").then(mod => mod.AdvanceDeclineSection), {
     loading: () => <ChartLoader />,
 })
+const PERatioScatterSection = dynamic(() => import("@/components/charts/pe-ratio-scatter-section").then(mod => mod.PERatioScatterSection), {
+    loading: () => <ChartLoader />,
+})
 
 // Types
-export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "eth-risk" | "us-placeholder"
+export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder"
 
 export interface ChartDefinition {
     id: ChartId
@@ -73,6 +76,13 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 icon: TrendingUp,
                 component: <AdvanceDeclineSection />,
                 keywords: ["breadth", "advance", "decline", "stocks"],
+            },
+            {
+                id: "pe-ratio-scatter",
+                title: "P/E Ratio Valuation Scatter",
+                icon: ScatterChart,
+                component: <PERatioScatterSection />,
+                keywords: ["pe", "ratio", "valuation", "scatter", "stocks", "sector", "industry"],
             },
         ],
     },

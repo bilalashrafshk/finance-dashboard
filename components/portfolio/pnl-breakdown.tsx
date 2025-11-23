@@ -260,7 +260,7 @@ export function PnLBreakdown({ holdings, currency = 'USD' }: PnLBreakdownProps) 
                       <TableCell className="font-medium">
                         {assetSlug ? (
                           <Link
-                            href={`/my-list/${assetSlug}`}
+                            href={`/asset/${assetSlug}`}
                             className="hover:underline hover:text-primary transition-colors"
                           >
                             <div>{symbol}</div>
