@@ -204,7 +204,7 @@ function squarify(
     
     let currentOffset = 0
     
-    row.forEach(item => {
+    row.forEach((item, idx) => {
       const itemLength = item.scaledValue / thickness // This is the dimension along the 'breadth'
       
       let itemX = 0, itemY = 0, itemW = 0, itemH = 0
@@ -214,14 +214,28 @@ function squarify(
         itemX = container.x
         itemY = container.y + currentOffset
         itemW = thickness
-        itemH = itemLength
+        // For the last item in the row, ensure it fills remaining space to avoid gaps
+        if (idx === row.length - 1) {
+          itemH = container.height - currentOffset
+        } else {
+          itemH = itemLength
+        }
       } else {
         // Stacking horizontally in a row on top
         itemX = container.x + currentOffset
         itemY = container.y
-        itemW = itemLength
+        // For the last item in the row, ensure it fills remaining space to avoid gaps
+        if (idx === row.length - 1) {
+          itemW = container.width - currentOffset
+        } else {
+          itemW = itemLength
+        }
         itemH = thickness
       }
+      
+      // Ensure minimum dimensions
+      itemW = Math.max(0.5, itemW)
+      itemH = Math.max(0.5, itemH)
       
       result.push({
         bounds: { x: itemX, y: itemY, width: itemW, height: itemH },
@@ -461,9 +475,11 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
         )
         
         stockLayout.forEach(stockNode => {
-          // Track maximum bounds for stocks
-          maxX = Math.max(maxX, stockNode.bounds.x + stockNode.bounds.width)
-          maxY = Math.max(maxY, stockNode.bounds.y + stockNode.bounds.height)
+          // Track maximum bounds for stocks - add small buffer to ensure nothing is cut off
+          const stockRight = stockNode.bounds.x + stockNode.bounds.width
+          const stockBottom = stockNode.bounds.y + stockNode.bounds.height
+          maxX = Math.max(maxX, stockRight)
+          maxY = Math.max(maxY, stockBottom)
           
           stocks.push({
             stock: stockNode.data,
@@ -474,10 +490,15 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
       }
     })
     
+    // Add padding to maxBounds to ensure edge items are fully visible
+    const padding = 2
     return { 
       sectorNodes: sectors, 
       stockNodes: stocks,
-      maxBounds: { width: Math.max(maxX, width), height: Math.max(maxY, height) }
+      maxBounds: { 
+        width: Math.max(maxX + padding, width), 
+        height: Math.max(maxY + padding, height) 
+      }
     }
   }, [sectorGroups, stockValues, width, height])
 
