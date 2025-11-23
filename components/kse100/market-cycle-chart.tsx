@@ -38,30 +38,7 @@ const CYCLE_COLORS = [
   "#22c55e", // green-500
 ]
 
-const CustomTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload
-    const cycleName = payload[0].dataKey as string
-    
-    return (
-      <div className="bg-popover border border-border p-3 rounded-lg shadow-lg text-sm">
-        <div className="font-bold mb-2 text-popover-foreground">{cycleName}</div>
-        <div className="grid gap-1">
-          <div className="flex justify-between gap-4">
-            <span className="text-muted-foreground">Trading Day:</span>
-            <span className="font-mono text-right text-foreground">{data.tradingDay}</span>
-          </div>
-          <div className="flex justify-between gap-4">
-            <span className="text-muted-foreground">Normalized Price:</span>
-            <span className="font-mono text-right text-foreground">{data[cycleName]?.toFixed(2)}%</span>
-          </div>
-        </div>
-      </div>
-    )
-  }
-  return null
-}
-
+// CustomTooltip component that shows all cycles with ROI
 export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) {
   const { theme } = useTheme()
   const [loading, setLoading] = useState(true)
@@ -255,6 +232,60 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
       }
       return newSet
     })
+  }
+
+  // CustomTooltip component that shows all cycles with ROI
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: any[] }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload
+      const tradingDay = data.tradingDay
+      
+      // Filter out baseline and get all cycle data
+      const cycleData = payload
+        .filter((item: any) => item.dataKey !== 'baseline' && item.value !== undefined)
+        .map((item: any) => {
+          const cycleName = item.dataKey as string
+          const normalizedPrice = item.value as number
+          // Find the cycle to get ROI
+          const cycle = cycles.find(c => c.cycleName === cycleName)
+          return {
+            cycleName,
+            normalizedPrice,
+            roi: cycle?.roi || 0,
+            color: item.color
+          }
+        })
+      
+      if (cycleData.length === 0) {
+        return null
+      }
+      
+      return (
+        <div className="bg-popover border border-border p-3 rounded-lg shadow-lg text-sm min-w-[200px]">
+          <div className="font-bold mb-2 text-popover-foreground">Trading Day: {tradingDay}</div>
+          <div className="grid gap-2">
+            {cycleData.map((cycle: any, idx: number) => (
+              <div key={idx} className="flex items-center justify-between gap-4 border-b border-border/50 pb-2 last:border-0 last:pb-0">
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="w-3 h-3 rounded-full" 
+                    style={{ backgroundColor: cycle.color }}
+                  />
+                  <span className="font-medium text-popover-foreground">{cycle.cycleName}</span>
+                </div>
+                <div className="text-right">
+                  <div className="font-mono text-foreground">{cycle.normalizedPrice.toFixed(2)}%</div>
+                  <div className="text-xs text-muted-foreground">
+                    ROI: {cycle.roi >= 0 ? '+' : ''}{cycle.roi.toFixed(2)}%
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+    return null
   }
 
   // Theme-aware colors

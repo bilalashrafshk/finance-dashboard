@@ -459,20 +459,44 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
       const stockAreaY = bounds.y + HEADER_HEIGHT
       const stockAreaHeight = Math.max(0, bounds.height - HEADER_HEIGHT)
       
-      // Only layout stocks if there is space
-      if (stockAreaHeight > 0 && bounds.width > 0 && group.stocks.length > 0) {
+      // Always try to layout stocks, even if area is very small (they'll be tiny but visible)
+      if (bounds.width > 0 && group.stocks.length > 0) {
         const stockItems = group.stocks.map(stock => {
            const val = stockValues.find(s => s.stock.symbol === stock.symbol)?.value || 0.00001
            return { value: val, data: stock }
         })
+        
+        // Use minimum height to ensure stocks are rendered even in very small sectors
+        const effectiveStockAreaHeight = Math.max(1, stockAreaHeight)
         
         const stockLayout = squarify(
           stockItems,
           bounds.x,
           stockAreaY,
           bounds.width,
-          stockAreaHeight
+          effectiveStockAreaHeight
         )
+        
+        // If squarify returned fewer items than we have stocks, ensure all are rendered
+        if (stockLayout.length < stockItems.length) {
+          // Add missing stocks as tiny boxes
+          const renderedSymbols = new Set(stockLayout.map(n => n.data.symbol))
+          stockItems.forEach((item, idx) => {
+            if (!renderedSymbols.has(item.data.symbol)) {
+              // Place missing stocks as tiny boxes below the header
+              const tinyBoxSize = Math.min(5, bounds.width / stockItems.length, effectiveStockAreaHeight / 2)
+              stockLayout.push({
+                bounds: {
+                  x: bounds.x + (idx * tinyBoxSize),
+                  y: stockAreaY,
+                  width: tinyBoxSize,
+                  height: Math.max(1, effectiveStockAreaHeight)
+                },
+                data: item.data
+              })
+            }
+          })
+        }
         
         stockLayout.forEach(stockNode => {
           // Track maximum bounds for stocks - add small buffer to ensure nothing is cut off
