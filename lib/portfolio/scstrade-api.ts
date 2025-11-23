@@ -1,7 +1,7 @@
 /**
  * SCSTrade.com API Client
  * Fetches historical price data from scstrade.com for PK equity stocks
- * Primary source for PK equity prices (more reliable than StockAnalysis)
+ * Secondary/fallback source for PK equity prices (used when StockAnalysis fails)
  */
 
 export interface SCSTradeDataPoint {
@@ -149,7 +149,6 @@ export async function fetchSCSTradeData(
       sord: 'desc' // Descending (most recent first)
     }
     
-    
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -176,7 +175,6 @@ export async function fetchSCSTradeData(
     // Convert to our format and sort by date (ascending - oldest first)
     const records = data.d.map(convertSCSTradeToRecord)
     records.sort((a, b) => a.date.localeCompare(b.date))
-    
     
     return records
   } catch (error) {

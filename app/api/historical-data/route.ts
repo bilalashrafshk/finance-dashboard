@@ -31,51 +31,7 @@ import type { InvestingHistoricalDataPoint } from '@/lib/portfolio/investing-cli
  * - Only triggers for server-side fetchable assets (pk-equity, us-equity, crypto)
  * - Excludes weekends from trading day calculations
  * - Waits for fetch to complete before returning response
- * - Caches dates that both StockAnalysis and SCSTrade failed to return (likely public holidays)
  */
-
-// Cache for dates that both StockAnalysis and SCSTrade failed to return (likely public holidays)
-// Format: "assetType:symbol:date" -> timestamp when cached
-// Cache expires after 1 year (holidays repeat annually)
-const failedDateCache = new Map<string, number>()
-const FAILED_DATE_CACHE_TTL = 365 * 24 * 60 * 60 * 1000 // 1 year in milliseconds
-
-function getFailedDateCacheKey(assetType: string, symbol: string, date: string): string {
-  return `${assetType}:${symbol}:${date}`
-}
-
-function isDateCachedAsFailed(assetType: string, symbol: string, date: string): boolean {
-  const key = getFailedDateCacheKey(assetType, symbol, date)
-  const cachedTimestamp = failedDateCache.get(key)
-  
-  if (!cachedTimestamp) {
-    return false
-  }
-  
-  // Check if cache is still valid (not expired)
-  const now = Date.now()
-  if (now - cachedTimestamp > FAILED_DATE_CACHE_TTL) {
-    failedDateCache.delete(key)
-    return false
-  }
-  
-  return true
-}
-
-function cacheFailedDate(assetType: string, symbol: string, date: string): void {
-  const key = getFailedDateCacheKey(assetType, symbol, date)
-  failedDateCache.set(key, Date.now())
-  
-  // Clean up expired entries periodically (keep cache size manageable)
-  if (failedDateCache.size > 10000) {
-    const now = Date.now()
-    for (const [cacheKey, timestamp] of failedDateCache.entries()) {
-      if (now - timestamp > FAILED_DATE_CACHE_TTL) {
-        failedDateCache.delete(cacheKey)
-      }
-    }
-  }
-}
 
 function convertStockAnalysisToRecord(data: StockAnalysisDataPoint): HistoricalPriceRecord {
   return {
@@ -157,8 +113,7 @@ async function fetchNewDataInBackground(
   symbol: string,
   market: 'PSX' | 'US' | null,
   fetchStartDate: string | undefined,
-  today: string,
-  existingStoredDates?: Set<string> // Optional: existing dates in DB to detect middle gaps
+  today: string
 ): Promise<void> {
   try {
     // Check if market is closed and we're trying to fetch today's data
@@ -181,125 +136,22 @@ async function fetchNewDataInBackground(
     let source: 'scstrade' | 'stockanalysis' | 'binance' | 'investing' = 'stockanalysis'
 
     if (assetType === 'pk-equity') {
-      // Try StockAnalysis first (primary source - fetches full 10Y history to fill all gaps including middle gaps)
-      // Don't filter by fetchStartDate - fetch full history to detect and fill middle gaps too
+      // Try StockAnalysis first (primary source), then fallback to SCSTrade
       const apiData = await retryWithBackoff(
         () => fetchStockAnalysisData(symbol, 'PSX'),
         3, // 3 retries
         1000, // 1 second initial delay
         10000 // 10 second max delay
       )
-      
       if (apiData) {
-        // Use full StockAnalysis data (not filtered) to detect all gaps including middle ones
-        newData = apiData.map(convertStockAnalysisToRecord)
+        const filtered = fetchStartDate
+          ? apiData.filter(d => d.t >= fetchStartDate)
+          : apiData
+        newData = filtered.map(convertStockAnalysisToRecord)
         source = 'stockanalysis'
       }
       
-      // Check for missing dates and try SCSTrade to fill them
-      // This handles both: gaps from last stored date forward AND middle gaps in existing data
-      if (newData.length > 0) {
-        const receivedDates = new Set(newData.map(d => d.date))
-        const missingDates: string[] = []
-        
-        // Check for missing dates in the range from fetchStartDate to today
-        if (fetchStartDate) {
-          const expectedTradingDays = calculateTradingDaysBetween(fetchStartDate, today)
-          
-          // Find missing dates in the forward range
-          if (receivedDates.size < expectedTradingDays) {
-            const start = new Date(fetchStartDate)
-            const end = new Date(today)
-            let current = new Date(start)
-            
-            while (current <= end) {
-              const dayOfWeek = current.getDay()
-              if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-                const dateStr = current.toISOString().split('T')[0]
-                if (!receivedDates.has(dateStr)) {
-                  missingDates.push(dateStr)
-                }
-              }
-              current.setDate(current.getDate() + 1)
-            }
-          }
-        }
-        
-        // Also check for middle gaps in existing data if we have stored dates info
-        // Middle gaps: trading days that exist between stored dates but are missing from both DB and StockAnalysis
-        if (existingStoredDates && existingStoredDates.size > 0) {
-          // Get the earliest and latest stored dates to find the range
-          const sortedStoredDates = Array.from(existingStoredDates).sort()
-          const earliestStored = sortedStoredDates[0]
-          const latestStored = sortedStoredDates[sortedStoredDates.length - 1]
-          
-          // Check for missing trading days between earliest and latest stored dates
-          const start = new Date(earliestStored)
-          const end = new Date(latestStored)
-          let current = new Date(start)
-          
-          while (current <= end) {
-            const dayOfWeek = current.getDay()
-            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-              const dateStr = current.toISOString().split('T')[0]
-              // If this date is NOT in DB and NOT in StockAnalysis, it's a middle gap
-              if (!existingStoredDates.has(dateStr) && !receivedDates.has(dateStr)) {
-                missingDates.push(dateStr)
-              }
-            }
-            current.setDate(current.getDate() + 1)
-          }
-        }
-        
-        // If there are missing dates, try SCSTrade to fill them
-        // Filter out dates that are cached as failed (likely public holidays)
-        const datesToFetch = missingDates.filter(date => !isDateCachedAsFailed(assetType, symbol, date))
-        
-        if (datesToFetch.length > 0) {
-          try {
-            // Fetch from the earliest missing date to today to fill all gaps
-            const earliestMissingDate = datesToFetch.sort()[0]
-            const scstradeData = await retryWithBackoff(
-              () => fetchSCSTradeData(symbol, earliestMissingDate, today),
-              2, // 2 retries for SCSTrade
-              1000,
-              5000
-            )
-            
-            if (scstradeData && scstradeData.length > 0) {
-              // Merge SCSTrade data with StockAnalysis data, avoiding duplicates
-              const scstradeDates = new Set(scstradeData.map(d => d.date))
-              const stockAnalysisOnly = newData.filter(d => !scstradeDates.has(d.date))
-              newData = [...stockAnalysisOnly, ...scstradeData]
-              // Mark source as mixed if we have data from both
-              if (stockAnalysisOnly.length > 0) {
-                source = 'stockanalysis' // Primary source, but SCSTrade filled gaps
-              } else {
-                source = 'scstrade'
-              }
-              
-              // Cache dates that were requested but SCSTrade didn't return (likely holidays)
-              const scstradeReturnedDates = new Set(scstradeData.map(d => d.date))
-              for (const requestedDate of datesToFetch) {
-                if (!scstradeReturnedDates.has(requestedDate)) {
-                  // Both StockAnalysis and SCSTrade don't have this date - likely a public holiday
-                  cacheFailedDate(assetType, symbol, requestedDate)
-                }
-              }
-            } else {
-              // SCSTrade returned no data - cache all requested dates as failed
-              for (const requestedDate of datesToFetch) {
-                cacheFailedDate(assetType, symbol, requestedDate)
-              }
-            }
-          } catch (scstradeError) {
-            console.error(`[${assetType}-${symbol}] SCSTrade fallback for missing dates failed:`, scstradeError)
-            // On error, don't cache - might be a temporary issue
-          }
-        }
-      }
-      
-      // Fallback to SCSTrade if StockAnalysis completely failed or returned no data
+      // Fallback to SCSTrade if StockAnalysis failed or returned no data
       if (newData.length === 0) {
         try {
           const scstradeData = await retryWithBackoff(
@@ -314,7 +166,7 @@ async function fetchNewDataInBackground(
             source = 'scstrade'
           }
         } catch (scstradeError) {
-          console.error(`[${assetType}-${symbol}] SCSTrade fallback also failed:`, scstradeError)
+          console.error(`[${assetType}-${symbol}] SCSTrade fetch failed:`, scstradeError)
         }
       }
     } else if (assetType === 'us-equity') {
@@ -482,9 +334,7 @@ export async function GET(request: NextRequest) {
         
         if (shouldFetch) {
           // Fetch data (blocking - await completion)
-          // Get existing stored dates to detect middle gaps
-          const existingStoredDates = new Set(storedData.data.map((r: any) => r.date))
-          await fetchNewDataInBackground(assetType, symbol, market, fetchStartDate, todayInMarketTimezone, existingStoredDates)
+          await fetchNewDataInBackground(assetType, symbol, market, fetchStartDate, todayInMarketTimezone)
           console.log(`[Gap Detection] ${assetType}/${symbol}: Fetch completed successfully`)
           
           // Invalidate cache to ensure fresh data
