@@ -144,8 +144,37 @@ export async function GET(request: NextRequest) {
       console.log(`[SBP API] Fetching fresh data for ${seriesKey} (cache expired, refresh requested, or no data in DB)`)
       
       try {
-        // Fetch from API
-        const apiData = await fetchSBPInterestRatesFromAPI(seriesKey, startDate, endDate)
+        // If no date range provided, fetch all available historical data
+        // Set default start date based on series (earliest available date)
+        let fetchStartDate = startDate
+        let fetchEndDate = endDate
+        
+        if (!fetchStartDate) {
+          // Set start date based on series availability
+          if (seriesKey.includes('SBPOL0030')) {
+            // Policy Target Rate - started May 2015
+            fetchStartDate = '2015-05-25'
+          } else if (seriesKey.includes('SBPOL0020')) {
+            // Repo Rate - started August 2009
+            fetchStartDate = '2009-08-17'
+          } else if (seriesKey.includes('SBPOL0010')) {
+            // Reverse Repo Rate - started January 1956
+            fetchStartDate = '1956-01-01'
+          } else {
+            // Default: 10 years back
+            const date = new Date()
+            date.setFullYear(date.getFullYear() - 10)
+            fetchStartDate = date.toISOString().split('T')[0]
+          }
+        }
+        
+        if (!fetchEndDate) {
+          // Default end date: today
+          fetchEndDate = new Date().toISOString().split('T')[0]
+        }
+        
+        // Fetch from API with date range
+        const apiData = await fetchSBPInterestRatesFromAPI(seriesKey, fetchStartDate, fetchEndDate)
         
         if (apiData.length > 0) {
           // Store in database

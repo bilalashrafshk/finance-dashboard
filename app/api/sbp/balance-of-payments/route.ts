@@ -126,11 +126,35 @@ export async function GET(request: NextRequest) {
     // Check if we need to refresh (3-day cache)
     const needsRefresh = refresh || await shouldRefreshBOPData(seriesKey)
     
-    if (needsRefresh) {
-      console.log(`[BOP API] Fetching fresh data for ${seriesKey} (cache expired or refresh requested)`)
+    // Get data from database first
+    let { data, latestStoredDate, earliestStoredDate } = await getBOPData(
+      seriesKey,
+      startDate,
+      endDate
+    )
+    
+    // If no data in database or needs refresh, fetch from API
+    if (needsRefresh || data.length === 0) {
+      console.log(`[BOP API] Fetching fresh data for ${seriesKey} (cache expired, refresh requested, or no data in DB)`)
       
-      // Fetch from API
-      const apiData = await fetchBOPDataFromAPI(seriesKey, startDate, endDate)
+      try {
+        // If no date range provided, fetch all available historical data
+        // BOP data typically starts from July 2023
+        let fetchStartDate = startDate
+        let fetchEndDate = endDate
+        
+        if (!fetchStartDate) {
+          // Default: July 2023 (when BOP data started)
+          fetchStartDate = '2023-07-01'
+        }
+        
+        if (!fetchEndDate) {
+          // Default end date: today
+          fetchEndDate = new Date().toISOString().split('T')[0]
+        }
+        
+        // Fetch from API with date range
+        const apiData = await fetchBOPDataFromAPI(seriesKey, fetchStartDate, fetchEndDate)
       
       if (apiData.length > 0) {
         // Store in database
@@ -148,22 +172,41 @@ export async function GET(request: NextRequest) {
         )
         
         console.log(`[BOP API] Stored ${insertResult.inserted} new records, skipped ${insertResult.skipped} duplicates for ${seriesKey}`)
+        
+        // Re-fetch from database to get the stored data
+        const dbResult = await getBOPData(seriesKey, startDate, endDate)
+        data = dbResult.data
+        latestStoredDate = dbResult.latestStoredDate
+        earliestStoredDate = dbResult.earliestStoredDate
+      } else {
+        console.log(`[BOP API] No data returned from API for ${seriesKey}`)
+      }
+      } catch (apiError: any) {
+        console.error(`[BOP API] Error fetching from API for ${seriesKey}:`, apiError.message)
+        // If API fails but we have data in DB, use that
+        if (data.length === 0) {
+          throw apiError // Only throw if we have no data at all
+        }
+        console.log(`[BOP API] Using existing database data despite API error`)
       }
     } else {
       console.log(`[BOP API] Using cached data for ${seriesKey} (less than 3 days old)`)
     }
     
-    // Get data from database
-    const { data, latestStoredDate, earliestStoredDate } = await getBOPData(
-      seriesKey,
-      startDate,
-      endDate
-    )
-    
     // Sort by date descending (most recent first)
     const sortedData = [...data].sort((a, b) => 
       new Date(b.date).getTime() - new Date(a.date).getTime()
     )
+    
+    if (sortedData.length === 0) {
+      return NextResponse.json(
+        { 
+          error: 'No data available for this series',
+          details: 'Please check that SBP_API_KEY is set and the series key is correct'
+        },
+        { status: 404 }
+      )
+    }
     
     return NextResponse.json({
       seriesKey,
