@@ -112,20 +112,37 @@ export function AdvanceDeclineChart({
           if (kse100Response.ok) {
             const kse100Result = await kse100Response.json()
             if (kse100Result.data && Array.isArray(kse100Result.data)) {
-              const formatted = kse100Result.data
-                .map((record: any) => ({
-                  date: record.date,
-                  close: parseFloat(record.close || record.adjusted_close || 0)
-                }))
+              // Filter by date range if provided (API might not filter properly)
+              let filtered = kse100Result.data
+              if (startDate || endDate) {
+                filtered = kse100Result.data.filter((record: any) => {
+                  const recordDate = typeof record.date === 'string' 
+                    ? record.date.split('T')[0] 
+                    : new Date(record.date).toISOString().split('T')[0]
+                  if (startDate && recordDate < startDate) return false
+                  if (endDate && recordDate > endDate) return false
+                  return true
+                })
+              }
+              
+              const formatted = filtered
+                .map((record: any) => {
+                  // Normalize date to YYYY-MM-DD format
+                  const dateStr = typeof record.date === 'string' 
+                    ? record.date.split('T')[0] 
+                    : new Date(record.date).toISOString().split('T')[0]
+                  return {
+                    date: dateStr,
+                    close: parseFloat(record.close || record.adjusted_close || 0)
+                  }
+                })
                 .filter((point: any) => !isNaN(point.close) && point.close > 0)
+              
               setKse100Data(formatted)
             }
           }
-        } else {
-          setKse100Data([])
         }
       } catch (err: any) {
-        console.error('Error fetching Advance-Decline data:', err)
         setError(err.message || 'Failed to load data')
         toast({
           title: "Error",
@@ -189,18 +206,32 @@ export function AdvanceDeclineChart({
         borderWidth: 1,
         borderDash: [5, 5],
         yAxisID: 'y',
+        spanGaps: true, // Join lines across gaps (weekends)
       },
     ]
 
     // Add KSE100 overlay if enabled - use separate y-axis
     if (showKse100 && kse100Data.length > 0) {
-      // Map KSE100 values to AD Line dates
+      // Map KSE100 values to AD Line dates, forward-filling to avoid breaks over weekends
+      let lastKse100Value: number | null = null
       const kse100Values = data.map(point => {
         // Normalize date to string format for matching
-        const dateStr = typeof point.date === 'string' ? point.date : new Date(point.date).toISOString().split('T')[0]
+        const dateStr = typeof point.date === 'string' 
+          ? point.date.split('T')[0] 
+          : new Date(point.date).toISOString().split('T')[0]
         const kse100Value = kse100DateMap.get(dateStr)
-        return kse100Value || null
+        
+        // If we have a value, use it and update last known value
+        if (kse100Value !== undefined) {
+          lastKse100Value = kse100Value
+          return kse100Value
+        }
+        
+        // If no value (weekend/holiday), use last known value to keep line continuous
+        return lastKse100Value
       })
+      
+      const matchedCount = kse100Values.filter(v => v !== null).length
 
       datasets.push({
         label: 'KSE100',
@@ -213,6 +244,7 @@ export function AdvanceDeclineChart({
         pointHoverRadius: 4,
         borderWidth: 1.5,
         yAxisID: 'y1', // Use separate y-axis
+        spanGaps: true, // Connect across gaps (weekends)
       })
     }
 
@@ -273,22 +305,9 @@ export function AdvanceDeclineChart({
 
       // Add second y-axis for KSE100 if enabled
       if (showKse100 && kse100Data.length > 0) {
-        // Calculate min/max from the actual mapped values that will be displayed
-        const kse100DateMap = new Map<string, number>()
-        kse100Data.forEach(d => {
-          const dateStr = typeof d.date === 'string' ? d.date : new Date(d.date).toISOString().split('T')[0]
-          kse100DateMap.set(dateStr, d.close)
-        })
-        
-        const kse100MappedValues = data
-          .map(point => {
-            const dateStr = typeof point.date === 'string' ? point.date : new Date(point.date).toISOString().split('T')[0]
-            return kse100DateMap.get(dateStr)
-          })
-          .filter((v): v is number => v !== null && v !== undefined && v > 0)
-        
-        const kse100Min = kse100MappedValues.length > 0 ? Math.min(...kse100MappedValues) : 0
-        const kse100Max = kse100MappedValues.length > 0 ? Math.max(...kse100MappedValues) : 1
+        const kse100Values = kse100Data.map(d => d.close).filter(v => v !== null && v !== undefined && v > 0)
+        const kse100Min = kse100Values.length > 0 ? Math.min(...kse100Values) : 0
+        const kse100Max = kse100Values.length > 0 ? Math.max(...kse100Values) : 1
         const kse100Range = kse100Max - kse100Min
         const kse100Padding = kse100Range * 0.1 || 100
 
@@ -317,6 +336,13 @@ export function AdvanceDeclineChart({
 
     // Note: Zero line annotation would require chartjs-plugin-annotation
     // For now, we'll rely on the grid line at y=0
+
+    // Disable legend click interaction - only use the checkbox to toggle KSE100
+    if (opts.plugins?.legend) {
+      opts.plugins.legend.onClick = () => {
+        // Disable legend clicks - use checkbox instead
+      }
+    }
 
     // Custom tooltip
     if (opts.plugins?.tooltip) {
@@ -348,31 +374,52 @@ export function AdvanceDeclineChart({
       }
     }
 
-    // Add click handler for net advances
-    opts.onClick = (event: any, elements: any[]) => {
-      if (elements && elements.length > 0) {
-        const element = elements[0]
-        const datasetIndex = element.datasetIndex
-        const dataIndex = element.index
-        
-        // Check if clicked on Net Advances dataset (index 1)
-        // Note: datasetIndex 0 = AD Line, 1 = Net Advances, 2 = KSE100 (if enabled)
-        if (datasetIndex === 1 && dataIndex >= 0 && dataIndex < data.length) {
-          const point = data[dataIndex]
-          // Open heatmap page for that date
-          window.open(`/market-heatmap?date=${point.date}`, '_blank')
+    // Add click handler for net advances - only trigger on Net Advances dataset
+    // Chart.js onClick signature: (event, elements, chart) => void
+    opts.onClick = (event: any, elements: any[], chart: any) => {
+      if (!elements || elements.length === 0) {
+        return
+      }
+      
+      // Find the Net Advances dataset by label
+      const netAdvancesDatasetIndex = chart.data.datasets.findIndex((ds: any) => ds.label === 'Net Advances')
+      if (netAdvancesDatasetIndex === -1) {
+        return
+      }
+      
+      // Check ALL elements to see if any are from Net Advances dataset
+      const netAdvancesElement = elements.find((el: any) => el.datasetIndex === netAdvancesDatasetIndex)
+      
+      if (!netAdvancesElement) {
+        // Click was not on Net Advances - ignore
+        return
+      }
+      
+      const dataIndex = netAdvancesElement.index
+      
+      if (dataIndex < 0 || dataIndex >= data.length) {
+        return
+      }
+      
+      const point = data[dataIndex]
+      // Normalize date to YYYY-MM-DD format
+      const dateStr = typeof point.date === 'string' 
+        ? point.date.split('T')[0] 
+        : new Date(point.date).toISOString().split('T')[0]
+      
+      const url = `/market-heatmap?date=${dateStr}`
+      
+      try {
+        const newWindow = window.open(url, '_blank')
+        if (!newWindow) {
+          window.location.href = url
         }
+      } catch (err) {
+        window.location.href = url
       }
     }
     
     // Ensure interaction mode allows clicking on lines (not just points)
-    // This is already set in createTimeSeriesChartOptions, but ensure it's correct
-    if (opts.interaction) {
-      opts.interaction.mode = 'nearest'
-      opts.interaction.intersect = false
-    }
-    
-    // Also add interaction mode to make clicking easier
     opts.interaction = {
       ...opts.interaction,
       mode: 'nearest' as const,
@@ -456,7 +503,7 @@ export function AdvanceDeclineChart({
                   htmlFor="show-kse100"
                   className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                 >
-                  KSE100 Overlay
+                  KSE100
                 </label>
               </div>
               <Button
