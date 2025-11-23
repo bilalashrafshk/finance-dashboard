@@ -1,16 +1,12 @@
 /**
  * API Route for Market Cycles
- * Handles loading saved cycles and detecting new cycles
+ * Uses cache for completed cycles, always detects current cycle fresh
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { detectMarketCycles, findLowestPointDuringDrawdown, type MarketCycle } from '@/lib/algorithms/market-cycle-detection'
-import { 
-  loadMarketCycles, 
-  saveMarketCycle, 
-  getLastCycleEndDate,
-  getHistoricalDataWithMetadata 
-} from '@/lib/portfolio/db-client'
+import { getHistoricalDataWithMetadata } from '@/lib/portfolio/db-client'
+import { getCachedCycles, setCachedCycles } from '@/lib/cache/cycles-cache'
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,20 +14,17 @@ export async function GET(request: NextRequest) {
     const assetType = searchParams.get('assetType') || 'kse100'
     const symbol = searchParams.get('symbol') || 'KSE100'
 
-    // Load saved cycles from database
-    const savedCycles = await loadMarketCycles(assetType, symbol)
-    
-    // Get the last saved cycle's end date
-    const lastCycleEndDate = await getLastCycleEndDate(assetType, symbol)
+    // Try to load cached cycles (all except the last one)
+    const cachedCycles = getCachedCycles(assetType, symbol)
     
     // Fetch historical data
     const { data: historicalData } = await getHistoricalDataWithMetadata(assetType, symbol)
     
     if (!historicalData || historicalData.length === 0) {
       return NextResponse.json({ 
-        savedCycles: savedCycles,
-        newCycles: [],
-        allCycles: savedCycles
+        cachedCycles: cachedCycles || [],
+        currentCycle: null,
+        allCycles: cachedCycles || []
       })
     }
 
@@ -41,140 +34,100 @@ export async function GET(request: NextRequest) {
       close: d.close
     })).sort((a, b) => a.date.localeCompare(b.date))
 
-    // Strategy: Always detect cycles from the last known point to catch:
-    // 1. Current cycle updates (if it hasn't ended yet)
-    // 2. New cycles (if current cycle has ended)
-    // 3. Any cycles that became completed since last check
+    // Determine where to start detection
     let startFromDate: string | undefined = undefined
     
-    if (savedCycles.length > 0) {
-      // We have saved cycles - find where to start detecting new cycles
-      const lastSavedCycle = savedCycles[savedCycles.length - 1]
-      const lastPeakDate = lastSavedCycle.endDate
+    if (cachedCycles && cachedCycles.length > 0) {
+      // We have cached cycles - find where to start detecting new cycles
+      const lastCachedCycle = cachedCycles[cachedCycles.length - 1]
+      const lastPeakDate = lastCachedCycle.endDate
       const lastPeakIndex = priceData.findIndex(p => p.date === lastPeakDate)
       
       if (lastPeakIndex !== -1 && lastPeakIndex < priceData.length - 1) {
         const lastPeakPrice = priceData[lastPeakIndex].close
         
-        // Find the actual trough for the next cycle (lowest point during drawdown)
-        // This trough is where the next cycle (current or future) should start
+        // Find the actual trough for the next cycle
         const nextTrough = findLowestPointDuringDrawdown(priceData, lastPeakIndex, lastPeakPrice)
         
         if (nextTrough && nextTrough.index < priceData.length - 1) {
-          // Always detect from this trough to get:
-          // - Current cycle (if it hasn't ended)
-          // - New cycle (if current cycle has ended and new one started)
           startFromDate = priceData[nextTrough.index].date
         }
-        // If no trough found yet, market hasn't crashed enough after last peak
       }
     } else {
-      // No saved cycles, start from hardcoded date (July 13, 1998)
+      // No cached cycles, start from hardcoded date (July 13, 1998)
       startFromDate = undefined // Will default to 1998-07-13 in detectMarketCycles
     }
     
-    // Always run detection to catch any new cycles or updates to current cycle
-    // This ensures we always have the latest cycle information
-    const newCycles = startFromDate !== undefined || savedCycles.length === 0
-      ? detectMarketCycles(priceData, startFromDate)
-      : []
-
-    // Separate completed cycles from current/ongoing cycle
-    // A cycle is "completed" if its end date is at least 1 year (252 trading days) before today
+    // Always detect cycles to get the latest state (including current cycle)
+    const allDetectedCycles = detectMarketCycles(priceData, startFromDate)
+    
+    // Separate completed cycles from current cycle
     const today = new Date()
     const oneYearAgo = new Date(today)
     oneYearAgo.setFullYear(today.getFullYear() - 1)
     
-    const completedNewCycles: MarketCycle[] = []
-    
-    // Check each new cycle to see if it's completed
-    for (const cycle of newCycles) {
-      const cycleEndDate = new Date(cycle.endDate)
-      
-      // If cycle ended more than 1 year ago, it's completed
-      if (cycleEndDate < oneYearAgo) {
-        completedNewCycles.push(cycle)
-      }
-      // Otherwise, it's the current/ongoing cycle (we'll keep it in memory only)
-    }
-    
-    // Save completed cycles to database
-    // Only save cycles that are truly new and not already in the database
-    let nextCycleId = savedCycles.length > 0 
-      ? Math.max(...savedCycles.map(c => c.cycleId)) + 1 
-      : 1
-    
-    for (const cycle of completedNewCycles) {
-      // Check if this cycle is already saved (by comparing both start and end dates for uniqueness)
-      const alreadySaved = savedCycles.some(
-        saved => saved.startDate === cycle.startDate && saved.endDate === cycle.endDate
-      )
-      
-      if (!alreadySaved) {
-        const newId = nextCycleId++
-        await saveMarketCycle(assetType, symbol, {
-          cycleId: newId,
-          cycleName: `Cycle ${newId}`, // Generate sequential name
-          startDate: cycle.startDate,
-          endDate: cycle.endDate,
-          startPrice: cycle.startPrice,
-          endPrice: cycle.endPrice,
-          roi: cycle.roi,
-          durationTradingDays: cycle.durationTradingDays
-        })
-      }
-    }
-    
-    // Reload saved cycles after saving new ones
-    const updatedSavedCycles = await loadMarketCycles(assetType, symbol)
-    
-    // Identify current/ongoing cycles (not yet completed)
-    // These are cycles that haven't been saved because they're not >1 year old yet
+    const completedCycles: MarketCycle[] = []
     const currentCycles: MarketCycle[] = []
-    for (const cycle of newCycles) {
+    
+    for (const cycle of allDetectedCycles) {
       const cycleEndDate = new Date(cycle.endDate)
-      if (cycleEndDate >= oneYearAgo) {
-        // This cycle ended recently (or hasn't ended yet) - it's current
+      if (cycleEndDate < oneYearAgo) {
+        completedCycles.push(cycle)
+      } else {
         currentCycles.push(cycle)
       }
     }
     
-    // Combine saved cycles with current cycles
-    const allCycles = [...updatedSavedCycles]
+    // Combine cached cycles with newly detected cycles
+    // Strategy: Use cached cycles as base, then add newly detected cycles that aren't in cache
+    let allCompletedCycles: MarketCycle[] = []
     
-    // Add current cycles (ensuring proper cycle IDs)
-    for (const currentCycle of currentCycles) {
-      // Check if this cycle is already in allCycles (shouldn't be, but check anyway)
-      const alreadyIncluded = allCycles.some(
-        saved => saved.startDate === currentCycle.startDate && saved.endDate === currentCycle.endDate
-      )
+    if (cachedCycles && cachedCycles.length > 0) {
+      // Start with cached cycles
+      allCompletedCycles = [...cachedCycles]
       
-      if (!alreadyIncluded) {
-        // Assign the next cycle ID
-        const lastSavedCycleId = allCycles.length > 0
-          ? Math.max(...allCycles.map(c => c.cycleId))
-          : 0
-        allCycles.push({
-          ...currentCycle,
-          cycleId: lastSavedCycleId + 1,
-          cycleName: `Cycle ${lastSavedCycleId + 1}`
-        })
+      // Add any newly detected completed cycles that aren't already cached
+      for (const newCycle of completedCycles) {
+        const alreadyCached = cachedCycles.some(
+          cached => cached.startDate === newCycle.startDate && cached.endDate === newCycle.endDate
+        )
+        if (!alreadyCached) {
+          allCompletedCycles.push(newCycle)
+        }
       }
+    } else {
+      // No cache, use newly detected completed cycles
+      allCompletedCycles = completedCycles
     }
     
-    // Sort cycles by start date to ensure proper ordering
-    allCycles.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+    // Update cache with all completed cycles (excluding the last one if it's also completed)
+    // The last cycle in allCompletedCycles might be the most recent completed cycle
+    // But we want to cache all except the absolute last cycle (which is always current)
+    // Actually, if all cycles are completed, we still cache all except the last one
+    if (allCompletedCycles.length > 0) {
+      setCachedCycles(assetType, symbol, allCompletedCycles)
+    }
     
-    // The most recent current cycle (for backward compatibility)
+    // Combine all cycles: completed + current
+    const allCycles = [...allCompletedCycles, ...currentCycles]
+    
+    // Assign proper cycle IDs based on chronological order
+    allCycles.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+    allCycles.forEach((cycle, index) => {
+      cycle.cycleId = index + 1
+      cycle.cycleName = `Cycle ${index + 1}`
+    })
+    
+    // The most recent current cycle
     const currentCycle = currentCycles.length > 0 
       ? currentCycles[currentCycles.length - 1]
       : null
 
     return NextResponse.json({
-      savedCycles: updatedSavedCycles,
+      cachedCycles: finalCompletedCycles,
       currentCycle: currentCycle,
       allCycles: allCycles,
-      newCyclesDetected: newCycles.length
+      cyclesDetected: allDetectedCycles.length
     })
 
   } catch (error: any) {

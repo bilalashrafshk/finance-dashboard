@@ -146,7 +146,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
         
         const data = await response.json()
         
-        // Convert saved cycles to MarketCycle format
+        // Convert cycles to MarketCycle format (from cache + current)
         const allCycles: MarketCycle[] = data.allCycles.map((c: any) => ({
           cycleId: c.cycleId,
           cycleName: c.cycleName,
