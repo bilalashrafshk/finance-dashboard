@@ -754,6 +754,42 @@ export async function getCompanyFaceValue(
 }
 
 /**
+ * Get company name from profile
+ * @param symbol - Asset symbol
+ * @param assetType - Asset type (default: 'pk-equity')
+ * @returns Company name or null if not found
+ */
+export async function getCompanyProfileName(
+  symbol: string,
+  assetType: string = 'pk-equity'
+): Promise<string | null> {
+  try {
+    const client = await getPool().connect()
+    
+    try {
+      const result = await client.query(
+        `SELECT name
+         FROM company_profiles
+         WHERE symbol = $1 AND asset_type = $2
+         LIMIT 1`,
+        [symbol.toUpperCase(), assetType]
+      )
+      
+      if (result.rows.length > 0 && result.rows[0].name) {
+        return result.rows[0].name
+      }
+      
+      return null
+    } finally {
+      client.release()
+    }
+  } catch (error) {
+    console.error(`Error getting company name for ${assetType}-${symbol}:`, error)
+    return null
+  }
+}
+
+/**
  * Update market cap based on latest price and shares outstanding
  * Only updates for pk-equity and us-equity assets
  * Uses caching to avoid unnecessary updates

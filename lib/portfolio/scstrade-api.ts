@@ -21,34 +21,21 @@ export interface SCSTradeResponse {
 /**
  * Get company name in SCSTrade format from ticker
  * Format: "TICKER - Company Name"
- * First tries to get from database, then constructs a fallback
+ * First tries to get from database using centralized db-client, then constructs a fallback
  */
 async function getCompanyNameForSCSTrade(ticker: string): Promise<string> {
   try {
-    // Try to get from database first
-    const { getPool } = await import('./db-client')
-    const pool = getPool()
+    // Use centralized database client
+    const { getCompanyProfileName } = await import('./db-client')
+    const name = await getCompanyProfileName(ticker, 'pk-equity')
     
-    const client = await pool.connect()
-    try {
-      const { rows } = await client.query(`
-        SELECT name 
-        FROM company_profiles 
-        WHERE symbol = $1 AND asset_type = 'pk-equity'
-        LIMIT 1
-      `, [ticker.toUpperCase()])
-      
-      if (rows.length > 0 && rows[0].name) {
-        const name = rows[0].name
-        // Check if already in SCSTrade format
-        if (name.includes(' - ')) {
-          return name
-        }
-        // Construct SCSTrade format
-        return `${ticker.toUpperCase()} - ${name}`
+    if (name) {
+      // Check if already in SCSTrade format
+      if (name.includes(' - ')) {
+        return name
       }
-    } finally {
-      client.release()
+      // Construct SCSTrade format
+      return `${ticker.toUpperCase()} - ${name}`
     }
   } catch (error) {
     console.error(`[SCSTrade] Error getting company name for ${ticker}:`, error)
@@ -162,7 +149,6 @@ export async function fetchSCSTradeData(
       sord: 'desc' // Descending (most recent first)
     }
     
-    console.log(`[SCSTrade] Fetching data for ${tickerUpper} (${companyName}) from ${startDateFormatted} to ${endDateFormatted}`)
     
     const response = await fetch(url, {
       method: 'POST',
@@ -184,7 +170,6 @@ export async function fetchSCSTradeData(
     const data: SCSTradeResponse = await response.json()
     
     if (!data.d || !Array.isArray(data.d) || data.d.length === 0) {
-      console.log(`[SCSTrade] No data received for ${tickerUpper}`)
       return null
     }
     
@@ -192,7 +177,6 @@ export async function fetchSCSTradeData(
     const records = data.d.map(convertSCSTradeToRecord)
     records.sort((a, b) => a.date.localeCompare(b.date))
     
-    console.log(`[SCSTrade] Successfully fetched ${records.length} records for ${tickerUpper}`)
     
     return records
   } catch (error) {

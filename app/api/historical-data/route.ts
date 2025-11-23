@@ -137,8 +137,6 @@ async function fetchNewDataInBackground(
 
     if (assetType === 'pk-equity') {
       // Try SCSTrade first (primary source), then fallback to StockAnalysis
-      console.log(`[${assetType}-${symbol}] Attempting to fetch from SCSTrade API first (dates: ${fetchStartDate || 'beginning'} to ${today})`)
-      
       try {
         const scstradeData = await retryWithBackoff(
           () => fetchSCSTradeData(symbol, fetchStartDate, today),
@@ -148,19 +146,15 @@ async function fetchNewDataInBackground(
         )
         
         if (scstradeData && scstradeData.length > 0) {
-          console.log(`[${assetType}-${symbol}] ✅ Successfully fetched ${scstradeData.length} records from SCSTrade`)
           newData = scstradeData
           source = 'scstrade'
-        } else {
-          console.log(`[${assetType}-${symbol}] ⚠️ SCSTrade returned no data, falling back to StockAnalysis`)
         }
       } catch (scstradeError) {
-        console.error(`[${assetType}-${symbol}] ❌ SCSTrade fetch failed, falling back to StockAnalysis:`, scstradeError)
+        console.error(`[${assetType}-${symbol}] SCSTrade fetch failed, falling back to StockAnalysis:`, scstradeError)
       }
       
       // Fallback to StockAnalysis if SCSTrade failed or returned no data
       if (newData.length === 0) {
-        console.log(`[${assetType}-${symbol}] Fetching from StockAnalysis API (full 10Y history, will filter to dates >= ${fetchStartDate || 'beginning'})`)
         const apiData = await retryWithBackoff(
           () => fetchStockAnalysisData(symbol, 'PSX'),
           3, // 3 retries
@@ -168,11 +162,9 @@ async function fetchNewDataInBackground(
           10000 // 10 second max delay
         )
         if (apiData) {
-          console.log(`[${assetType}-${symbol}] Received ${apiData.length} records from StockAnalysis API`)
           const filtered = fetchStartDate
             ? apiData.filter(d => d.t >= fetchStartDate)
             : apiData
-          console.log(`[${assetType}-${symbol}] Filtered to ${filtered.length} new records (dates >= ${fetchStartDate || 'beginning'})`)
           newData = filtered.map(convertStockAnalysisToRecord)
           source = 'stockanalysis'
         }
