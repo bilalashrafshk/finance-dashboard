@@ -7,11 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon } from "lucide-react"
 import { format } from "date-fns"
-import { cn } from "@/lib/utils"
 
 export default function AdvanceDeclinePage() {
   const [startDate, setStartDate] = useState<Date | undefined>(() => {
@@ -46,53 +42,36 @@ export default function AdvanceDeclinePage() {
           <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="start-date">Start Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant={"outline"}
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !startDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {startDate ? format(startDate, "PPP") : <span>Pick a date</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={startDate}
-                    onSelect={setStartDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <Input
+                id="start-date"
+                type="date"
+                value={startDate ? format(startDate, 'yyyy-MM-dd') : ''}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setStartDate(new Date(e.target.value))
+                  } else {
+                    setStartDate(undefined)
+                  }
+                }}
+                max={endDate ? format(endDate, 'yyyy-MM-dd') : undefined}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="end-date">End Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant={"outline"}
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !endDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {endDate ? format(endDate, "PPP") : <span>Pick a date</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={endDate}
-                    onSelect={setEndDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <Input
+                id="end-date"
+                type="date"
+                value={endDate ? format(endDate, 'yyyy-MM-dd') : ''}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setEndDate(new Date(e.target.value))
+                  } else {
+                    setEndDate(undefined)
+                  }
+                }}
+                min={startDate ? format(startDate, 'yyyy-MM-dd') : undefined}
+                max={format(new Date(), 'yyyy-MM-dd')}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="limit">Number of Stocks</Label>
