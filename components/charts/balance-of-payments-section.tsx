@@ -133,17 +133,10 @@ export function BalanceOfPaymentsSection() {
         {
           label: selectedSeriesInfo.label,
           data: data.map(d => d.value),
-          borderColor: 'rgb(34, 197, 94)', // default, overridden by segment
+          borderColor: 'rgb(59, 130, 246)', // Use a neutral color for the line
           backgroundColor: (ctx: any) => {
             const value = ctx.parsed?.y ?? ctx.raw
             return value >= 0 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)'
-          },
-          segment: {
-            borderColor: (ctx: any) => {
-              // Color each segment based on the second point (destination)
-              const p2 = ctx.p2.parsed.y
-              return p2 >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
-            },
           },
           fill: {
             target: 'origin',
