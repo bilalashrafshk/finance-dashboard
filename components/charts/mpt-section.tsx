@@ -6,10 +6,11 @@ import { MPTPortfolioView } from "@/components/asset-screener/mpt-portfolio-view
 import { RiskFreeRateSettings, loadRiskFreeRates, type RiskFreeRates } from "@/components/asset-screener/risk-free-rate-settings"
 import type { TrackedAsset } from "@/components/asset-screener/add-asset-dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, Plus } from "lucide-react"
+import { Loader2, Plus, Trash2 } from "lucide-react"
 import { LoginDialog } from "@/components/auth/login-dialog"
 import { RegisterDialog } from "@/components/auth/register-dialog"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { MPTAssetSelector } from "./mpt-asset-selector"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
@@ -62,6 +63,32 @@ export function MPTSection() {
   const handleAssetAdded = (asset: TrackedAsset) => {
     setAssets(prev => [...prev, asset])
     setIsAddDialogOpen(false)
+  }
+
+  const handleDeleteAsset = async (id: string) => {
+    try {
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        throw new Error('Authentication required')
+      }
+
+      const response = await fetch(`/api/user/tracked-assets/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to delete asset')
+      }
+
+      setAssets(prev => prev.filter(a => a.id !== id))
+    } catch (error: any) {
+      console.error('Error deleting asset:', error)
+      // Could show toast here if needed
+    }
   }
 
   if (authLoading || loading) {
@@ -125,7 +152,43 @@ export function MPTSection() {
           </CardContent>
         </Card>
       ) : (
-        <MPTPortfolioView assets={assets} />
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Your Assets</CardTitle>
+              <CardDescription>
+                Manage assets in your list for MPT analysis
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {assets.map((asset) => (
+                  <div
+                    key={asset.id}
+                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono font-medium">{asset.symbol}</span>
+                      <span className="text-sm text-muted-foreground">{asset.name}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {asset.assetType}
+                      </Badge>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteAsset(asset.id)}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+          <MPTPortfolioView assets={assets} />
+        </>
       )}
 
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>

@@ -86,8 +86,8 @@ const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
 export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
   const { theme } = useTheme()
   const { toast } = useToast()
-  const [selectedAssetType, setSelectedAssetType] = useState<AssetType | ''>('')
-  const [allowMixedAssetTypes, setAllowMixedAssetTypes] = useState(false)
+  // Always allow mixed asset types - removed the toggle
+  const allowMixedAssetTypes = true
   const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set())
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('1Y')
   const [optimizationType, setOptimizationType] = useState<OptimizationType>('max-sharpe')
@@ -112,23 +112,12 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
     return grouped
   }, [assets])
 
-  // Filter assets by selected type or all assets if mixed types allowed
+  // Always show all assets (mixed types always allowed)
   const availableAssets = useMemo(() => {
-    if (allowMixedAssetTypes) {
-      return assets // Show all assets when mixed types are allowed
-    }
-    if (!selectedAssetType) return []
-    return assetsByType.get(selectedAssetType as AssetType) || []
-  }, [selectedAssetType, assetsByType, allowMixedAssetTypes, assets])
+    return assets
+  }, [assets])
 
-  // Auto-select asset type if only one type available (only when mixed types not allowed)
-  useEffect(() => {
-    if (!allowMixedAssetTypes && !selectedAssetType && assetsByType.size === 1) {
-      setSelectedAssetType(Array.from(assetsByType.keys())[0])
-    }
-  }, [selectedAssetType, assetsByType, allowMixedAssetTypes])
-
-    // Clear selections when asset type changes or mixed types toggle changes
+  // Clear selections when assets change
   useEffect(() => {
     setSelectedAssets(new Set())
     setPriceData(new Map())
@@ -136,7 +125,7 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
     setEfficientFrontier([])
     setAllOptimizations(new Map())
     setCache(null)
-  }, [selectedAssetType, allowMixedAssetTypes])
+  }, [assets])
 
   // Get risk-free rate for asset type
   const getRiskFreeRate = useCallback((assetType: AssetType): number => {
@@ -299,10 +288,7 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
       return
     }
 
-    if (!allowMixedAssetTypes && !selectedAssetType) {
-      setError('Please select an asset type or enable mixed asset types')
-      return
-    }
+    // Always allow optimization (mixed types always enabled)
 
     setLoading(true)
     setError(null)
@@ -362,14 +348,15 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
         })
       }
 
-      // Get risk-free rate - use weighted average if mixed types, otherwise use selected type
+      // Get risk-free rate - use weighted average for mixed asset types
       let riskFreeRate: number
-      if (allowMixedAssetTypes && assetTypes.length > 0) {
+      if (assetTypes.length > 0) {
         // Use average of risk-free rates for mixed asset types
         const rates = assetTypes.map(type => getRiskFreeRate(type))
         riskFreeRate = rates.reduce((sum, rate) => sum + rate, 0) / rates.length
       } else {
-        riskFreeRate = getRiskFreeRate(selectedAssetType as AssetType)
+        // Fallback to US rate if no assets
+        riskFreeRate = getRiskFreeRate('us-equity')
       }
 
       // Run optimization
@@ -442,7 +429,7 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
     } finally {
       setLoading(false)
     }
-  }, [selectedAssets, selectedAssetType, allowMixedAssetTypes, timeFrame, optimizationType, priceData, fetchHistoricalData, getRiskFreeRate, cache, toast])
+  }, [selectedAssets, timeFrame, optimizationType, priceData, fetchHistoricalData, getRiskFreeRate, cache, toast])
 
   // Handle asset selection
   const handleAssetToggle = (assetId: string) => {
@@ -749,59 +736,12 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
         <CardHeader>
           <CardTitle>Modern Portfolio Theory</CardTitle>
           <CardDescription>
-            Optimize portfolio allocation using Markowitz portfolio theory. Select assets from the same type or enable mixed asset classes to diversify across different asset types.
+            Optimize portfolio allocation using Markowitz portfolio theory. Select assets from any asset class to diversify your portfolio.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Allow Mixed Asset Types Toggle */}
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="allowMixedAssetTypes"
-              checked={allowMixedAssetTypes}
-              onCheckedChange={(checked) => {
-                setAllowMixedAssetTypes(checked as boolean)
-                if (checked) {
-                  setSelectedAssetType('')
-                }
-              }}
-            />
-            <label
-              htmlFor="allowMixedAssetTypes"
-              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-            >
-              Allow mixing different asset classes
-            </label>
-          </div>
-
-          {/* Asset Type Selection */}
-          {!allowMixedAssetTypes && (
-            <div className="space-y-2">
-              <Label>Asset Type</Label>
-              <Select
-                value={selectedAssetType}
-                onValueChange={(value) => setSelectedAssetType(value as AssetType)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select asset type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.from(assetsByType.keys()).map(type => (
-                    <SelectItem key={type} value={type}>
-                      {ASSET_TYPE_LABELS[type]} ({assetsByType.get(type)?.length || 0} assets)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedAssetType && (
-                <p className="text-xs text-muted-foreground">
-                  Select assets of the same type: {ASSET_TYPE_LABELS[selectedAssetType as AssetType]}
-                </p>
-              )}
-            </div>
-          )}
-
           {/* Asset Selection */}
-          {(selectedAssetType || allowMixedAssetTypes) && (
+          {assets.length > 0 && (
             <div className="space-y-2">
               <Label>Select Assets (minimum 2)</Label>
               <div className="border rounded-md p-4 max-h-60 overflow-y-auto">
@@ -818,14 +758,12 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
                         />
                         <label
                           htmlFor={asset.id}
-                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center gap-2"
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center gap-2 flex-1"
                         >
-                          <span>{asset.symbol} - {asset.name}</span>
-                          {allowMixedAssetTypes && (
-                            <span className="text-xs text-muted-foreground">
-                              ({ASSET_TYPE_LABELS[asset.assetType]})
-                            </span>
-                          )}
+                          <span>{asset.symbol}</span>
+                          <span className="text-xs text-muted-foreground">
+                            ({ASSET_TYPE_LABELS[asset.assetType]})
+                          </span>
                         </label>
                       </div>
                     ))}
