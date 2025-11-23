@@ -1,5 +1,5 @@
 import dynamic from "next/dynamic"
-import { BarChart3, TrendingUp, Activity, Globe, LayoutGrid, Loader2, ScatterChart, PieChart } from "lucide-react"
+import { BarChart3, TrendingUp, Activity, Globe, LayoutGrid, Loader2, ScatterChart, PieChart, Calendar } from "lucide-react"
 import React from "react"
 
 // Loading component
@@ -33,9 +33,12 @@ const PERatioScatterSection = dynamic(() => import("@/components/charts/pe-ratio
 const MPTSection = dynamic(() => import("@/components/charts/mpt-section").then(mod => mod.MPTSection), {
     loading: () => <ChartLoader />,
 })
+const SeasonalitySection = dynamic(() => import("@/components/charts/seasonality-section").then(mod => mod.SeasonalitySection), {
+    loading: () => <ChartLoader />,
+})
 
 // Types
-export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt"
+export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality"
 
 export interface ChartDefinition {
     id: ChartId
@@ -134,6 +137,13 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 icon: PieChart,
                 component: <MPTSection />,
                 keywords: ["mpt", "modern portfolio theory", "optimization", "efficient frontier", "sharpe ratio", "portfolio"],
+            },
+            {
+                id: "seasonality",
+                title: "Asset Seasonality",
+                icon: Calendar,
+                component: <SeasonalitySection />,
+                keywords: ["seasonality", "monthly", "patterns", "returns", "trends", "calendar"],
             },
         ],
     },
