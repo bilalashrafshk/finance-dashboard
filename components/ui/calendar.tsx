@@ -38,7 +38,7 @@ function Calendar({
       formatters={{
         formatMonthDropdown: (date) =>
           date.toLocaleString('default', { month: 'short' }),
-        ...formatters,
+        ...(formatters || {}),
       }}
       classNames={{
         root: cn('w-fit', defaultClassNames.root),
@@ -135,7 +135,7 @@ function Calendar({
             />
           )
         },
-        Chevron: ({ className, orientation, ...props }) => {
+        Chevron: ({ className, orientation, ...props }: any) => {
           if (orientation === 'left') {
             return (
               <ChevronLeftIcon className={cn('size-4', className)} {...props} />
@@ -165,7 +165,7 @@ function Calendar({
             </td>
           )
         },
-        ...components,
+        ...(components || {}),
       }}
       {...props}
     />
