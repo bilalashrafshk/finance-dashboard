@@ -154,8 +154,13 @@ export function AdvanceDeclineChart({
       }))
     }
 
-    // Create a date map for KSE100 data
-    const kse100DateMap = new Map(kse100Data.map(d => [d.date, d.close]))
+    // Create a date map for KSE100 data (normalize dates to strings for matching)
+    const kse100DateMap = new Map<string, number>()
+    kse100Data.forEach(d => {
+      // Normalize date to string format (YYYY-MM-DD)
+      const dateStr = typeof d.date === 'string' ? d.date : new Date(d.date).toISOString().split('T')[0]
+      kse100DateMap.set(dateStr, d.close)
+    })
     
     const datasets = [
       {
@@ -185,24 +190,19 @@ export function AdvanceDeclineChart({
       },
     ]
 
-    // Add KSE100 overlay if enabled
+    // Add KSE100 overlay if enabled - use separate y-axis
     if (showKse100 && kse100Data.length > 0) {
-      // Normalize KSE100 to match AD Line scale (percentage change from first value)
-      const firstKse100 = kse100Data[0]?.close || 1
-      const kse100Normalized = data.map(point => {
-        const kse100Value = kse100DateMap.get(point.date)
-        if (kse100Value && firstKse100 > 0) {
-          // Calculate percentage change from first value, then scale to AD Line range
-          const pctChange = ((kse100Value - firstKse100) / firstKse100) * 100
-          // Scale to roughly match AD Line magnitude (adjust multiplier as needed)
-          return pctChange * 10 // Adjust this multiplier to match scale
-        }
-        return null
+      // Map KSE100 values to AD Line dates
+      const kse100Values = data.map(point => {
+        // Normalize date to string format for matching
+        const dateStr = typeof point.date === 'string' ? point.date : new Date(point.date).toISOString().split('T')[0]
+        const kse100Value = kse100DateMap.get(dateStr)
+        return kse100Value || null
       })
 
       datasets.push({
-        label: 'KSE100 (Normalized)',
-        data: formatTimeSeriesData(kse100Normalized),
+        label: 'KSE100',
+        data: formatTimeSeriesData(kse100Values),
         borderColor: '#f59e0b',
         backgroundColor: '#f59e0b20',
         fill: false,
@@ -210,7 +210,7 @@ export function AdvanceDeclineChart({
         pointRadius: 0,
         pointHoverRadius: 4,
         borderWidth: 1.5,
-        yAxisID: 'y',
+        yAxisID: 'y1', // Use separate y-axis
       })
     }
 
@@ -241,6 +241,7 @@ export function AdvanceDeclineChart({
       
       opts.scales.y = {
         type: "linear",
+        position: "left",
         min: minValue - padding,
         max: maxValue + padding,
         title: {
@@ -266,6 +267,36 @@ export function AdvanceDeclineChart({
             return context.tick.value === 0 ? 2 : 1
           },
         },
+      }
+
+      // Add second y-axis for KSE100 if enabled
+      if (showKse100 && kse100Data.length > 0) {
+        const kse100Values = kse100Data.map(d => d.close).filter(v => v !== null && v !== undefined && v > 0)
+        const kse100Min = kse100Values.length > 0 ? Math.min(...kse100Values) : 0
+        const kse100Max = kse100Values.length > 0 ? Math.max(...kse100Values) : 1
+        const kse100Range = kse100Max - kse100Min
+        const kse100Padding = kse100Range * 0.1 || 100
+
+        opts.scales.y1 = {
+          type: "linear",
+          position: "right",
+          min: kse100Min - kse100Padding,
+          max: kse100Max + kse100Padding,
+          title: {
+            display: true,
+            text: "KSE100 Index",
+            color: '#f59e0b',
+          },
+          ticks: {
+            color: '#f59e0b',
+            callback: function(value: any) {
+              return typeof value === 'number' ? value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : value
+            },
+          },
+          grid: {
+            drawOnChartArea: false, // Only draw grid for left axis
+          },
+        }
       }
     }
 
