@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, Search, TrendingUp } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Line } from "react-chartjs-2"
@@ -53,8 +52,6 @@ interface InterestRateData {
   value: number
 }
 
-type ChartPeriod = '1M' | '3M' | '6M' | '1Y' | '2Y' | '5Y' | 'ALL'
-
 const SERIES_KEYS = {
   target: 'TS_GP_IR_SIRPR_AH.SBPOL0030',
   reverseRepo: 'TS_GP_IR_SIRPR_AH.SBPOL0010', // ceiling
@@ -73,12 +70,9 @@ export function InterestRateEquitiesSection() {
   const [selectedSymbol, setSelectedSymbol] = useState<string>('')
   const [selectedAssetName, setSelectedAssetName] = useState<string>('')
   
-  // Time frame
-  const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('1Y')
-  
   // Data
-  const [allPriceData, setAllPriceData] = useState<PriceDataPoint[]>([])
-  const [allInterestRateData, setAllInterestRateData] = useState<InterestRateData[]>([])
+  const [priceData, setPriceData] = useState<PriceDataPoint[]>([])
+  const [interestRateData, setInterestRateData] = useState<InterestRateData[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -128,8 +122,8 @@ export function InterestRateEquitiesSection() {
     if (selectedSymbol) {
       loadChartData()
     } else {
-      setAllPriceData([])
-      setAllInterestRateData([])
+      setPriceData([])
+      setInterestRateData([])
     }
   }, [selectedSymbol])
 
@@ -184,8 +178,8 @@ export function InterestRateEquitiesSection() {
         (repoData.data || []).map((d: any) => ({ date: d.date, value: d.value }))
       )
 
-      setAllPriceData(prices)
-      setAllInterestRateData(effectiveRates.map(r => ({ date: r.date, value: r.rate })))
+      setPriceData(prices)
+      setInterestRateData(effectiveRates.map(r => ({ date: r.date, value: r.rate })))
     } catch (err: any) {
       console.error('Error loading chart data:', err)
       setError(err.message || 'Failed to load chart data')
@@ -198,41 +192,6 @@ export function InterestRateEquitiesSection() {
       setLoading(false)
     }
   }
-
-  // Filter data based on selected time frame
-  const { priceData, interestRateData } = useMemo(() => {
-    if (allPriceData.length === 0 || allInterestRateData.length === 0) {
-      return { priceData: [], interestRateData: [] }
-    }
-
-    const now = new Date()
-    const periodCutoffs: Record<ChartPeriod, Date> = {
-      '1M': new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()),
-      '3M': new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()),
-      '6M': new Date(now.getFullYear(), now.getMonth() - 6, now.getDate()),
-      '1Y': new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()),
-      '2Y': new Date(now.getFullYear() - 2, now.getMonth(), now.getDate()),
-      '5Y': new Date(now.getFullYear() - 5, now.getMonth(), now.getDate()),
-      'ALL': new Date(0),
-    }
-
-    const cutoffDate = periodCutoffs[chartPeriod]
-    
-    const filteredPrices = allPriceData.filter(point => {
-      const pointDate = new Date(point.date)
-      return pointDate >= cutoffDate
-    })
-
-    const filteredRates = allInterestRateData.filter(point => {
-      const pointDate = new Date(point.date)
-      return pointDate >= cutoffDate
-    })
-
-    return {
-      priceData: filteredPrices,
-      interestRateData: filteredRates
-    }
-  }, [allPriceData, allInterestRateData, chartPeriod])
 
   // Prepare chart data
   const chartData = useMemo(() => {
@@ -407,87 +366,64 @@ export function InterestRateEquitiesSection() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Controls */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Asset Selector */}
-            <div className="space-y-2">
-              <Label htmlFor="asset-search">Select PK Equity or KSE100</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="asset-search"
-                  placeholder="Search for stock symbol or name (e.g., PTC, HBL, KSE100)..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
+          {/* Asset Selector */}
+          <div className="space-y-2">
+            <Label htmlFor="asset-search">Select PK Equity or KSE100</Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="asset-search"
+                placeholder="Search for stock symbol or name (e.g., PTC, HBL, KSE100)..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            
+            {/* Search Results */}
+            {searchQuery && filteredStocks.length > 0 && (
+              <div className="border rounded-lg max-h-60 overflow-y-auto">
+                {filteredStocks.map((stock) => (
+                  <button
+                    key={stock.symbol}
+                    onClick={() => {
+                      setSelectedSymbol(stock.symbol)
+                      setSelectedAssetName(stock.name)
+                      setSearchQuery('')
+                    }}
+                    className={`w-full text-left px-4 py-2 hover:bg-muted transition-colors ${
+                      selectedSymbol === stock.symbol ? 'bg-muted' : ''
+                    }`}
+                  >
+                    <div className="font-medium">{stock.symbol}</div>
+                    <div className="text-sm text-muted-foreground">{stock.name}</div>
+                  </button>
+                ))}
               </div>
-              
-              {/* Search Results */}
-              {searchQuery && filteredStocks.length > 0 && (
-                <div className="border rounded-lg max-h-60 overflow-y-auto">
-                  {filteredStocks.map((stock) => (
-                    <button
-                      key={stock.symbol}
-                      onClick={() => {
-                        setSelectedSymbol(stock.symbol)
-                        setSelectedAssetName(stock.name)
-                        setSearchQuery('')
-                      }}
-                      className={`w-full text-left px-4 py-2 hover:bg-muted transition-colors ${
-                        selectedSymbol === stock.symbol ? 'bg-muted' : ''
-                      }`}
-                    >
-                      <div className="font-medium">{stock.symbol}</div>
-                      <div className="text-sm text-muted-foreground">{stock.name}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
+            )}
 
-              {/* Selected Asset */}
-              {selectedSymbol && (
-                <div className="p-3 border rounded-lg bg-muted/30">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">{selectedSymbol}</div>
-                      <div className="text-sm text-muted-foreground">{selectedAssetName}</div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setSelectedSymbol('')
-                        setSelectedAssetName('')
-                        setAllPriceData([])
-                        setAllInterestRateData([])
-                      }}
-                      className="text-sm text-muted-foreground hover:text-foreground"
-                    >
-                      Clear
-                    </button>
+            {/* Selected Asset */}
+            {selectedSymbol && (
+              <div className="p-3 border rounded-lg bg-muted/30">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium">{selectedSymbol}</div>
+                    <div className="text-sm text-muted-foreground">{selectedAssetName}</div>
                   </div>
+                  <button
+                    onClick={() => {
+                      setSelectedSymbol('')
+                      setSelectedAssetName('')
+                      setPriceData([])
+                      setInterestRateData([])
+                    }}
+                    className="text-sm text-muted-foreground hover:text-foreground"
+                  >
+                    Clear
+                  </button>
                 </div>
-              )}
-            </div>
-
-            {/* Time Frame Selector */}
-            <div className="space-y-2">
-              <Label htmlFor="time-frame">Time Frame</Label>
-              <Select value={chartPeriod} onValueChange={(value) => setChartPeriod(value as ChartPeriod)}>
-                <SelectTrigger id="time-frame">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1M">1 Month</SelectItem>
-                  <SelectItem value="3M">3 Months</SelectItem>
-                  <SelectItem value="6M">6 Months</SelectItem>
-                  <SelectItem value="1Y">1 Year</SelectItem>
-                  <SelectItem value="2Y">2 Years</SelectItem>
-                  <SelectItem value="5Y">5 Years</SelectItem>
-                  <SelectItem value="ALL">All Time</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+              </div>
+            )}
           </div>
 
           {/* Chart */}
