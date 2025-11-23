@@ -162,11 +162,23 @@ export function AdvanceDeclineChart({
       "linear"
     )
 
-    // Customize for AD Line
+    // Customize for AD Line - override the 0-1 scale from createTimeSeriesChartOptions
     if (opts.scales?.y) {
+      // Calculate min/max from data for proper scaling
+      const adLineValues = data.map(d => d.adLine)
+      const netAdvanceValues = data.map(d => d.netAdvances)
+      const allValues = [...adLineValues, ...netAdvanceValues].filter(v => v !== null && v !== undefined)
+      const minValue = allValues.length > 0 ? Math.min(...allValues) : 0
+      const maxValue = allValues.length > 0 ? Math.max(...allValues) : 1
+      
+      // Add padding to the range
+      const range = maxValue - minValue
+      const padding = range * 0.1 || 10
+      
       opts.scales.y = {
-        ...opts.scales.y,
         type: "linear",
+        min: minValue - padding,
+        max: maxValue + padding,
         title: {
           display: true,
           text: "AD Line Value",
