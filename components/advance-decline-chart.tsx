@@ -4,6 +4,7 @@ import { useMemo, useState, useEffect } from "react"
 import { useTheme } from "next-themes"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Loader2, Info } from "lucide-react"
 import { Line } from "react-chartjs-2"
 import {
@@ -63,6 +64,8 @@ export function AdvanceDeclineChart({
   limit = 100 
 }: AdvanceDeclineChartProps) {
   const [data, setData] = useState<AdvanceDeclineDataPoint[]>([])
+  const [kse100Data, setKse100Data] = useState<Array<{ date: string; close: number }>>([])
+  const [showKse100, setShowKse100] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showExplanation, setShowExplanation] = useState(false)
@@ -76,6 +79,7 @@ export function AdvanceDeclineChart({
       setError(null)
       
       try {
+        // Fetch AD Line data
         const params = new URLSearchParams()
         if (startDate) params.append('startDate', startDate)
         if (endDate) params.append('endDate', endDate)
@@ -94,6 +98,30 @@ export function AdvanceDeclineChart({
         } else {
           throw new Error(result.error || 'Failed to fetch data')
         }
+
+        // Fetch KSE100 data using centralized route
+        if (showKse100) {
+          const kse100Params = new URLSearchParams()
+          kse100Params.append('assetType', 'kse100')
+          kse100Params.append('symbol', 'KSE100')
+          if (startDate) kse100Params.append('startDate', startDate)
+          if (endDate) kse100Params.append('endDate', endDate)
+          
+          const kse100Response = await fetch(`/api/historical-data?${kse100Params.toString()}`)
+          
+          if (kse100Response.ok) {
+            const kse100Result = await kse100Response.json()
+            if (kse100Result.data && Array.isArray(kse100Result.data)) {
+              const formatted = kse100Result.data
+                .map((record: any) => ({
+                  date: record.date,
+                  close: parseFloat(record.close || record.adjusted_close || 0)
+                }))
+                .filter((point: any) => !isNaN(point.close) && point.close > 0)
+              setKse100Data(formatted)
+            }
+          }
+        }
       } catch (err: any) {
         console.error('Error fetching Advance-Decline data:', err)
         setError(err.message || 'Failed to load data')
@@ -108,7 +136,7 @@ export function AdvanceDeclineChart({
     }
 
     fetchData()
-  }, [startDate, endDate, limit, toast])
+  }, [startDate, endDate, limit, showKse100, toast])
 
   const chartData = useMemo(() => {
     if (!data || data.length === 0) {
@@ -126,6 +154,9 @@ export function AdvanceDeclineChart({
       }))
     }
 
+    // Create a date map for KSE100 data
+    const kse100DateMap = new Map(kse100Data.map(d => [d.date, d.close]))
+    
     const datasets = [
       {
         label: 'Advance-Decline Line',
@@ -137,6 +168,7 @@ export function AdvanceDeclineChart({
         pointRadius: 0,
         pointHoverRadius: 4,
         borderWidth: 2,
+        yAxisID: 'y',
       },
       {
         label: 'Net Advances',
@@ -149,13 +181,43 @@ export function AdvanceDeclineChart({
         pointHoverRadius: 4,
         borderWidth: 1,
         borderDash: [5, 5],
+        yAxisID: 'y',
       },
     ]
+
+    // Add KSE100 overlay if enabled
+    if (showKse100 && kse100Data.length > 0) {
+      // Normalize KSE100 to match AD Line scale (percentage change from first value)
+      const firstKse100 = kse100Data[0]?.close || 1
+      const kse100Normalized = data.map(point => {
+        const kse100Value = kse100DateMap.get(point.date)
+        if (kse100Value && firstKse100 > 0) {
+          // Calculate percentage change from first value, then scale to AD Line range
+          const pctChange = ((kse100Value - firstKse100) / firstKse100) * 100
+          // Scale to roughly match AD Line magnitude (adjust multiplier as needed)
+          return pctChange * 10 // Adjust this multiplier to match scale
+        }
+        return null
+      })
+
+      datasets.push({
+        label: 'KSE100 (Normalized)',
+        data: formatTimeSeriesData(kse100Normalized),
+        borderColor: '#f59e0b',
+        backgroundColor: '#f59e0b20',
+        fill: false,
+        tension: 0.1,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        borderWidth: 1.5,
+        yAxisID: 'y',
+      })
+    }
 
     return {
       datasets,
     }
-  }, [data, colors])
+  }, [data, kse100Data, showKse100, colors])
 
   const options = useMemo(() => {
     const opts = createTimeSeriesChartOptions(
@@ -218,27 +280,53 @@ export function AdvanceDeclineChart({
           const index = context.dataIndex
           if (index >= 0 && index < data.length) {
             const point = data[index]
-            return [
+            const labels = [
               `Advancing: ${point.advancing}`,
               `Declining: ${point.declining}`,
               `Unchanged: ${point.unchanged}`,
               `Net Advances: ${point.netAdvances > 0 ? '+' : ''}${point.netAdvances}`,
             ]
+            
+            // Add KSE100 value if available
+            if (showKse100 && kse100Data.length > 0) {
+              const kse100Value = kse100Data.find(d => d.date === point.date)?.close
+              if (kse100Value) {
+                labels.push(`KSE100: ${kse100Value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+              }
+            }
+            
+            return labels
           }
           return []
         },
       }
     }
 
+    // Add click handler for net advances
+    opts.onClick = (event: any, elements: any[]) => {
+      if (elements && elements.length > 0) {
+        const element = elements[0]
+        const datasetIndex = element.datasetIndex
+        const dataIndex = element.index
+        
+        // Check if clicked on Net Advances dataset (index 1)
+        if (datasetIndex === 1 && dataIndex >= 0 && dataIndex < data.length) {
+          const point = data[dataIndex]
+          // Open heatmap page for that date
+          window.open(`/market-heatmap?date=${point.date}`, '_blank')
+        }
+      }
+    }
+
     return opts
-  }, [data, colors, theme])
+  }, [data, colors, theme, showKse100, kse100Data])
 
   if (loading) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>Advance-Decline Line</CardTitle>
-          <CardDescription>Top 100 PK Stocks by Market Cap</CardDescription>
+          <CardDescription>Top {limit} stocks by market cap</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center h-[400px]">
@@ -254,7 +342,7 @@ export function AdvanceDeclineChart({
       <Card>
         <CardHeader>
           <CardTitle>Advance-Decline Line</CardTitle>
-          <CardDescription>Top 100 PK Stocks by Market Cap</CardDescription>
+          <CardDescription>Top {limit} stocks by market cap</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center h-[400px] text-destructive">
@@ -270,7 +358,7 @@ export function AdvanceDeclineChart({
       <Card>
         <CardHeader>
           <CardTitle>Advance-Decline Line</CardTitle>
-          <CardDescription>Top 100 PK Stocks by Market Cap</CardDescription>
+          <CardDescription>Top {limit} stocks by market cap</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center h-[400px] text-muted-foreground">
@@ -283,28 +371,43 @@ export function AdvanceDeclineChart({
 
   return (
     <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>Advance-Decline Line</CardTitle>
-            <CardDescription>
-              Top {limit} PK Stocks by Market Cap
-              {data.length > 0 && (
-                <span className="ml-2">
-                  ({new Date(data[0].date).toLocaleDateString()} - {new Date(data[data.length - 1].date).toLocaleDateString()})
-                </span>
-              )}
-            </CardDescription>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Advance-Decline Line</CardTitle>
+              <CardDescription>
+                Top {limit} stocks by market cap
+                {data.length > 0 && (
+                  <span className="ml-2">
+                    ({new Date(data[0].date).toLocaleDateString()} - {new Date(data[data.length - 1].date).toLocaleDateString()})
+                  </span>
+                )}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="show-kse100"
+                  checked={showKse100}
+                  onCheckedChange={(checked) => setShowKse100(checked === true)}
+                />
+                <label
+                  htmlFor="show-kse100"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                >
+                  KSE100 Overlay
+                </label>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowExplanation(true)}
+              >
+                <Info className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowExplanation(true)}
-          >
-            <Info className="h-4 w-4" />
-          </Button>
-        </div>
-      </CardHeader>
+        </CardHeader>
       <CardContent>
         <div className="h-[500px] w-full">
           <Line data={chartData} options={options} />
@@ -315,6 +418,9 @@ export function AdvanceDeclineChart({
           </p>
           <p>
             The Advance-Decline Line is a cumulative indicator that tracks the net difference between advancing and declining stocks over time.
+          </p>
+          <p className="text-xs mt-2">
+            💡 <strong>Tip:</strong> Click on any point in the "Net Advances" line to view the market heatmap for that date.
           </p>
         </div>
       </CardContent>

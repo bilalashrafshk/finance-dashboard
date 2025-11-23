@@ -74,7 +74,7 @@ export default function AdvanceDeclinePage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="limit">Number of Stocks</Label>
+              <Label htmlFor="limit">Top Stocks by Market Cap</Label>
               <Input
                 id="limit"
                 type="number"
@@ -83,6 +83,7 @@ export default function AdvanceDeclinePage() {
                 value={limit}
                 onChange={(e) => setLimit(parseInt(e.target.value) || 100)}
               />
+              <p className="text-xs text-muted-foreground">Top {limit} stocks by market cap</p>
             </div>
           </div>
         </CardContent>

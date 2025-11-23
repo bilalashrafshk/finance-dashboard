@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo } from "react"
+import { useSearchParams } from "next/navigation"
 import { SharedNavbar } from "@/components/shared-navbar"
 import { MarketHeatmapTreemap, type MarketHeatmapStock, type SizeMode } from "@/components/market-heatmap/treemap"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -14,6 +15,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { getTodayInMarketTimezone } from "@/lib/portfolio/market-hours"
 
 export default function MarketHeatmapPage() {
+  const searchParams = useSearchParams()
   const [stocks, setStocks] = useState<MarketHeatmapStock[]>([])
   const [allStocks, setAllStocks] = useState<MarketHeatmapStock[]>([]) // Store all stocks for filtering
   const [loading, setLoading] = useState(true)
@@ -42,12 +44,17 @@ export default function MarketHeatmapPage() {
     return dateString
   }
 
-  // Initialize with today's date, or last working day if today is weekend
+  // Initialize with date from query params, or today's date, or last working day if today is weekend
   useEffect(() => {
-    const today = getTodayInMarketTimezone('PSX')
-    const dateToSet = isWeekend(today) ? getPreviousWeekday(today) : today
-    setSelectedDate(dateToSet)
-  }, [])
+    const dateFromQuery = searchParams.get('date')
+    if (dateFromQuery) {
+      setSelectedDate(dateFromQuery)
+    } else {
+      const today = getTodayInMarketTimezone('PSX')
+      const dateToSet = isWeekend(today) ? getPreviousWeekday(today) : today
+      setSelectedDate(dateToSet)
+    }
+  }, [searchParams])
 
   // Update treemap size on window resize
   useEffect(() => {
