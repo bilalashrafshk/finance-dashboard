@@ -42,9 +42,12 @@ const PriceChartSection = dynamic(() => import("@/components/charts/price-chart-
 const InterestRatesSection = dynamic(() => import("@/components/charts/interest-rates-section").then(mod => mod.InterestRatesSection), {
     loading: () => <ChartLoader />,
 })
+const BalanceOfPaymentsSection = dynamic(() => import("@/components/charts/balance-of-payments-section").then(mod => mod.BalanceOfPaymentsSection), {
+    loading: () => <ChartLoader />,
+})
 
 // Types
-export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates"
+export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments"
 
 export interface ChartDefinition {
     id: ChartId
@@ -171,6 +174,13 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 icon: TrendingUp,
                 component: <InterestRatesSection />,
                 keywords: ["interest", "rates", "sbp", "policy", "repo", "reverse repo", "macro", "pakistan", "monetary"],
+            },
+            {
+                id: "balance-of-payments",
+                title: "Balance of Payments",
+                icon: DollarSign,
+                component: <BalanceOfPaymentsSection />,
+                keywords: ["balance", "payments", "bop", "current account", "surplus", "deficit", "macro", "pakistan", "trade"],
             },
         ],
     },

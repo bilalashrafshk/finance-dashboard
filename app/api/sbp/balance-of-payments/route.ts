@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSBPInterestRates, insertSBPInterestRates, shouldRefreshSBPInterestRates } from '@/lib/portfolio/db-client'
+import { getBOPData, insertBOPData, shouldRefreshBOPData } from '@/lib/portfolio/db-client'
 
 /**
- * SBP Interest Rates API Route
+ * Balance of Payments API Route
  * 
- * GET /api/sbp/interest-rates?seriesKey=TS_GP_IR_SIRPR_AH.SBPOL0030&startDate=2020-01-01&endDate=2024-12-31
+ * GET /api/sbp/balance-of-payments?seriesKey=TS_GP_ES_PKBOPSTND_M.BOPSNA01810&startDate=2020-01-01&endDate=2024-12-31
  * 
- * Fetches State Bank of Pakistan interest rate data.
+ * Fetches Pakistan's Balance of Payments data from SBP EasyData API.
  * - Checks database first
  * - Fetches from SBP EasyData API if data is older than 3 days
  * - Automatically stores fetched data in database
@@ -20,7 +20,7 @@ interface SBPAPIResponse {
   rows: Array<Array<string | number>>
 }
 
-async function fetchSBPInterestRatesFromAPI(
+async function fetchBOPDataFromAPI(
   seriesKey: string,
   startDate?: string,
   endDate?: string
@@ -93,7 +93,7 @@ async function fetchSBPInterestRatesFromAPI(
   return data.rows.map(row => ({
     date: String(row[dateColIdx] || ''),
     value: parseFloat(String(row[valueColIdx] || 0)),
-    unit: String(row[unitColIdx] || 'Percent'),
+    unit: String(row[unitColIdx] || 'Million USD'),
     observation_status: String(row[statusColIdx] || 'Normal'),
     status_comments: String(row[commentsColIdx] || ''),
     series_name: String(row[seriesNameColIdx] || '')
@@ -114,90 +114,56 @@ export async function GET(request: NextRequest) {
     )
   }
   
-  // Validate series key format
-  const validSeriesKeys = [
-    'TS_GP_IR_SIRPR_AH.SBPOL0010', // Reverse Repo Rate
-    'TS_GP_IR_SIRPR_AH.SBPOL0020', // Repo Rate
-    'TS_GP_IR_SIRPR_AH.SBPOL0030', // Policy Target Rate
-  ]
-  
-  if (!validSeriesKeys.includes(seriesKey)) {
+  // Validate series key format (Balance of Payments dataset)
+  if (!seriesKey.startsWith('TS_GP_ES_PKBOPSTND_M.')) {
     return NextResponse.json(
-      { error: `Invalid seriesKey. Must be one of: ${validSeriesKeys.join(', ')}` },
+      { error: 'Invalid seriesKey. Must be from Balance of Payments dataset (TS_GP_ES_PKBOPSTND_M.*)' },
       { status: 400 }
     )
   }
   
   try {
     // Check if we need to refresh (3-day cache)
-    const needsRefresh = refresh || await shouldRefreshSBPInterestRates(seriesKey)
+    const needsRefresh = refresh || await shouldRefreshBOPData(seriesKey)
     
-    // Get data from database first
-    let { data, latestStoredDate, earliestStoredDate } = await getSBPInterestRates(
+    if (needsRefresh) {
+      console.log(`[BOP API] Fetching fresh data for ${seriesKey} (cache expired or refresh requested)`)
+      
+      // Fetch from API
+      const apiData = await fetchBOPDataFromAPI(seriesKey, startDate, endDate)
+      
+      if (apiData.length > 0) {
+        // Store in database
+        const seriesName = apiData[0].series_name
+        const insertResult = await insertBOPData(
+          seriesKey,
+          seriesName,
+          apiData.map(d => ({
+            date: d.date,
+            value: d.value,
+            unit: d.unit,
+            observation_status: d.observation_status,
+            status_comments: d.status_comments
+          }))
+        )
+        
+        console.log(`[BOP API] Stored ${insertResult.inserted} new records, skipped ${insertResult.skipped} duplicates for ${seriesKey}`)
+      }
+    } else {
+      console.log(`[BOP API] Using cached data for ${seriesKey} (less than 3 days old)`)
+    }
+    
+    // Get data from database
+    const { data, latestStoredDate, earliestStoredDate } = await getBOPData(
       seriesKey,
       startDate,
       endDate
     )
     
-    // If no data in database or needs refresh, fetch from API
-    if (needsRefresh || data.length === 0) {
-      console.log(`[SBP API] Fetching fresh data for ${seriesKey} (cache expired, refresh requested, or no data in DB)`)
-      
-      try {
-        // Fetch from API
-        const apiData = await fetchSBPInterestRatesFromAPI(seriesKey, startDate, endDate)
-        
-        if (apiData.length > 0) {
-          // Store in database
-          const seriesName = apiData[0].series_name
-          const insertResult = await insertSBPInterestRates(
-            seriesKey,
-            seriesName,
-            apiData.map(d => ({
-              date: d.date,
-              value: d.value,
-              unit: d.unit,
-              observation_status: d.observation_status,
-              status_comments: d.status_comments
-            }))
-          )
-          
-          console.log(`[SBP API] Stored ${insertResult.inserted} new records, skipped ${insertResult.skipped} duplicates for ${seriesKey}`)
-          
-          // Re-fetch from database to get the stored data
-          const dbResult = await getSBPInterestRates(seriesKey, startDate, endDate)
-          data = dbResult.data
-          latestStoredDate = dbResult.latestStoredDate
-          earliestStoredDate = dbResult.earliestStoredDate
-        } else {
-          console.log(`[SBP API] No data returned from API for ${seriesKey}`)
-        }
-      } catch (apiError: any) {
-        console.error(`[SBP API] Error fetching from API for ${seriesKey}:`, apiError.message)
-        // If API fails but we have data in DB, use that
-        if (data.length === 0) {
-          throw apiError // Only throw if we have no data at all
-        }
-        console.log(`[SBP API] Using existing database data despite API error`)
-      }
-    } else {
-      console.log(`[SBP API] Using cached data for ${seriesKey} (less than 3 days old)`)
-    }
-    
     // Sort by date descending (most recent first)
     const sortedData = [...data].sort((a, b) => 
       new Date(b.date).getTime() - new Date(a.date).getTime()
     )
-    
-    if (sortedData.length === 0) {
-      return NextResponse.json(
-        { 
-          error: 'No data available for this series',
-          details: 'Please check that SBP_API_KEY is set and the series key is correct'
-        },
-        { status: 404 }
-      )
-    }
     
     return NextResponse.json({
       seriesKey,
@@ -212,10 +178,10 @@ export async function GET(request: NextRequest) {
       cached: !needsRefresh
     })
   } catch (error: any) {
-    console.error('[SBP API] Error fetching interest rates:', error)
+    console.error('[BOP API] Error fetching balance of payments data:', error)
     return NextResponse.json(
       { 
-        error: 'Failed to fetch SBP interest rates',
+        error: 'Failed to fetch Balance of Payments data',
         details: error.message 
       },
       { status: 500 }

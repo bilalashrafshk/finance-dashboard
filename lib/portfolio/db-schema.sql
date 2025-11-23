@@ -346,3 +346,39 @@ CREATE TABLE IF NOT EXISTS sbp_rates_metadata (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sbp_metadata_series_key ON sbp_rates_metadata(series_key);
+
+-- Balance of Payments Table
+-- Stores Pakistan's Balance of Payments data from SBP EasyData API
+CREATE TABLE IF NOT EXISTS balance_of_payments (
+  id SERIAL PRIMARY KEY,
+  series_key VARCHAR(100) NOT NULL,  -- 'TS_GP_ES_PKBOPSTND_M.BOPSNA01810', etc.
+  series_name VARCHAR(255) NOT NULL,  -- 'Current account-Net'
+  date DATE NOT NULL,                  -- Observation date (YYYY-MM-DD)
+  value DECIMAL(20, 2) NOT NULL,       -- Value in Million USD (can be negative)
+  unit VARCHAR(50) NOT NULL DEFAULT 'Million USD',
+  observation_status VARCHAR(50) DEFAULT 'Normal',
+  status_comments TEXT,
+  source VARCHAR(50) NOT NULL DEFAULT 'sbp-easydata',
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  
+  -- Unique constraint: one record per series+date
+  UNIQUE(series_key, date)
+);
+
+-- Indexes for fast queries
+CREATE INDEX IF NOT EXISTS idx_bop_series_key ON balance_of_payments(series_key);
+CREATE INDEX IF NOT EXISTS idx_bop_date ON balance_of_payments(date);
+CREATE INDEX IF NOT EXISTS idx_bop_series_date ON balance_of_payments(series_key, date DESC);
+
+-- Metadata table to track last update time per series (for 3-day caching)
+CREATE TABLE IF NOT EXISTS bop_metadata (
+  id SERIAL PRIMARY KEY,
+  series_key VARCHAR(100) NOT NULL UNIQUE,
+  last_stored_date DATE,              -- Latest date we have data for
+  last_updated TIMESTAMP DEFAULT NOW(),  -- When we last fetched from API
+  total_records INTEGER DEFAULT 0,     -- Count of records for this series
+  source VARCHAR(50) NOT NULL DEFAULT 'sbp-easydata'
+);
+
+CREATE INDEX IF NOT EXISTS idx_bop_metadata_series_key ON bop_metadata(series_key);

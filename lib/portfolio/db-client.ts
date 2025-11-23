@@ -1056,39 +1056,24 @@ export async function getSBPInterestRates(
         paramIndex++
       }
       
-      // Get data and metadata in one query
-      const query = `
-        WITH data AS (
-          SELECT 
-            date,
-            value,
-            series_key,
-            series_name,
-            unit,
-            observation_status,
-            status_comments
-          FROM sbp_interest_rates
-          ${whereClause}
-          ORDER BY date DESC
-        ),
-        metadata AS (
-          SELECT 
-            MAX(date) as latest_date,
-            MIN(date) as earliest_date
-          FROM sbp_interest_rates
-          WHERE series_key = $1
-        )
+      // Get data
+      const dataQuery = `
         SELECT 
-          d.*,
-          m.latest_date,
-          m.earliest_date
-        FROM data d
-        CROSS JOIN metadata m
+          date,
+          value,
+          series_key,
+          series_name,
+          unit,
+          observation_status,
+          status_comments
+        FROM sbp_interest_rates
+        ${whereClause}
+        ORDER BY date DESC
       `
       
-      const result = await client.query(query, baseParams)
+      const dataResult = await client.query(dataQuery, baseParams)
       
-      const data: SBPInterestRateRecord[] = result.rows.map(row => ({
+      const data: SBPInterestRateRecord[] = dataResult.rows.map(row => ({
         date: row.date,
         value: parseFloat(row.value),
         series_key: row.series_key,
@@ -1098,8 +1083,18 @@ export async function getSBPInterestRates(
         status_comments: row.status_comments
       }))
       
-      const latestStoredDate = result.rows[0]?.latest_date || null
-      const earliestStoredDate = result.rows[0]?.earliest_date || null
+      // Get metadata separately
+      const metadataQuery = `
+        SELECT 
+          MAX(date) as latest_date,
+          MIN(date) as earliest_date
+        FROM sbp_interest_rates
+        WHERE series_key = $1
+      `
+      
+      const metadataResult = await client.query(metadataQuery, [seriesKey])
+      const latestStoredDate = metadataResult.rows[0]?.latest_date || null
+      const earliestStoredDate = metadataResult.rows[0]?.earliest_date || null
       
       return { data, latestStoredDate, earliestStoredDate }
     } finally {
@@ -1279,6 +1274,283 @@ export async function shouldRefreshSBPInterestRates(seriesKey: string): Promise<
     return ageInDays > 3
   } catch (error: any) {
     console.error(`[DB] Error checking if SBP interest rates need refresh for ${seriesKey}:`, error.message)
+    return true // On error, refresh to be safe
+  }
+}
+
+// ============================================================================
+// Balance of Payments Database Functions
+// ============================================================================
+
+export interface BOPRecord {
+  date: string // YYYY-MM-DD
+  value: number
+  series_key: string
+  series_name: string
+  unit: string
+  observation_status?: string
+  status_comments?: string
+}
+
+export interface BOPMetadata {
+  series_key: string
+  last_stored_date: string | null
+  last_updated: string
+  total_records: number
+  source: string
+}
+
+/**
+ * Get Balance of Payments data with date range
+ */
+export async function getBOPData(
+  seriesKey: string,
+  startDate?: string,
+  endDate?: string
+): Promise<{ data: BOPRecord[]; latestStoredDate: string | null; earliestStoredDate: string | null }> {
+  try {
+    const client = await getPool().connect()
+    
+    try {
+      const baseParams: any[] = [seriesKey]
+      let whereClause = 'WHERE series_key = $1'
+      let paramIndex = 2
+      
+      if (startDate) {
+        whereClause += ` AND date >= $${paramIndex}`
+        baseParams.push(startDate)
+        paramIndex++
+      }
+      
+      if (endDate) {
+        whereClause += ` AND date <= $${paramIndex}`
+        baseParams.push(endDate)
+        paramIndex++
+      }
+      
+      // Get data and metadata in one query
+      const query = `
+        WITH data AS (
+          SELECT 
+            date,
+            value,
+            series_key,
+            series_name,
+            unit,
+            observation_status,
+            status_comments
+          FROM balance_of_payments
+          ${whereClause}
+          ORDER BY date DESC
+        ),
+        metadata AS (
+          SELECT 
+            MAX(date) as latest_date,
+            MIN(date) as earliest_date
+          FROM balance_of_payments
+          WHERE series_key = $1
+        )
+        SELECT 
+          d.*,
+          m.latest_date,
+          m.earliest_date
+        FROM data d
+        CROSS JOIN metadata m
+      `
+      
+      const result = await client.query(query, baseParams)
+      
+      const data: BOPRecord[] = result.rows.map(row => ({
+        date: row.date,
+        value: parseFloat(row.value),
+        series_key: row.series_key,
+        series_name: row.series_name,
+        unit: row.unit,
+        observation_status: row.observation_status,
+        status_comments: row.status_comments
+      }))
+      
+      const latestStoredDate = result.rows[0]?.latest_date || null
+      const earliestStoredDate = result.rows[0]?.earliest_date || null
+      
+      return { data, latestStoredDate, earliestStoredDate }
+    } finally {
+      client.release()
+    }
+  } catch (error: any) {
+    console.error(`[DB] Error getting BOP data for ${seriesKey}:`, error.message)
+    return { data: [], latestStoredDate: null, earliestStoredDate: null }
+  }
+}
+
+/**
+ * Insert Balance of Payments data
+ */
+export async function insertBOPData(
+  seriesKey: string,
+  seriesName: string,
+  data: Array<{
+    date: string
+    value: number
+    unit?: string
+    observation_status?: string
+    status_comments?: string
+  }>
+): Promise<{ inserted: number; skipped: number }> {
+  if (!data || data.length === 0) {
+    return { inserted: 0, skipped: 0 }
+  }
+  
+  try {
+    const client = await getPool().connect()
+    
+    try {
+      await client.query('BEGIN')
+      
+      let inserted = 0
+      let skipped = 0
+      
+      for (const record of data) {
+        try {
+          await client.query(
+            `INSERT INTO balance_of_payments 
+             (series_key, series_name, date, value, unit, observation_status, status_comments, source)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (series_key, date) 
+             DO UPDATE SET
+               value = EXCLUDED.value,
+               series_name = EXCLUDED.series_name,
+               unit = EXCLUDED.unit,
+               observation_status = EXCLUDED.observation_status,
+               status_comments = EXCLUDED.status_comments,
+               updated_at = NOW()`,
+            [
+              seriesKey,
+              seriesName,
+              record.date,
+              record.value,
+              record.unit || 'Million USD',
+              record.observation_status || 'Normal',
+              record.status_comments || null,
+              'sbp-easydata'
+            ]
+          )
+          inserted++
+        } catch (err: any) {
+          if (err.code === '23505') { // Unique violation
+            skipped++
+          } else {
+            throw err
+          }
+        }
+      }
+      
+      // Update metadata
+      const latestDate = data
+        .map(r => r.date)
+        .sort()
+        .reverse()[0]
+      
+      const metadataResult = await client.query(
+        `SELECT total_records 
+         FROM bop_metadata 
+         WHERE series_key = $1`,
+        [seriesKey]
+      )
+      
+      const currentTotal = metadataResult.rows[0]?.total_records || 0
+      const newTotal = currentTotal + inserted
+      
+      await client.query(
+        `INSERT INTO bop_metadata 
+         (series_key, last_stored_date, total_records, source, last_updated)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT (series_key)
+         DO UPDATE SET 
+           last_stored_date = EXCLUDED.last_stored_date,
+           total_records = EXCLUDED.total_records,
+           last_updated = NOW()`,
+        [seriesKey, latestDate, newTotal, 'sbp-easydata']
+      )
+      
+      await client.query('COMMIT')
+      
+      return { inserted, skipped }
+    } catch (error: any) {
+      await client.query('ROLLBACK')
+      console.error(`[DB] insertBOPData: Transaction rolled back for ${seriesKey}:`, error.message)
+      throw error
+    } finally {
+      client.release()
+    }
+  } catch (error: any) {
+    console.error(`[DB] Error inserting BOP data for ${seriesKey}:`, error.message)
+    return { inserted: 0, skipped: 0 }
+  }
+}
+
+/**
+ * Get Balance of Payments metadata (for caching check)
+ */
+export async function getBOPMetadata(
+  seriesKey: string
+): Promise<BOPMetadata | null> {
+  try {
+    const client = await getPool().connect()
+    
+    try {
+      const result = await client.query(
+        `SELECT 
+           series_key,
+           last_stored_date,
+           last_updated,
+           total_records,
+           source
+         FROM bop_metadata
+         WHERE series_key = $1`,
+        [seriesKey]
+      )
+      
+      if (result.rows.length === 0) {
+        return null
+      }
+      
+      const row = result.rows[0]
+      return {
+        series_key: row.series_key,
+        last_stored_date: row.last_stored_date,
+        last_updated: row.last_updated,
+        total_records: row.total_records,
+        source: row.source
+      }
+    } finally {
+      client.release()
+    }
+  } catch (error: any) {
+    console.error(`[DB] Error getting BOP metadata for ${seriesKey}:`, error.message)
+    return null
+  }
+}
+
+/**
+ * Check if Balance of Payments data needs refresh (3-day cache)
+ */
+export async function shouldRefreshBOPData(seriesKey: string): Promise<boolean> {
+  try {
+    const metadata = await getBOPMetadata(seriesKey)
+    
+    if (!metadata || !metadata.last_updated) {
+      return true // No data, need to fetch
+    }
+    
+    const lastUpdated = new Date(metadata.last_updated).getTime()
+    const now = Date.now()
+    const ageInDays = (now - lastUpdated) / (1000 * 60 * 60 * 24)
+    
+    // Refresh if data is older than 3 days
+    return ageInDays > 3
+  } catch (error: any) {
+    console.error(`[DB] Error checking if BOP data needs refresh for ${seriesKey}:`, error.message)
     return true // On error, refresh to be safe
   }
 }

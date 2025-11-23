@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { Loader2, TrendingUp, TrendingDown, RefreshCw } from "lucide-react"
+import { Loader2, TrendingUp, TrendingDown, RefreshCw, DollarSign } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { Line } from "react-chartjs-2"
@@ -33,7 +33,7 @@ ChartJS.register(
   Filler
 )
 
-interface InterestRateData {
+interface BOPData {
   date: string
   value: number
   series_key: string
@@ -41,10 +41,10 @@ interface InterestRateData {
   unit: string
 }
 
-interface InterestRateResponse {
+interface BOPResponse {
   seriesKey: string
   seriesName: string
-  data: InterestRateData[]
+  data: BOPData[]
   count: number
   latestStoredDate: string | null
   earliestStoredDate: string | null
@@ -54,29 +54,17 @@ interface InterestRateResponse {
 
 const SERIES_OPTIONS = [
   {
-    key: 'TS_GP_IR_SIRPR_AH.SBPOL0030',
-    label: 'Policy (Target) Rate',
-    description: 'Main policy rate introduced in May 2015',
+    key: 'TS_GP_ES_PKBOPSTND_M.BOPSNA01810',
+    label: 'Current Account - Net',
+    description: 'Net current account balance (surplus/deficit)',
     color: 'rgb(59, 130, 246)', // blue
-  },
-  {
-    key: 'TS_GP_IR_SIRPR_AH.SBPOL0010',
-    label: 'Reverse Repo Rate',
-    description: 'Ceiling rate (since 1956)',
-    color: 'rgb(239, 68, 68)', // red
-  },
-  {
-    key: 'TS_GP_IR_SIRPR_AH.SBPOL0020',
-    label: 'Repo Rate',
-    description: 'Floor rate (since 2009)',
-    color: 'rgb(34, 197, 94)', // green
   },
 ]
 
-export function InterestRatesSection() {
+export function BalanceOfPaymentsSection() {
   const { toast } = useToast()
   const [selectedSeries, setSelectedSeries] = useState(SERIES_OPTIONS[0].key)
-  const [data, setData] = useState<InterestRateData[]>([])
+  const [data, setData] = useState<BOPData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [metadata, setMetadata] = useState<{
@@ -87,50 +75,42 @@ export function InterestRatesSection() {
 
   const selectedSeriesInfo = SERIES_OPTIONS.find(s => s.key === selectedSeries) || SERIES_OPTIONS[0]
 
-  const loadInterestRates = async (refresh = false) => {
+  const loadBOPData = async (refresh = false) => {
     try {
       setLoading(true)
       setError(null)
 
-      const url = `/api/sbp/interest-rates?seriesKey=${encodeURIComponent(selectedSeries)}${refresh ? '&refresh=true' : ''}`
+      const url = `/api/sbp/balance-of-payments?seriesKey=${encodeURIComponent(selectedSeries)}${refresh ? '&refresh=true' : ''}`
       const response = await fetch(url)
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to fetch interest rates')
+        throw new Error(errorData.error || 'Failed to fetch Balance of Payments data')
       }
 
-      const result: any = await response.json()
+      const result: BOPResponse = await response.json()
 
-      // Check for error response
-      if (result.error) {
-        throw new Error(result.error + (result.details ? `: ${result.details}` : ''))
-      }
-
-      // Type guard to ensure it's a valid response
-      const validResult = result as InterestRateResponse
-
-      if (!validResult.data || validResult.data.length === 0) {
-        throw new Error('No data available for this series. Please check that SBP_API_KEY is set and try refreshing.')
+      if (!result.data || result.data.length === 0) {
+        throw new Error('No data available for this series')
       }
 
       // Sort by date ascending for chart
-      const sortedData = [...validResult.data].sort((a, b) => 
+      const sortedData = [...result.data].sort((a, b) => 
         new Date(a.date).getTime() - new Date(b.date).getTime()
       )
 
       setData(sortedData)
       setMetadata({
-        seriesName: validResult.seriesName,
-        latestDate: validResult.latestStoredDate,
-        cached: validResult.cached,
+        seriesName: result.seriesName,
+        latestDate: result.latestStoredDate,
+        cached: result.cached,
       })
     } catch (err: any) {
-      console.error('Error loading interest rates:', err)
-      setError(err.message || 'Failed to load interest rates')
+      console.error('Error loading Balance of Payments data:', err)
+      setError(err.message || 'Failed to load Balance of Payments data')
       toast({
         title: "Error",
-        description: err.message || 'Failed to load interest rates',
+        description: err.message || 'Failed to load Balance of Payments data',
         variant: "destructive",
       })
     } finally {
@@ -139,11 +119,11 @@ export function InterestRatesSection() {
   }
 
   useEffect(() => {
-    loadInterestRates()
+    loadBOPData()
   }, [selectedSeries])
 
   const handleRefresh = () => {
-    loadInterestRates(true)
+    loadBOPData(true)
   }
 
   // Prepare chart data
@@ -176,7 +156,7 @@ export function InterestRatesSection() {
       },
       title: {
         display: true,
-        text: `State Bank of Pakistan - ${selectedSeriesInfo.label}`,
+        text: `Pakistan's Balance of Payments - ${selectedSeriesInfo.label}`,
         font: {
           size: 16,
           weight: 'bold' as const,
@@ -187,7 +167,9 @@ export function InterestRatesSection() {
         intersect: false,
         callbacks: {
           label: function(context: any) {
-            return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`
+            const value = context.parsed.y
+            const sign = value >= 0 ? '+' : ''
+            return `${context.dataset.label}: ${sign}${value.toFixed(2)} Million USD`
           },
         },
       },
@@ -208,9 +190,18 @@ export function InterestRatesSection() {
         display: true,
         title: {
           display: true,
-          text: 'Interest Rate (%)',
+          text: 'Million USD',
         },
         beginAtZero: false,
+        // Add zero line to distinguish surplus/deficit
+        grid: {
+          color: function(context: any) {
+            if (context.tick.value === 0) {
+              return 'rgba(0, 0, 0, 0.5)'
+            }
+            return 'rgba(0, 0, 0, 0.1)'
+          },
+        },
       },
     },
     interaction: {
@@ -223,8 +214,14 @@ export function InterestRatesSection() {
   // Calculate change
   const latestValue = data.length > 0 ? data[data.length - 1].value : null
   const previousValue = data.length > 1 ? data[data.length - 2].value : null
-  const change = latestValue && previousValue ? latestValue - previousValue : null
-  const changePercent = change && previousValue ? (change / previousValue) * 100 : null
+  const change = latestValue !== null && previousValue !== null ? latestValue - previousValue : null
+  const changePercent = change !== null && previousValue !== null && previousValue !== 0 
+    ? (change / Math.abs(previousValue)) * 100 
+    : null
+
+  // Determine if current value is surplus or deficit
+  const isSurplus = latestValue !== null && latestValue >= 0
+  const isDeficit = latestValue !== null && latestValue < 0
 
   return (
     <div className="space-y-6">
@@ -232,9 +229,9 @@ export function InterestRatesSection() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>State Bank of Pakistan Interest Rates</CardTitle>
+              <CardTitle>Pakistan's Balance of Payments</CardTitle>
               <CardDescription>
-                Historical interest rate data from SBP EasyData API
+                Current account balance data from SBP EasyData API
               </CardDescription>
             </div>
             <Button
@@ -251,7 +248,7 @@ export function InterestRatesSection() {
         <CardContent className="space-y-6">
           {/* Series Selection */}
           <div className="space-y-2">
-            <Label htmlFor="series-select">Select Interest Rate Series</Label>
+            <Label htmlFor="series-select">Select Series</Label>
             <Select value={selectedSeries} onValueChange={setSelectedSeries}>
               <SelectTrigger id="series-select">
                 <SelectValue />
@@ -269,22 +266,34 @@ export function InterestRatesSection() {
             </Select>
           </div>
 
-          {/* Current Rate Display */}
+          {/* Current Value Display */}
           {latestValue !== null && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="p-4 border rounded-lg">
-                <div className="text-sm text-muted-foreground">Current Rate</div>
-                <div className="text-2xl font-bold mt-1">{latestValue.toFixed(2)}%</div>
+                <div className="text-sm text-muted-foreground">Current Account</div>
+                <div className={`text-2xl font-bold mt-1 flex items-center gap-2 ${
+                  isSurplus ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  {isSurplus ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
+                  {latestValue >= 0 ? '+' : ''}{latestValue.toFixed(2)}
+                  <span className="text-sm font-normal text-muted-foreground ml-1">M USD</span>
+                </div>
                 <div className="text-xs text-muted-foreground mt-1">
+                  {isSurplus ? 'Surplus' : 'Deficit'}
+                </div>
+                <div className="text-xs text-muted-foreground">
                   {metadata?.latestDate ? format(new Date(metadata.latestDate), 'MMM dd, yyyy') : 'N/A'}
                 </div>
               </div>
               {change !== null && (
                 <div className="p-4 border rounded-lg">
                   <div className="text-sm text-muted-foreground">Change</div>
-                  <div className={`text-2xl font-bold mt-1 flex items-center gap-2 ${change >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  <div className={`text-2xl font-bold mt-1 flex items-center gap-2 ${
+                    change >= 0 ? 'text-green-600' : 'text-red-600'
+                  }`}>
                     {change >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
-                    {change > 0 ? '+' : ''}{change.toFixed(2)}%
+                    {change > 0 ? '+' : ''}{change.toFixed(2)}
+                    <span className="text-sm font-normal text-muted-foreground ml-1">M USD</span>
                   </div>
                   {changePercent !== null && (
                     <div className="text-xs text-muted-foreground mt-1">
@@ -308,7 +317,7 @@ export function InterestRatesSection() {
             <div className="flex items-center justify-center h-[500px] border rounded-lg bg-muted/10">
               <div className="flex flex-col items-center gap-2 text-muted-foreground">
                 <Loader2 className="w-8 h-8 animate-spin" />
-                <p>Loading interest rate data...</p>
+                <p>Loading Balance of Payments data...</p>
               </div>
             </div>
           ) : error ? (
