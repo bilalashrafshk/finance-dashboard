@@ -503,22 +503,41 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
        {/* Render Sector Headers */}
        {sectorNodes.map((sector, i) => {
          const sectorName = sector.sector || 'OTHER'
-         const textWidth = sectorName.length * 7 // Approximate character width
-         const isTruncated = textWidth > sector.bounds.width
+         
+         // Calculate dynamic font size based on text length and available width
+         const availableWidth = sector.bounds.width - 8 // Account for padding (4px on each side)
+         const headerHeight = 32
+         
+         // Start with a base font size
+         let fontSize = 12 // Base font size for sector headers
+         const estimatedCharWidth = fontSize * 0.6 // Approximate character width
+         const textWidth = sectorName.length * estimatedCharWidth
+         
+         // If text would overflow, reduce font size
+         if (textWidth > availableWidth) {
+           fontSize = Math.max(8, (availableWidth / sectorName.length) / 0.6)
+         }
+         
+         // Also ensure font size doesn't exceed header height
+         fontSize = Math.min(fontSize, headerHeight * 0.5)
+         
+         const isTruncated = (sectorName.length * (fontSize * 0.6)) > availableWidth
          
          return (
            <div
              key={`sector-${i}`}
-             className="absolute border-b border-r border-white/20 bg-slate-800 text-white px-2 flex items-center font-bold text-xs tracking-wider"
+             className="absolute border-b border-r border-white/20 bg-slate-800 text-white px-2 flex items-center font-bold tracking-wider"
              style={{
                left: sector.bounds.x,
                top: sector.bounds.y,
                width: sector.bounds.width,
-               height: 32, // Header height
+               height: headerHeight,
                zIndex: 5,
                overflow: 'hidden',
                whiteSpace: 'nowrap',
-               textOverflow: 'ellipsis'
+               textOverflow: 'ellipsis',
+               fontSize: `${fontSize}px`,
+               lineHeight: 1
              }}
              title={isTruncated ? sectorName : undefined}
            >
