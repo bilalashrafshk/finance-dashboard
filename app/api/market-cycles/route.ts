@@ -59,7 +59,19 @@ export async function GET(request: NextRequest) {
     }
     
     // Always detect cycles to get the latest state (including current cycle)
-    const allDetectedCycles = detectMarketCycles(priceData, startFromDate)
+    let allDetectedCycles: MarketCycle[] = []
+    
+    try {
+      allDetectedCycles = detectMarketCycles(priceData, startFromDate)
+    } catch (error: any) {
+      console.error(`[Market Cycles] Error detecting cycles for ${assetType}/${symbol}:`, error)
+      // Continue with empty array - will return cached cycles if available
+    }
+    
+    // Log for debugging
+    if (allDetectedCycles.length === 0) {
+      console.log(`[Market Cycles] No cycles detected for ${assetType}/${symbol}. Data points: ${priceData.length}, Start date: ${startFromDate || '1998-07-13'}`)
+    }
     
     // Separate completed cycles from current cycle
     const today = new Date()
@@ -112,11 +124,13 @@ export async function GET(request: NextRequest) {
     const allCycles = [...allCompletedCycles, ...currentCycles]
     
     // Assign proper cycle IDs based on chronological order
-    allCycles.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
-    allCycles.forEach((cycle, index) => {
-      cycle.cycleId = index + 1
-      cycle.cycleName = `Cycle ${index + 1}`
-    })
+    if (allCycles.length > 0) {
+      allCycles.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+      allCycles.forEach((cycle, index) => {
+        cycle.cycleId = index + 1
+        cycle.cycleName = `Cycle ${index + 1}`
+      })
+    }
     
     // The most recent current cycle
     const currentCycle = currentCycles.length > 0 
@@ -124,10 +138,11 @@ export async function GET(request: NextRequest) {
       : null
 
     return NextResponse.json({
-      cachedCycles: finalCompletedCycles,
+      cachedCycles: allCompletedCycles,
       currentCycle: currentCycle,
       allCycles: allCycles,
-      cyclesDetected: allDetectedCycles.length
+      cyclesDetected: allDetectedCycles.length,
+      hasData: priceData.length > 0
     })
 
   } catch (error: any) {
