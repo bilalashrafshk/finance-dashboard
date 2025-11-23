@@ -6,7 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Loader2, Info } from "lucide-react"
 import { Line } from "react-chartjs-2"
-import { ChartExplanationDialog } from "./chart-explanation-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -298,12 +304,18 @@ export function AdvanceDeclineChart({
           </p>
         </div>
       </CardContent>
-      <ChartExplanationDialog
-        open={showExplanation}
-        onOpenChange={setShowExplanation}
-        title="Advance-Decline Line"
-        content={
-          <div className="space-y-4">
+      <Dialog open={showExplanation} onOpenChange={setShowExplanation}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto w-[95vw] sm:w-full">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Info className="h-5 w-5" />
+              Advance-Decline Line
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
+              Track market breadth using the cumulative Advance-Decline Line
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-sm sm:text-base space-y-4">
             <div>
               <h4 className="font-semibold mb-2">What is the Advance-Decline Line?</h4>
               <p className="text-sm text-muted-foreground">
@@ -331,8 +343,8 @@ export function AdvanceDeclineChart({
               </p>
             </div>
           </div>
-        }
-      />
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }
