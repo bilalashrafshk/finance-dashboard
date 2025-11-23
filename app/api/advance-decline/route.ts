@@ -1,10 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Pool } from 'pg'
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
-  ssl: (process.env.DATABASE_URL || process.env.POSTGRES_URL || '').includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
-})
+export const revalidate = 3600 // Cache for 1 hour
+
+let pool: Pool | null = null
+
+function getPool(): Pool {
+  if (!pool) {
+    const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
+    
+    if (!connectionString) {
+      throw new Error('DATABASE_URL or POSTGRES_URL environment variable is required')
+    }
+    
+    pool = new Pool({
+      connectionString,
+      ssl: connectionString.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+    })
+  }
+  
+  return pool
+}
 
 export interface AdvanceDeclineDataPoint {
   date: string
@@ -33,6 +52,7 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate')
     const limit = parseInt(searchParams.get('limit') || '100', 10)
 
+    const pool = getPool()
     const client = await pool.connect()
 
     try {
@@ -56,116 +76,84 @@ export async function GET(request: NextRequest) {
         }, { status: 404 })
       }
 
-      // Step 2: Get all dates with price data for these stocks
-      // We'll calculate the date range from the data if not provided
-      let dateRangeQuery = `
-        SELECT DISTINCT date
-        FROM historical_price_data
-        WHERE asset_type = 'pk-equity'
-          AND symbol = ANY($1)
+      // Step 2: Get all price data with previous day prices using a single optimized query
+      // This uses LAG window function to get previous day's price in a single query
+      // Build query with proper parameter placeholders
+      let adQuery = `
+        WITH top_stocks_data AS (
+          SELECT 
+            hpd.date,
+            hpd.symbol,
+            hpd.close as price,
+            LAG(hpd.close) OVER (PARTITION BY hpd.symbol ORDER BY hpd.date) as previous_price
+          FROM historical_price_data hpd
+          WHERE hpd.asset_type = 'pk-equity'
+            AND hpd.symbol = ANY($1)
       `
-      const dateRangeParams: any[] = [topStockSymbols]
-
+      
+      const queryParams: any[] = [topStockSymbols]
+      let paramIndex = 2
+      
       if (startDate) {
-        dateRangeQuery += ` AND date >= $2`
-        dateRangeParams.push(startDate)
+        adQuery += ` AND hpd.date >= $${paramIndex}`
+        queryParams.push(startDate)
+        paramIndex++
       }
       if (endDate) {
-        dateRangeQuery += ` AND date <= $${dateRangeParams.length + 1}`
-        dateRangeParams.push(endDate)
+        adQuery += ` AND hpd.date <= $${paramIndex}`
+        queryParams.push(endDate)
+        paramIndex++
       }
+      
+      adQuery += `
+        ),
+        daily_changes AS (
+          SELECT 
+            date,
+            COUNT(*) FILTER (WHERE price > previous_price AND previous_price IS NOT NULL AND previous_price > 0) as advancing,
+            COUNT(*) FILTER (WHERE price < previous_price AND previous_price IS NOT NULL AND previous_price > 0) as declining,
+            COUNT(*) FILTER (WHERE price = previous_price AND previous_price IS NOT NULL AND previous_price > 0) as unchanged
+          FROM top_stocks_data
+          WHERE previous_price IS NOT NULL
+          GROUP BY date
+        ),
+        daily_net_advances AS (
+          SELECT 
+            date,
+            advancing,
+            declining,
+            unchanged,
+            (advancing - declining) as net_advances
+          FROM daily_changes
+        )
+        SELECT 
+          date,
+          advancing,
+          declining,
+          unchanged,
+          net_advances,
+          SUM(net_advances) OVER (ORDER BY date) as ad_line
+        FROM daily_net_advances
+        ORDER BY date ASC
+      `
 
-      dateRangeQuery += ` ORDER BY date ASC`
-
-      const datesResult = await client.query(dateRangeQuery, dateRangeParams)
-      const dates = datesResult.rows.map(row => row.date)
-
-      if (dates.length === 0) {
+      const adResult = await client.query(adQuery, queryParams)
+      
+      if (adResult.rows.length === 0) {
         return NextResponse.json({
           success: false,
           error: 'No price data found for the specified date range',
         }, { status: 404 })
       }
-
-      // Step 3: For each date, calculate advancing/declining stocks
-      const adData: AdvanceDeclineDataPoint[] = []
-      let previousAdLine = 0
-
-      for (let i = 0; i < dates.length; i++) {
-        const currentDate = dates[i]
-        
-        // Get prices for current date
-        const currentPricesQuery = `
-          SELECT symbol, close as price
-          FROM historical_price_data
-          WHERE asset_type = 'pk-equity'
-            AND symbol = ANY($1)
-            AND date = $2
-        `
-        const currentPricesResult = await client.query(currentPricesQuery, [topStockSymbols, currentDate])
-        const currentPrices = new Map<string, number>()
-        currentPricesResult.rows.forEach(row => {
-          currentPrices.set(row.symbol, parseFloat(row.price))
-        })
-
-        // Skip if we don't have prices for this date
-        if (currentPrices.size === 0) {
-          continue
-        }
-
-        // Get previous day prices for stocks that have current day prices
-        const symbolsWithCurrentPrice = Array.from(currentPrices.keys())
-        const previousPricesQuery = `
-          SELECT DISTINCT ON (symbol)
-            symbol, close as price
-          FROM historical_price_data
-          WHERE asset_type = 'pk-equity'
-            AND symbol = ANY($1)
-            AND date < $2
-            AND date IS NOT NULL
-          ORDER BY symbol, date DESC
-        `
-        const previousPricesResult = await client.query(previousPricesQuery, [symbolsWithCurrentPrice, currentDate])
-        const previousPrices = new Map<string, number>()
-        previousPricesResult.rows.forEach(row => {
-          previousPrices.set(row.symbol, parseFloat(row.price))
-        })
-
-        // Calculate advancing, declining, unchanged
-        let advancing = 0
-        let declining = 0
-        let unchanged = 0
-
-        currentPrices.forEach((currentPrice, symbol) => {
-          const previousPrice = previousPrices.get(symbol)
-          
-          if (previousPrice !== undefined && previousPrice > 0) {
-            if (currentPrice > previousPrice) {
-              advancing++
-            } else if (currentPrice < previousPrice) {
-              declining++
-            } else {
-              unchanged++
-            }
-          }
-        })
-
-        // Calculate net advances
-        const netAdvances = advancing - declining
-
-        // Calculate AD Line (cumulative)
-        const adLine = previousAdLine + netAdvances
-        previousAdLine = adLine
-
-        adData.push({
-          date: currentDate,
-          advancing,
-          declining,
-          unchanged,
-          netAdvances,
-          adLine,
-        })
-      }
+      
+      const adData: AdvanceDeclineDataPoint[] = adResult.rows.map(row => ({
+        date: row.date,
+        advancing: parseInt(row.advancing) || 0,
+        declining: parseInt(row.declining) || 0,
+        unchanged: parseInt(row.unchanged) || 0,
+        netAdvances: parseInt(row.net_advances) || 0,
+        adLine: parseInt(row.ad_line) || 0,
+      }))
 
       return NextResponse.json({
         success: true,
@@ -173,8 +161,8 @@ export async function GET(request: NextRequest) {
         count: adData.length,
         stocksCount: topStockSymbols.length,
         dateRange: {
-          start: dates[0],
-          end: dates[dates.length - 1],
+          start: adData[0].date,
+          end: adData[adData.length - 1].date,
         },
       }, {
         headers: {
