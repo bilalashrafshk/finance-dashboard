@@ -121,6 +121,8 @@ export function AdvanceDeclineChart({
               setKse100Data(formatted)
             }
           }
+        } else {
+          setKse100Data([])
         }
       } catch (err: any) {
         console.error('Error fetching Advance-Decline data:', err)
@@ -271,9 +273,22 @@ export function AdvanceDeclineChart({
 
       // Add second y-axis for KSE100 if enabled
       if (showKse100 && kse100Data.length > 0) {
-        const kse100Values = kse100Data.map(d => d.close).filter(v => v !== null && v !== undefined && v > 0)
-        const kse100Min = kse100Values.length > 0 ? Math.min(...kse100Values) : 0
-        const kse100Max = kse100Values.length > 0 ? Math.max(...kse100Values) : 1
+        // Calculate min/max from the actual mapped values that will be displayed
+        const kse100DateMap = new Map<string, number>()
+        kse100Data.forEach(d => {
+          const dateStr = typeof d.date === 'string' ? d.date : new Date(d.date).toISOString().split('T')[0]
+          kse100DateMap.set(dateStr, d.close)
+        })
+        
+        const kse100MappedValues = data
+          .map(point => {
+            const dateStr = typeof point.date === 'string' ? point.date : new Date(point.date).toISOString().split('T')[0]
+            return kse100DateMap.get(dateStr)
+          })
+          .filter((v): v is number => v !== null && v !== undefined && v > 0)
+        
+        const kse100Min = kse100MappedValues.length > 0 ? Math.min(...kse100MappedValues) : 0
+        const kse100Max = kse100MappedValues.length > 0 ? Math.max(...kse100MappedValues) : 1
         const kse100Range = kse100Max - kse100Min
         const kse100Padding = kse100Range * 0.1 || 100
 
@@ -341,12 +356,27 @@ export function AdvanceDeclineChart({
         const dataIndex = element.index
         
         // Check if clicked on Net Advances dataset (index 1)
+        // Note: datasetIndex 0 = AD Line, 1 = Net Advances, 2 = KSE100 (if enabled)
         if (datasetIndex === 1 && dataIndex >= 0 && dataIndex < data.length) {
           const point = data[dataIndex]
           // Open heatmap page for that date
           window.open(`/market-heatmap?date=${point.date}`, '_blank')
         }
       }
+    }
+    
+    // Ensure interaction mode allows clicking on lines (not just points)
+    // This is already set in createTimeSeriesChartOptions, but ensure it's correct
+    if (opts.interaction) {
+      opts.interaction.mode = 'nearest'
+      opts.interaction.intersect = false
+    }
+    
+    // Also add interaction mode to make clicking easier
+    opts.interaction = {
+      ...opts.interaction,
+      mode: 'nearest' as const,
+      intersect: false,
     }
 
     return opts
