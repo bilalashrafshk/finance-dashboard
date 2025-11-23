@@ -31,7 +31,51 @@ import type { InvestingHistoricalDataPoint } from '@/lib/portfolio/investing-cli
  * - Only triggers for server-side fetchable assets (pk-equity, us-equity, crypto)
  * - Excludes weekends from trading day calculations
  * - Waits for fetch to complete before returning response
+ * - Caches dates that both StockAnalysis and SCSTrade failed to return (likely public holidays)
  */
+
+// Cache for dates that both StockAnalysis and SCSTrade failed to return (likely public holidays)
+// Format: "assetType:symbol:date" -> timestamp when cached
+// Cache expires after 1 year (holidays repeat annually)
+const failedDateCache = new Map<string, number>()
+const FAILED_DATE_CACHE_TTL = 365 * 24 * 60 * 60 * 1000 // 1 year in milliseconds
+
+function getFailedDateCacheKey(assetType: string, symbol: string, date: string): string {
+  return `${assetType}:${symbol}:${date}`
+}
+
+function isDateCachedAsFailed(assetType: string, symbol: string, date: string): boolean {
+  const key = getFailedDateCacheKey(assetType, symbol, date)
+  const cachedTimestamp = failedDateCache.get(key)
+  
+  if (!cachedTimestamp) {
+    return false
+  }
+  
+  // Check if cache is still valid (not expired)
+  const now = Date.now()
+  if (now - cachedTimestamp > FAILED_DATE_CACHE_TTL) {
+    failedDateCache.delete(key)
+    return false
+  }
+  
+  return true
+}
+
+function cacheFailedDate(assetType: string, symbol: string, date: string): void {
+  const key = getFailedDateCacheKey(assetType, symbol, date)
+  failedDateCache.set(key, Date.now())
+  
+  // Clean up expired entries periodically (keep cache size manageable)
+  if (failedDateCache.size > 10000) {
+    const now = Date.now()
+    for (const [cacheKey, timestamp] of failedDateCache.entries()) {
+      if (now - timestamp > FAILED_DATE_CACHE_TTL) {
+        failedDateCache.delete(cacheKey)
+      }
+    }
+  }
+}
 
 function convertStockAnalysisToRecord(data: StockAnalysisDataPoint): HistoricalPriceRecord {
   return {
@@ -208,10 +252,13 @@ async function fetchNewDataInBackground(
         }
         
         // If there are missing dates, try SCSTrade to fill them
-        if (missingDates.length > 0) {
+        // Filter out dates that are cached as failed (likely public holidays)
+        const datesToFetch = missingDates.filter(date => !isDateCachedAsFailed(assetType, symbol, date))
+        
+        if (datesToFetch.length > 0) {
           try {
             // Fetch from the earliest missing date to today to fill all gaps
-            const earliestMissingDate = missingDates.sort()[0]
+            const earliestMissingDate = datesToFetch.sort()[0]
             const scstradeData = await retryWithBackoff(
               () => fetchSCSTradeData(symbol, earliestMissingDate, today),
               2, // 2 retries for SCSTrade
@@ -230,9 +277,24 @@ async function fetchNewDataInBackground(
               } else {
                 source = 'scstrade'
               }
+              
+              // Cache dates that were requested but SCSTrade didn't return (likely holidays)
+              const scstradeReturnedDates = new Set(scstradeData.map(d => d.date))
+              for (const requestedDate of datesToFetch) {
+                if (!scstradeReturnedDates.has(requestedDate)) {
+                  // Both StockAnalysis and SCSTrade don't have this date - likely a public holiday
+                  cacheFailedDate(assetType, symbol, requestedDate)
+                }
+              }
+            } else {
+              // SCSTrade returned no data - cache all requested dates as failed
+              for (const requestedDate of datesToFetch) {
+                cacheFailedDate(assetType, symbol, requestedDate)
+              }
             }
           } catch (scstradeError) {
             console.error(`[${assetType}-${symbol}] SCSTrade fallback for missing dates failed:`, scstradeError)
+            // On error, don't cache - might be a temporary issue
           }
         }
       }
