@@ -54,12 +54,12 @@ export default function ChartsPage() {
                         isSidebarOpen ? "w-80 translate-x-0" : "w-0 -translate-x-full md:translate-x-0 md:w-0 overflow-hidden border-none"
                     )}
                 >
-                    <div className="p-4 border-b flex items-center justify-between flex-shrink-0">
+                    <div className="p-3 border-b flex items-center justify-between flex-shrink-0">
                         <div className="relative flex-1 mr-2">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
                                 placeholder="Search charts..."
-                                className="pl-9"
+                                className="pl-9 h-9"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
@@ -67,7 +67,7 @@ export default function ChartsPage() {
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="md:hidden"
+                            className="md:hidden h-9 w-9"
                             onClick={() => setIsSidebarOpen(false)}
                         >
                             <ChevronRight className="h-4 w-4 rotate-180" />
@@ -75,28 +75,28 @@ export default function ChartsPage() {
                     </div>
 
                     <ScrollArea className="flex-1 min-h-0">
-                        <div className="p-4">
+                        <div className="p-3">
                             <Accordion
                                 type="multiple"
                                 defaultValue={CHART_CATEGORIES.map(c => c.id)}
-                                className="space-y-4"
+                                className="space-y-1"
                             >
                                 {filteredCategories.map((category) => (
                                     <AccordionItem key={category.id} value={category.id} className="border-none">
-                                        <AccordionTrigger className="py-2 hover:no-underline px-2 rounded-lg hover:bg-muted/50">
-                                            <div className="flex items-center gap-2 font-semibold">
+                                        <AccordionTrigger className="py-1.5 hover:no-underline px-2 rounded-md hover:bg-muted/50">
+                                            <div className="flex items-center gap-2 font-semibold text-sm">
                                                 <category.icon className="w-4 h-4 text-muted-foreground" />
                                                 {category.title}
                                             </div>
                                         </AccordionTrigger>
-                                        <AccordionContent className="pb-0 pt-1">
-                                            <div className="flex flex-col gap-1 ml-2 border-l pl-2">
+                                        <AccordionContent className="pb-0 pt-0.5">
+                                            <div className="flex flex-col gap-0.5 ml-2 border-l pl-2">
                                                 {category.charts.map((chart) => (
                                                     <Button
                                                         key={chart.id}
                                                         variant={selectedChartId === chart.id ? "secondary" : "ghost"}
                                                         className={cn(
-                                                            "justify-start h-auto py-2 px-3 text-sm font-normal",
+                                                            "justify-start h-auto py-1.5 px-2.5 text-sm font-normal",
                                                             selectedChartId === chart.id
                                                                 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
                                                                 : "text-muted-foreground hover:text-foreground"

@@ -20,3 +20,4 @@ for chart in "${charts[@]}"; do
   echo "- $file (frequency: $freq, default: $(if [ "$freq" = "daily" ]; then echo "1Y"; elif [ "$freq" = "weekly" ]; then echo "1Y"; elif [ "$freq" = "monthly" ]; then echo "5Y"; else echo "ALL"; fi))"
 done
 
+
