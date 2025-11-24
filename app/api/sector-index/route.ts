@@ -142,9 +142,13 @@ export async function GET(request: NextRequest) {
       // Step 4: Calculate weighted index for each date
       const indexData: SectorIndexDataPoint[] = []
       let baseIndexValue: number | null = null
+      let firstDateWithData: string | null = null
 
       const sortedDates = Array.from(pricesByDate.keys()).sort()
 
+      // First pass: Calculate weighted prices and find the base date
+      const weightedPricesByDate = new Map<string, { price: number; marketCap: number; stocksCount: number }>()
+      
       for (const date of sortedDates) {
         const datePrices = pricesByDate.get(date) || []
         
@@ -164,21 +168,37 @@ export async function GET(request: NextRequest) {
 
         if (totalMarketCap > 0) {
           const weightedAveragePrice = totalWeightedPrice / totalMarketCap
+          weightedPricesByDate.set(date, {
+            price: weightedAveragePrice,
+            marketCap: totalMarketCap,
+            stocksCount: stocksWithData
+          })
           
-          // Set base index value on start date
-          if (date === startDate && baseIndexValue === null) {
-            baseIndexValue = weightedAveragePrice
+          // Set base index value on start date, or first available date if start date has no data
+          if (baseIndexValue === null) {
+            if (date >= startDate) {
+              baseIndexValue = weightedAveragePrice
+              firstDateWithData = date
+            }
           }
+        }
+      }
 
-          // Calculate index normalized to 100 on start date
-          if (baseIndexValue !== null && baseIndexValue > 0) {
-            const indexValue = (weightedAveragePrice / baseIndexValue) * 100
+      // Second pass: Calculate normalized index values
+      if (baseIndexValue !== null && baseIndexValue > 0 && firstDateWithData) {
+        for (const date of sortedDates) {
+          // Only include dates from startDate onwards
+          if (date < startDate) continue
+          
+          const dateData = weightedPricesByDate.get(date)
+          if (dateData && dateData.price > 0) {
+            const indexValue = (dateData.price / baseIndexValue) * 100
 
             indexData.push({
               date,
               index: indexValue,
-              totalMarketCap,
-              stocksCount: stocksWithData,
+              totalMarketCap: dateData.marketCap,
+              stocksCount: dateData.stocksCount,
             })
           }
         }
