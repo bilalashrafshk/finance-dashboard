@@ -90,13 +90,19 @@ async function fetchSBPEconomicDataFromAPI(
     col.toLowerCase().includes('comment')
   )
   
+  // Validate that required columns were found
+  if (dateColIdx === -1 || valueColIdx === -1) {
+    console.error('[Economic Data API] Missing required columns. Found columns:', data.columns)
+    throw new Error(`Invalid API response: missing required columns. Expected 'date' and 'value' columns, got: ${data.columns.join(', ')}`)
+  }
+  
   return data.rows.map(row => ({
     date: String(row[dateColIdx] || ''),
     value: parseFloat(String(row[valueColIdx] || 0)),
-    unit: String(row[unitColIdx] || 'Percent'),
-    observation_status: String(row[statusColIdx] || 'Normal'),
-    status_comments: String(row[commentsColIdx] || ''),
-    series_name: String(row[seriesNameColIdx] || '')
+    unit: String(row[unitColIdx] !== -1 ? row[unitColIdx] : 'Percent') || 'Percent',
+    observation_status: String(row[statusColIdx] !== -1 ? row[statusColIdx] : 'Normal') || 'Normal',
+    status_comments: String(row[commentsColIdx] !== -1 ? row[commentsColIdx] : '') || '',
+    series_name: String(row[seriesNameColIdx] !== -1 ? row[seriesNameColIdx] : '') || ''
   }))
 }
 
