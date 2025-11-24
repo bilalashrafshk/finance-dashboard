@@ -99,10 +99,10 @@ async function fetchSBPEconomicDataFromAPI(
   return data.rows.map(row => ({
     date: String(row[dateColIdx] || ''),
     value: parseFloat(String(row[valueColIdx] || 0)),
-    unit: String(row[unitColIdx] !== -1 ? row[unitColIdx] : 'Percent') || 'Percent',
-    observation_status: String(row[statusColIdx] !== -1 ? row[statusColIdx] : 'Normal') || 'Normal',
-    status_comments: String(row[commentsColIdx] !== -1 ? row[commentsColIdx] : '') || '',
-    series_name: String(row[seriesNameColIdx] !== -1 ? row[seriesNameColIdx] : '') || ''
+    unit: unitColIdx !== -1 ? String(row[unitColIdx] || 'Percent') : 'Percent',
+    observation_status: statusColIdx !== -1 ? String(row[statusColIdx] || 'Normal') : 'Normal',
+    status_comments: commentsColIdx !== -1 ? String(row[commentsColIdx] || '') : '',
+    series_name: seriesNameColIdx !== -1 ? String(row[seriesNameColIdx] || '') : ''
   }))
 }
 
