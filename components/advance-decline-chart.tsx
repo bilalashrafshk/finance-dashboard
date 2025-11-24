@@ -6,7 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Info } from "lucide-react"
+import { Slider } from "@/components/ui/slider"
+import { Label } from "@/components/ui/label"
+import { Loader2, Info, Settings, ExternalLink, List } from "lucide-react"
+import Link from "next/link"
 import { Line } from "react-chartjs-2"
 import {
   Dialog,
@@ -66,12 +69,17 @@ export function AdvanceDeclineChart({
 }: AdvanceDeclineChartProps) {
   const [data, setData] = useState<AdvanceDeclineDataPoint[]>([])
   const [kse100Data, setKse100Data] = useState<Array<{ date: string; close: number }>>([])
+  const [sectorIndexData, setSectorIndexData] = useState<Array<{ date: string; index: number }>>([])
   const [showKse100, setShowKse100] = useState(true)
+  const [showSectorIndex, setShowSectorIndex] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showExplanation, setShowExplanation] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [selectedSector, setSelectedSector] = useState<string>("all")
   const [availableSectors, setAvailableSectors] = useState<string[]>([])
+  const [topN, setTopN] = useState(limit)
+  const [totalStocksInSector, setTotalStocksInSector] = useState<number | null>(null)
   const { theme } = useTheme()
   const colors = getThemeColors()
   const { toast } = useToast()
@@ -112,7 +120,7 @@ export function AdvanceDeclineChart({
         const params = new URLSearchParams()
         if (startDate) params.append('startDate', startDate)
         if (endDate) params.append('endDate', endDate)
-        params.append('limit', limit.toString())
+        params.append('limit', topN.toString())
         if (selectedSector && selectedSector !== 'all') {
           params.append('sector', selectedSector)
         }
@@ -127,8 +135,31 @@ export function AdvanceDeclineChart({
         
         if (result.success) {
           setData(result.data || [])
+          setTotalStocksInSector(result.totalStocksInSector || null)
         } else {
           throw new Error(result.error || 'Failed to fetch data')
+        }
+
+        // Fetch sector index if sector is selected
+        if (selectedSector && selectedSector !== 'all' && startDate) {
+          const sectorIndexParams = new URLSearchParams()
+          sectorIndexParams.append('sector', selectedSector)
+          sectorIndexParams.append('startDate', startDate)
+          if (endDate) sectorIndexParams.append('endDate', endDate)
+          
+          const sectorIndexResponse = await fetch(`/api/sector-index?${sectorIndexParams.toString()}`)
+          
+          if (sectorIndexResponse.ok) {
+            const sectorIndexResult = await sectorIndexResponse.json()
+            if (sectorIndexResult.success && sectorIndexResult.data) {
+              setSectorIndexData(sectorIndexResult.data.map((d: any) => ({
+                date: d.date,
+                index: d.index
+              })))
+            }
+          }
+        } else {
+          setSectorIndexData([])
         }
 
         // Fetch KSE100 data using centralized route
@@ -187,7 +218,7 @@ export function AdvanceDeclineChart({
     }
 
     fetchData()
-  }, [startDate, endDate, limit, showKse100, selectedSector, toast])
+  }, [startDate, endDate, topN, showKse100, selectedSector, toast])
 
   const chartData = useMemo(() => {
     if (!data || data.length === 0) {
@@ -211,6 +242,13 @@ export function AdvanceDeclineChart({
       // Normalize date to string format (YYYY-MM-DD)
       const dateStr = typeof d.date === 'string' ? d.date : new Date(d.date).toISOString().split('T')[0]
       kse100DateMap.set(dateStr, d.close)
+    })
+
+    // Create a date map for sector index data
+    const sectorIndexDateMap = new Map<string, number>()
+    sectorIndexData.forEach(d => {
+      const dateStr = typeof d.date === 'string' ? d.date : new Date(d.date).toISOString().split('T')[0]
+      sectorIndexDateMap.set(dateStr, d.index)
     })
     
     const datasets = [
@@ -280,10 +318,43 @@ export function AdvanceDeclineChart({
       })
     }
 
+    // Add sector index overlay if enabled
+    if (showSectorIndex && sectorIndexData.length > 0) {
+      let lastSectorIndexValue: number | null = null
+      const sectorIndexValues = data.map(point => {
+        const dateStr = typeof point.date === 'string' 
+          ? point.date.split('T')[0] 
+          : new Date(point.date).toISOString().split('T')[0]
+        const sectorIndexValue = sectorIndexDateMap.get(dateStr)
+        
+        if (sectorIndexValue !== undefined) {
+          lastSectorIndexValue = sectorIndexValue
+          return sectorIndexValue
+        }
+        
+        return lastSectorIndexValue
+      })
+
+      datasets.push({
+        label: `${selectedSector} Index`,
+        data: formatTimeSeriesData(sectorIndexValues),
+        borderColor: '#8b5cf6',
+        backgroundColor: '#8b5cf620',
+        fill: false,
+        tension: 0.1,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        borderWidth: 1.5,
+        borderDash: [3, 3],
+        yAxisID: 'y2', // Use third y-axis
+        spanGaps: true,
+      })
+    }
+
     return {
       datasets,
     }
-  }, [data, kse100Data, showKse100, colors])
+  }, [data, kse100Data, sectorIndexData, showKse100, showSectorIndex, selectedSector, colors])
 
   const options = useMemo(() => {
     const opts = createTimeSeriesChartOptions(
@@ -364,6 +435,36 @@ export function AdvanceDeclineChart({
           },
         }
       }
+
+      // Add third y-axis for sector index if enabled
+      if (showSectorIndex && sectorIndexData.length > 0) {
+        const sectorIndexValues = sectorIndexData.map(d => d.index).filter(v => v !== null && v !== undefined)
+        const sectorIndexMin = sectorIndexValues.length > 0 ? Math.min(...sectorIndexValues) : 0
+        const sectorIndexMax = sectorIndexValues.length > 0 ? Math.max(...sectorIndexValues) : 1
+        const sectorIndexRange = sectorIndexMax - sectorIndexMin
+        const sectorIndexPadding = sectorIndexRange * 0.1 || 10
+
+        opts.scales.y2 = {
+          type: "linear",
+          position: "right",
+          min: sectorIndexMin - sectorIndexPadding,
+          max: sectorIndexMax + sectorIndexPadding,
+          title: {
+            display: true,
+            text: `${selectedSector} Index`,
+            color: '#8b5cf6',
+          },
+          ticks: {
+            color: '#8b5cf6',
+            callback: function(value: any) {
+              return typeof value === 'number' ? value.toFixed(1) : value
+            },
+          },
+          grid: {
+            drawOnChartArea: false,
+          },
+        }
+      }
     }
 
     // Note: Zero line annotation would require chartjs-plugin-annotation
@@ -396,6 +497,14 @@ export function AdvanceDeclineChart({
               const kse100Value = kse100Data.find(d => d.date === point.date)?.close
               if (kse100Value) {
                 labels.push(`KSE100: ${kse100Value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+              }
+            }
+
+            // Add sector index value if available
+            if (showSectorIndex && sectorIndexData.length > 0) {
+              const sectorIndexValue = sectorIndexData.find(d => d.date === point.date)?.index
+              if (sectorIndexValue !== undefined) {
+                labels.push(`${selectedSector} Index: ${sectorIndexValue.toFixed(2)}`)
               }
             }
             
@@ -439,7 +548,8 @@ export function AdvanceDeclineChart({
         ? point.date.split('T')[0] 
         : new Date(point.date).toISOString().split('T')[0]
       
-      const url = `/market-heatmap?date=${dateStr}`
+      // Link to charts page with market heatmap section
+      const url = `/charts#market-heatmap`
       
       try {
         const newWindow = window.open(url, '_blank')
@@ -459,64 +569,176 @@ export function AdvanceDeclineChart({
     }
 
     return opts
-  }, [data, colors, theme, showKse100, kse100Data])
+  }, [data, colors, theme, showKse100, kse100Data, showSectorIndex, sectorIndexData, selectedSector])
 
   if (loading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Advance-Decline Line</CardTitle>
-          <CardDescription>Top {limit} stocks by market cap</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center h-[400px]">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Advance-Decline Line</CardTitle>
+            <CardDescription>Loading...</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-center h-[400px]">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
   if (error) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Advance-Decline Line</CardTitle>
-          <CardDescription>Top {limit} stocks by market cap</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center h-[400px] text-destructive">
-            <p>{error}</p>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Advance-Decline Line</CardTitle>
+            <CardDescription>Error loading data</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-center h-[400px] text-destructive">
+              <p>{error}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
   if (data.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Advance-Decline Line</CardTitle>
-          <CardDescription>Top {limit} stocks by market cap</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center h-[400px] text-muted-foreground">
-            <p>No data available</p>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Advance-Decline Line</CardTitle>
+            <CardDescription>No data available</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-center h-[400px] text-muted-foreground">
+              <p>No data available</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
+  // Calculate max slider value based on total stocks in sector
+  const maxSliderValue = totalStocksInSector ? Math.min(totalStocksInSector, 500) : 500
+  const minSliderValue = 10
+
   return (
-    <Card>
+    <div className="space-y-4">
+      {/* Settings Panel */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                Chart Settings
+              </CardTitle>
+              <CardDescription>Configure filters and overlays</CardDescription>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSettings(!showSettings)}
+            >
+              {showSettings ? 'Hide' : 'Show'} Settings
+            </Button>
+          </div>
+        </CardHeader>
+        {showSettings && (
+          <CardContent className="space-y-4">
+            {/* Sector Filter */}
+            <div className="space-y-2">
+              <Label htmlFor="sector-filter">Sector</Label>
+              <Select value={selectedSector} onValueChange={setSelectedSector}>
+                <SelectTrigger id="sector-filter">
+                  <SelectValue placeholder="All Sectors" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sectors</SelectItem>
+                  {availableSectors.map((sector) => (
+                    <SelectItem key={sector} value={sector}>
+                      {sector}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {totalStocksInSector !== null && (
+                <p className="text-sm text-muted-foreground">
+                  Total stocks in {selectedSector === 'all' ? 'market' : selectedSector}: {totalStocksInSector}
+                </p>
+              )}
+            </div>
+
+            {/* Top N Slider */}
+            <div className="space-y-2">
+              <Label>Top N Stocks by Market Cap: {topN}</Label>
+              <Slider
+                min={minSliderValue}
+                max={maxSliderValue}
+                step={10}
+                value={[topN]}
+                onValueChange={(value) => setTopN(value[0])}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>{minSliderValue}</span>
+                <span>{maxSliderValue}</span>
+              </div>
+            </div>
+
+            {/* Overlays */}
+            <div className="space-y-2">
+              <Label>Overlays</Label>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="show-kse100"
+                    checked={showKse100}
+                    onCheckedChange={(checked) => setShowKse100(checked === true)}
+                  />
+                  <label
+                    htmlFor="show-kse100"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
+                    KSE100 Index
+                  </label>
+                </div>
+                {selectedSector && selectedSector !== 'all' && (
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="show-sector-index"
+                      checked={showSectorIndex}
+                      onCheckedChange={(checked) => setShowSectorIndex(checked === true)}
+                    />
+                    <label
+                      htmlFor="show-sector-index"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                    >
+                      {selectedSector} Sector Index (Market-Cap Weighted)
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
+      {/* Chart Card */}
+      <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Advance-Decline Line</CardTitle>
               <CardDescription>
-                Top {limit} stocks by market cap
+                Top {topN} stocks by market cap
                 {selectedSector && selectedSector !== 'all' && (
                   <span className="ml-2">• {selectedSector} sector</span>
                 )}
@@ -527,46 +749,13 @@ export function AdvanceDeclineChart({
                 )}
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex items-center gap-2">
-                <label htmlFor="sector-filter" className="text-sm font-medium">
-                  Sector:
-                </label>
-                <Select value={selectedSector} onValueChange={setSelectedSector}>
-                  <SelectTrigger id="sector-filter" className="w-[180px]">
-                    <SelectValue placeholder="All Sectors" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Sectors</SelectItem>
-                    {availableSectors.map((sector) => (
-                      <SelectItem key={sector} value={sector}>
-                        {sector}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="show-kse100"
-                  checked={showKse100}
-                  onCheckedChange={(checked) => setShowKse100(checked === true)}
-                />
-                <label
-                  htmlFor="show-kse100"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                >
-                  KSE100
-                </label>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowExplanation(true)}
-              >
-                <Info className="h-4 w-4" />
-              </Button>
-            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowExplanation(true)}
+            >
+              <Info className="h-4 w-4" />
+            </Button>
           </div>
         </CardHeader>
       <CardContent>
@@ -580,9 +769,23 @@ export function AdvanceDeclineChart({
           <p>
             The Advance-Decline Line is a cumulative indicator that tracks the net difference between advancing and declining stocks over time.
           </p>
-          <p className="text-xs mt-2">
-            💡 <strong>Tip:</strong> Click on any point in the "Net Advances" line to view the market heatmap for that date.
-          </p>
+          <div className="flex items-center gap-4 mt-4 pt-4 border-t">
+            <p className="text-xs text-muted-foreground flex-1">
+              💡 <strong>Tip:</strong> Click on any point in the "Net Advances" line to view the market heatmap.
+            </p>
+            <Link
+              href={`/advance-decline/stocks?${new URLSearchParams({
+                sector: selectedSector || 'all',
+                limit: topN.toString(),
+              }).toString()}`}
+              target="_blank"
+              className="text-xs text-primary hover:underline flex items-center gap-1"
+            >
+              <List className="h-3 w-3" />
+              View {topN} stocks in this filter
+              <ExternalLink className="h-3 w-3 ml-1" />
+            </Link>
+          </div>
         </div>
       </CardContent>
       <Dialog open={showExplanation} onOpenChange={setShowExplanation}>
@@ -620,9 +823,17 @@ export function AdvanceDeclineChart({
             <div>
               <h4 className="font-semibold mb-2">Data Source:</h4>
               <p className="text-sm text-muted-foreground">
-                This chart uses the top {limit} Pakistan Stock Exchange (PSX) stocks by market capitalization. A stock is considered "advancing" if its price increased from the previous trading day, "declining" if it decreased, and "unchanged" if the price remained the same.
+                This chart uses the top {topN} Pakistan Stock Exchange (PSX) stocks by market capitalization. A stock is considered "advancing" if its price increased from the previous trading day, "declining" if it decreased, and "unchanged" if the price remained the same.
               </p>
             </div>
+            {selectedSector && selectedSector !== 'all' && (
+              <div>
+                <h4 className="font-semibold mb-2">Sector Index:</h4>
+                <p className="text-sm text-muted-foreground">
+                  When a sector is selected, you can enable the sector index overlay. This is a market-cap weighted index of ALL stocks in the sector (not just top N), normalized to start at 100 on the start date. This allows you to compare the sector's overall performance with the Advance-Decline Line.
+                </p>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

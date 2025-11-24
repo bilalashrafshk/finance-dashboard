@@ -74,6 +74,31 @@ export async function GET(request: NextRequest) {
         }, { status: 404 })
       }
 
+      // Get total count of stocks in the sector (for display purposes)
+      let totalStocksCount = 0
+      if (sector && sector !== 'all') {
+        const totalCountQuery = `
+          SELECT COUNT(*) as total
+          FROM company_profiles
+          WHERE asset_type = 'pk-equity'
+            AND market_cap IS NOT NULL
+            AND market_cap > 0
+            AND sector = $1
+        `
+        const totalCountResult = await client.query(totalCountQuery, [sector])
+        totalStocksCount = parseInt(totalCountResult.rows[0]?.total || '0', 10)
+      } else {
+        const totalCountQuery = `
+          SELECT COUNT(*) as total
+          FROM company_profiles
+          WHERE asset_type = 'pk-equity'
+            AND market_cap IS NOT NULL
+            AND market_cap > 0
+        `
+        const totalCountResult = await client.query(totalCountQuery)
+        totalStocksCount = parseInt(totalCountResult.rows[0]?.total || '0', 10)
+      }
+
       // Step 2: Get all price data with previous day prices
       // IMPORTANT: Use same logic as heatmap - get most recent previous trading day (not just previous row)
       // This ensures consistency between heatmap and AD Line calculations
@@ -244,6 +269,7 @@ export async function GET(request: NextRequest) {
         data: adData,
         count: adData.length,
         stocksCount: topStockSymbols.length,
+        totalStocksInSector: totalStocksCount,
         sector: sector || null,
         dateRange: {
           start: adData[0].date,
