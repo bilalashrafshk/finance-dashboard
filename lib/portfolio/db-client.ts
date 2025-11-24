@@ -1542,6 +1542,18 @@ export async function shouldRefreshBOPData(seriesKey: string): Promise<boolean> 
     if (!metadata || !metadata.last_updated) {
       return true // No data, need to fetch
     }
+    
+    const lastUpdated = new Date(metadata.last_updated).getTime()
+    const now = Date.now()
+    const ageInDays = (now - lastUpdated) / (1000 * 60 * 60 * 24)
+    
+    // Refresh if data is older than 3 days
+    return ageInDays > 3
+  } catch (error: any) {
+    console.error(`[DB] Error checking if BOP data needs refresh for ${seriesKey}:`, error.message)
+    return true // On error, refresh to be safe
+  }
+}
 
 // SBP Economic Data (CPI, GDP, etc.)
 export interface SBPEconomicRecord {

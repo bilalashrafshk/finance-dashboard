@@ -160,6 +160,8 @@ export async function GET(request: NextRequest) {
             fetchStartDate = '2012-07-01' // Electricity generation from Jul 2012
           } else if (seriesKey.includes('POLSALE_M')) {
             fetchStartDate = '2013-07-01' // POL sales from Jul 2013
+          } else if (seriesKey.includes('BOP_SCRA_W')) {
+            fetchStartDate = '2007-07-07' // SCRA from Jul 2007
           }
         }
         

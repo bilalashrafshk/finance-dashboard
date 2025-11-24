@@ -87,9 +87,12 @@ const ElectricityGenerationSection = dynamic(() => import("@/components/charts/e
 const POLSalesSection = dynamic(() => import("@/components/charts/pol-sales-section").then(mod => mod.POLSalesSection), {
     loading: () => <ChartLoader />,
 })
+const SCRASection = dynamic(() => import("@/components/charts/scra-section").then(mod => mod.SCRASection), {
+    loading: () => <ChartLoader />,
+})
 
 // Types
-export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments" | "interest-rate-equities" | "cpi" | "gdp" | "exchange-rate" | "remittances" | "kibor" | "sbp-reserves" | "fdi" | "m2" | "deposits" | "vehicle-sales" | "cement-sales" | "electricity-generation" | "pol-sales"
+export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments" | "interest-rate-equities" | "cpi" | "gdp" | "exchange-rate" | "remittances" | "kibor" | "sbp-reserves" | "fdi" | "m2" | "deposits" | "vehicle-sales" | "cement-sales" | "electricity-generation" | "pol-sales" | "scra"
 
 export interface ChartDefinition {
     id: ChartId
@@ -321,6 +324,13 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 icon: TrendingUp,
                 component: <POLSalesSection />,
                 keywords: ["pol", "petroleum", "oil", "lubricants", "sales", "industrial", "pakistan"],
+            },
+            {
+                id: "scra",
+                title: "SCRA Weekly Position",
+                icon: DollarSign,
+                component: <SCRASection />,
+                keywords: ["scra", "special convertible rupee accounts", "external sector", "remittances", "securities", "equity", "t-bills", "pibs", "macro", "pakistan"],
             },
         ],
     },
