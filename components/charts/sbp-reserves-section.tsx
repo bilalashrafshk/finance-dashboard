@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { TimeFrameSelector } from "@/components/charts/time-frame-selector"
 import { Loader2, TrendingUp, TrendingDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Line } from "react-chartjs-2"
+import { ChartPeriod, filterDataByTimeFrame, getDefaultPeriod, DateRange } from "@/lib/charts/time-frame-filter"
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -57,7 +59,7 @@ export function SBPReservesSection() {
   const { theme } = useTheme()
   const colors = getThemeColors()
   const { toast } = useToast()
-  const [data, setData] = useState<ReservesData[]>([])
+  const [allData, setAllData] = useState<ReservesData[]>([]) // Store all fetched data
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [metadata, setMetadata] = useState<{
@@ -65,6 +67,10 @@ export function SBPReservesSection() {
     latestDate: string | null
     cached: boolean
   } | null>(null)
+  
+  // Time frame selection
+  const [chartPeriod, setChartPeriod] = useState<ChartPeriod>(getDefaultPeriod('monthly'))
+  const [customRange, setCustomRange] = useState<DateRange>({ startDate: null, endDate: null })
 
   const loadReservesData = async () => {
     try {
@@ -72,11 +78,18 @@ export function SBPReservesSection() {
       setError(null)
 
       const url = `/api/sbp/economic-data?seriesKey=${encodeURIComponent(SERIES_KEY)}`
-      const response = await fetch(url)
+      
+      // Add timeout to prevent hanging
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout
+      
+      const response = await fetch(url, {
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeoutId))
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to fetch SBP reserves data')
+        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }))
+        throw new Error(errorData.error || errorData.details || 'Failed to fetch SBP reserves data')
       }
 
       const result: ReservesResponse = await response.json()
@@ -90,7 +103,7 @@ export function SBPReservesSection() {
         new Date(a.date).getTime() - new Date(b.date).getTime()
       )
 
-      setData(sortedData)
+      setAllData(sortedData) // Store all data
       setMetadata({
         seriesName: result.seriesName,
         latestDate: result.latestStoredDate,
@@ -98,10 +111,13 @@ export function SBPReservesSection() {
       })
     } catch (err: any) {
       console.error('Error loading SBP reserves data:', err)
-      setError(err.message || 'Failed to load SBP reserves data')
+      const errorMessage = err.name === 'AbortError' 
+        ? 'Request timed out. Please try again.'
+        : err.message || 'Failed to load SBP reserves data'
+      setError(errorMessage)
       toast({
         title: "Error",
-        description: err.message || 'Failed to load SBP reserves data',
+        description: errorMessage,
         variant: "destructive",
       })
     } finally {
@@ -112,6 +128,11 @@ export function SBPReservesSection() {
   useEffect(() => {
     loadReservesData()
   }, [])
+
+  // Filter data based on selected time frame
+  const data = useMemo(() => {
+    return filterDataByTimeFrame(allData, chartPeriod, customRange)
+  }, [allData, chartPeriod, customRange])
 
   // Prepare chart data
   const chartData = useMemo(() => {
@@ -231,6 +252,14 @@ export function SBPReservesSection() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Time Frame Selector */}
+          <TimeFrameSelector
+            chartPeriod={chartPeriod}
+            customRange={customRange}
+            onPeriodChange={setChartPeriod}
+            onRangeChange={setCustomRange}
+          />
+
           {/* Current Value Display */}
           {latestValue !== null && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
