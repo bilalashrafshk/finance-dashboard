@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo, useRef } from "react"
+import type React from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -102,6 +103,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
   const [allData, setAllData] = useState<PriceDataPoint[]>([])
   const [frequency, setFrequency] = useState<Frequency>('daily')
   const [showMASettings, setShowMASettings] = useState(false)
+  const [maPeriodInputs, setMaPeriodInputs] = useState<Record<string, string>>({})
   const [movingAverages, setMovingAverages] = useState<MovingAverageConfig[]>([
     {
       id: '1',
@@ -392,26 +394,10 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     }
   }, [resampledData, movingAverages, maData, selectedSymbol, colors])
 
-  // Calculate initial zoom range (show last 1 year by default, but allow full pan/zoom)
-  const getInitialZoomRange = useMemo(() => {
-    if (resampledData.length === 0) return null
-    
-    const lastDate = new Date(resampledData[resampledData.length - 1].date).getTime()
-    const oneYearAgo = lastDate - (365 * 24 * 60 * 60 * 1000)
-    const firstDate = new Date(resampledData[0].date).getTime()
-    
-    // Start with last 1 year, but allow panning to see all data
-    const minDate = Math.max(oneYearAgo, firstDate)
-    
-    return {
-      min: minDate,
-      max: lastDate,
-    }
-  }, [resampledData])
+  // No initial zoom restriction - show all data by default, user can zoom/pan freely
 
   const chartOptions = useMemo(() => {
     const currency = getCurrency()
-    const initialZoom = getInitialZoomRange
     
     return {
       responsive: true,
@@ -453,21 +439,29 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
           zoom: {
             wheel: {
               enabled: true,
-              speed: 0.1,
+              speed: 0.05, // Slower zoom for better control
             },
             pinch: {
               enabled: true,
             },
-            mode: 'x' as const,
+            drag: {
+              enabled: true,
+              modifierKey: 'ctrl' as const, // Ctrl+drag to zoom (TradingView style)
+            },
+            mode: 'xy' as const, // Allow zoom on both axes
           },
           pan: {
             enabled: true,
-            mode: 'x' as const,
-            threshold: 5,
-            modifierKey: null, // Allow panning without modifier key
+            mode: 'xy' as const, // Allow panning on both axes
+            threshold: 3, // Lower threshold for more responsive panning
+            modifierKey: null, // Click and drag to pan (no modifier needed)
           },
           limits: {
             x: {
+              min: 'original' as const,
+              max: 'original' as const,
+            },
+            y: {
               min: 'original' as const,
               max: 'original' as const,
             },
@@ -499,11 +493,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
               month: 'MMM yyyy',
             },
           },
-          // Set initial view to last 1 year, but pan/zoom allows accessing all data
-          ...(initialZoom ? {
-            min: initialZoom.min,
-            max: initialZoom.max,
-          } : {}),
+          // No initial zoom - show all data, user can zoom/pan freely
         },
         y: {
           display: true,
@@ -528,8 +518,12 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
         axis: 'x' as const,
         intersect: false,
       },
+      // Disable default Chart.js interactions that conflict with zoom/pan
+      onHover: (event: any, activeElements: any) => {
+        // Allow hover for tooltips
+      },
     }
-  }, [colors, theme, getCurrency, frequency, getInitialZoomRange])
+  }, [colors, theme, getCurrency, frequency])
 
   // Calculate current price and change
   const latestPrice = resampledData.length > 0 ? resampledData[resampledData.length - 1].close : null
@@ -570,19 +564,62 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     )
   }
 
-  // Parse and set MA period from string input
-  const handleMAPeriodInput = (id: string, value: string) => {
+  // Handle MA period input change (store raw value, don't parse yet)
+  const handleMAPeriodInputChange = (id: string, value: string) => {
+    setMaPeriodInputs(prev => ({ ...prev, [id]: value }))
+  }
+
+  // Parse and set MA period when user finishes typing (onBlur or Enter)
+  const handleMAPeriodInputBlur = (id: string, value: string) => {
+    if (!value.trim()) {
+      // If empty, restore the current value
+      const ma = movingAverages.find(m => m.id === id)
+      if (ma) {
+        setMaPeriodInputs(prev => ({ ...prev, [id]: generatePeriodString(ma.length, ma.periodType) }))
+      }
+      return
+    }
+
     try {
       const { length, periodType } = parseMAPeriod(value)
       updateMovingAverage(id, { length, periodType })
+      // Update the input to show the formatted value
+      setMaPeriodInputs(prev => ({ ...prev, [id]: generatePeriodString(length, periodType) }))
     } catch (err: any) {
-      toast({
-        title: "Invalid Period Format",
-        description: err.message,
-        variant: "destructive",
-      })
+      // Restore the previous valid value on error
+      const ma = movingAverages.find(m => m.id === id)
+      if (ma) {
+        setMaPeriodInputs(prev => ({ ...prev, [id]: generatePeriodString(ma.length, ma.periodType) }))
+        toast({
+          title: "Invalid Period Format",
+          description: err.message || "Expected format: e.g., 20d, 50w, 200d",
+          variant: "destructive",
+        })
+      }
     }
   }
+
+  // Handle Enter key press
+  const handleMAPeriodInputKeyDown = (id: string, value: string, e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleMAPeriodInputBlur(id, value)
+      ;(e.target as HTMLInputElement).blur()
+    }
+  }
+
+  // Initialize period inputs when moving averages change
+  useEffect(() => {
+    const newInputs: Record<string, string> = {}
+    movingAverages.forEach(ma => {
+      if (!maPeriodInputs[ma.id]) {
+        newInputs[ma.id] = generatePeriodString(ma.length, ma.periodType)
+      }
+    })
+    if (Object.keys(newInputs).length > 0) {
+      setMaPeriodInputs(prev => ({ ...prev, ...newInputs }))
+    }
+  }, [movingAverages])
 
   const currency = getCurrency()
 
@@ -592,12 +629,23 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
       const chart = chartRef.current.chartInstance || chartRef.current
       if (chart && chart.resetZoom) {
         chart.resetZoom()
-      } else if (chart && chart.scales && chart.scales.x && resampledData.length > 0) {
+      } else if (chart && chart.scales && resampledData.length > 0) {
         // Manual reset to show all data
         const firstDate = new Date(resampledData[0].date).getTime()
         const lastDate = new Date(resampledData[resampledData.length - 1].date).getTime()
-        chart.scales.x.options.min = firstDate
-        chart.scales.x.options.max = lastDate
+        
+        // Reset X axis
+        if (chart.scales.x) {
+          chart.scales.x.options.min = undefined
+          chart.scales.x.options.max = undefined
+        }
+        
+        // Reset Y axis
+        if (chart.scales.y) {
+          chart.scales.y.options.min = undefined
+          chart.scales.y.options.max = undefined
+        }
+        
         chart.update('none')
       }
     }
@@ -607,22 +655,11 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Price Chart with Moving Averages</CardTitle>
-              <CardDescription>
-                View price charts with customizable moving averages for various asset types
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={resetZoom}
-              title="Reset zoom to show all data"
-            >
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Reset Zoom
-            </Button>
+          <div>
+            <CardTitle>Price Chart with Moving Averages</CardTitle>
+            <CardDescription>
+              View price charts with customizable moving averages for various asset types
+            </CardDescription>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -791,8 +828,10 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
                     <Label className="text-xs text-muted-foreground">Period (e.g., 20d, 50w, 200d)</Label>
                     <Input
                       type="text"
-                      value={generatePeriodString(ma.length, ma.periodType)}
-                      onChange={(e) => handleMAPeriodInput(ma.id, e.target.value)}
+                      value={maPeriodInputs[ma.id] || generatePeriodString(ma.length, ma.periodType)}
+                      onChange={(e) => handleMAPeriodInputChange(ma.id, e.target.value)}
+                      onBlur={(e) => handleMAPeriodInputBlur(ma.id, e.target.value)}
+                      onKeyDown={(e) => handleMAPeriodInputKeyDown(ma.id, e.currentTarget.value, e)}
                       placeholder="20d"
                       className="h-9"
                     />
@@ -849,8 +888,20 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
             </div>
           ) : (
             <div className="space-y-2">
-              <div className="text-xs text-muted-foreground">
-                💡 Scroll to zoom, click and drag left/right to pan through all historical data. Chart starts with last 1 year.
+              <div className="text-xs text-muted-foreground flex items-center gap-4 flex-wrap">
+                <span>💡 <strong>Scroll</strong> to zoom in/out</span>
+                <span>🖱️ <strong>Click & drag</strong> to pan left/right/up/down</span>
+                <span>⌨️ <strong>Ctrl + drag</strong> to zoom (box selection)</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={resetZoom}
+                  className="h-6 text-xs"
+                  title="Reset zoom to show all data"
+                >
+                  <RotateCcw className="h-3 w-3 mr-1" />
+                  Reset
+                </Button>
               </div>
               <div className="h-[500px] w-full">
                 <Line ref={chartRef} data={chartData} options={chartOptions} />

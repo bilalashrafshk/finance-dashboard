@@ -130,17 +130,28 @@ export function calculateEMA(
 
 /**
  * Parse moving average period string (e.g., "20d", "50w", "200d")
+ * More forgiving - trims whitespace and handles case insensitivity
  */
 export function parseMAPeriod(
   periodStr: string
 ): { length: number; periodType: Frequency } {
-  const match = periodStr.match(/^(\d+)([dwm])$/i)
+  // Trim whitespace and convert to lowercase for easier matching
+  const trimmed = periodStr.trim().toLowerCase()
+  
+  // Match pattern: digits followed by d, w, or m
+  const match = trimmed.match(/^(\d+)([dwm])$/)
   if (!match) {
-    throw new Error(`Invalid period format: ${periodStr}. Expected format: e.g., "20d", "50w", "200d"`)
+    throw new Error(`Invalid period format: "${periodStr}". Expected format: e.g., "20d", "50w", "200d" (number followed by d/w/m)`)
   }
 
   const length = parseInt(match[1], 10)
-  const typeChar = match[2].toLowerCase()
+  
+  // Validate length
+  if (isNaN(length) || length <= 0 || length > 10000) {
+    throw new Error(`Invalid period length: ${length}. Must be between 1 and 10000`)
+  }
+
+  const typeChar = match[2]
 
   let periodType: Frequency
   if (typeChar === 'd') {
@@ -150,7 +161,7 @@ export function parseMAPeriod(
   } else if (typeChar === 'm') {
     periodType = 'monthly'
   } else {
-    throw new Error(`Invalid period type: ${typeChar}. Expected 'd', 'w', or 'm'`)
+    throw new Error(`Invalid period type: "${typeChar}". Expected 'd' (daily), 'w' (weekly), or 'm' (monthly)`)
   }
 
   return { length, periodType }
