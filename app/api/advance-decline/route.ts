@@ -13,13 +13,19 @@ export interface AdvanceDeclineDataPoint {
 }
 
 /**
- * GET /api/advance-decline?startDate=2024-01-01&endDate=2024-12-31&limit=100
+ * GET /api/advance-decline?startDate=2024-01-01&endDate=2024-12-31&limit=100&sector=Technology
  * 
  * Calculates the Advance-Decline Line for top N PK stocks
  * 
  * Formula:
  * - Net Advances = Advancing Stocks - Declining Stocks
  * - AD Line = Previous AD Line + Net Advances
+ * 
+ * Query Parameters:
+ * - startDate: Start date for the data range (optional)
+ * - endDate: End date for the data range (optional)
+ * - limit: Number of top stocks to include (default: 100)
+ * - sector: Filter by sector name (optional, e.g., 'Technology', 'Banking')
  * 
  * Returns time series data with advancing, declining, unchanged counts, net advances, and cumulative AD Line
  */
@@ -29,21 +35,36 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
     const limit = parseInt(searchParams.get('limit') || '100', 10)
+    const sector = searchParams.get('sector') // Optional sector filter
 
     const client = await getDbClient()
 
     try {
-      // Step 1: Get top N stocks by market cap
-      const topStocksQuery = `
+      // Step 1: Get top N stocks by market cap, optionally filtered by sector
+      let topStocksQuery = `
         SELECT symbol
         FROM company_profiles
         WHERE asset_type = 'pk-equity'
           AND market_cap IS NOT NULL
           AND market_cap > 0
-        ORDER BY market_cap DESC
-        LIMIT $1
       `
-      const topStocksResult = await client.query(topStocksQuery, [limit])
+      const queryParams: any[] = []
+      let paramIndex = 1
+      
+      // Add sector filter if provided
+      if (sector && sector !== 'all') {
+        topStocksQuery += ` AND sector = $${paramIndex}`
+        queryParams.push(sector)
+        paramIndex++
+      }
+      
+      topStocksQuery += `
+        ORDER BY market_cap DESC
+        LIMIT $${paramIndex}
+      `
+      queryParams.push(limit)
+      
+      const topStocksResult = await client.query(topStocksQuery, queryParams)
       const topStockSymbols = topStocksResult.rows.map(row => row.symbol)
 
       if (topStockSymbols.length === 0) {
@@ -223,6 +244,7 @@ export async function GET(request: NextRequest) {
         data: adData,
         count: adData.length,
         stocksCount: topStockSymbols.length,
+        sector: sector || null,
         dateRange: {
           start: adData[0].date,
           end: adData[adData.length - 1].date,

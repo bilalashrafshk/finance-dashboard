@@ -5,6 +5,7 @@ import { useTheme } from "next-themes"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, Info } from "lucide-react"
 import { Line } from "react-chartjs-2"
 import {
@@ -69,9 +70,37 @@ export function AdvanceDeclineChart({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showExplanation, setShowExplanation] = useState(false)
+  const [selectedSector, setSelectedSector] = useState<string>("all")
+  const [availableSectors, setAvailableSectors] = useState<string[]>([])
   const { theme } = useTheme()
   const colors = getThemeColors()
   const { toast } = useToast()
+
+  // Fetch available sectors on mount
+  useEffect(() => {
+    async function fetchSectors() {
+      try {
+        const response = await fetch('/api/screener/stocks')
+        if (response.ok) {
+          const result = await response.json()
+          if (result.success && result.stocks) {
+            // Extract unique sectors, filter out 'Unknown' and null values
+            const sectors = Array.from(
+              new Set(
+                result.stocks
+                  .map((stock: any) => stock.sector)
+                  .filter((sector: string | null) => sector && sector !== 'Unknown')
+              )
+            ).sort() as string[]
+            setAvailableSectors(sectors)
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch sectors:', err)
+      }
+    }
+    fetchSectors()
+  }, [])
 
   useEffect(() => {
     async function fetchData() {
@@ -84,6 +113,9 @@ export function AdvanceDeclineChart({
         if (startDate) params.append('startDate', startDate)
         if (endDate) params.append('endDate', endDate)
         params.append('limit', limit.toString())
+        if (selectedSector && selectedSector !== 'all') {
+          params.append('sector', selectedSector)
+        }
         
         const response = await fetch(`/api/advance-decline?${params.toString()}`)
         
@@ -155,7 +187,7 @@ export function AdvanceDeclineChart({
     }
 
     fetchData()
-  }, [startDate, endDate, limit, showKse100, toast])
+  }, [startDate, endDate, limit, showKse100, selectedSector, toast])
 
   const chartData = useMemo(() => {
     if (!data || data.length === 0) {
@@ -485,6 +517,9 @@ export function AdvanceDeclineChart({
               <CardTitle>Advance-Decline Line</CardTitle>
               <CardDescription>
                 Top {limit} stocks by market cap
+                {selectedSector && selectedSector !== 'all' && (
+                  <span className="ml-2">• {selectedSector} sector</span>
+                )}
                 {data.length > 0 && (
                   <span className="ml-2">
                     ({new Date(data[0].date).toLocaleDateString()} - {new Date(data[data.length - 1].date).toLocaleDateString()})
@@ -492,7 +527,25 @@ export function AdvanceDeclineChart({
                 )}
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <label htmlFor="sector-filter" className="text-sm font-medium">
+                  Sector:
+                </label>
+                <Select value={selectedSector} onValueChange={setSelectedSector}>
+                  <SelectTrigger id="sector-filter" className="w-[180px]">
+                    <SelectValue placeholder="All Sectors" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sectors</SelectItem>
+                    {availableSectors.map((sector) => (
+                      <SelectItem key={sector} value={sector}>
+                        {sector}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="show-kse100"
