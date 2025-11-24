@@ -265,15 +265,23 @@ async function calculateKSE100QuarterReturn(
 }
 
 /**
- * GET /api/sector-performance/quarterly?year=2024&includeDividends=true
+ * GET /api/sector-performance/quarterly?sector=Banking&year=2024&includeDividends=true
  * 
- * Returns quarter-wise performance for all sectors compared to KSE100
+ * Returns quarter-wise performance for a specific sector compared to KSE100
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
+    const sector = searchParams.get('sector')
     const yearParam = searchParams.get('year')
     const includeDividendsParam = searchParams.get('includeDividends')
+
+    if (!sector) {
+      return NextResponse.json({
+        success: false,
+        error: 'Sector parameter is required',
+      }, { status: 400 })
+    }
 
     const year = yearParam ? parseInt(yearParam, 10) : new Date().getFullYear()
     const includeDividends = includeDividendsParam === 'true'
@@ -285,86 +293,103 @@ export async function GET(request: NextRequest) {
       }, { status: 400 })
     }
 
+    // Check cache first
+    const { cacheManager } = await import('@/lib/cache/cache-manager')
+    const cacheKey = `sector-performance-${sector}-${year}-${includeDividends}`
+    const cached = await cacheManager.get<QuarterPerformance[]>(cacheKey)
+    
+    if (cached) {
+      return NextResponse.json({
+        success: true,
+        sector,
+        year,
+        includeDividends,
+        quarters: cached,
+        count: cached.length,
+        cached: true,
+      }, {
+        headers: {
+          'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
+          'X-Cache': 'HIT',
+        },
+      })
+    }
+
     const client = await getDbClient()
 
     try {
-      // Get all sectors
-      const sectorsQuery = `
-        SELECT DISTINCT sector
-        FROM company_profiles
-        WHERE asset_type = 'pk-equity'
-          AND sector IS NOT NULL
-          AND sector != 'Unknown'
-        ORDER BY sector
-      `
-      const sectorsResult = await client.query(sectorsQuery)
-      const sectors = sectorsResult.rows.map(row => row.sector)
-
-      if (sectors.length === 0) {
-        return NextResponse.json({
-          success: false,
-          error: 'No sectors found',
-        }, { status: 404 })
-      }
-
       // Get quarter boundaries
       const quarters = getQuarterBoundaries(year)
 
-      // Calculate performance for each sector and quarter
-      const sectorPerformances: SectorQuarterlyPerformance[] = []
+      // Calculate performance for the selected sector
+      const quarterPerformances: QuarterPerformance[] = []
 
-      for (const sector of sectors) {
-        const quarterPerformances: QuarterPerformance[] = []
-
+      // Calculate KSE100 returns once (can be cached separately)
+      const kse100CacheKey = `kse100-performance-${year}-${includeDividends}`
+      let kse100Returns: Map<string, number> = new Map()
+      
+      const cachedKse100 = await cacheManager.get<Record<string, number>>(kse100CacheKey)
+      if (cachedKse100) {
+        kse100Returns = new Map(Object.entries(cachedKse100))
+      } else {
         for (const quarter of quarters) {
-          // Calculate sector return
-          const sectorReturn = await calculateSectorQuarterReturn(
-            sector,
-            quarter.startDate,
-            quarter.endDate,
-            includeDividends,
-            client
-          )
-
-          // Calculate KSE100 return
           const kse100Return = await calculateKSE100QuarterReturn(
             quarter.startDate,
             quarter.endDate,
             includeDividends,
             client
           )
-
-          if (sectorReturn !== null && kse100Return !== null) {
-            const outperformance = sectorReturn - kse100Return
-            quarterPerformances.push({
-              quarter: quarter.quarter,
-              startDate: quarter.startDate,
-              endDate: quarter.endDate,
-              sectorReturn,
-              kse100Return,
-              outperformance,
-              outperformed: outperformance > 0,
-            })
+          if (kse100Return !== null) {
+            kse100Returns.set(quarter.quarter, kse100Return)
           }
         }
+        // Cache KSE100 returns for 24 hours (as plain object for serialization)
+        if (kse100Returns.size > 0) {
+          await cacheManager.set(kse100CacheKey, Object.fromEntries(kse100Returns), 'kse100-performance', { isHistorical: true })
+        }
+      }
 
-        if (quarterPerformances.length > 0) {
-          sectorPerformances.push({
-            sector,
-            quarters: quarterPerformances,
+      // Calculate sector returns
+      for (const quarter of quarters) {
+        const sectorReturn = await calculateSectorQuarterReturn(
+          sector,
+          quarter.startDate,
+          quarter.endDate,
+          includeDividends,
+          client
+        )
+
+        const kse100Return = kse100Returns?.get(quarter.quarter)
+
+        if (sectorReturn !== null && kse100Return !== null) {
+          const outperformance = sectorReturn - kse100Return
+          quarterPerformances.push({
+            quarter: quarter.quarter,
+            startDate: quarter.startDate,
+            endDate: quarter.endDate,
+            sectorReturn,
+            kse100Return,
+            outperformance,
+            outperformed: outperformance > 0,
           })
         }
       }
 
+      // Cache the result for 1 hour
+      await cacheManager.set(cacheKey, quarterPerformances, 'sector-performance', { isHistorical: true })
+
       return NextResponse.json({
         success: true,
+        sector,
         year,
         includeDividends,
-        data: sectorPerformances,
-        count: sectorPerformances.length,
+        quarters: quarterPerformances,
+        count: quarterPerformances.length,
+        cached: false,
       }, {
         headers: {
           'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
+          'X-Cache': 'MISS',
         },
       })
     } finally {

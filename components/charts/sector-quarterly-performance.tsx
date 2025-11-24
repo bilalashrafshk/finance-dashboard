@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Loader2, TrendingUp, TrendingDown, CheckCircle2, XCircle } from "lucide-react"
+import { Loader2, CheckCircle2, XCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import {
   Table,
@@ -27,25 +27,16 @@ interface QuarterPerformance {
   outperformed: boolean
 }
 
-interface SectorQuarterlyPerformance {
-  sector: string
-  quarters: QuarterPerformance[]
-}
-
-interface SectorPerformanceResponse {
-  success: boolean
-  year: number
-  includeDividends: boolean
-  data: SectorQuarterlyPerformance[]
-  count: number
-}
 
 export function SectorQuarterlyPerformance() {
   const { theme } = useTheme()
   const { toast } = useToast()
-  const [loading, setLoading] = useState(true)
+  const [loadingSectors, setLoadingSectors] = useState(true)
+  const [loadingData, setLoadingData] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [data, setData] = useState<SectorQuarterlyPerformance[]>([])
+  const [sectors, setSectors] = useState<string[]>([])
+  const [selectedSector, setSelectedSector] = useState<string>("")
+  const [data, setData] = useState<QuarterPerformance[]>([])
   const [year, setYear] = useState(new Date().getFullYear())
   const [includeDividends, setIncludeDividends] = useState(false)
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
@@ -53,37 +44,95 @@ export function SectorQuarterlyPerformance() {
   // Generate years list (last 10 years)
   const years = Array.from({ length: 10 }, (_, i) => currentYear - i)
 
+  // Load sectors on mount (cached)
   useEffect(() => {
+    loadSectors()
     setCurrentYear(new Date().getFullYear())
   }, [])
 
+  // Load data when sector, year, or dividend setting changes
   useEffect(() => {
-    loadData()
-  }, [year, includeDividends])
+    if (selectedSector) {
+      loadData()
+    } else {
+      setData([])
+    }
+  }, [selectedSector, year, includeDividends])
+
+  const loadSectors = async () => {
+    try {
+      setLoadingSectors(true)
+      setError(null)
+
+      // Fetch from API (API handles caching)
+      const response = await fetch('/api/screener/stocks', {
+        headers: {
+          'Cache-Control': 'max-age=86400', // 24 hours
+        },
+      })
+      if (!response.ok) {
+        throw new Error('Failed to fetch sectors')
+      }
+
+      const result = await response.json()
+      if (result.success && result.stocks) {
+        const uniqueSectors = Array.from(
+          new Set(
+            result.stocks
+              .map((stock: any) => stock.sector)
+              .filter((sector: string | null) => sector && sector !== 'Unknown')
+          )
+        ).sort() as string[]
+
+        setSectors(uniqueSectors)
+      }
+    } catch (err: any) {
+      const errorMessage = err.message || 'Failed to load sectors'
+      setError(errorMessage)
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setLoadingSectors(false)
+    }
+  }
 
   const loadData = async () => {
+    if (!selectedSector) {
+      setData([])
+      return
+    }
+
     try {
-      setLoading(true)
+      setLoadingData(true)
       setError(null)
 
       const params = new URLSearchParams()
+      params.append('sector', selectedSector)
       params.append('year', year.toString())
       params.append('includeDividends', includeDividends.toString())
 
-      const response = await fetch(`/api/sector-performance/quarterly?${params.toString()}`)
+      // API handles caching server-side
+      const response = await fetch(`/api/sector-performance/quarterly?${params.toString()}`, {
+        headers: {
+          'Cache-Control': 'max-age=3600', // 1 hour
+        },
+      })
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
         throw new Error(errorData.error || errorData.details || 'Failed to fetch sector performance data')
       }
 
-      const result: SectorPerformanceResponse = await response.json()
+      const result = await response.json()
 
-      if (!result.success || !result.data) {
+      if (!result.success || !result.quarters) {
         throw new Error('Invalid response format')
       }
 
-      setData(result.data)
+      setData(result.quarters)
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to load sector performance data'
       setError(errorMessage)
@@ -93,14 +142,10 @@ export function SectorQuarterlyPerformance() {
         variant: "destructive",
       })
     } finally {
-      setLoading(false)
+      setLoadingData(false)
     }
   }
 
-  // Get all unique quarters from the data
-  const allQuarters = data.length > 0
-    ? Array.from(new Set(data.flatMap(s => s.quarters.map(q => q.quarter)))).sort()
-    : []
 
   // Format percentage
   const formatPercent = (value: number | null | undefined): string => {
@@ -129,10 +174,32 @@ export function SectorQuarterlyPerformance() {
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Controls */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="sector">Sector</Label>
+              {loadingSectors ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading sectors...
+                </div>
+              ) : (
+                <Select value={selectedSector} onValueChange={setSelectedSector}>
+                  <SelectTrigger id="sector">
+                    <SelectValue placeholder="Select a sector" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sectors.map(sector => (
+                      <SelectItem key={sector} value={sector}>
+                        {sector}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
             <div className="space-y-2">
               <Label htmlFor="year">Year</Label>
-              <Select value={year.toString()} onValueChange={(value) => setYear(parseInt(value, 10))}>
+              <Select value={year.toString()} onValueChange={(value) => setYear(parseInt(value, 10))} disabled={!selectedSector}>
                 <SelectTrigger id="year">
                   <SelectValue />
                 </SelectTrigger>
@@ -152,6 +219,7 @@ export function SectorQuarterlyPerformance() {
                   id="dividends"
                   checked={includeDividends}
                   onCheckedChange={setIncludeDividends}
+                  disabled={!selectedSector}
                 />
               </Label>
               <p className="text-xs text-muted-foreground">
@@ -163,7 +231,14 @@ export function SectorQuarterlyPerformance() {
           </div>
 
           {/* Table */}
-          {loading ? (
+          {!selectedSector ? (
+            <div className="flex items-center justify-center h-[400px] border rounded-lg bg-muted/10">
+              <div className="text-center text-muted-foreground">
+                <p className="text-lg font-medium">Select a sector to view performance</p>
+                <p className="text-sm mt-2">Choose a sector from the dropdown above</p>
+              </div>
+            </div>
+          ) : loadingData ? (
             <div className="flex items-center justify-center h-[400px] border rounded-lg bg-muted/10">
               <div className="flex flex-col items-center gap-2 text-muted-foreground">
                 <Loader2 className="w-8 h-8 animate-spin" />
@@ -180,7 +255,7 @@ export function SectorQuarterlyPerformance() {
           ) : data.length === 0 ? (
             <div className="flex items-center justify-center h-[400px] border rounded-lg bg-muted/10">
               <div className="text-center text-muted-foreground">
-                <p>No data available for the selected year</p>
+                <p>No data available for {selectedSector} in {year}</p>
               </div>
             </div>
           ) : (
@@ -188,58 +263,41 @@ export function SectorQuarterlyPerformance() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="sticky left-0 bg-background z-10 min-w-[200px]">
-                      Sector
-                    </TableHead>
-                    {allQuarters.map(quarter => (
-                      <TableHead key={quarter} className="text-center min-w-[120px]">
-                        {quarter}
-                      </TableHead>
-                    ))}
+                    <TableHead className="min-w-[150px]">Quarter</TableHead>
+                    <TableHead className="text-center min-w-[120px]">Sector Return</TableHead>
+                    <TableHead className="text-center min-w-[120px]">KSE100 Return</TableHead>
+                    <TableHead className="text-center min-w-[120px]">Outperformance</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.map((sectorData) => (
-                    <TableRow key={sectorData.sector}>
-                      <TableCell className="sticky left-0 bg-background z-10 font-medium">
-                        {sectorData.sector}
+                  {data.map((quarterData) => (
+                    <TableRow key={quarterData.quarter}>
+                      <TableCell className="font-medium">
+                        {quarterData.quarter}
                       </TableCell>
-                      {allQuarters.map(quarter => {
-                        const quarterData = sectorData.quarters.find(q => q.quarter === quarter)
-                        return (
-                          <TableCell key={quarter} className="text-center">
-                            {quarterData ? (
-                              <div className="space-y-1">
-                                <div className={`font-semibold ${getReturnColor(quarterData.sectorReturn)}`}>
-                                  {formatPercent(quarterData.sectorReturn)}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  KSE100: {formatPercent(quarterData.kse100Return)}
-                                </div>
-                                <div className="flex items-center justify-center gap-1">
-                                  {quarterData.outperformed ? (
-                                    <>
-                                      <CheckCircle2 className="h-3 w-3 text-green-600 dark:text-green-400" />
-                                      <span className="text-xs text-green-600 dark:text-green-400">
-                                        +{formatPercent(quarterData.outperformance)}
-                                      </span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <XCircle className="h-3 w-3 text-red-600 dark:text-red-400" />
-                                      <span className="text-xs text-red-600 dark:text-red-400">
-                                        {formatPercent(quarterData.outperformance)}
-                                      </span>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground text-sm">N/A</span>
-                            )}
-                          </TableCell>
-                        )
-                      })}
+                      <TableCell className={`text-center font-semibold ${getReturnColor(quarterData.sectorReturn)}`}>
+                        {formatPercent(quarterData.sectorReturn)}
+                      </TableCell>
+                      <TableCell className={`text-center font-semibold ${getReturnColor(quarterData.kse100Return)}`}>
+                        {formatPercent(quarterData.kse100Return)}
+                      </TableCell>
+                      <TableCell className={`text-center font-semibold ${getReturnColor(quarterData.outperformance)}`}>
+                        {formatPercent(quarterData.outperformance)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {quarterData.outperformed ? (
+                          <div className="flex items-center justify-center gap-1">
+                            <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                            <span className="text-xs text-green-600 dark:text-green-400">Outperformed</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1">
+                            <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                            <span className="text-xs text-red-600 dark:text-red-400">Underperformed</span>
+                          </div>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -248,15 +306,15 @@ export function SectorQuarterlyPerformance() {
           )}
 
           {/* Summary Stats */}
-          {!loading && !error && data.length > 0 && (
+          {!loadingData && !error && selectedSector && data.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
               <div className="p-4 border rounded-lg">
-                <div className="text-sm text-muted-foreground">Total Sectors</div>
-                <div className="text-2xl font-bold mt-1">{data.length}</div>
+                <div className="text-sm text-muted-foreground">Selected Sector</div>
+                <div className="text-2xl font-bold mt-1">{selectedSector}</div>
               </div>
               <div className="p-4 border rounded-lg">
                 <div className="text-sm text-muted-foreground">Quarters Analyzed</div>
-                <div className="text-2xl font-bold mt-1">{allQuarters.length}</div>
+                <div className="text-2xl font-bold mt-1">{data.length}</div>
               </div>
               <div className="p-4 border rounded-lg">
                 <div className="text-sm text-muted-foreground">Dividend Adjustment</div>

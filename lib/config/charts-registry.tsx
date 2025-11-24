@@ -93,9 +93,12 @@ const SCRASection = dynamic(() => import("@/components/charts/scra-section").the
 const SectorQuarterlyPerformance = dynamic(() => import("@/components/charts/sector-quarterly-performance").then(mod => mod.SectorQuarterlyPerformance), {
     loading: () => <ChartLoader />,
 })
+const PKEquityUSDSection = dynamic(() => import("@/components/charts/pk-equity-usd-section").then(mod => mod.PKEquityUSDSection), {
+    loading: () => <ChartLoader />,
+})
 
 // Types
-export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments" | "interest-rate-equities" | "cpi" | "gdp" | "exchange-rate" | "remittances" | "kibor" | "sbp-reserves" | "fdi" | "m2" | "deposits" | "vehicle-sales" | "cement-sales" | "electricity-generation" | "pol-sales" | "scra" | "sector-quarterly-performance"
+export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments" | "interest-rate-equities" | "cpi" | "gdp" | "exchange-rate" | "remittances" | "kibor" | "sbp-reserves" | "fdi" | "m2" | "deposits" | "vehicle-sales" | "cement-sales" | "electricity-generation" | "pol-sales" | "scra" | "sector-quarterly-performance" | "pk-equity-usd"
 
 export interface ChartDefinition {
     id: ChartId
@@ -160,6 +163,13 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 icon: Table2,
                 component: <SectorQuarterlyPerformance />,
                 keywords: ["sector", "quarterly", "performance", "kse100", "outperformance", "dividends", "returns", "table"],
+            },
+            {
+                id: "pk-equity-usd",
+                title: "PK Equity/Index in USD",
+                icon: DollarSign,
+                component: <PKEquityUSDSection />,
+                keywords: ["pk equity", "usd", "exchange rate", "conversion", "pkr", "kse100", "index", "price", "currency"],
             },
         ],
     },
