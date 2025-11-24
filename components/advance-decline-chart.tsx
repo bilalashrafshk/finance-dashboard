@@ -694,8 +694,13 @@ export function AdvanceDeclineChart({
         </CardHeader>
         {showSettings && (
           <CardContent className="space-y-4">
-            {/* Date Range */}
-            <form onSubmit={(e) => e.preventDefault()}>
+            <form onSubmit={(e) => e.preventDefault()} onKeyDown={(e) => {
+              // Prevent form submission on Enter key
+              if (e.key === 'Enter') {
+                e.preventDefault()
+              }
+            }}>
+              {/* Date Range */}
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="start-date">Start Date</Label>
@@ -731,82 +736,82 @@ export function AdvanceDeclineChart({
                   />
                 </div>
               </div>
-            </form>
 
-            {/* Sector Filter */}
-            <div className="space-y-2">
-              <Label htmlFor="sector-filter">Sector</Label>
-              <Select value={selectedSector} onValueChange={setSelectedSector}>
-                <SelectTrigger id="sector-filter">
-                  <SelectValue placeholder="All Sectors" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Sectors</SelectItem>
-                  {availableSectors.map((sector) => (
-                    <SelectItem key={sector} value={sector}>
-                      {sector}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {totalStocksInSector !== null && (
-                <p className="text-sm text-muted-foreground">
-                  Total stocks in {selectedSector === 'all' ? 'market' : selectedSector}: {totalStocksInSector}
-                </p>
-              )}
-            </div>
-
-            {/* Top N Slider */}
-            <div className="space-y-2">
-              <Label>Top N Stocks by Market Cap: {topN}</Label>
-              <Slider
-                min={minSliderValue}
-                max={maxSliderValue}
-                step={10}
-                value={[topN]}
-                onValueChange={(value) => setTopN(value[0])}
-                className="w-full"
-              />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{minSliderValue}</span>
-                <span>{maxSliderValue}</span>
-              </div>
-            </div>
-
-            {/* Overlays */}
-            <div className="space-y-2">
-              <Label>Overlays</Label>
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="show-kse100"
-                    checked={showKse100}
-                    onCheckedChange={(checked) => setShowKse100(checked === true)}
-                  />
-                  <label
-                    htmlFor="show-kse100"
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                  >
-                    KSE100 Index
-                  </label>
-                </div>
-                {selectedSector && selectedSector !== 'all' && (
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="show-sector-index"
-                      checked={showSectorIndex}
-                      onCheckedChange={(checked) => setShowSectorIndex(checked === true)}
-                    />
-                    <label
-                      htmlFor="show-sector-index"
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                    >
-                      {selectedSector} Sector Index (Market-Cap Weighted)
-                    </label>
-                  </div>
+              {/* Sector Filter */}
+              <div className="space-y-2">
+                <Label htmlFor="sector-filter">Sector</Label>
+                <Select value={selectedSector} onValueChange={setSelectedSector}>
+                  <SelectTrigger id="sector-filter">
+                    <SelectValue placeholder="All Sectors" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sectors</SelectItem>
+                    {availableSectors.map((sector) => (
+                      <SelectItem key={sector} value={sector}>
+                        {sector}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {totalStocksInSector !== null && (
+                  <p className="text-sm text-muted-foreground">
+                    Total stocks in {selectedSector === 'all' ? 'market' : selectedSector}: {totalStocksInSector}
+                  </p>
                 )}
               </div>
-            </div>
+
+              {/* Top N Slider */}
+              <div className="space-y-2">
+                <Label>Top N Stocks by Market Cap: {topN}</Label>
+                <Slider
+                  min={minSliderValue}
+                  max={maxSliderValue}
+                  step={10}
+                  value={[topN]}
+                  onValueChange={(value) => setTopN(value[0])}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>{minSliderValue}</span>
+                  <span>{maxSliderValue}</span>
+                </div>
+              </div>
+
+              {/* Overlays */}
+              <div className="space-y-2">
+                <Label>Overlays</Label>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="show-kse100"
+                      checked={showKse100}
+                      onCheckedChange={(checked) => setShowKse100(checked === true)}
+                    />
+                    <label
+                      htmlFor="show-kse100"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                    >
+                      KSE100 Index
+                    </label>
+                  </div>
+                  {selectedSector && selectedSector !== 'all' && (
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="show-sector-index"
+                        checked={showSectorIndex}
+                        onCheckedChange={(checked) => setShowSectorIndex(checked === true)}
+                      />
+                      <label
+                        htmlFor="show-sector-index"
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                      >
+                        {selectedSector} Sector Index (Market-Cap Weighted)
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </form>
           </CardContent>
         )}
       </Card>
