@@ -112,10 +112,7 @@ export function GDPSection() {
         cached: result.cached,
       })
     } catch (err: any) {
-      console.error('Error loading GDP data:', err)
-      const errorMessage = err.name === 'AbortError' 
-        ? 'Request timed out. Please try again.'
-        : err.message || 'Failed to load GDP data'
+      const errorMessage = err.message || 'Failed to load GDP data'
       setError(errorMessage)
       toast({
         title: "Error",
