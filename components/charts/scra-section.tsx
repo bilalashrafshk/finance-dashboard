@@ -1,4 +1,6 @@
 "use client"
+import { TimeFrameSelector } from "@/components/charts/time-frame-selector"
+import { ChartPeriod, filterDataByTimeFrame, getDefaultPeriod, DateRange } from "@/lib/charts/time-frame-filter"
 
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -135,7 +137,7 @@ export function SCRASection() {
   const colors = getThemeColors()
   const { toast } = useToast()
   const [selectedSeries, setSelectedSeries] = useState(SERIES_OPTIONS[0].key)
-  const [data, setData] = useState<SCRAData[]>([])
+  const [allData, setAllData] = useState<SCRAData[]>([]) // Store all fetched data
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [metadata, setMetadata] = useState<{
@@ -143,6 +145,10 @@ export function SCRASection() {
     latestDate: string | null
     cached: boolean
   } | null>(null)
+  
+  // Time frame selection
+  const [chartPeriod, setChartPeriod] = useState<ChartPeriod>(getDefaultPeriod('weekly'))
+  const [customRange, setCustomRange] = useState<DateRange>({ startDate: null, endDate: null })
 
   const selectedSeriesInfo = SERIES_OPTIONS.find(s => s.key === selectedSeries) || SERIES_OPTIONS[0]
 
@@ -170,7 +176,7 @@ export function SCRASection() {
         new Date(a.date).getTime() - new Date(b.date).getTime()
       )
 
-      setData(sortedData)
+      setAllData(sortedData) // Store all data
       setMetadata({
         seriesName: result.seriesName,
         latestDate: result.latestStoredDate,
