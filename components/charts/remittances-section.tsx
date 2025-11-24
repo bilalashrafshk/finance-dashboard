@@ -227,7 +227,7 @@ export function RemittancesSection() {
         <CardHeader>
           <CardTitle>Workers' Remittances</CardTitle>
           <CardDescription>
-            Total inflow of Workers' Remittances in Pakistan from SBP EasyData API
+            Total inflow of Workers' Remittances in Pakistan
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

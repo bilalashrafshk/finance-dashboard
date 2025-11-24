@@ -6,9 +6,9 @@ import { getBOPData, insertBOPData, shouldRefreshBOPData } from '@/lib/portfolio
  * 
  * GET /api/sbp/balance-of-payments?seriesKey=TS_GP_ES_PKBOPSTND_M.BOPSNA01810&startDate=2020-01-01&endDate=2024-12-31
  * 
- * Fetches Pakistan's Balance of Payments data from SBP EasyData API.
+ * Fetches Pakistan's Balance of Payments data from SBP API.
  * - Checks database first
- * - Fetches from SBP EasyData API if data is older than 3 days
+ * - Fetches from SBP API if data is older than 3 days
  * - Automatically stores fetched data in database
  * - Supports date ranges for historical data
  */

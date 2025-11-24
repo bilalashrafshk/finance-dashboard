@@ -227,7 +227,7 @@ export function ExchangeRateSection() {
         <CardHeader>
           <CardTitle>Average Exchange Rate: PKR per USD</CardTitle>
           <CardDescription>
-            Average exchange rate of Pakistani Rupees per U.S. Dollar from SBP EasyData API
+            Average exchange rate of Pakistani Rupees per U.S. Dollar
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

@@ -183,7 +183,7 @@ export function ElectricityGenerationSection() {
         <CardHeader>
           <CardTitle>Total Electricity Generation</CardTitle>
           <CardDescription>
-            Total Electricity Generation by all sources from SBP EasyData API
+            Total Electricity Generation by all sources
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

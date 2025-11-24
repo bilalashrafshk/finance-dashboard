@@ -224,7 +224,7 @@ export function KIBORSection() {
         <CardHeader>
           <CardTitle>6-Months KIBOR</CardTitle>
           <CardDescription>
-            Six-Months Karachi Interbank Offer Rate from SBP EasyData API
+            Six-Months Karachi Interbank Offer Rate
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

@@ -227,7 +227,7 @@ export function SBPReservesSection() {
         <CardHeader>
           <CardTitle>SBP Gross Foreign Exchange Reserves</CardTitle>
           <CardDescription>
-            Gross foreign exchange reserves with State Bank of Pakistan from SBP EasyData API
+            Gross foreign exchange reserves with State Bank of Pakistan
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

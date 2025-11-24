@@ -222,7 +222,7 @@ export function GDPSection() {
         <CardHeader>
           <CardTitle>Real GDP Growth Rate</CardTitle>
           <CardDescription>
-            Growth rate of Real Gross Domestic Product (annual) from SBP EasyData API
+            Growth rate of Real Gross Domestic Product (annual)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

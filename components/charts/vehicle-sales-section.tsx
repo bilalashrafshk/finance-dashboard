@@ -183,7 +183,7 @@ export function VehicleSalesSection() {
         <CardHeader>
           <CardTitle>Total Sales of Vehicles</CardTitle>
           <CardDescription>
-            Total Sales of Vehicles (except 2 & 3 Wheelers) from SBP EasyData API
+            Total Sales of Vehicles (except 2 & 3 Wheelers)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

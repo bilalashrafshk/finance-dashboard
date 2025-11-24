@@ -307,7 +307,7 @@ export function SCRASection() {
         <CardHeader>
           <CardTitle>Special Convertible Rupee Accounts (SCRA)</CardTitle>
           <CardDescription>
-            SCRA Weekly Position data from SBP EasyData API
+            SCRA Weekly Position data
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

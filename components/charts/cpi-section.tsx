@@ -224,7 +224,7 @@ export function CPISection() {
         <CardHeader>
           <CardTitle>CPI National (Year-on-Year)</CardTitle>
           <CardDescription>
-            National Consumer Price Index inflation measure (YoY basis) from SBP EasyData API
+            National Consumer Price Index inflation measure (YoY basis)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

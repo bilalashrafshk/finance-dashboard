@@ -6,9 +6,9 @@ import { getSBPEconomicData, insertSBPEconomicData, shouldRefreshSBPEconomicData
  * 
  * GET /api/sbp/economic-data?seriesKey=TS_GP_PT_CPI_M.P00011516&startDate=2020-01-01&endDate=2024-12-31
  * 
- * Fetches economic data from SBP EasyData API.
+ * Fetches economic data from SBP API.
  * - Checks database first
- * - Fetches from SBP EasyData API if data is older than 3 days
+ * - Fetches from SBP API if data is older than 3 days
  * - Automatically stores fetched data in database
  * - Supports date ranges for historical data
  */

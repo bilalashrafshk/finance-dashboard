@@ -242,7 +242,7 @@ export function BalanceOfPaymentsSection() {
           <div>
             <CardTitle>Pakistan's Balance of Payments</CardTitle>
             <CardDescription>
-              Current account balance data from SBP EasyData API
+              Current account balance data
             </CardDescription>
           </div>
         </CardHeader>

@@ -227,7 +227,7 @@ export function FDISection() {
         <CardHeader>
           <CardTitle>Net Foreign Direct Investment (FDI)</CardTitle>
           <CardDescription>
-            Net Foreign Direct Investment in Pakistan from SBP EasyData API
+            Net Foreign Direct Investment in Pakistan
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

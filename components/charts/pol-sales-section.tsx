@@ -183,7 +183,7 @@ export function POLSalesSection() {
         <CardHeader>
           <CardTitle>Overall POL Sales</CardTitle>
           <CardDescription>
-            Overall POL sales to various sectors (Agri, Govt, Ind, Pow, Transp etc) from SBP EasyData API
+            Overall POL sales to various sectors (Agri, Govt, Ind, Pow, Transp etc)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

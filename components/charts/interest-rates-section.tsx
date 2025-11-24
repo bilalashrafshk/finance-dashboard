@@ -228,7 +228,7 @@ export function InterestRatesSection() {
           <div>
             <CardTitle>State Bank of Pakistan Interest Rates</CardTitle>
             <CardDescription>
-              Historical interest rate data from SBP EasyData API
+              Historical interest rate data
             </CardDescription>
           </div>
         </CardHeader>

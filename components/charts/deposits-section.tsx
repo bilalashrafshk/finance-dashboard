@@ -227,7 +227,7 @@ export function DepositsSection() {
         <CardHeader>
           <CardTitle>Total Deposits with Scheduled Banks</CardTitle>
           <CardDescription>
-            Total deposits with scheduled banks (excluding Government deposits) from SBP EasyData API
+            Total deposits with scheduled banks (excluding Government deposits)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

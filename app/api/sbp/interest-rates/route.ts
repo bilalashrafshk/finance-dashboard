@@ -8,7 +8,7 @@ import { getSBPInterestRates, insertSBPInterestRates, shouldRefreshSBPInterestRa
  * 
  * Fetches State Bank of Pakistan interest rate data.
  * - Checks database first
- * - Fetches from SBP EasyData API if data is older than 3 days
+ * - Fetches from SBP API if data is older than 3 days
  * - Automatically stores fetched data in database
  * - Supports date ranges for historical data
  */

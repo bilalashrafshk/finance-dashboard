@@ -227,7 +227,7 @@ export function M2Section() {
         <CardHeader>
           <CardTitle>Broad Money (M2)</CardTitle>
           <CardDescription>
-            Broad Money (liability side) - measure of money supply from SBP EasyData API
+            Broad Money (liability side) - measure of money supply
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

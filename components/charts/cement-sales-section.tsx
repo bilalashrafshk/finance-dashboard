@@ -183,7 +183,7 @@ export function CementSalesSection() {
         <CardHeader>
           <CardTitle>Total Cement Sales</CardTitle>
           <CardDescription>
-            Total Cement Sales from SBP EasyData API
+            Total Cement Sales
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
