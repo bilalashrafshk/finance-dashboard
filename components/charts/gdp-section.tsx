@@ -2,9 +2,13 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
 import { Loader2, TrendingUp, TrendingDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Line } from "react-chartjs-2"
+import { ChartPeriod, filterDataByTimeFrame, getDefaultPeriod, DateRange } from "@/lib/charts/time-frame-filter"
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -57,7 +61,7 @@ export function GDPSection() {
   const { theme } = useTheme()
   const colors = getThemeColors()
   const { toast } = useToast()
-  const [data, setData] = useState<GDPData[]>([])
+  const [allData, setAllData] = useState<GDPData[]>([]) // Store all fetched data
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [metadata, setMetadata] = useState<{
@@ -65,6 +69,10 @@ export function GDPSection() {
     latestDate: string | null
     cached: boolean
   } | null>(null)
+  
+  // Time frame selection
+  const [chartPeriod, setChartPeriod] = useState<ChartPeriod>(getDefaultPeriod('annual'))
+  const [customRange, setCustomRange] = useState<DateRange>({ startDate: null, endDate: null })
 
   const loadGDPData = async () => {
     try {
@@ -97,7 +105,7 @@ export function GDPSection() {
         new Date(a.date).getTime() - new Date(b.date).getTime()
       )
 
-      setData(sortedData)
+      setAllData(sortedData) // Store all data
       setMetadata({
         seriesName: result.seriesName,
         latestDate: result.latestStoredDate,
@@ -122,6 +130,11 @@ export function GDPSection() {
   useEffect(() => {
     loadGDPData()
   }, [])
+
+  // Filter data based on selected time frame
+  const data = useMemo(() => {
+    return filterDataByTimeFrame(allData, chartPeriod, customRange)
+  }, [allData, chartPeriod, customRange])
 
   // Prepare chart data
   const chartData = useMemo(() => {
@@ -236,6 +249,55 @@ export function GDPSection() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Time Frame Selector */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="time-frame">Time Frame</Label>
+              <Select value={chartPeriod} onValueChange={(value) => {
+                setChartPeriod(value as ChartPeriod)
+                if (value !== 'CUSTOM') {
+                  setCustomRange({ startDate: null, endDate: null })
+                }
+              }}>
+                <SelectTrigger id="time-frame">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1M">Last 1 Month</SelectItem>
+                  <SelectItem value="3M">Last 3 Months</SelectItem>
+                  <SelectItem value="6M">Last 6 Months</SelectItem>
+                  <SelectItem value="1Y">Last 1 Year</SelectItem>
+                  <SelectItem value="2Y">Last 2 Years</SelectItem>
+                  <SelectItem value="5Y">Last 5 Years</SelectItem>
+                  <SelectItem value="ALL">All Time</SelectItem>
+                  <SelectItem value="CUSTOM">Custom Range</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {chartPeriod === 'CUSTOM' && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="start-date">Start Date</Label>
+                  <Input
+                    id="start-date"
+                    type="date"
+                    value={customRange.startDate || ''}
+                    onChange={(e) => setCustomRange({ ...customRange, startDate: e.target.value || null })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="end-date">End Date</Label>
+                  <Input
+                    id="end-date"
+                    type="date"
+                    value={customRange.endDate || ''}
+                    onChange={(e) => setCustomRange({ ...customRange, endDate: e.target.value || null })}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
           {/* Current Value Display */}
           {latestValue !== null && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
