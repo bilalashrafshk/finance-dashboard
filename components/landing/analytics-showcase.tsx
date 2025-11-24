@@ -285,7 +285,7 @@ export default function AnalyticsShowcase() {
               Identify What <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">Works & What Doesn't</span>
             </h2>
             <p className="text-lg text-slate-400 max-w-2xl">
-              Conviction Play reveals which assets consistently beat their benchmarks and which ones drag down your portfolio returns.
+              CONVICTION PLAY reveals which assets consistently beat their benchmarks and which ones drag down your portfolio returns.
             </p>
           </div>
 

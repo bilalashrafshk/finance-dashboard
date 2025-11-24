@@ -228,7 +228,7 @@ export function EthRiskDashboard() {
         <div className="space-y-1">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">Ethereum Risk Dashboard</h1>
           <p className="text-muted-foreground text-xs sm:text-sm md:text-base">
-            Real-time risk metrics and valuation analysis by Conviction Play
+            Real-time risk metrics and valuation analysis by CONVICTION PLAY
           </p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">

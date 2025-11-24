@@ -40,7 +40,7 @@ export function SharedNavbar() {
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="flex items-center gap-2 group">
               <span className="text-lg font-bold text-foreground inline-flex items-baseline">
-                {"Conviction Play".split("").map((char, index) => {
+                {"CONVICTION PLAY".split("").map((char, index) => {
                   const scale = Math.pow(1.06, index); // Compounding factor of 6% per letter
                   // Round to 4 decimal places to prevent hydration mismatch
                   const fontSize = Math.round(scale * 10000) / 10000;
