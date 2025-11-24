@@ -26,10 +26,16 @@ export interface SectorIndexDataPoint {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
-    const sector = searchParams.get('sector')
+    const sector = searchParams.get('sector') ? decodeURIComponent(searchParams.get('sector')!) : null
     const startDate = searchParams.get('startDate')
-    const endDate = searchParams.get('endDate')
+    let endDate = searchParams.get('endDate')
     const includeDividends = searchParams.get('includeDividends') === 'true'
+
+    // Cap endDate to today if it's in the future
+    const today = new Date().toISOString().split('T')[0]
+    if (endDate && endDate > today) {
+      endDate = today
+    }
 
     if (!sector || sector === 'all') {
       return NextResponse.json({
@@ -64,10 +70,13 @@ export async function GET(request: NextRequest) {
         marketCap: parseFloat(row.market_cap) || 0,
       }))
 
+      console.log(`[Sector Index] Found ${sectorStocks.length} stocks in sector: ${sector}`)
+
       if (sectorStocks.length === 0) {
         return NextResponse.json({
           success: false,
-          error: 'No stocks found in this sector',
+          error: `No stocks found in sector: ${sector}`,
+          sector,
         }, { status: 404 })
       }
 
@@ -112,6 +121,8 @@ export async function GET(request: NextRequest) {
       `
 
       const priceResult = await client.query(priceQuery, queryParams)
+      
+      console.log(`[Sector Index] Found ${priceResult.rows.length} price records for ${sectorStocks.length} stocks in date range ${startDate} to ${endDate}`)
 
       // Step 3: Calculate market-cap weighted index for each date
       // Group prices by date
@@ -174,9 +185,14 @@ export async function GET(request: NextRequest) {
       }
 
       if (indexData.length === 0) {
+        console.error(`[Sector Index] No data found for sector: ${sector}, startDate: ${startDate}, endDate: ${endDate}, stocks: ${sectorStocks.length}`)
         return NextResponse.json({
           success: false,
-          error: 'No price data found for the specified date range',
+          error: `No price data found for ${sector} sector in the specified date range (${startDate} to ${endDate}). Found ${sectorStocks.length} stocks in sector but no historical price data.`,
+          sector,
+          startDate,
+          endDate,
+          stocksCount: sectorStocks.length,
         }, { status: 404 })
       }
 
