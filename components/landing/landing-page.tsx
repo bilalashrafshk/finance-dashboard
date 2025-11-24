@@ -248,9 +248,9 @@ export default function LandingPage() {
                 <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-cyan-600/10">
                   <Globe className="h-6 w-6 text-cyan-600 dark:text-cyan-400" />
                 </div>
-                <CardTitle>Macro Economic Data</CardTitle>
+                <CardTitle>Macro Analysis</CardTitle>
                 <CardDescription>
-                  Access to GDP, CPI, interest rates, exchange rates, remittances, reserves, and industrial data for Pakistan
+                  Comprehensive macroeconomic analysis with GDP, CPI, interest rates, exchange rates, remittances, reserves, and industrial data. Analyze correlations between macro factors and equity markets.
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -307,7 +307,7 @@ export default function LandingPage() {
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">Macro economic data</span>
+                    <span className="text-sm">Macro analysis</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
