@@ -1,5 +1,5 @@
 import dynamic from "next/dynamic"
-import { BarChart3, TrendingUp, Activity, Globe, LayoutGrid, Loader2, ScatterChart, PieChart, Calendar, LineChart, DollarSign } from "lucide-react"
+import { BarChart3, TrendingUp, Activity, Globe, LayoutGrid, Loader2, ScatterChart, PieChart, Calendar, LineChart, DollarSign, Table2 } from "lucide-react"
 import React from "react"
 
 // Loading component
@@ -90,9 +90,12 @@ const POLSalesSection = dynamic(() => import("@/components/charts/pol-sales-sect
 const SCRASection = dynamic(() => import("@/components/charts/scra-section").then(mod => mod.SCRASection), {
     loading: () => <ChartLoader />,
 })
+const SectorQuarterlyPerformance = dynamic(() => import("@/components/charts/sector-quarterly-performance").then(mod => mod.SectorQuarterlyPerformance), {
+    loading: () => <ChartLoader />,
+})
 
 // Types
-export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments" | "interest-rate-equities" | "cpi" | "gdp" | "exchange-rate" | "remittances" | "kibor" | "sbp-reserves" | "fdi" | "m2" | "deposits" | "vehicle-sales" | "cement-sales" | "electricity-generation" | "pol-sales" | "scra"
+export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments" | "interest-rate-equities" | "cpi" | "gdp" | "exchange-rate" | "remittances" | "kibor" | "sbp-reserves" | "fdi" | "m2" | "deposits" | "vehicle-sales" | "cement-sales" | "electricity-generation" | "pol-sales" | "scra" | "sector-quarterly-performance"
 
 export interface ChartDefinition {
     id: ChartId
@@ -150,6 +153,13 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 icon: TrendingUp,
                 component: <InterestRateEquitiesSection />,
                 keywords: ["interest", "rate", "equities", "stocks", "sbp", "price", "correlation", "kse100"],
+            },
+            {
+                id: "sector-quarterly-performance",
+                title: "Sector Quarterly Performance",
+                icon: Table2,
+                component: <SectorQuarterlyPerformance />,
+                keywords: ["sector", "quarterly", "performance", "kse100", "outperformance", "dividends", "returns", "table"],
             },
         ],
     },
