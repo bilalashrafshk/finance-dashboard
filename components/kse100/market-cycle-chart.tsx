@@ -359,12 +359,12 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
         .map((item: any) => {
           const cycleName = item.dataKey as string
           const normalizedPrice = item.value as number
-          // Find the cycle to get ROI
-          const cycle = cycles.find(c => c.cycleName === cycleName)
+          // Calculate ROI at this trading day: normalizedPrice starts at 100%, so ROI = normalizedPrice - 100
+          const roiAtThisDay = normalizedPrice - 100
           return {
             cycleName,
             normalizedPrice,
-            roi: cycle?.roi || 0,
+            roi: roiAtThisDay,
             color: item.color
           }
         })
