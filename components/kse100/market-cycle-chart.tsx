@@ -245,21 +245,46 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
             priceData: []
           }))
           
-          // Generate priceData for each cycle from historical data
+          // Generate priceData for each cycle from historical data with proper trading day calculation
           const cyclesWithData = allCycles.map(cycle => {
             const startDate = new Date(cycle.startDate)
             const endDate = new Date(cycle.endDate)
             
-            const cyclePriceData = priceData
-              .filter(p => {
-                const pDate = new Date(p.date)
-                return pDate >= startDate && pDate <= endDate
-              })
-              .map((p, idx) => ({
+            // Find all price points in the cycle date range
+            const cyclePricePoints = priceData.filter(p => {
+              const pDate = new Date(p.date)
+              return pDate >= startDate && pDate <= endDate
+            })
+            
+            // Calculate trading days properly (not just index)
+            let tradingDayCounter = 0
+            const cyclePriceData = cyclePricePoints.map((p, idx) => {
+              if (idx === 0) {
+                tradingDayCounter = 0
+              } else {
+                const prevDate = cyclePricePoints[idx - 1].date
+                const currDate = p.date
+                // Calculate trading days between previous and current date
+                const start = new Date(prevDate)
+                const end = new Date(currDate)
+                let days = 0
+                const current = new Date(start)
+                while (current <= end) {
+                  const day = current.getDay()
+                  if (day !== 0 && day !== 6) { // Not weekend
+                    days++
+                  }
+                  current.setDate(current.getDate() + 1)
+                }
+                tradingDayCounter += Math.max(0, days - 1) // Subtract 1 because we don't count the start day
+              }
+              
+              return {
                 date: p.date,
                 price: p.close,
-                tradingDay: idx
-              }))
+                tradingDay: tradingDayCounter
+              }
+            })
             
             // Find the actual peak (maximum price) in the cycle
             if (cyclePriceData.length > 0) {
@@ -355,10 +380,22 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
       
       normalizedCycles.forEach(cycle => {
         if (visibleCycles.has(cycle.cycleName)) {
-          // Find exact match or closest data point for this trading day
-          const exactMatch = cycle.data.find(d => d.tradingDay === day)
-          if (exactMatch) {
-            point[cycle.cycleName] = exactMatch.normalizedPrice
+          // Find exact match or closest previous data point for this trading day
+          // This ensures all cycles are shown together in the tooltip
+          let match = cycle.data.find(d => d.tradingDay === day)
+          
+          // If no exact match, find the closest previous value
+          if (!match) {
+            const previousValues = cycle.data.filter(d => d.tradingDay <= day)
+            if (previousValues.length > 0) {
+              match = previousValues.reduce((prev, curr) => 
+                curr.tradingDay > prev.tradingDay ? curr : prev
+              )
+            }
+          }
+          
+          if (match) {
+            point[cycle.cycleName] = match.normalizedPrice
           }
         }
       })
@@ -399,10 +436,12 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
           const normalizedPrice = item.value as number
           // Calculate ROI at this trading day: normalizedPrice starts at 100%, so ROI = normalizedPrice - 100
           const roiAtThisDay = normalizedPrice - 100
+          // Find the cycle to get peak ROI
+          const cycle = cycles.find(c => c.cycleName === cycleName)
           return {
             cycleName,
-            normalizedPrice,
-            roi: roiAtThisDay,
+            roiAtThisDay,
+            peakROI: cycle?.roi || 0,
             color: item.color
           }
         })
@@ -425,9 +464,11 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
                   <span className="font-medium text-popover-foreground">{cycle.cycleName}</span>
                 </div>
                 <div className="text-right">
-                  <div className="font-mono text-foreground">{cycle.normalizedPrice.toFixed(2)}%</div>
+                  <div className="font-mono text-foreground">
+                    ROI: {cycle.roiAtThisDay >= 0 ? '+' : ''}{cycle.roiAtThisDay.toFixed(2)}%
+                  </div>
                   <div className="text-xs text-muted-foreground">
-                    ROI: {cycle.roi >= 0 ? '+' : ''}{cycle.roi.toFixed(2)}%
+                    Peak: {cycle.peakROI >= 0 ? '+' : ''}{cycle.peakROI.toFixed(2)}%
                   </div>
                 </div>
               </div>
