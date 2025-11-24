@@ -113,6 +113,11 @@ export function POLSalesSection() {
     loadData()
   }, [])
 
+  // Filter data based on selected time frame
+  const data = useMemo(() => {
+    return filterDataByTimeFrame(allData, chartPeriod, customRange)
+  }, [allData, chartPeriod, customRange])
+
   const chartData = useMemo(() => {
     if (data.length === 0) return null
     return {
