@@ -1628,6 +1628,11 @@ export async function getSBPEconomicData(
       client.release()
     }
   } catch (error: any) {
+    // If table doesn't exist, return empty data instead of throwing
+    if (error.message.includes('does not exist') || error.code === '42P01') {
+      console.log(`[DB] Table sbp_economic_data does not exist yet for ${seriesKey}, returning empty data`)
+      return { data: [], latestStoredDate: null, earliestStoredDate: null }
+    }
     console.error(`[DB] getSBPEconomicData error for ${seriesKey}:`, error.message)
     throw error
   }
@@ -1755,6 +1760,11 @@ export async function getSBPEconomicMetadata(
       client.release()
     }
   } catch (error: any) {
+    // If table doesn't exist, return null instead of throwing
+    if (error.message.includes('does not exist') || error.code === '42P01') {
+      console.log(`[DB] Table sbp_economic_metadata does not exist yet for ${seriesKey}, returning null`)
+      return null
+    }
     console.error(`[DB] getSBPEconomicMetadata error for ${seriesKey}:`, error.message)
     return null
   }
