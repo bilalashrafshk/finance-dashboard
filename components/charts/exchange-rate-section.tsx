@@ -242,6 +242,14 @@ export function ExchangeRateSection() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Time Frame Selector */}
+          <TimeFrameSelector
+            chartPeriod={chartPeriod}
+            customRange={customRange}
+            onPeriodChange={setChartPeriod}
+            onRangeChange={setCustomRange}
+          />
+
           {/* Current Value Display */}
           {latestValue !== null && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
