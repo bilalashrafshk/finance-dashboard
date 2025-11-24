@@ -84,12 +84,15 @@ export async function GET(request: NextRequest) {
       const marketCapMap = new Map(sectorStocks.map(s => [s.symbol, s.marketCap]))
 
       // Step 2: Get all price data for these stocks in the date range
+      // Use simple direct query like sector-performance route (proven to work)
       let priceQuery = `
-        WITH all_dates AS (
-          SELECT DISTINCT date
-          FROM historical_price_data
-          WHERE asset_type = 'pk-equity'
-            AND symbol = ANY($1)
+        SELECT 
+          date,
+          symbol,
+          ${includeDividends ? 'COALESCE(adjusted_close, close)' : 'close'} as price
+        FROM historical_price_data
+        WHERE asset_type = 'pk-equity'
+          AND symbol = ANY($1)
       `
       
       const queryParams: any[] = [sectorSymbols]
@@ -107,16 +110,6 @@ export async function GET(request: NextRequest) {
       }
       
       priceQuery += `
-          ORDER BY date ASC
-        )
-        SELECT 
-          date,
-          symbol,
-          ${includeDividends ? 'COALESCE(adjusted_close, close)' : 'close'} as price
-        FROM historical_price_data
-        WHERE asset_type = 'pk-equity'
-          AND symbol = ANY($1)
-          AND date IN (SELECT date FROM all_dates)
         ORDER BY date ASC, symbol ASC
       `
 
