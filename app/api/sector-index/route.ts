@@ -122,7 +122,14 @@ export async function GET(request: NextRequest) {
       const pricesByDate = new Map<string, Array<{ symbol: string; price: number }>>()
       
       for (const row of priceResult.rows) {
-        const date = row.date
+        // Normalize date to YYYY-MM-DD format (handle both string and Date objects from PostgreSQL)
+        let date = row.date
+        if (date instanceof Date) {
+          date = date.toISOString().split('T')[0]
+        } else if (typeof date === 'string') {
+          date = date.split('T')[0] // Remove time component if present
+        }
+        
         const symbol = row.symbol
         const price = parseFloat(row.price) || 0
         
