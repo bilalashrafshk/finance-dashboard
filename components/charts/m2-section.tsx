@@ -1,10 +1,14 @@
 "use client"
+import { TimeFrameSelector } from "@/components/charts/time-frame-selector"
+import { ChartPeriod, filterDataByTimeFrame, getDefaultPeriod, DateRange } from "@/lib/charts/time-frame-filter"
 
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { TimeFrameSelector } from "@/components/charts/time-frame-selector"
 import { Loader2, TrendingUp, TrendingDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Line } from "react-chartjs-2"
+import { ChartPeriod, filterDataByTimeFrame, getDefaultPeriod, DateRange } from "@/lib/charts/time-frame-filter"
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -57,7 +61,7 @@ export function M2Section() {
   const { theme } = useTheme()
   const colors = getThemeColors()
   const { toast } = useToast()
-  const [data, setData] = useState<M2Data[]>([])
+  const [allData, setAllData] = useState<M2Data[]>([]) // Store all fetched data
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [metadata, setMetadata] = useState<{
@@ -65,6 +69,10 @@ export function M2Section() {
     latestDate: string | null
     cached: boolean
   } | null>(null)
+  
+  // Time frame selection
+  const [chartPeriod, setChartPeriod] = useState<ChartPeriod>(getDefaultPeriod('weekly'))
+  const [customRange, setCustomRange] = useState<DateRange>({ startDate: null, endDate: null })
 
   const loadM2Data = async () => {
     try {
@@ -90,7 +98,7 @@ export function M2Section() {
         new Date(a.date).getTime() - new Date(b.date).getTime()
       )
 
-      setData(sortedData)
+      setAllData(sortedData) // Store all data
       setMetadata({
         seriesName: result.seriesName,
         latestDate: result.latestStoredDate,
@@ -112,6 +120,11 @@ export function M2Section() {
   useEffect(() => {
     loadM2Data()
   }, [])
+
+  // Filter data based on selected time frame
+  const data = useMemo(() => {
+    return filterDataByTimeFrame(allData, chartPeriod, customRange)
+  }, [allData, chartPeriod, customRange])
 
   // Prepare chart data
   const chartData = useMemo(() => {
