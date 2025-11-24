@@ -73,6 +73,7 @@ export function AdvanceDeclineChart({
   const [sectorIndexData, setSectorIndexData] = useState<Array<{ date: string; index: number }>>([])
   const [showKse100, setShowKse100] = useState(true)
   const [showSectorIndex, setShowSectorIndex] = useState(false)
+  const [includeDividends, setIncludeDividends] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showExplanation, setShowExplanation] = useState(false)
@@ -169,6 +170,7 @@ export function AdvanceDeclineChart({
             sectorIndexParams.append('sector', selectedSector)
             sectorIndexParams.append('startDate', internalStartDate)
             if (internalEndDate) sectorIndexParams.append('endDate', internalEndDate)
+            sectorIndexParams.append('includeDividends', includeDividends.toString())
             
             const sectorIndexResponse = await fetch(`/api/sector-index?${sectorIndexParams.toString()}`)
             
@@ -251,7 +253,7 @@ export function AdvanceDeclineChart({
     }
 
     fetchData()
-  }, [internalStartDate, internalEndDate, topN, showKse100, selectedSector, toast])
+  }, [internalStartDate, internalEndDate, topN, showKse100, selectedSector, includeDividends, toast])
 
   const chartData = useMemo(() => {
     if (!data || data.length === 0) {
@@ -373,7 +375,7 @@ export function AdvanceDeclineChart({
       const validValues = sectorIndexValues.filter(v => v !== null && v !== undefined)
       if (validValues.length > 0) {
         datasets.push({
-          label: `${selectedSector} Index`,
+          label: `${selectedSector} Index${includeDividends ? ' (Total Return)' : ' (Price Return)'}`,
           data: formatTimeSeriesData(sectorIndexValues),
           borderColor: '#8b5cf6',
           backgroundColor: '#8b5cf620',
@@ -392,7 +394,7 @@ export function AdvanceDeclineChart({
     return {
       datasets,
     }
-  }, [data, kse100Data, sectorIndexData, showKse100, showSectorIndex, selectedSector, colors])
+  }, [data, kse100Data, sectorIndexData, showKse100, showSectorIndex, selectedSector, includeDividends, colors])
 
   const options = useMemo(() => {
     const opts = createTimeSeriesChartOptions(
@@ -489,7 +491,7 @@ export function AdvanceDeclineChart({
           max: sectorIndexMax + sectorIndexPadding,
           title: {
             display: true,
-            text: `${selectedSector} Index`,
+            text: `${selectedSector} Index${includeDividends ? ' (TR)' : ' (PR)'}`,
             color: '#8b5cf6',
           },
           ticks: {
@@ -610,7 +612,7 @@ export function AdvanceDeclineChart({
     }
 
     return opts
-  }, [data, colors, theme, showKse100, kse100Data, showSectorIndex, sectorIndexData, selectedSector])
+  }, [data, colors, theme, showKse100, kse100Data, showSectorIndex, sectorIndexData, selectedSector, includeDividends])
 
   if (loading) {
     return (
@@ -795,19 +797,36 @@ export function AdvanceDeclineChart({
                     </label>
                   </div>
                   {selectedSector && selectedSector !== 'all' && (
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id="show-sector-index"
-                        checked={showSectorIndex}
-                        onCheckedChange={(checked) => setShowSectorIndex(checked === true)}
-                      />
-                      <label
-                        htmlFor="show-sector-index"
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                      >
-                        {selectedSector} Sector Index (Market-Cap Weighted)
-                      </label>
-                    </div>
+                    <>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="show-sector-index"
+                          checked={showSectorIndex}
+                          onCheckedChange={(checked) => setShowSectorIndex(checked === true)}
+                        />
+                        <label
+                          htmlFor="show-sector-index"
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                        >
+                          {selectedSector} Sector Index (Market-Cap Weighted)
+                        </label>
+                      </div>
+                      {showSectorIndex && (
+                        <div className="flex items-center gap-2 ml-6">
+                          <Checkbox
+                            id="include-dividends"
+                            checked={includeDividends}
+                            onCheckedChange={(checked) => setIncludeDividends(checked === true)}
+                          />
+                          <label
+                            htmlFor="include-dividends"
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                          >
+                            Include Dividends (Total Return)
+                          </label>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -846,7 +865,7 @@ export function AdvanceDeclineChart({
       <CardContent>
         <div className="h-[500px] w-full">
           <Line 
-            key={`chart-${showSectorIndex}-${selectedSector}-${topN}`}
+            key={`chart-${showSectorIndex}-${selectedSector}-${topN}-${includeDividends}`}
             data={chartData} 
             options={options} 
           />

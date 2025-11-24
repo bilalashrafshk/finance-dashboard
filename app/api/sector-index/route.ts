@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
     const sector = searchParams.get('sector')
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
+    const includeDividends = searchParams.get('includeDividends') === 'true'
 
     if (!sector || sector === 'all') {
       return NextResponse.json({
@@ -102,7 +103,7 @@ export async function GET(request: NextRequest) {
         SELECT 
           date,
           symbol,
-          close as price
+          ${includeDividends ? 'COALESCE(adjusted_close, close)' : 'close'} as price
         FROM historical_price_data
         WHERE asset_type = 'pk-equity'
           AND symbol = ANY($1)
@@ -184,6 +185,7 @@ export async function GET(request: NextRequest) {
         data: indexData,
         count: indexData.length,
         sector,
+        includeDividends,
         totalStocksInSector: sectorStocks.length,
         dateRange: {
           start: indexData[0].date,
