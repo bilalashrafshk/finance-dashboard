@@ -58,8 +58,42 @@ export function SectorQuarterlyPerformance() {
       loadData()
     } else {
       setData([])
+      setTotalStocksInSector(null)
     }
   }, [selectedSector, year, includeDividends])
+
+  // Fetch total stocks count for the sector (separate effect for better performance)
+  useEffect(() => {
+    if (!selectedSector) {
+      setTotalStocksInSector(null)
+      return
+    }
+
+    let cancelled = false
+    const controller = new AbortController()
+
+    // Fetch with cache (24 hours)
+    fetch(`/api/advance-decline/stocks?sector=${encodeURIComponent(selectedSector)}&limit=10000`, {
+      signal: controller.signal,
+      headers: {
+            'Cache-Control': 'max-age=86400', // 24 hours
+          },
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(result => {
+        if (!cancelled && result?.success && result?.stocks) {
+          setTotalStocksInSector(result.stocks.length)
+        }
+      })
+      .catch(() => {
+        // Silently fail - not critical
+      })
+
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [selectedSector])
 
   const loadSectors = async () => {
     try {
@@ -135,22 +169,6 @@ export function SectorQuarterlyPerformance() {
       }
 
       setData(result.quarters)
-      
-      // Fetch total stocks count for the sector
-      if (selectedSector) {
-        try {
-          const stocksResponse = await fetch(`/api/advance-decline/stocks?sector=${encodeURIComponent(selectedSector)}&limit=10000`)
-          if (stocksResponse.ok) {
-            const stocksResult = await stocksResponse.json()
-            if (stocksResult.success && stocksResult.stocks) {
-              setTotalStocksInSector(stocksResult.stocks.length)
-            }
-          }
-        } catch (err) {
-          // Silently fail - not critical
-          console.warn('Failed to fetch total stocks count:', err)
-        }
-      }
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to load sector performance data'
       setError(errorMessage)

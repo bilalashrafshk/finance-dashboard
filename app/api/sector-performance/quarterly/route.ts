@@ -127,7 +127,6 @@ async function calculateSectorQuarterReturn(
     const lastTradingDate = sortedDates.filter(d => d <= quarterEnd).pop() || sortedDates[sortedDates.length - 1]
 
     if (!firstTradingDate || !lastTradingDate || firstTradingDate > lastTradingDate) {
-      console.warn(`[Sector ${sector}] Invalid date range: first=${firstTradingDate}, last=${lastTradingDate}, quarter=${quarterStart} to ${quarterEnd}`)
       return null
     }
 
@@ -165,27 +164,33 @@ async function calculateSectorQuarterReturn(
 
     // If dividends are included, we need to adjust for dividends
     if (includeDividends) {
-      // For sector-level dividend adjustment, we need to calculate weighted dividend returns
-      // This is complex, so we'll use a simplified approach: calculate total return for each stock
-      // and then weight by market cap
+      // Batch fetch all dividends for all stocks in parallel
+      const dividendPromises = sectorStocks.map(stock =>
+        getDividendData('pk-equity', stock.symbol, quarterStart, quarterEnd)
+      )
+      const allDividends = await Promise.all(dividendPromises)
+      const dividendsMap = new Map<string, DividendRecord[]>()
+      sectorStocks.forEach((stock, index) => {
+        if (allDividends[index].length > 0) {
+          dividendsMap.set(stock.symbol, allDividends[index])
+        }
+      })
 
-      const stockReturns: Array<{ symbol: string; return: number; marketCap: number }> = []
-
-      for (const stock of sectorStocks) {
+      // Calculate returns for all stocks in parallel
+      const stockReturnPromises = sectorStocks.map(async (stock) => {
         const stockPrices = priceResult.rows
           .filter(r => r.symbol === stock.symbol)
           .map(r => ({ date: r.date, close: parseFloat(r.price) || 0 }))
           .sort((a, b) => a.date.localeCompare(b.date))
 
-        if (stockPrices.length === 0) continue
+        if (stockPrices.length === 0) return null
 
         const startPrice = stockPrices.find(p => p.date >= quarterStart)?.close
         const endPrice = stockPrices[stockPrices.length - 1]?.close
 
-        if (!startPrice || !endPrice || startPrice === 0) continue
+        if (!startPrice || !endPrice || startPrice === 0) return null
 
-        // Get dividends for this stock in the quarter
-        const dividends = await getDividendData('pk-equity', stock.symbol, quarterStart, quarterEnd)
+        const dividends = dividendsMap.get(stock.symbol) || []
         
         if (dividends.length > 0) {
           // Calculate dividend-adjusted return
@@ -199,15 +204,18 @@ async function calculateSectorQuarterReturn(
             const endAdjusted = adjustedData[adjustedData.length - 1].adjustedValue
             if (startAdjusted > 0) {
               const returnPct = ((endAdjusted - startAdjusted) / startAdjusted) * 100
-              stockReturns.push({ symbol: stock.symbol, return: returnPct, marketCap: stock.marketCap })
+              return { symbol: stock.symbol, return: returnPct, marketCap: stock.marketCap }
             }
           }
         } else {
           // No dividends, use simple price return
           const returnPct = ((endPrice - startPrice) / startPrice) * 100
-          stockReturns.push({ symbol: stock.symbol, return: returnPct, marketCap: stock.marketCap })
+          return { symbol: stock.symbol, return: returnPct, marketCap: stock.marketCap }
         }
-      }
+        return null
+      })
+
+      const stockReturns = (await Promise.all(stockReturnPromises)).filter((r): r is { symbol: string; return: number; marketCap: number } => r !== null)
 
       // Calculate market-cap weighted average return
       if (stockReturns.length > 0) {
@@ -224,7 +232,6 @@ async function calculateSectorQuarterReturn(
     // Simple price return without dividends
     return ((endAvgPrice - startAvgPrice) / startAvgPrice) * 100
   } catch (error) {
-    console.error(`Error calculating sector quarter return for ${sector}:`, error)
     return null
   }
 }
@@ -250,7 +257,6 @@ async function calculateKSE100QuarterReturn(
     )
 
     if (!data || data.length === 0) {
-      console.warn(`[KSE100] No data found for ${quarterStart} to ${quarterEnd}`)
       return null
     }
 
@@ -258,7 +264,6 @@ async function calculateKSE100QuarterReturn(
     const sortedData = [...data].sort((a, b) => a.date.localeCompare(b.date))
 
     if (sortedData.length === 0) {
-      console.warn(`[KSE100] No data returned from getHistoricalDataWithMetadata for ${quarterStart} to ${quarterEnd}`)
       return null
     }
 
@@ -267,13 +272,7 @@ async function calculateKSE100QuarterReturn(
     // Find last trading date on or before quarter end
     const lastDate = sortedData.filter(d => d.date <= quarterEnd).pop() || sortedData[sortedData.length - 1]
 
-    if (!firstDate || !lastDate) {
-      console.warn(`[KSE100] Could not find valid dates: first=${firstDate?.date}, last=${lastDate?.date}, quarter=${quarterStart} to ${quarterEnd}`)
-      return null
-    }
-
-    if (firstDate.date > lastDate.date) {
-      console.warn(`[KSE100] Invalid date order: first=${firstDate.date}, last=${lastDate.date}`)
+    if (!firstDate || !lastDate || firstDate.date > lastDate.date) {
       return null
     }
 
@@ -281,7 +280,6 @@ async function calculateKSE100QuarterReturn(
     const endPrice = parseFloat(lastDate.close) || 0
 
     if (startPrice === 0 || endPrice === 0) {
-      console.warn(`[KSE100] Invalid prices: start=${startPrice} (date=${firstDate.date}), end=${endPrice} (date=${lastDate.date})`)
       return null
     }
 
@@ -291,13 +289,11 @@ async function calculateKSE100QuarterReturn(
     const returnPct = ((endPrice - startPrice) / startPrice) * 100
     
     if (isNaN(returnPct) || !isFinite(returnPct)) {
-      console.warn(`[KSE100] Invalid return calculation: ${returnPct}% (start=${startPrice}, end=${endPrice})`)
       return null
     }
     
     return returnPct
   } catch (error) {
-    console.error(`[KSE100] Error calculating quarter return for ${quarterStart} to ${quarterEnd}:`, error)
     return null
   }
 }
@@ -370,62 +366,57 @@ export async function GET(request: NextRequest) {
       if (cachedKse100) {
         kse100Returns = new Map(Object.entries(cachedKse100))
       } else {
-        console.log(`[Sector Performance] Calculating KSE100 returns for ${year} (${quarters.length} quarters)`)
-        for (const quarter of quarters) {
-          const kse100Return = await calculateKSE100QuarterReturn(
+        // Calculate all KSE100 returns in parallel for better performance
+        const kse100Promises = quarters.map(quarter =>
+          calculateKSE100QuarterReturn(
             quarter.startDate,
             quarter.endDate,
             includeDividends,
             client
-          )
-          if (kse100Return !== null && !isNaN(kse100Return)) {
-            kse100Returns.set(quarter.quarter, kse100Return)
-            console.log(`[Sector Performance] KSE100 ${quarter.quarter}: ${kse100Return.toFixed(2)}%`)
-          } else {
-            console.warn(`[Sector Performance] KSE100 return is null/NaN for ${quarter.quarter} (${quarter.startDate} to ${quarter.endDate})`)
+          ).then(returnVal => ({ quarter: quarter.quarter, return: returnVal }))
+        )
+        const kse100Results = await Promise.all(kse100Promises)
+        
+        for (const { quarter, return: returnVal } of kse100Results) {
+          if (returnVal !== null && !isNaN(returnVal)) {
+            kse100Returns.set(quarter, returnVal)
           }
         }
+        
         // Cache KSE100 returns for 24 hours (as plain object for serialization)
         if (kse100Returns.size > 0) {
           await cacheManager.set(kse100CacheKey, Object.fromEntries(kse100Returns), 'kse100-performance', { isHistorical: true })
-          console.log(`[Sector Performance] Cached ${kse100Returns.size} KSE100 returns`)
-        } else {
-          console.warn(`[Sector Performance] No KSE100 returns calculated for ${year}`)
         }
       }
 
-      // Calculate sector returns
-      for (const quarter of quarters) {
-        const sectorReturn = await calculateSectorQuarterReturn(
+      // Calculate sector returns in parallel for better performance
+      const sectorReturnPromises = quarters.map(quarter =>
+        calculateSectorQuarterReturn(
           sector,
           quarter.startDate,
           quarter.endDate,
           includeDividends,
           client
-        )
+        ).then(returnVal => ({ quarter: quarter.quarter, startDate: quarter.startDate, endDate: quarter.endDate, return: returnVal }))
+      )
+      const sectorResults = await Promise.all(sectorReturnPromises)
 
-        const kse100Return = kse100Returns?.get(quarter.quarter)
+      // Combine sector and KSE100 returns
+      for (const { quarter, startDate, endDate, return: sectorReturn } of sectorResults) {
+        const kse100Return = kse100Returns?.get(quarter)
 
         // Only add quarter if we have both sector and KSE100 data
         if (sectorReturn !== null && kse100Return !== null && !isNaN(sectorReturn) && !isNaN(kse100Return)) {
           const outperformance = sectorReturn - kse100Return
           quarterPerformances.push({
-            quarter: quarter.quarter,
-            startDate: quarter.startDate,
-            endDate: quarter.endDate,
+            quarter,
+            startDate,
+            endDate,
             sectorReturn,
             kse100Return,
             outperformance,
             outperformed: outperformance > 0,
           })
-        } else {
-          // Log missing data for debugging
-          if (sectorReturn === null) {
-            console.warn(`[Sector Performance] Missing sector return for ${sector} in ${quarter.quarter}`)
-          }
-          if (kse100Return === null || kse100Return === undefined) {
-            console.warn(`[Sector Performance] Missing KSE100 return for ${quarter.quarter}`)
-          }
         }
       }
 
@@ -450,7 +441,6 @@ export async function GET(request: NextRequest) {
       client.release()
     }
   } catch (error: any) {
-    console.error('[Sector Performance API] Error:', error)
     return NextResponse.json({
       success: false,
       error: 'Failed to calculate sector performance',
