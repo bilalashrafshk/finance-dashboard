@@ -103,7 +103,6 @@ export function M2Section() {
         cached: result.cached,
       })
     } catch (err: any) {
-      console.error('Error loading M2 data:', err)
       setError(err.message || 'Failed to load M2 data')
       toast({
         title: "Error",

@@ -103,7 +103,6 @@ export function ExchangeRateSection() {
         cached: result.cached,
       })
     } catch (err: any) {
-      console.error('Error loading exchange rate data:', err)
       setError(err.message || 'Failed to load exchange rate data')
       toast({
         title: "Error",

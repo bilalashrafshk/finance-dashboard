@@ -95,7 +95,6 @@ export function VehicleSalesSection() {
         cached: result.cached,
       })
     } catch (err: any) {
-      console.error('Error loading vehicle sales data:', err)
       setError(err.message || 'Failed to load vehicle sales data')
       toast({
         title: "Error",

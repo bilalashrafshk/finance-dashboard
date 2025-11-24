@@ -103,7 +103,6 @@ export function RemittancesSection() {
         cached: result.cached,
       })
     } catch (err: any) {
-      console.error('Error loading remittances data:', err)
       setError(err.message || 'Failed to load remittances data')
       toast({
         title: "Error",

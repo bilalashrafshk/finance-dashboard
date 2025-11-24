@@ -183,7 +183,6 @@ export function SCRASection() {
         cached: result.cached,
       })
     } catch (err: any) {
-      console.error('Error loading SCRA data:', err)
       setError(err.message || 'Failed to load SCRA data')
       toast({
         title: "Error",

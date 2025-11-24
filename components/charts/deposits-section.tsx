@@ -103,7 +103,6 @@ export function DepositsSection() {
         cached: result.cached,
       })
     } catch (err: any) {
-      console.error('Error loading deposits data:', err)
       setError(err.message || 'Failed to load deposits data')
       toast({
         title: "Error",
