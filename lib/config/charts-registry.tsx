@@ -48,9 +48,48 @@ const BalanceOfPaymentsSection = dynamic(() => import("@/components/charts/balan
 const InterestRateEquitiesSection = dynamic(() => import("@/components/charts/interest-rate-equities-section").then(mod => mod.InterestRateEquitiesSection), {
     loading: () => <ChartLoader />,
 })
+const CPISection = dynamic(() => import("@/components/charts/cpi-section").then(mod => mod.CPISection), {
+    loading: () => <ChartLoader />,
+})
+const GDPSection = dynamic(() => import("@/components/charts/gdp-section").then(mod => mod.GDPSection), {
+    loading: () => <ChartLoader />,
+})
+const ExchangeRateSection = dynamic(() => import("@/components/charts/exchange-rate-section").then(mod => mod.ExchangeRateSection), {
+    loading: () => <ChartLoader />,
+})
+const RemittancesSection = dynamic(() => import("@/components/charts/remittances-section").then(mod => mod.RemittancesSection), {
+    loading: () => <ChartLoader />,
+})
+const KIBORSection = dynamic(() => import("@/components/charts/kibor-section").then(mod => mod.KIBORSection), {
+    loading: () => <ChartLoader />,
+})
+const SBPReservesSection = dynamic(() => import("@/components/charts/sbp-reserves-section").then(mod => mod.SBPReservesSection), {
+    loading: () => <ChartLoader />,
+})
+const FDISection = dynamic(() => import("@/components/charts/fdi-section").then(mod => mod.FDISection), {
+    loading: () => <ChartLoader />,
+})
+const M2Section = dynamic(() => import("@/components/charts/m2-section").then(mod => mod.M2Section), {
+    loading: () => <ChartLoader />,
+})
+const DepositsSection = dynamic(() => import("@/components/charts/deposits-section").then(mod => mod.DepositsSection), {
+    loading: () => <ChartLoader />,
+})
+const VehicleSalesSection = dynamic(() => import("@/components/charts/vehicle-sales-section").then(mod => mod.VehicleSalesSection), {
+    loading: () => <ChartLoader />,
+})
+const CementSalesSection = dynamic(() => import("@/components/charts/cement-sales-section").then(mod => mod.CementSalesSection), {
+    loading: () => <ChartLoader />,
+})
+const ElectricityGenerationSection = dynamic(() => import("@/components/charts/electricity-generation-section").then(mod => mod.ElectricityGenerationSection), {
+    loading: () => <ChartLoader />,
+})
+const POLSalesSection = dynamic(() => import("@/components/charts/pol-sales-section").then(mod => mod.POLSalesSection), {
+    loading: () => <ChartLoader />,
+})
 
 // Types
-export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments" | "interest-rate-equities"
+export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments" | "interest-rate-equities" | "cpi" | "gdp" | "exchange-rate" | "remittances" | "kibor" | "sbp-reserves" | "fdi" | "m2" | "deposits" | "vehicle-sales" | "cement-sales" | "electricity-generation" | "pol-sales"
 
 export interface ChartDefinition {
     id: ChartId
@@ -191,6 +230,97 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 icon: DollarSign,
                 component: <BalanceOfPaymentsSection />,
                 keywords: ["balance", "payments", "bop", "current account", "surplus", "deficit", "macro", "pakistan", "trade"],
+            },
+            {
+                id: "cpi",
+                title: "CPI National (YoY)",
+                icon: TrendingUp,
+                component: <CPISection />,
+                keywords: ["cpi", "inflation", "consumer price index", "national", "yoy", "macro", "pakistan", "economic"],
+            },
+            {
+                id: "gdp",
+                title: "Real GDP Growth Rate",
+                icon: TrendingUp,
+                component: <GDPSection />,
+                keywords: ["gdp", "gross domestic product", "growth rate", "real gdp", "macro", "pakistan", "economic"],
+            },
+            {
+                id: "exchange-rate",
+                title: "Exchange Rate (PKR/USD)",
+                icon: DollarSign,
+                component: <ExchangeRateSection />,
+                keywords: ["exchange rate", "pkr", "usd", "currency", "forex", "macro", "pakistan"],
+            },
+            {
+                id: "remittances",
+                title: "Workers' Remittances",
+                icon: DollarSign,
+                component: <RemittancesSection />,
+                keywords: ["remittances", "workers", "foreign exchange", "inflow", "macro", "pakistan"],
+            },
+            {
+                id: "kibor",
+                title: "6-Months KIBOR",
+                icon: TrendingUp,
+                component: <KIBORSection />,
+                keywords: ["kibor", "interest rate", "karachi interbank", "6 months", "macro", "pakistan"],
+            },
+            {
+                id: "sbp-reserves",
+                title: "SBP Gross Reserves",
+                icon: DollarSign,
+                component: <SBPReservesSection />,
+                keywords: ["reserves", "foreign exchange", "forex", "sbp", "macro", "pakistan"],
+            },
+            {
+                id: "fdi",
+                title: "Net FDI",
+                icon: DollarSign,
+                component: <FDISection />,
+                keywords: ["fdi", "foreign direct investment", "investment", "macro", "pakistan"],
+            },
+            {
+                id: "m2",
+                title: "Broad Money (M2)",
+                icon: DollarSign,
+                component: <M2Section />,
+                keywords: ["m2", "broad money", "money supply", "monetary", "macro", "pakistan"],
+            },
+            {
+                id: "deposits",
+                title: "Total Bank Deposits",
+                icon: DollarSign,
+                component: <DepositsSection />,
+                keywords: ["deposits", "banks", "scheduled banks", "monetary", "macro", "pakistan"],
+            },
+            {
+                id: "vehicle-sales",
+                title: "Vehicle Sales",
+                icon: TrendingUp,
+                component: <VehicleSalesSection />,
+                keywords: ["vehicles", "auto", "sales", "industrial", "pakistan"],
+            },
+            {
+                id: "cement-sales",
+                title: "Cement Sales",
+                icon: TrendingUp,
+                component: <CementSalesSection />,
+                keywords: ["cement", "sales", "industrial", "construction", "pakistan"],
+            },
+            {
+                id: "electricity-generation",
+                title: "Electricity Generation",
+                icon: TrendingUp,
+                component: <ElectricityGenerationSection />,
+                keywords: ["electricity", "generation", "power", "energy", "industrial", "pakistan"],
+            },
+            {
+                id: "pol-sales",
+                title: "POL Sales",
+                icon: TrendingUp,
+                component: <POLSalesSection />,
+                keywords: ["pol", "petroleum", "oil", "lubricants", "sales", "industrial", "pakistan"],
             },
         ],
     },

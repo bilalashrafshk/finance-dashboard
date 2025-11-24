@@ -382,3 +382,38 @@ CREATE TABLE IF NOT EXISTS bop_metadata (
 );
 
 CREATE INDEX IF NOT EXISTS idx_bop_metadata_series_key ON bop_metadata(series_key);
+
+-- SBP Economic Data Table (CPI, GDP, etc.)
+-- Stores economic indicators from SBP EasyData API
+CREATE TABLE IF NOT EXISTS sbp_economic_data (
+  id SERIAL PRIMARY KEY,
+  series_key VARCHAR(100) NOT NULL,  -- 'TS_GP_PT_CPI_M.P00011516', 'TS_GP_RLS_PAKGDP15_Y.GDP00160000', etc.
+  series_name VARCHAR(255) NOT NULL,  -- 'National CPI, an Inflation Measure (Year-on-Year basis)'
+  date DATE NOT NULL,                  -- Observation date (YYYY-MM-DD)
+  value DECIMAL(20, 8) NOT NULL,       -- Value (percentage for CPI/GDP)
+  unit VARCHAR(50) NOT NULL DEFAULT 'Percent',
+  observation_status VARCHAR(50) DEFAULT 'Normal',
+  status_comments TEXT,
+  source VARCHAR(50) NOT NULL DEFAULT 'sbp-easydata',
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  
+  -- Unique constraint: one record per series+date
+  UNIQUE(series_key, date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sbp_economic_series_key ON sbp_economic_data(series_key);
+CREATE INDEX IF NOT EXISTS idx_sbp_economic_date ON sbp_economic_data(date);
+CREATE INDEX IF NOT EXISTS idx_sbp_economic_series_date ON sbp_economic_data(series_key, date DESC);
+
+-- Metadata table for SBP Economic Data
+CREATE TABLE IF NOT EXISTS sbp_economic_metadata (
+  id SERIAL PRIMARY KEY,
+  series_key VARCHAR(100) NOT NULL UNIQUE,
+  last_stored_date DATE,              -- Latest date we have data for
+  last_updated TIMESTAMP DEFAULT NOW(),  -- When we last fetched from API
+  total_records INTEGER DEFAULT 0,     -- Count of records for this series
+  source VARCHAR(50) NOT NULL DEFAULT 'sbp-easydata'
+);
+
+CREATE INDEX IF NOT EXISTS idx_sbp_economic_metadata_series_key ON sbp_economic_metadata(series_key);

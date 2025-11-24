@@ -1542,6 +1542,219 @@ export async function shouldRefreshBOPData(seriesKey: string): Promise<boolean> 
     if (!metadata || !metadata.last_updated) {
       return true // No data, need to fetch
     }
+
+// SBP Economic Data (CPI, GDP, etc.)
+export interface SBPEconomicRecord {
+  date: string // YYYY-MM-DD
+  value: number
+  series_key: string
+  series_name: string
+  unit: string
+  observation_status: string
+  status_comments: string | null
+}
+
+export interface SBPEconomicMetadata {
+  series_key: string
+  last_stored_date: string | null
+  last_updated: string
+  total_records: number
+  source: string
+}
+
+export async function getSBPEconomicData(
+  seriesKey: string,
+  startDate?: string,
+  endDate?: string
+): Promise<{ data: SBPEconomicRecord[]; latestStoredDate: string | null; earliestStoredDate: string | null }> {
+  try {
+    const client = await getPool().connect()
+    
+    try {
+      const baseParams: any[] = [seriesKey]
+      let query = `
+        SELECT date, value, series_key, series_name, unit, observation_status, status_comments
+        FROM sbp_economic_data
+        WHERE series_key = $1
+      `
+      
+      if (startDate) {
+        query += ` AND date >= $${baseParams.length + 1}`
+        baseParams.push(startDate)
+      }
+      
+      if (endDate) {
+        query += ` AND date <= $${baseParams.length + 1}`
+        baseParams.push(endDate)
+      }
+      
+      query += ` ORDER BY date DESC`
+      
+      const result = await client.query(query, baseParams)
+      
+      // Get metadata separately
+      const metadataResult = await client.query(
+        'SELECT last_stored_date FROM sbp_economic_metadata WHERE series_key = $1',
+        [seriesKey]
+      )
+      
+      const latestStoredDate = metadataResult.rows[0]?.last_stored_date || null
+      const earliestStoredDate = result.rows.length > 0 ? result.rows[result.rows.length - 1].date : null
+      
+      const data: SBPEconomicRecord[] = result.rows.map(row => ({
+        date: row.date,
+        value: parseFloat(row.value),
+        series_key: row.series_key,
+        series_name: row.series_name,
+        unit: row.unit,
+        observation_status: row.observation_status,
+        status_comments: row.status_comments,
+      }))
+      
+      return { data, latestStoredDate, earliestStoredDate }
+    } finally {
+      client.release()
+    }
+  } catch (error: any) {
+    console.error(`[DB] getSBPEconomicData error for ${seriesKey}:`, error.message)
+    throw error
+  }
+}
+
+export async function insertSBPEconomicData(
+  seriesKey: string,
+  seriesName: string,
+  data: Array<{
+    date: string
+    value: number
+    unit: string
+    observation_status: string
+    status_comments: string
+  }>
+): Promise<{ inserted: number; skipped: number }> {
+  if (data.length === 0) {
+    return { inserted: 0, skipped: 0 }
+  }
+  
+  try {
+    const client = await getPool().connect()
+    
+    try {
+      await client.query('BEGIN')
+      
+      let inserted = 0
+      let skipped = 0
+      let latestDate: string | null = null
+      
+      for (const record of data) {
+        try {
+          const result = await client.query(
+            `INSERT INTO sbp_economic_data 
+             (series_key, series_name, date, value, unit, observation_status, status_comments, source)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (series_key, date) DO UPDATE SET
+               value = EXCLUDED.value,
+               series_name = EXCLUDED.series_name,
+               unit = EXCLUDED.unit,
+               observation_status = EXCLUDED.observation_status,
+               status_comments = EXCLUDED.status_comments,
+               updated_at = NOW()`,
+            [
+              seriesKey,
+              seriesName,
+              record.date,
+              record.value,
+              record.unit,
+              record.observation_status,
+              record.status_comments,
+              'sbp-easydata'
+            ]
+          )
+          
+          if (result.rowCount && result.rowCount > 0) {
+            inserted++
+          } else {
+            skipped++
+          }
+          
+          // Track latest date
+          if (!latestDate || record.date > latestDate) {
+            latestDate = record.date
+          }
+        } catch (insertError: any) {
+          // Skip duplicates or other insert errors, continue with next record
+          skipped++
+          console.warn(`[DB] insertSBPEconomicData: Skipped record for ${seriesKey} on ${record.date}:`, insertError.message)
+        }
+      }
+      
+      // Update metadata
+      await client.query(
+        `INSERT INTO sbp_economic_metadata (series_key, last_stored_date, last_updated, total_records, source)
+         VALUES ($1, $2, NOW(), (SELECT COUNT(*) FROM sbp_economic_data WHERE series_key = $1), $3)
+         ON CONFLICT (series_key) DO UPDATE SET
+           last_stored_date = EXCLUDED.last_stored_date,
+           last_updated = NOW(),
+           total_records = (SELECT COUNT(*) FROM sbp_economic_data WHERE series_key = $1)`,
+        [seriesKey, latestDate, 'sbp-easydata']
+      )
+      
+      await client.query('COMMIT')
+      
+      return { inserted, skipped }
+    } catch (error: any) {
+      await client.query('ROLLBACK')
+      console.error(`[DB] insertSBPEconomicData: Transaction rolled back for ${seriesKey}:`, error.message)
+      throw error
+    } finally {
+      client.release()
+    }
+  } catch (error: any) {
+    console.error(`[DB] insertSBPEconomicData error for ${seriesKey}:`, error.message)
+    throw error
+  }
+}
+
+export async function getSBPEconomicMetadata(
+  seriesKey: string
+): Promise<SBPEconomicMetadata | null> {
+  try {
+    const client = await getPool().connect()
+    
+    try {
+      const result = await client.query(
+        'SELECT series_key, last_stored_date, last_updated, total_records, source FROM sbp_economic_metadata WHERE series_key = $1',
+        [seriesKey]
+      )
+      
+      if (result.rows.length === 0) {
+        return null
+      }
+      
+      const row = result.rows[0]
+      return {
+        series_key: row.series_key,
+        last_stored_date: row.last_stored_date,
+        last_updated: row.last_updated.toISOString(),
+        total_records: parseInt(row.total_records) || 0,
+        source: row.source,
+      }
+    } finally {
+      client.release()
+    }
+  } catch (error: any) {
+    console.error(`[DB] getSBPEconomicMetadata error for ${seriesKey}:`, error.message)
+    return null
+  }
+}
+
+export async function shouldRefreshSBPEconomicData(seriesKey: string): Promise<boolean> {
+  try {
+    const metadata = await getSBPEconomicMetadata(seriesKey)
+    
+    if (!metadata || !metadata.last_updated) {
+      return true // No data, need to fetch
+    }
     
     const lastUpdated = new Date(metadata.last_updated).getTime()
     const now = Date.now()
@@ -1550,7 +1763,7 @@ export async function shouldRefreshBOPData(seriesKey: string): Promise<boolean> 
     // Refresh if data is older than 3 days
     return ageInDays > 3
   } catch (error: any) {
-    console.error(`[DB] Error checking if BOP data needs refresh for ${seriesKey}:`, error.message)
+    console.error(`[DB] Error checking if SBP economic data needs refresh for ${seriesKey}:`, error.message)
     return true // On error, refresh to be safe
   }
 }
