@@ -86,18 +86,18 @@ export async function GET(request: NextRequest) {
             AND symbol = ANY($1)
       `
       
-      const queryParams: any[] = [topStockSymbols]
-      let paramIndex = 2
+      const adQueryParams: any[] = [topStockSymbols]
+      let adParamIndex = 2
       
       if (startDate) {
-        adQuery += ` AND date >= $${paramIndex}`
-        queryParams.push(startDate)
-        paramIndex++
+        adQuery += ` AND date >= $${adParamIndex}`
+        adQueryParams.push(startDate)
+        adParamIndex++
       }
       if (endDate) {
-        adQuery += ` AND date <= $${paramIndex}`
-        queryParams.push(endDate)
-        paramIndex++
+        adQuery += ` AND date <= $${adParamIndex}`
+        adQueryParams.push(endDate)
+        adParamIndex++
       }
       
       adQuery += `
@@ -182,14 +182,14 @@ export async function GET(request: NextRequest) {
       
       // Add filter to exclude the day before startDate from final results (we only needed it for LAG)
       if (startDate) {
-        adQuery += ` AND date >= $${paramIndex}`
-        queryParams.push(startDate)
-        paramIndex++
+        adQuery += ` AND date >= $${adParamIndex}`
+        adQueryParams.push(startDate)
+        adParamIndex++
       }
       
       adQuery += ` ORDER BY date ASC`
 
-      const adResult = await client.query(adQuery, queryParams)
+      const adResult = await client.query(adQuery, adQueryParams)
       
       if (adResult.rows.length === 0) {
         return NextResponse.json({
