@@ -1,6 +1,4 @@
 "use client"
-import { TimeFrameSelector } from "@/components/charts/time-frame-selector"
-import { ChartPeriod, filterDataByTimeFrame, getDefaultPeriod, DateRange } from "@/lib/charts/time-frame-filter"
 
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"

@@ -78,17 +78,10 @@ export function KIBORSection() {
       setError(null)
 
       const url = `/api/sbp/economic-data?seriesKey=${encodeURIComponent(SERIES_KEY)}`
-      
-      // Add timeout to prevent hanging (longer for large datasets like KIBOR with 5000+ records)
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 120000) // 120 second timeout for large datasets
-      
-      const response = await fetch(url, {
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timeoutId))
+      const response = await fetch(url)
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }))
+        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
         throw new Error(errorData.error || errorData.details || 'Failed to fetch KIBOR data')
       }
 
@@ -110,10 +103,7 @@ export function KIBORSection() {
         cached: result.cached,
       })
     } catch (err: any) {
-      console.error('Error loading KIBOR data:', err)
-      const errorMessage = err.name === 'AbortError' 
-        ? 'Request timed out. Please try again.'
-        : err.message || 'Failed to load KIBOR data'
+      const errorMessage = err.message || 'Failed to load KIBOR data'
       setError(errorMessage)
       toast({
         title: "Error",

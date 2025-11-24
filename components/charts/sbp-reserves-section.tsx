@@ -78,17 +78,10 @@ export function SBPReservesSection() {
       setError(null)
 
       const url = `/api/sbp/economic-data?seriesKey=${encodeURIComponent(SERIES_KEY)}`
-      
-      // Add timeout to prevent hanging
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout
-      
-      const response = await fetch(url, {
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timeoutId))
+      const response = await fetch(url)
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }))
+        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
         throw new Error(errorData.error || errorData.details || 'Failed to fetch SBP reserves data')
       }
 
@@ -110,10 +103,7 @@ export function SBPReservesSection() {
         cached: result.cached,
       })
     } catch (err: any) {
-      console.error('Error loading SBP reserves data:', err)
-      const errorMessage = err.name === 'AbortError' 
-        ? 'Request timed out. Please try again.'
-        : err.message || 'Failed to load SBP reserves data'
+      const errorMessage = err.message || 'Failed to load SBP reserves data'
       setError(errorMessage)
       toast({
         title: "Error",

@@ -92,7 +92,6 @@ async function fetchSBPEconomicDataFromAPI(
   
   // Validate that required columns were found
   if (dateColIdx === -1 || valueColIdx === -1) {
-    console.error('[Economic Data API] Missing required columns. Found columns:', data.columns)
     throw new Error(`Invalid API response: missing required columns. Expected 'date' and 'value' columns, got: ${data.columns.join(', ')}`)
   }
   
@@ -122,14 +121,7 @@ export async function GET(request: NextRequest) {
   
   try {
     // Check if we need to refresh (3-day cache)
-    let needsRefresh = refresh
-    try {
-      needsRefresh = refresh || await shouldRefreshSBPEconomicData(seriesKey)
-    } catch (refreshError: any) {
-      console.error(`[Economic Data API] Error checking refresh status for ${seriesKey}:`, refreshError.message)
-      // If we can't check refresh status, assume we need to refresh
-      needsRefresh = true
-    }
+    const needsRefresh = refresh || await shouldRefreshSBPEconomicData(seriesKey)
     
     // Get data from database first
     let { data, latestStoredDate, earliestStoredDate } = await getSBPEconomicData(
@@ -140,8 +132,6 @@ export async function GET(request: NextRequest) {
     
     // If no data in database or needs refresh, fetch from API
     if (needsRefresh || data.length === 0) {
-      console.log(`[Economic Data API] Fetching fresh data for ${seriesKey} (cache expired, refresh requested, or no data in DB)`)
-      
       try {
         // Determine default start date based on series key
         let fetchStartDate = startDate
@@ -189,7 +179,7 @@ export async function GET(request: NextRequest) {
         if (apiData.length > 0) {
           // Store in database
           const seriesName = apiData[0].series_name
-          const insertResult = await insertSBPEconomicData(
+          await insertSBPEconomicData(
             seriesKey,
             seriesName,
             apiData.map(d => ({
@@ -201,26 +191,18 @@ export async function GET(request: NextRequest) {
             }))
           )
           
-          console.log(`[Economic Data API] Stored ${insertResult.inserted} new records, skipped ${insertResult.skipped} duplicates for ${seriesKey}`)
-          
           // Re-fetch from database to get the stored data
           const dbResult = await getSBPEconomicData(seriesKey, startDate, endDate)
           data = dbResult.data
           latestStoredDate = dbResult.latestStoredDate
           earliestStoredDate = dbResult.earliestStoredDate
-        } else {
-          console.log(`[Economic Data API] No data returned from API for ${seriesKey}`)
         }
       } catch (apiError: any) {
-        console.error(`[Economic Data API] Error fetching from API for ${seriesKey}:`, apiError.message)
         // If API fails but we have data in DB, use that
         if (data.length === 0) {
           throw apiError // Only throw if we have no data at all
         }
-        console.log(`[Economic Data API] Using existing database data despite API error`)
       }
-    } else {
-      console.log(`[Economic Data API] Using cached data for ${seriesKey} (less than 3 days old)`)
     }
     
     // Sort by date descending (most recent first)
@@ -251,8 +233,6 @@ export async function GET(request: NextRequest) {
       cached: !needsRefresh
     })
   } catch (error: any) {
-    console.error('[Economic Data API] Error fetching economic data:', error)
-    
     // Provide more specific error messages
     let errorMessage = error.message || 'Unknown error'
     let statusCode = 500

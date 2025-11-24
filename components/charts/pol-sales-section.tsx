@@ -7,7 +7,6 @@ import { Loader2, TrendingUp, TrendingDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Line } from "react-chartjs-2"
 import { ChartPeriod, filterDataByTimeFrame, getDefaultPeriod, DateRange } from "@/lib/charts/time-frame-filter"
-import { ChartPeriod, filterDataByTimeFrame, getDefaultPeriod, DateRange } from "@/lib/charts/time-frame-filter"
 import {
   Chart as ChartJS,
   CategoryScale,

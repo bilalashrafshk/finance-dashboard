@@ -86,11 +86,11 @@ export function GDPSection() {
       const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout
       
       const response = await fetch(url, {
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timeoutId))
+        
+      })
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }))
+        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${}` }))
         throw new Error(errorData.error || errorData.details || 'Failed to fetch GDP data')
       }
 
