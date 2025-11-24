@@ -322,6 +322,14 @@ export function SCRASection() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Time Frame Selector */}
+          <TimeFrameSelector
+            chartPeriod={chartPeriod}
+            customRange={customRange}
+            onPeriodChange={setChartPeriod}
+            onRangeChange={setCustomRange}
+          />
+
           {/* Series Selection */}
           <div className="space-y-2">
             <Label htmlFor="series-select">Select Series</Label>
