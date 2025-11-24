@@ -176,21 +176,30 @@ export function AdvanceDeclineChart({
             
             if (sectorIndexResponse.ok) {
               const sectorIndexResult = await sectorIndexResponse.json()
-              if (sectorIndexResult.success && sectorIndexResult.data) {
-                setSectorIndexData(sectorIndexResult.data.map((d: any) => ({
-                  date: d.date,
-                  index: d.index
-                })))
+              if (sectorIndexResult.success && sectorIndexResult.data && sectorIndexResult.data.length > 0) {
+                const mappedData = sectorIndexResult.data.map((d: any) => ({
+                  date: typeof d.date === 'string' ? d.date.split('T')[0] : new Date(d.date).toISOString().split('T')[0],
+                  index: parseFloat(d.index) || 0
+                })).filter((d: any) => d.index > 0)
+                
+                if (mappedData.length > 0) {
+                  console.log(`[Sector Index] Loaded ${mappedData.length} data points for ${selectedSector}`)
+                  setSectorIndexData(mappedData)
+                } else {
+                  console.warn('[Sector Index] No valid data points after mapping')
+                  setSectorIndexData([])
+                }
               } else {
-                console.warn('Sector index API returned unsuccessful response:', sectorIndexResult)
+                console.warn('[Sector Index] API returned unsuccessful response:', sectorIndexResult)
                 setSectorIndexData([])
               }
             } else {
-              console.warn('Failed to fetch sector index:', sectorIndexResponse.status)
+              const errorText = await sectorIndexResponse.text().catch(() => 'Unknown error')
+              console.error(`[Sector Index] Failed to fetch: ${sectorIndexResponse.status} ${sectorIndexResponse.statusText}`, errorText)
               setSectorIndexData([])
             }
-          } catch (err) {
-            console.error('Error fetching sector index:', err)
+          } catch (err: any) {
+            console.error('[Sector Index] Error fetching sector index:', err)
             setSectorIndexData([])
           }
         } else {
