@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -85,6 +85,15 @@ export function PKEquityUSDSection() {
   const [allCombinedData, setAllCombinedData] = useState<CombinedDataPoint[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Cache for exchange rate data (doesn't change often)
+  const exchangeRateCacheRef = useRef<{
+    data: ExchangeRateData[]
+    map: Map<string, number>
+    timestamp: number
+  } | null>(null)
+  
+  const EXCHANGE_RATE_CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours
 
   // Load PK stocks on mount
   useEffect(() => {
@@ -108,14 +117,23 @@ export function PKEquityUSDSection() {
         }
       }
     } catch (error) {
-      console.error('Error loading PK stocks:', error)
+      // Silently handle error - user will see empty dropdown
     } finally {
       setLoadingStocks(false)
     }
   }
 
-  // Aggregate data by frequency
-  const aggregateByFrequency = (data: CombinedDataPoint[], freq: 'daily' | 'weekly' | 'monthly'): CombinedDataPoint[] => {
+  // Helper function to get week number (memoized)
+  const getWeekNumber = useCallback((date: Date): number => {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+    const dayNum = d.getUTCDay() || 7
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+  }, [])
+
+  // Aggregate data by frequency (memoized)
+  const aggregateByFrequency = useCallback((data: CombinedDataPoint[], freq: 'daily' | 'weekly' | 'monthly'): CombinedDataPoint[] => {
     if (freq === 'daily' || data.length === 0) {
       return data
     }
@@ -124,7 +142,7 @@ export function PKEquityUSDSection() {
     const grouped = new Map<string, CombinedDataPoint[]>()
 
     // Group data points
-    data.forEach(point => {
+    for (const point of data) {
       const date = new Date(point.date)
       let key: string
 
@@ -149,151 +167,184 @@ export function PKEquityUSDSection() {
         grouped.set(key, [])
       }
       grouped.get(key)!.push(point)
-    })
+    }
 
     // For each group, take the last data point (most recent)
-    grouped.forEach((points) => {
+    for (const points of grouped.values()) {
       // Sort by date and take the last one
-      const sorted = points.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      aggregated.push(sorted[sorted.length - 1])
-    })
+      if (points.length > 0) {
+        const sorted = points.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        aggregated.push(sorted[sorted.length - 1])
+      }
+    }
 
     // Sort aggregated data by date
     return aggregated.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-  }
+  }, [getWeekNumber])
 
-  // Helper function to get week number
-  const getWeekNumber = (date: Date): number => {
-    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
-    const dayNum = d.getUTCDay() || 7
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum)
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
-    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
-  }
+  // Load exchange rate data with caching
+  const loadExchangeRateData = useCallback(async (): Promise<Map<string, number>> => {
+    const now = Date.now()
+    
+    // Check cache
+    if (exchangeRateCacheRef.current && 
+        (now - exchangeRateCacheRef.current.timestamp) < EXCHANGE_RATE_CACHE_DURATION) {
+      return exchangeRateCacheRef.current.map
+    }
+
+    // Fetch exchange rate data
+    const exchangeResponse = await fetch(`/api/sbp/economic-data?seriesKey=${encodeURIComponent(SERIES_KEY)}`)
+    if (!exchangeResponse.ok) {
+      throw new Error('Failed to fetch exchange rate data')
+    }
+    const exchangeResult = await exchangeResponse.json()
+    const exchangeData: ExchangeRateData[] = exchangeResult.data || []
+
+    if (exchangeData.length === 0) {
+      throw new Error('No exchange rate data available')
+    }
+
+    // Sort exchange data by date
+    const sortedExchangeData = [...exchangeData].sort((a, b) => 
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+    )
+
+    // Create a map of exchange rates by month (YYYY-MM format)
+    const exchangeRateMap = new Map<string, number>()
+    for (const item of sortedExchangeData) {
+      const date = new Date(item.date)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      // Store the latest exchange rate for each month
+      exchangeRateMap.set(monthKey, item.value)
+    }
+
+    // Update cache
+    exchangeRateCacheRef.current = {
+      data: sortedExchangeData,
+      map: exchangeRateMap,
+      timestamp: now
+    }
+
+    return exchangeRateMap
+  }, [])
 
   // Load data when symbol changes
   useEffect(() => {
-    if (selectedSymbol) {
-      loadData()
-    } else {
+    if (!selectedSymbol) {
       setAllCombinedData([])
+      return
     }
-  }, [selectedSymbol])
 
-  const loadData = async () => {
-    if (!selectedSymbol) return
+    let cancelled = false
 
-    try {
-      setLoading(true)
-      setError(null)
+    const fetchData = async () => {
+      try {
+        setLoading(true)
+        setError(null)
 
-      // Determine if it's an index or equity
-      const isIndex = selectedSymbol === 'KSE100'
-      setAssetType(isIndex ? 'index' : 'equity')
+        // Determine if it's an index or equity
+        const isIndex = selectedSymbol === 'KSE100'
+        setAssetType(isIndex ? 'index' : 'equity')
 
-      // Fetch price data
-      let priceData: PriceDataPoint[] = []
-      if (isIndex) {
-        const priceResponse = await fetch(`/api/indices/price?symbol=KSE100&startDate=2020-01-01&endDate=${format(new Date(), 'yyyy-MM-dd')}`)
-        if (!priceResponse.ok) {
-          throw new Error('Failed to fetch index price data')
-        }
-        const priceResult = await priceResponse.json()
-        priceData = priceResult.data || []
-      } else {
-        const priceResponse = await fetch(`/api/pk-equity/price?ticker=${selectedSymbol}&startDate=2020-01-01&endDate=${format(new Date(), 'yyyy-MM-dd')}`)
-        if (!priceResponse.ok) {
-          throw new Error('Failed to fetch equity price data')
-        }
-        const priceResult = await priceResponse.json()
-        priceData = priceResult.data || []
-      }
-
-      // Fetch exchange rate data
-      const exchangeResponse = await fetch(`/api/sbp/economic-data?seriesKey=${encodeURIComponent(SERIES_KEY)}`)
-      if (!exchangeResponse.ok) {
-        throw new Error('Failed to fetch exchange rate data')
-      }
-      const exchangeResult = await exchangeResponse.json()
-      const exchangeData: ExchangeRateData[] = exchangeResult.data || []
-
-      if (priceData.length === 0) {
-        throw new Error('No price data available for selected asset')
-      }
-      if (exchangeData.length === 0) {
-        throw new Error('No exchange rate data available')
-      }
-
-      // Sort exchange data by date
-      const sortedExchangeData = [...exchangeData].sort((a, b) => 
-        new Date(a.date).getTime() - new Date(b.date).getTime()
-      )
-
-      // Create a map of exchange rates by month (YYYY-MM format)
-      const exchangeRateMap = new Map<string, number>()
-      sortedExchangeData.forEach(item => {
-        const date = new Date(item.date)
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-        // Store the latest exchange rate for each month
-        exchangeRateMap.set(monthKey, item.value)
-      })
-
-      // Combine price data with exchange rates
-      const combined: CombinedDataPoint[] = []
-      for (const pricePoint of priceData) {
-        const priceDate = new Date(pricePoint.date)
-        const monthKey = `${priceDate.getFullYear()}-${String(priceDate.getMonth() + 1).padStart(2, '0')}`
-        
-        // Find the exchange rate for this month (or closest previous month)
-        let exchangeRate: number | null = null
-        if (exchangeRateMap.has(monthKey)) {
-          exchangeRate = exchangeRateMap.get(monthKey)!
+        // Fetch price data - fetch all available data from 1970 onwards to ensure we get all historical data
+        // Time frame filter will handle filtering on client side
+        let priceData: PriceDataPoint[] = []
+        if (isIndex) {
+          const priceResponse = await fetch(`/api/indices/price?symbol=KSE100&startDate=1970-01-01&endDate=${format(new Date(), 'yyyy-MM-dd')}`)
+          if (!priceResponse.ok) {
+            throw new Error('Failed to fetch index price data')
+          }
+          const priceResult = await priceResponse.json()
+          priceData = priceResult.data || []
         } else {
-          // Find closest previous month's exchange rate
-          let found = false
-          for (let i = 1; i <= 12 && !found; i++) {
-            const checkDate = new Date(priceDate)
-            checkDate.setMonth(checkDate.getMonth() - i)
-            const checkKey = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}`
-            if (exchangeRateMap.has(checkKey)) {
-              exchangeRate = exchangeRateMap.get(checkKey)!
-              found = true
+          const priceResponse = await fetch(`/api/pk-equity/price?ticker=${selectedSymbol}&startDate=1970-01-01&endDate=${format(new Date(), 'yyyy-MM-dd')}`)
+          if (!priceResponse.ok) {
+            throw new Error('Failed to fetch equity price data')
+          }
+          const priceResult = await priceResponse.json()
+          priceData = priceResult.data || []
+        }
+
+        if (cancelled) return
+
+        if (priceData.length === 0) {
+          throw new Error('No price data available for selected asset')
+        }
+
+        // Load exchange rate data (with caching)
+        const exchangeRateMap = await loadExchangeRateData()
+
+        if (cancelled) return
+
+        // Combine price data with exchange rates
+        const combined: CombinedDataPoint[] = []
+        for (const pricePoint of priceData) {
+          const priceDate = new Date(pricePoint.date)
+          const monthKey = `${priceDate.getFullYear()}-${String(priceDate.getMonth() + 1).padStart(2, '0')}`
+          
+          // Find the exchange rate for this month (or closest previous month)
+          let exchangeRate: number | null = null
+          if (exchangeRateMap.has(monthKey)) {
+            exchangeRate = exchangeRateMap.get(monthKey)!
+          } else {
+            // Find closest previous month's exchange rate
+            for (let i = 1; i <= 12; i++) {
+              const checkDate = new Date(priceDate)
+              checkDate.setMonth(checkDate.getMonth() - i)
+              const checkKey = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}`
+              if (exchangeRateMap.has(checkKey)) {
+                exchangeRate = exchangeRateMap.get(checkKey)!
+                break
+              }
             }
+          }
+
+          if (exchangeRate !== null) {
+            combined.push({
+              date: pricePoint.date,
+              pricePKR: pricePoint.close,
+              exchangeRate: exchangeRate,
+              priceUSD: pricePoint.close / exchangeRate,
+            })
           }
         }
 
-        if (exchangeRate !== null) {
-          combined.push({
-            date: pricePoint.date,
-            pricePKR: pricePoint.close,
-            exchangeRate: exchangeRate,
-            priceUSD: pricePoint.close / exchangeRate,
-          })
+        if (cancelled) return
+
+        // Sort by date
+        combined.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+        setAllCombinedData(combined)
+      } catch (err: any) {
+        if (cancelled) return
+        const errorMessage = err.message || 'Failed to load data'
+        setError(errorMessage)
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        })
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
         }
       }
-
-      // Sort by date
-      combined.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-
-      setAllCombinedData(combined)
-    } catch (err: any) {
-      const errorMessage = err.message || 'Failed to load data'
-      setError(errorMessage)
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
     }
-  }
+
+    fetchData()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedSymbol, loadExchangeRateData, toast])
+
 
   // Filter data based on selected time frame and aggregate by frequency
   const data = useMemo(() => {
+    if (allCombinedData.length === 0) return []
     const filtered = filterDataByTimeFrame(allCombinedData, chartPeriod, customRange)
     return aggregateByFrequency(filtered, frequency)
-  }, [allCombinedData, chartPeriod, customRange, frequency])
+  }, [allCombinedData, chartPeriod, customRange, frequency, aggregateByFrequency])
 
   // Prepare chart data
   const chartData = useMemo(() => {
