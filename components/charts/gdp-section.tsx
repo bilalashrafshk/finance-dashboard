@@ -80,17 +80,10 @@ export function GDPSection() {
       setError(null)
 
       const url = `/api/sbp/economic-data?seriesKey=${encodeURIComponent(SERIES_KEY)}`
-      
-      // Add timeout to prevent hanging
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout
-      
-      const response = await fetch(url, {
-        
-      })
+      const response = await fetch(url)
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${}` }))
+        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
         throw new Error(errorData.error || errorData.details || 'Failed to fetch GDP data')
       }
 

@@ -81,7 +81,7 @@ export function FDISection() {
       const response = await fetch(url)
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${}` }))
+        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
         throw new Error(errorData.error || errorData.details || 'Failed to fetch FDI data')
       }
 

@@ -95,7 +95,6 @@ export function ElectricityGenerationSection() {
         cached: result.cached,
       })
     } catch (err: any) {
-      console.error('Error loading electricity generation data:', err)
       setError(err.message || 'Failed to load electricity generation data')
       toast({
         title: "Error",

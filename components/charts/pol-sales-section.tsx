@@ -95,7 +95,6 @@ export function POLSalesSection() {
         cached: result.cached,
       })
     } catch (err: any) {
-      console.error('Error loading POL sales data:', err)
       setError(err.message || 'Failed to load POL sales data')
       toast({
         title: "Error",

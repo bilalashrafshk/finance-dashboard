@@ -95,7 +95,6 @@ export function CementSalesSection() {
         cached: result.cached,
       })
     } catch (err: any) {
-      console.error('Error loading cement sales data:', err)
       setError(err.message || 'Failed to load cement sales data')
       toast({
         title: "Error",
