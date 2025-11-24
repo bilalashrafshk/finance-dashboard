@@ -13,7 +13,7 @@ export default function CtaSection() {
         </h2>
         
         <p className="text-lg text-slate-300 max-w-2xl mx-auto">
-          Join thousands of investors using Stack Them Gains to optimize their portfolio across PSX, US stocks, and crypto markets.
+          Join thousands of investors using Conviction Play to optimize their portfolio across PSX, US stocks, and crypto markets.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">

@@ -19,7 +19,7 @@ function DashboardHome() {
             <div className="text-center space-y-6">
               <div className="flex items-center justify-center gap-3 mb-4">
                 <span className="text-4xl md:text-5xl font-bold text-foreground inline-flex items-baseline">
-                  {"STACK THEM GAINS".split("").map((char, index) => {
+                  {"Conviction Play".split("").map((char, index) => {
                     const scale = Math.pow(1.06, index); // Compounding factor of 6% per letter
                     // Round to 4 decimal places to prevent hydration mismatch
                     const fontSize = Math.round(scale * 10000) / 10000;

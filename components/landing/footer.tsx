@@ -10,7 +10,7 @@ export default function Footer() {
           <div>
             <div className="flex items-center gap-2 mb-4">
               <span className="font-bold text-white inline-flex items-baseline">
-                {"STACK THEM GAINS".split("").map((char, index) => {
+                {"Conviction Play".split("").map((char, index) => {
                   const scale = Math.pow(1.06, index); // Compounding factor of 6% per letter
                   // Round to 4 decimal places to prevent hydration mismatch
                   const fontSize = Math.round(scale * 10000) / 10000;
@@ -46,7 +46,7 @@ export default function Footer() {
 
         <div className="border-t border-slate-800 pt-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-white/80">
-            <p>&copy; 2025 Stack Them Gains. All rights reserved.</p>
+            <p>&copy; 2025 Conviction Play. All rights reserved.</p>
             <div className="flex gap-6">
               <Link href="#" className="hover:text-blue-400 transition-colors">Twitter</Link>
               <Link href="#" className="hover:text-blue-400 transition-colors">LinkedIn</Link>
