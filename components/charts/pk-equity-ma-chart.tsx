@@ -1,19 +1,20 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Loader2, Plus, X, TrendingUp, TrendingDown, ChevronDown, ChevronUp } from "lucide-react"
+import { Loader2, Plus, X, TrendingUp, TrendingDown, ChevronDown, ChevronUp, RotateCcw } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Line } from "react-chartjs-2"
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
+  TimeScale,
   PointElement,
   LineElement,
   Title,
@@ -21,6 +22,8 @@ import {
   Legend,
   Filler,
 } from "chart.js"
+import zoomPlugin from "chartjs-plugin-zoom"
+import "chartjs-adapter-date-fns"
 import { format } from "date-fns"
 import { getThemeColors } from "@/lib/charts/theme-colors"
 import { useTheme } from "next-themes"
@@ -38,12 +41,14 @@ import {
 ChartJS.register(
   CategoryScale,
   LinearScale,
+  TimeScale,
   PointElement,
   LineElement,
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  zoomPlugin
 )
 
 interface MovingAverageConfig {
@@ -87,6 +92,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
   const { theme } = useTheme()
   const colors = getThemeColors()
   const { toast } = useToast()
+  const chartRef = useRef<any>(null)
   const [assetType, setAssetType] = useState<AssetType>(initialAssetType || 'pk-equity')
   const [selectedSymbol, setSelectedSymbol] = useState<string>(initialSymbol || '')
   const [availableSymbols, setAvailableSymbols] = useState<Array<{ symbol: string; name?: string }>>([])
@@ -310,7 +316,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     return 'USD'
   }
 
-  // Prepare chart data
+  // Prepare chart data with time-based x-axis
   const chartData = useMemo(() => {
     if (resampledData.length === 0) {
       return null
@@ -319,7 +325,10 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     const datasets: any[] = [
       {
         label: `${selectedSymbol} Price`,
-        data: resampledData.map(d => d.close),
+        data: resampledData.map(d => ({
+          x: new Date(d.date).getTime(),
+          y: d.close,
+        })),
         borderColor: colors.price || 'rgb(59, 130, 246)',
         backgroundColor: `${colors.price || 'rgb(59, 130, 246)'}20`,
         fill: false,
@@ -337,7 +346,10 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
       if (values.length > 0) {
         datasets.push({
           label: `${ma.type} ${generatePeriodString(ma.length, ma.periodType)}`,
-          data: values,
+          data: resampledData.map((d, idx) => ({
+            x: new Date(d.date).getTime(),
+            y: values[idx] || null,
+          })),
           borderColor: ma.color || MA_COLORS[0],
           backgroundColor: 'transparent',
           fill: false,
@@ -350,95 +362,146 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
       }
     })
 
-    // Format labels based on frequency
-    const formatLabel = (dateStr: string) => {
-      const date = new Date(dateStr)
-      if (frequency === 'daily') {
-        return format(date, 'MMM dd, yyyy')
-      } else if (frequency === 'weekly') {
-        return format(date, 'MMM dd, yyyy')
-      } else {
-        return format(date, 'MMM yyyy')
-      }
-    }
-
     return {
-      labels: resampledData.map(d => formatLabel(d.date)),
       datasets,
     }
-  }, [resampledData, movingAverages, maData, selectedSymbol, colors, frequency])
+  }, [resampledData, movingAverages, maData, selectedSymbol, colors])
 
-  const chartOptions = useMemo(() => ({
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        display: true,
-        position: 'top' as const,
-        labels: {
-          color: colors.foreground,
-          usePointStyle: true,
+  // Calculate initial zoom range (show last 2 years by default)
+  const getInitialZoomRange = useMemo(() => {
+    if (resampledData.length === 0) return null
+    
+    const now = new Date().getTime()
+    const twoYearsAgo = now - (2 * 365 * 24 * 60 * 60 * 1000)
+    const firstDate = new Date(resampledData[0].date).getTime()
+    const lastDate = new Date(resampledData[resampledData.length - 1].date).getTime()
+    
+    // Use the more recent of: 2 years ago or first available date
+    const minDate = Math.max(twoYearsAgo, firstDate)
+    
+    return {
+      min: minDate,
+      max: lastDate,
+    }
+  }, [resampledData])
+
+  const chartOptions = useMemo(() => {
+    const currency = getCurrency()
+    const initialZoom = getInitialZoomRange
+    
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top' as const,
+          labels: {
+            color: colors.foreground,
+            usePointStyle: true,
+          },
+        },
+        tooltip: {
+          mode: 'index' as const,
+          intersect: false,
+          backgroundColor: colors.background,
+          titleColor: colors.foreground,
+          bodyColor: colors.foreground,
+          borderColor: colors.border,
+          borderWidth: 1,
+          callbacks: {
+            title: function(context: any) {
+              const date = new Date(context[0].parsed.x)
+              if (frequency === 'daily' || frequency === 'weekly') {
+                return format(date, 'MMM dd, yyyy')
+              } else {
+                return format(date, 'MMM yyyy')
+              }
+            },
+            label: function(context: any) {
+              const value = context.parsed.y
+              if (isNaN(value) || value === null) return `${context.dataset.label}: N/A`
+              return `${context.dataset.label}: ${currency === 'PKR' ? value.toFixed(2) : value.toFixed(4)} ${currency}`
+            },
+          },
+        },
+        zoom: {
+          zoom: {
+            wheel: {
+              enabled: true,
+            },
+            pinch: {
+              enabled: true,
+            },
+            mode: 'x' as const,
+          },
+          pan: {
+            enabled: true,
+            mode: 'x' as const,
+          },
+          limits: {
+            x: {
+              min: 'original' as const,
+              max: 'original' as const,
+            },
+          },
         },
       },
-      tooltip: {
-        mode: 'index' as const,
+      scales: {
+        x: {
+          type: 'time' as const,
+          display: true,
+          title: {
+            display: true,
+            text: 'Date',
+            color: colors.foreground,
+          },
+          ticks: {
+            color: colors.foreground,
+            maxRotation: 45,
+            minRotation: 45,
+          },
+          grid: {
+            color: colors.grid,
+          },
+          time: {
+            unit: frequency === 'daily' ? 'day' : frequency === 'weekly' ? 'week' : 'month',
+            displayFormats: {
+              day: 'MMM dd, yyyy',
+              week: 'MMM dd, yyyy',
+              month: 'MMM yyyy',
+            },
+          },
+          ...(initialZoom ? {
+            min: initialZoom.min,
+            max: initialZoom.max,
+          } : {}),
+        },
+        y: {
+          display: true,
+          title: {
+            display: true,
+            text: `Price (${currency})`,
+            color: colors.foreground,
+          },
+          ticks: {
+            color: colors.foreground,
+            callback: function(value: any) {
+              return typeof value === 'number' ? value.toFixed(2) : value
+            },
+          },
+          grid: {
+            color: colors.grid,
+          },
+        },
+      },
+      interaction: {
+        mode: 'nearest' as const,
+        axis: 'x' as const,
         intersect: false,
-        backgroundColor: colors.background,
-        titleColor: colors.foreground,
-        bodyColor: colors.foreground,
-        borderColor: colors.border,
-        borderWidth: 1,
-        callbacks: {
-          label: function(context: any) {
-            const value = context.parsed.y
-            if (isNaN(value)) return `${context.dataset.label}: N/A`
-            const currency = getCurrency()
-            return `${context.dataset.label}: ${currency === 'PKR' ? value.toFixed(2) : value.toFixed(4)} ${currency}`
-          },
-        },
       },
-    },
-    scales: {
-      x: {
-        display: true,
-        title: {
-          display: true,
-          text: 'Date',
-          color: colors.foreground,
-        },
-        ticks: {
-          color: colors.foreground,
-          maxRotation: 45,
-          minRotation: 45,
-        },
-        grid: {
-          color: colors.grid,
-        },
-      },
-      y: {
-        display: true,
-        title: {
-          display: true,
-          text: `Price (${getCurrency()})`,
-          color: colors.foreground,
-        },
-        ticks: {
-          color: colors.foreground,
-          callback: function(value: any) {
-            return typeof value === 'number' ? value.toFixed(2) : value
-          },
-        },
-        grid: {
-          color: colors.grid,
-        },
-      },
-    },
-    interaction: {
-      mode: 'nearest' as const,
-      axis: 'x' as const,
-      intersect: false,
-    },
-  }), [colors, theme, getCurrency])
+    }
+  }, [colors, theme, getCurrency, frequency, getInitialZoomRange])
 
   // Calculate current price and change
   const latestPrice = resampledData.length > 0 ? resampledData[resampledData.length - 1].close : null
@@ -495,14 +558,42 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
 
   const currency = getCurrency()
 
+  // Reset zoom function
+  const resetZoom = () => {
+    if (chartRef.current) {
+      const chart = chartRef.current.chartInstance || chartRef.current
+      if (chart && chart.resetZoom) {
+        chart.resetZoom()
+      } else if (chart && chart.scales && chart.scales.x) {
+        // Manual reset if resetZoom is not available
+        chart.scales.x.options.min = undefined
+        chart.scales.x.options.max = undefined
+        chart.update('none')
+      }
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Price Chart with Moving Averages</CardTitle>
-          <CardDescription>
-            View price charts with customizable moving averages for various asset types
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Price Chart with Moving Averages</CardTitle>
+              <CardDescription>
+                View price charts with customizable moving averages for various asset types
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={resetZoom}
+              title="Reset zoom to show all data"
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Reset Zoom
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Asset Type and Symbol Selection */}
@@ -727,8 +818,13 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
               </div>
             </div>
           ) : (
-            <div className="h-[500px] w-full">
-              <Line data={chartData} options={chartOptions} />
+            <div className="space-y-2">
+              <div className="text-xs text-muted-foreground">
+                💡 Use mouse wheel to zoom, drag to pan. Chart shows last 2 years by default.
+              </div>
+              <div className="h-[500px] w-full">
+                <Line ref={chartRef} data={chartData} options={chartOptions} />
+              </div>
             </div>
           )}
         </CardContent>
