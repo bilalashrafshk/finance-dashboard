@@ -185,6 +185,7 @@ export default function AdvanceDeclineStocksPage() {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   )
 }

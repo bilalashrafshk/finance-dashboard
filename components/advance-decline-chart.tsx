@@ -837,7 +837,8 @@ export function AdvanceDeclineChart({
           </div>
         </DialogContent>
       </Dialog>
-    </Card>
+      </Card>
+    </div>
   )
 }
 
