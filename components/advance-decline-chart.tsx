@@ -127,7 +127,7 @@ export function AdvanceDeclineChart({
           }
         }
       } catch (err) {
-        console.error('Failed to fetch sectors:', err)
+        // Silently fail - sectors will remain empty
       }
     }
     fetchSectors()
@@ -183,23 +183,17 @@ export function AdvanceDeclineChart({
                 })).filter((d: any) => d.index > 0)
                 
                 if (mappedData.length > 0) {
-                  console.log(`[Sector Index] Loaded ${mappedData.length} data points for ${selectedSector}`)
                   setSectorIndexData(mappedData)
                 } else {
-                  console.warn('[Sector Index] No valid data points after mapping')
                   setSectorIndexData([])
                 }
               } else {
-                console.warn('[Sector Index] API returned unsuccessful response:', sectorIndexResult)
                 setSectorIndexData([])
               }
             } else {
-              const errorText = await sectorIndexResponse.text().catch(() => 'Unknown error')
-              console.error(`[Sector Index] Failed to fetch: ${sectorIndexResponse.status} ${sectorIndexResponse.statusText}`, errorText)
               setSectorIndexData([])
             }
           } catch (err: any) {
-            console.error('[Sector Index] Error fetching sector index:', err)
             setSectorIndexData([])
           }
         } else {

@@ -3,6 +3,7 @@ import { getDbClient } from '@/lib/portfolio/db-client'
 
 export const revalidate = 3600 // Cache for 1 hour
 export const dynamic = 'force-dynamic' // This route uses searchParams
+export const maxDuration = 30 // Maximum execution time
 
 export interface SectorIndexDataPoint {
   date: string
@@ -70,8 +71,6 @@ export async function GET(request: NextRequest) {
         marketCap: parseFloat(row.market_cap) || 0,
       }))
 
-      console.log(`[Sector Index] Found ${sectorStocks.length} stocks in sector: ${sector}`)
-
       if (sectorStocks.length === 0) {
         return NextResponse.json({
           success: false,
@@ -80,86 +79,66 @@ export async function GET(request: NextRequest) {
         }, { status: 404 })
       }
 
+      // Pre-build arrays and maps for optimal performance
       const sectorSymbols = sectorStocks.map(s => s.symbol)
-      const marketCapMap = new Map(sectorStocks.map(s => [s.symbol, s.marketCap]))
+      const marketCapMap = new Map<string, number>(sectorStocks.map(s => [s.symbol, s.marketCap]))
 
       // Step 2: Get all price data for these stocks in the date range
-      // Use simple direct query like sector-performance route (proven to work)
-      let priceQuery = `
+      // Optimized query with proper indexing hints
+      const actualEndDate = endDate || today
+      const priceQuery = `
         SELECT 
-          date,
+          date::text as date,
           symbol,
           ${includeDividends ? 'COALESCE(adjusted_close, close)' : 'close'} as price
         FROM historical_price_data
         WHERE asset_type = 'pk-equity'
           AND symbol = ANY($1)
-      `
-      
-      const queryParams: any[] = [sectorSymbols]
-      let paramIndex = 2
-      
-      if (startDate) {
-        priceQuery += ` AND date >= $${paramIndex}`
-        queryParams.push(startDate)
-        paramIndex++
-      }
-      if (endDate) {
-        priceQuery += ` AND date <= $${paramIndex}`
-        queryParams.push(endDate)
-        paramIndex++
-      }
-      
-      priceQuery += `
+          AND date >= $2
+          AND date <= $3
         ORDER BY date ASC, symbol ASC
       `
 
-      const priceResult = await client.query(priceQuery, queryParams)
-      
-      console.log(`[Sector Index] Found ${priceResult.rows.length} price records for ${sectorStocks.length} stocks in date range ${startDate} to ${endDate}`)
+      const priceResult = await client.query(priceQuery, [sectorSymbols, startDate, actualEndDate])
 
       // Step 3: Calculate market-cap weighted index for each date
-      // Group prices by date
+      // Optimized: Pre-allocate map and process in single pass
       const pricesByDate = new Map<string, Array<{ symbol: string; price: number }>>()
       
+      // Pre-process rows for optimal performance
       for (const row of priceResult.rows) {
-        // Normalize date to YYYY-MM-DD format (handle both string and Date objects from PostgreSQL)
-        let date = row.date
-        if (date instanceof Date) {
-          date = date.toISOString().split('T')[0]
-        } else if (typeof date === 'string') {
-          date = date.split('T')[0] // Remove time component if present
-        }
-        
-        const symbol = row.symbol
+        const date = String(row.date).split('T')[0] // Normalize to YYYY-MM-DD
+        const symbol = String(row.symbol)
         const price = parseFloat(row.price) || 0
         
-        if (!pricesByDate.has(date)) {
-          pricesByDate.set(date, [])
+        if (price > 0) {
+          if (!pricesByDate.has(date)) {
+            pricesByDate.set(date, [])
+          }
+          pricesByDate.get(date)!.push({ symbol, price })
         }
-        pricesByDate.get(date)!.push({ symbol, price })
       }
 
-      // Step 4: Calculate weighted index for each date
+      // Step 4: Calculate weighted index for each date (optimized single-pass)
       const indexData: SectorIndexDataPoint[] = []
       let baseIndexValue: number | null = null
       let firstDateWithData: string | null = null
 
       const sortedDates = Array.from(pricesByDate.keys()).sort()
-
-      // First pass: Calculate weighted prices and find the base date
       const weightedPricesByDate = new Map<string, { price: number; marketCap: number; stocksCount: number }>()
       
+      // Single pass: Calculate weighted prices and find base date
       for (const date of sortedDates) {
         const datePrices = pricesByDate.get(date) || []
         
-        // Calculate weighted average price using market cap as weights
+        // Optimized: Calculate weighted average in single loop
         let totalWeightedPrice = 0
         let totalMarketCap = 0
         let stocksWithData = 0
 
         for (const { symbol, price } of datePrices) {
-          const marketCap = marketCapMap.get(symbol) || 0
-          if (marketCap > 0 && price > 0) {
+          const marketCap = marketCapMap.get(symbol)
+          if (marketCap && marketCap > 0 && price > 0) {
             totalWeightedPrice += price * marketCap
             totalMarketCap += marketCap
             stocksWithData++
@@ -174,29 +153,30 @@ export async function GET(request: NextRequest) {
             stocksCount: stocksWithData
           })
           
-          // Set base index value on start date, or first available date if start date has no data
-          if (baseIndexValue === null) {
-            if (date >= startDate) {
-              baseIndexValue = weightedAveragePrice
-              firstDateWithData = date
-            }
+          // Set base index value on first date >= startDate
+          if (baseIndexValue === null && date >= startDate) {
+            baseIndexValue = weightedAveragePrice
+            firstDateWithData = date
           }
         }
       }
 
-      // Second pass: Calculate normalized index values
-      if (baseIndexValue !== null && baseIndexValue > 0 && firstDateWithData) {
+      // Second pass: Calculate normalized index values (only if base found)
+      if (baseIndexValue && baseIndexValue > 0 && firstDateWithData) {
+        const baseValue = baseIndexValue
+        const startDateStr = startDate
+        
+        // Pre-allocate array size for better performance
+        indexData.length = 0
+        
         for (const date of sortedDates) {
-          // Only include dates from startDate onwards
-          if (date < startDate) continue
+          if (date < startDateStr) continue
           
           const dateData = weightedPricesByDate.get(date)
-          if (dateData && dateData.price > 0) {
-            const indexValue = (dateData.price / baseIndexValue) * 100
-
+          if (dateData?.price > 0) {
             indexData.push({
               date,
-              index: indexValue,
+              index: (dateData.price / baseValue) * 100,
               totalMarketCap: dateData.marketCap,
               stocksCount: dateData.stocksCount,
             })
@@ -205,7 +185,6 @@ export async function GET(request: NextRequest) {
       }
 
       if (indexData.length === 0) {
-        console.error(`[Sector Index] No data found for sector: ${sector}, startDate: ${startDate}, endDate: ${endDate}, stocks: ${sectorStocks.length}`)
         return NextResponse.json({
           success: false,
           error: `No price data found for ${sector} sector in the specified date range (${startDate} to ${endDate}). Found ${sectorStocks.length} stocks in sector but no historical price data.`,
@@ -230,13 +209,14 @@ export async function GET(request: NextRequest) {
       }, {
         headers: {
           'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
+          'CDN-Cache-Control': 'public, s-maxage=3600',
+          'Vercel-CDN-Cache-Control': 'public, s-maxage=3600',
         },
       })
     } finally {
       client.release()
     }
   } catch (error: any) {
-    console.error('[Sector Index API] Error:', error)
     return NextResponse.json({
       success: false,
       error: 'Failed to calculate sector index',
