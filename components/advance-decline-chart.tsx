@@ -162,23 +162,34 @@ export function AdvanceDeclineChart({
           throw new Error(result.error || 'Failed to fetch data')
         }
 
-        // Fetch sector index if sector is selected
+        // Always fetch sector index if sector is selected (fetch regardless of showSectorIndex toggle for better UX)
         if (selectedSector && selectedSector !== 'all' && internalStartDate) {
-          const sectorIndexParams = new URLSearchParams()
-          sectorIndexParams.append('sector', selectedSector)
-          sectorIndexParams.append('startDate', internalStartDate)
-          if (internalEndDate) sectorIndexParams.append('endDate', internalEndDate)
-          
-          const sectorIndexResponse = await fetch(`/api/sector-index?${sectorIndexParams.toString()}`)
-          
-          if (sectorIndexResponse.ok) {
-            const sectorIndexResult = await sectorIndexResponse.json()
-            if (sectorIndexResult.success && sectorIndexResult.data) {
-              setSectorIndexData(sectorIndexResult.data.map((d: any) => ({
-                date: d.date,
-                index: d.index
-              })))
+          try {
+            const sectorIndexParams = new URLSearchParams()
+            sectorIndexParams.append('sector', selectedSector)
+            sectorIndexParams.append('startDate', internalStartDate)
+            if (internalEndDate) sectorIndexParams.append('endDate', internalEndDate)
+            
+            const sectorIndexResponse = await fetch(`/api/sector-index?${sectorIndexParams.toString()}`)
+            
+            if (sectorIndexResponse.ok) {
+              const sectorIndexResult = await sectorIndexResponse.json()
+              if (sectorIndexResult.success && sectorIndexResult.data) {
+                setSectorIndexData(sectorIndexResult.data.map((d: any) => ({
+                  date: d.date,
+                  index: d.index
+                })))
+              } else {
+                console.warn('Sector index API returned unsuccessful response:', sectorIndexResult)
+                setSectorIndexData([])
+              }
+            } else {
+              console.warn('Failed to fetch sector index:', sectorIndexResponse.status)
+              setSectorIndexData([])
             }
+          } catch (err) {
+            console.error('Error fetching sector index:', err)
+            setSectorIndexData([])
           }
         } else {
           setSectorIndexData([])
@@ -349,28 +360,33 @@ export function AdvanceDeclineChart({
           : new Date(point.date).toISOString().split('T')[0]
         const sectorIndexValue = sectorIndexDateMap.get(dateStr)
         
-        if (sectorIndexValue !== undefined) {
+        if (sectorIndexValue !== undefined && sectorIndexValue !== null) {
           lastSectorIndexValue = sectorIndexValue
           return sectorIndexValue
         }
         
+        // Forward-fill with last known value to keep line continuous
         return lastSectorIndexValue
       })
 
-      datasets.push({
-        label: `${selectedSector} Index`,
-        data: formatTimeSeriesData(sectorIndexValues),
-        borderColor: '#8b5cf6',
-        backgroundColor: '#8b5cf620',
-        fill: false,
-        tension: 0.1,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-        borderWidth: 1.5,
-        borderDash: [3, 3],
-        yAxisID: 'y2', // Use third y-axis
-        spanGaps: true,
-      })
+      // Only add dataset if we have at least some valid values
+      const validValues = sectorIndexValues.filter(v => v !== null && v !== undefined)
+      if (validValues.length > 0) {
+        datasets.push({
+          label: `${selectedSector} Index`,
+          data: formatTimeSeriesData(sectorIndexValues),
+          borderColor: '#8b5cf6',
+          backgroundColor: '#8b5cf620',
+          fill: false,
+          tension: 0.1,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          borderWidth: 1.5,
+          borderDash: [3, 3],
+          yAxisID: 'y2', // Use third y-axis
+          spanGaps: true,
+        })
+      }
     }
 
     return {
@@ -458,7 +474,7 @@ export function AdvanceDeclineChart({
         }
       }
 
-      // Add third y-axis for sector index if enabled
+      // Add or remove third y-axis for sector index
       if (showSectorIndex && sectorIndexData.length > 0) {
         const sectorIndexValues = sectorIndexData.map(d => d.index).filter(v => v !== null && v !== undefined)
         const sectorIndexMin = sectorIndexValues.length > 0 ? Math.min(...sectorIndexValues) : 0
@@ -486,6 +502,9 @@ export function AdvanceDeclineChart({
             drawOnChartArea: false,
           },
         }
+      } else {
+        // Explicitly remove y2 axis when sector index is disabled
+        delete opts.scales.y2
       }
     }
 
@@ -676,29 +695,43 @@ export function AdvanceDeclineChart({
         {showSettings && (
           <CardContent className="space-y-4">
             {/* Date Range */}
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="start-date">Start Date</Label>
-                <Input
-                  id="start-date"
-                  type="date"
-                  value={internalStartDate}
-                  onChange={(e) => setInternalStartDate(e.target.value)}
-                  max={internalEndDate}
-                />
+            <form onSubmit={(e) => e.preventDefault()}>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="start-date">Start Date</Label>
+                  <Input
+                    id="start-date"
+                    type="date"
+                    value={internalStartDate}
+                    onChange={(e) => {
+                      const newValue = e.target.value
+                      // Only update if we have a complete date (YYYY-MM-DD format)
+                      if (newValue && newValue.length === 10) {
+                        setInternalStartDate(newValue)
+                      }
+                    }}
+                    max={internalEndDate}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="end-date">End Date</Label>
+                  <Input
+                    id="end-date"
+                    type="date"
+                    value={internalEndDate}
+                    onChange={(e) => {
+                      const newValue = e.target.value
+                      // Only update if we have a complete date (YYYY-MM-DD format)
+                      if (newValue && newValue.length === 10) {
+                        setInternalEndDate(newValue)
+                      }
+                    }}
+                    min={internalStartDate}
+                    max={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="end-date">End Date</Label>
-                <Input
-                  id="end-date"
-                  type="date"
-                  value={internalEndDate}
-                  onChange={(e) => setInternalEndDate(e.target.value)}
-                  min={internalStartDate}
-                  max={new Date().toISOString().split('T')[0]}
-                />
-              </div>
-            </div>
+            </form>
 
             {/* Sector Filter */}
             <div className="space-y-2">
@@ -807,7 +840,11 @@ export function AdvanceDeclineChart({
         </CardHeader>
       <CardContent>
         <div className="h-[500px] w-full">
-          <Line data={chartData} options={options} />
+          <Line 
+            key={`chart-${showSectorIndex}-${selectedSector}-${topN}`}
+            data={chartData} 
+            options={options} 
+          />
         </div>
         <div className="mt-4 text-sm text-muted-foreground space-y-1">
           <p>
