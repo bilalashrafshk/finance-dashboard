@@ -116,7 +116,14 @@ export async function GET(request: NextRequest) {
   
   try {
     // Check if we need to refresh (3-day cache)
-    const needsRefresh = refresh || await shouldRefreshSBPEconomicData(seriesKey)
+    let needsRefresh = refresh
+    try {
+      needsRefresh = refresh || await shouldRefreshSBPEconomicData(seriesKey)
+    } catch (refreshError: any) {
+      console.error(`[Economic Data API] Error checking refresh status for ${seriesKey}:`, refreshError.message)
+      // If we can't check refresh status, assume we need to refresh
+      needsRefresh = true
+    }
     
     // Get data from database first
     let { data, latestStoredDate, earliestStoredDate } = await getSBPEconomicData(
