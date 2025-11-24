@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { SharedNavbar } from "@/components/shared-navbar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -25,7 +25,7 @@ interface Stock {
   industry: string
 }
 
-export default function AdvanceDeclineStocksPage() {
+function StocksContent() {
   const searchParams = useSearchParams()
   const sector = searchParams.get('sector') || 'all'
   const limit = parseInt(searchParams.get('limit') || '100', 10)
@@ -76,39 +76,31 @@ export default function AdvanceDeclineStocksPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
-        <SharedNavbar />
-        <div className="container max-w-6xl mx-auto p-6">
-          <Card>
-            <CardContent className="flex items-center justify-center h-[400px]">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </CardContent>
-          </Card>
-        </div>
+      <div className="container max-w-6xl mx-auto p-6">
+        <Card>
+          <CardContent className="flex items-center justify-center h-[400px]">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-background">
-        <SharedNavbar />
-        <div className="container max-w-6xl mx-auto p-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Error</CardTitle>
-              <CardDescription>{error}</CardDescription>
-            </CardHeader>
-          </Card>
-        </div>
+      <div className="container max-w-6xl mx-auto p-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Error</CardTitle>
+            <CardDescription>{error}</CardDescription>
+          </CardHeader>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <SharedNavbar />
-      <div className="container max-w-6xl mx-auto p-6">
+    <div className="container max-w-6xl mx-auto p-6">
       <div className="mb-4">
         <Link href="/charts#advance-decline">
           <Button variant="ghost" size="sm" className="gap-2">
@@ -185,7 +177,25 @@ export default function AdvanceDeclineStocksPage() {
           </div>
         </CardContent>
       </Card>
-      </div>
+    </div>
+  )
+}
+
+export default function AdvanceDeclineStocksPage() {
+  return (
+    <div className="min-h-screen bg-background">
+      <SharedNavbar />
+      <Suspense fallback={
+        <div className="container max-w-6xl mx-auto p-6">
+          <Card>
+            <CardContent className="flex items-center justify-center h-[400px]">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </div>
+      }>
+        <StocksContent />
+      </Suspense>
     </div>
   )
 }

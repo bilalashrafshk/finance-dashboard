@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDbClient } from '@/lib/portfolio/db-client'
 
 export const revalidate = 3600 // Cache for 1 hour
+export const dynamic = 'force-dynamic' // This route uses searchParams
 
 export interface AdvanceDeclineDataPoint {
   date: string
