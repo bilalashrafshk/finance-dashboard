@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Loader2, Plus, X, TrendingUp, TrendingDown } from "lucide-react"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Loader2, Plus, X, TrendingUp, TrendingDown, ChevronDown, ChevronUp } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Line } from "react-chartjs-2"
 import {
@@ -54,8 +55,11 @@ interface MovingAverageConfig {
   color?: string
 }
 
+type AssetType = 'pk-equity' | 'us-equity' | 'crypto' | 'metals' | 'kse100' | 'spx500'
+
 interface PKEquityMAChartProps {
   symbol?: string
+  assetType?: AssetType
 }
 
 // Predefined color palette for moving averages
@@ -70,17 +74,28 @@ const MA_COLORS = [
   '#f97316', // orange
 ]
 
-export function PKEquityMAChart({ symbol: initialSymbol }: PKEquityMAChartProps) {
+const ASSET_TYPE_LABELS: Record<AssetType, string> = {
+  'pk-equity': 'PK Equity',
+  'us-equity': 'US Equity',
+  'crypto': 'Crypto',
+  'metals': 'Metals',
+  'kse100': 'KSE100 Index',
+  'spx500': 'SPX500 Index',
+}
+
+export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAssetType }: PKEquityMAChartProps) {
   const { theme } = useTheme()
   const colors = getThemeColors()
   const { toast } = useToast()
+  const [assetType, setAssetType] = useState<AssetType>(initialAssetType || 'pk-equity')
   const [selectedSymbol, setSelectedSymbol] = useState<string>(initialSymbol || '')
-  const [availableSymbols, setAvailableSymbols] = useState<string[]>([])
+  const [availableSymbols, setAvailableSymbols] = useState<Array<{ symbol: string; name?: string }>>([])
   const [loading, setLoading] = useState(false)
   const [loadingSymbols, setLoadingSymbols] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [allData, setAllData] = useState<PriceDataPoint[]>([])
   const [frequency, setFrequency] = useState<Frequency>('daily')
+  const [showMASettings, setShowMASettings] = useState(false)
   const [movingAverages, setMovingAverages] = useState<MovingAverageConfig[]>([
     {
       id: '1',
@@ -100,24 +115,56 @@ export function PKEquityMAChart({ symbol: initialSymbol }: PKEquityMAChartProps)
     },
   ])
 
-  // Load available PK equity symbols
+  // Load available symbols based on asset type
   useEffect(() => {
     const loadSymbols = async () => {
       setLoadingSymbols(true)
       try {
-        const response = await fetch('/api/screener/stocks')
-        if (response.ok) {
-          const data = await response.json()
-          if (data.success && data.stocks) {
-            const symbols = data.stocks
-              .map((stock: any) => stock.symbol)
-              .filter((s: string) => s && s.length > 0)
-              .sort() || []
-            setAvailableSymbols(symbols)
-            if (symbols.length > 0 && !selectedSymbol) {
-              setSelectedSymbol(symbols[0])
+        let symbols: Array<{ symbol: string; name?: string }> = []
+
+        if (assetType === 'pk-equity') {
+          const response = await fetch('/api/screener/stocks')
+          if (response.ok) {
+            const data = await response.json()
+            if (data.success && data.stocks) {
+              symbols = data.stocks.map((stock: any) => ({
+                symbol: stock.symbol,
+                name: stock.name,
+              }))
             }
           }
+        } else if (assetType === 'us-equity') {
+          // For US equity, user can enter any symbol
+          // We'll allow manual entry
+          symbols = []
+        } else if (assetType === 'crypto') {
+          try {
+            const { fetchBinanceSymbols } = await import('@/lib/portfolio/binance-api')
+            const binanceSymbols = await fetchBinanceSymbols()
+            symbols = binanceSymbols.slice(0, 200).map((sym: string) => ({
+              symbol: sym.replace('USDT', ''),
+              name: sym.replace('USDT', ''),
+            }))
+          } catch (err) {
+            console.error('Error loading crypto symbols:', err)
+          }
+        } else if (assetType === 'kse100') {
+          symbols = [{ symbol: 'KSE100', name: 'KSE 100 Index' }]
+        } else if (assetType === 'spx500') {
+          symbols = [{ symbol: 'SPX500', name: 'S&P 500 Index' }]
+        } else if (assetType === 'metals') {
+          // Common metals
+          symbols = [
+            { symbol: 'GOLD', name: 'Gold' },
+            { symbol: 'SILVER', name: 'Silver' },
+          ]
+        }
+
+        setAvailableSymbols(symbols)
+        if (symbols.length > 0 && !selectedSymbol) {
+          setSelectedSymbol(symbols[0].symbol)
+        } else if (symbols.length === 0) {
+          setSelectedSymbol('')
         }
       } catch (err) {
         console.error('Error loading symbols:', err)
@@ -126,11 +173,11 @@ export function PKEquityMAChart({ symbol: initialSymbol }: PKEquityMAChartProps)
       }
     }
     loadSymbols()
-  }, [])
+  }, [assetType])
 
   // Load price data
   useEffect(() => {
-    if (!selectedSymbol) {
+    if (!selectedSymbol || !assetType) {
       setAllData([])
       return
     }
@@ -139,9 +186,30 @@ export function PKEquityMAChart({ symbol: initialSymbol }: PKEquityMAChartProps)
       setLoading(true)
       setError(null)
       try {
-        const response = await fetch(
-          `/api/historical-data?assetType=pk-equity&symbol=${encodeURIComponent(selectedSymbol)}&market=PSX`
-        )
+        let apiUrl = ''
+        let market: string | null = null
+
+        if (assetType === 'pk-equity') {
+          apiUrl = `/api/historical-data?assetType=pk-equity&symbol=${encodeURIComponent(selectedSymbol)}&market=PSX`
+        } else if (assetType === 'us-equity') {
+          apiUrl = `/api/historical-data?assetType=us-equity&symbol=${encodeURIComponent(selectedSymbol)}&market=US`
+        } else if (assetType === 'crypto') {
+          const { parseSymbolToBinance } = await import('@/lib/portfolio/binance-api')
+          const binanceSymbol = parseSymbolToBinance(selectedSymbol)
+          apiUrl = `/api/historical-data?assetType=crypto&symbol=${encodeURIComponent(binanceSymbol)}`
+        } else if (assetType === 'kse100') {
+          apiUrl = `/api/historical-data?assetType=kse100&symbol=KSE100`
+        } else if (assetType === 'spx500') {
+          apiUrl = `/api/historical-data?assetType=spx500&symbol=SPX500`
+        } else if (assetType === 'metals') {
+          apiUrl = `/api/historical-data?assetType=metals&symbol=${encodeURIComponent(selectedSymbol)}`
+        }
+
+        if (!apiUrl) {
+          throw new Error('Unsupported asset type')
+        }
+
+        const response = await fetch(apiUrl)
         if (!response.ok) {
           throw new Error('Failed to fetch price data')
         }
@@ -176,7 +244,7 @@ export function PKEquityMAChart({ symbol: initialSymbol }: PKEquityMAChartProps)
     }
 
     loadData()
-  }, [selectedSymbol, toast])
+  }, [selectedSymbol, assetType, toast])
 
   // Resample data based on frequency
   const resampledData = useMemo(() => {
@@ -232,6 +300,15 @@ export function PKEquityMAChart({ symbol: initialSymbol }: PKEquityMAChartProps)
     })
     return maResults
   }, [resampledData, movingAverages, frequency, allData])
+
+  // Get currency symbol based on asset type
+  const getCurrency = () => {
+    if (assetType === 'pk-equity' || assetType === 'kse100') return 'PKR'
+    if (assetType === 'us-equity' || assetType === 'spx500') return 'USD'
+    if (assetType === 'crypto') return 'USD'
+    if (assetType === 'metals') return 'USD'
+    return 'USD'
+  }
 
   // Prepare chart data
   const chartData = useMemo(() => {
@@ -289,7 +366,7 @@ export function PKEquityMAChart({ symbol: initialSymbol }: PKEquityMAChartProps)
       labels: resampledData.map(d => formatLabel(d.date)),
       datasets,
     }
-  }, [resampledData, movingAverages, maData, selectedSymbol, colors])
+  }, [resampledData, movingAverages, maData, selectedSymbol, colors, frequency])
 
   const chartOptions = useMemo(() => ({
     responsive: true,
@@ -315,7 +392,8 @@ export function PKEquityMAChart({ symbol: initialSymbol }: PKEquityMAChartProps)
           label: function(context: any) {
             const value = context.parsed.y
             if (isNaN(value)) return `${context.dataset.label}: N/A`
-            return `${context.dataset.label}: ${value.toFixed(2)}`
+            const currency = getCurrency()
+            return `${context.dataset.label}: ${currency === 'PKR' ? value.toFixed(2) : value.toFixed(4)} ${currency}`
           },
         },
       },
@@ -341,7 +419,7 @@ export function PKEquityMAChart({ symbol: initialSymbol }: PKEquityMAChartProps)
         display: true,
         title: {
           display: true,
-          text: 'Price (PKR)',
+          text: `Price (${getCurrency()})`,
           color: colors.foreground,
         },
         ticks: {
@@ -360,7 +438,7 @@ export function PKEquityMAChart({ symbol: initialSymbol }: PKEquityMAChartProps)
       axis: 'x' as const,
       intersect: false,
     },
-  }), [colors, theme])
+  }), [colors, theme, getCurrency])
 
   // Calculate current price and change
   const latestPrice = resampledData.length > 0 ? resampledData[resampledData.length - 1].close : null
@@ -415,36 +493,68 @@ export function PKEquityMAChart({ symbol: initialSymbol }: PKEquityMAChartProps)
     }
   }
 
+  const currency = getCurrency()
+
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>PK Equity Price Chart with Moving Averages</CardTitle>
+          <CardTitle>Price Chart with Moving Averages</CardTitle>
           <CardDescription>
-            View price charts for Pakistani equities with customizable moving averages
+            View price charts with customizable moving averages for various asset types
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Symbol Selection */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Asset Type and Symbol Selection */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="symbol">Stock Symbol</Label>
+              <Label htmlFor="asset-type">Asset Type</Label>
               <Select
-                value={selectedSymbol}
-                onValueChange={setSelectedSymbol}
-                disabled={loadingSymbols}
+                value={assetType}
+                onValueChange={(value) => setAssetType(value as AssetType)}
               >
-                <SelectTrigger id="symbol">
-                  <SelectValue placeholder={loadingSymbols ? "Loading..." : "Select a symbol"} />
+                <SelectTrigger id="asset-type">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableSymbols.map((sym) => (
-                    <SelectItem key={sym} value={sym}>
-                      {sym}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="pk-equity">PK Equity</SelectItem>
+                  <SelectItem value="us-equity">US Equity</SelectItem>
+                  <SelectItem value="crypto">Crypto</SelectItem>
+                  <SelectItem value="metals">Metals</SelectItem>
+                  <SelectItem value="kse100">KSE100 Index</SelectItem>
+                  <SelectItem value="spx500">SPX500 Index</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="symbol">Symbol</Label>
+              {assetType === 'us-equity' ? (
+                <Input
+                  id="symbol"
+                  value={selectedSymbol}
+                  onChange={(e) => setSelectedSymbol(e.target.value.toUpperCase())}
+                  placeholder="Enter symbol (e.g., AAPL)"
+                  disabled={loadingSymbols}
+                />
+              ) : (
+                <Select
+                  value={selectedSymbol}
+                  onValueChange={setSelectedSymbol}
+                  disabled={loadingSymbols || availableSymbols.length === 0}
+                >
+                  <SelectTrigger id="symbol">
+                    <SelectValue placeholder={loadingSymbols ? "Loading..." : "Select a symbol"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableSymbols.map((item) => (
+                      <SelectItem key={item.symbol} value={item.symbol}>
+                        {item.symbol} {item.name && `(${item.name})`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* Frequency Selection */}
@@ -472,7 +582,7 @@ export function PKEquityMAChart({ symbol: initialSymbol }: PKEquityMAChartProps)
               <div className="p-4 border rounded-lg">
                 <div className="text-sm text-muted-foreground">Current Price</div>
                 <div className="text-2xl font-bold mt-1">
-                  {latestPrice.toFixed(2)} PKR
+                  {latestPrice.toFixed(currency === 'PKR' ? 2 : 4)} {currency}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">
                   {resampledData.length > 0 && format(new Date(resampledData[resampledData.length - 1].date), 'MMM dd, yyyy')}
@@ -485,7 +595,7 @@ export function PKEquityMAChart({ symbol: initialSymbol }: PKEquityMAChartProps)
                     priceChange >= 0 ? 'text-green-600' : 'text-red-600'
                   }`}>
                     {priceChange >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
-                    {priceChange > 0 ? '+' : ''}{priceChange.toFixed(2)} PKR
+                    {priceChange > 0 ? '+' : ''}{priceChange.toFixed(currency === 'PKR' ? 2 : 4)} {currency}
                   </div>
                   {priceChangePercent !== null && (
                     <div className={`text-sm mt-1 ${
@@ -506,86 +616,94 @@ export function PKEquityMAChart({ symbol: initialSymbol }: PKEquityMAChartProps)
             </div>
           )}
 
-          {/* Moving Averages Configuration */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label>Moving Averages</Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addMovingAverage}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add MA
+          {/* Moving Averages Configuration - Collapsible */}
+          <Collapsible open={showMASettings} onOpenChange={setShowMASettings}>
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" className="w-full justify-between">
+                <span>Moving Averages Settings</span>
+                {showMASettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </Button>
-            </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-4 mt-4">
+              <div className="flex items-center justify-between">
+                <Label>Moving Averages</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addMovingAverage}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add MA
+                </Button>
+              </div>
 
-            {movingAverages.map((ma) => (
-              <div key={ma.id} className="grid grid-cols-1 md:grid-cols-6 gap-4 p-4 border rounded-lg">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={ma.enabled}
-                    onChange={(e) => updateMovingAverage(ma.id, { enabled: e.target.checked })}
-                    className="rounded"
-                  />
-                  <Label className="text-sm">Enable</Label>
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Type</Label>
-                  <Select
-                    value={ma.type}
-                    onValueChange={(value) => updateMovingAverage(ma.id, { type: value as MovingAverageType })}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="SMA">SMA</SelectItem>
-                      <SelectItem value="EMA">EMA</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Period (e.g., 20d, 50w, 200d)</Label>
-                  <Input
-                    type="text"
-                    value={generatePeriodString(ma.length, ma.periodType)}
-                    onChange={(e) => handleMAPeriodInput(ma.id, e.target.value)}
-                    placeholder="20d"
-                    className="h-9"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Color</Label>
+              {movingAverages.map((ma) => (
+                <div key={ma.id} className="grid grid-cols-1 md:grid-cols-6 gap-4 p-4 border rounded-lg">
                   <div className="flex items-center gap-2">
                     <input
-                      type="color"
-                      value={ma.color || MA_COLORS[0]}
-                      onChange={(e) => updateMovingAverage(ma.id, { color: e.target.value })}
-                      className="h-9 w-full rounded border"
+                      type="checkbox"
+                      checked={ma.enabled}
+                      onChange={(e) => updateMovingAverage(ma.id, { enabled: e.target.checked })}
+                      className="rounded"
+                    />
+                    <Label className="text-sm">Enable</Label>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Type</Label>
+                    <Select
+                      value={ma.type}
+                      onValueChange={(value) => updateMovingAverage(ma.id, { type: value as MovingAverageType })}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="SMA">SMA</SelectItem>
+                        <SelectItem value="EMA">EMA</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Period (e.g., 20d, 50w, 200d)</Label>
+                    <Input
+                      type="text"
+                      value={generatePeriodString(ma.length, ma.periodType)}
+                      onChange={(e) => handleMAPeriodInput(ma.id, e.target.value)}
+                      placeholder="20d"
+                      className="h-9"
                     />
                   </div>
-                </div>
 
-                <div className="flex items-end">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeMovingAverage(ma.id)}
-                    className="text-destructive"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Color</Label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={ma.color || MA_COLORS[0]}
+                        onChange={(e) => updateMovingAverage(ma.id, { color: e.target.value })}
+                        className="h-9 w-full rounded border"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-end">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeMovingAverage(ma.id)}
+                      className="text-destructive"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
 
           {/* Chart */}
           {loading ? (
@@ -618,4 +736,3 @@ export function PKEquityMAChart({ symbol: initialSymbol }: PKEquityMAChartProps)
     </div>
   )
 }
-

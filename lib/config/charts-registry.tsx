@@ -176,7 +176,7 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
             },
             {
                 id: "pk-equity-ma",
-                title: "PK Equity Price Chart with Moving Averages",
+                title: "Price Chart with MA",
                 icon: LineChart,
                 component: <PKEquityMAChart />,
                 keywords: ["pk equity", "price chart", "moving average", "sma", "ema", "technical analysis", "trend", "stocks"],
