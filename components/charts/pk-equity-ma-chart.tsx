@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Loader2, Plus, X, TrendingUp, TrendingDown, ChevronDown, ChevronUp, RotateCcw } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { createChart, IChartApi, ISeriesApi, LineStyleOptions, LineData, Time } from "lightweight-charts"
+import { createChart, IChartApi, ISeriesApi, LineData, Time, LineSeries } from "lightweight-charts"
 import { format } from "date-fns"
 import { getThemeColors } from "@/lib/charts/theme-colors"
 import { useTheme } from "next-themes"
@@ -138,7 +138,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     chartRef.current = chart
 
     // Create price series
-    const priceSeries = chart.addLineSeries({
+    const priceSeries = chart.addSeries(LineSeries, {
       color: colors.price || '#3b82f6',
       lineWidth: 2,
       title: selectedSymbol || 'Price',
@@ -401,7 +401,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
       let maSeries = maSeriesRefs.current.get(ma.id)
       if (!maSeries && chartRef.current) {
         // Create new series
-        maSeries = chartRef.current.addLineSeries({
+        maSeries = chartRef.current.addSeries(LineSeries, {
           color: ma.color || MA_COLORS[0],
           lineWidth: 1.5,
           lineStyle: ma.type === 'EMA' ? 1 : 0, // 1 = dashed, 0 = solid
