@@ -5,8 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Loader2, CheckCircle2, XCircle } from "lucide-react"
+import { Loader2, CheckCircle2, XCircle, List, ExternalLink } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import Link from "next/link"
 import {
   Table,
   TableBody,
@@ -37,6 +38,7 @@ export function SectorQuarterlyPerformance() {
   const [sectors, setSectors] = useState<string[]>([])
   const [selectedSector, setSelectedSector] = useState<string>("")
   const [data, setData] = useState<QuarterPerformance[]>([])
+  const [totalStocksInSector, setTotalStocksInSector] = useState<number | null>(null)
   const [year, setYear] = useState(new Date().getFullYear())
   const [includeDividends, setIncludeDividends] = useState(false)
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
@@ -133,6 +135,22 @@ export function SectorQuarterlyPerformance() {
       }
 
       setData(result.quarters)
+      
+      // Fetch total stocks count for the sector
+      if (selectedSector) {
+        try {
+          const stocksResponse = await fetch(`/api/advance-decline/stocks?sector=${encodeURIComponent(selectedSector)}&limit=10000`)
+          if (stocksResponse.ok) {
+            const stocksResult = await stocksResponse.json()
+            if (stocksResult.success && stocksResult.stocks) {
+              setTotalStocksInSector(stocksResult.stocks.length)
+            }
+          }
+        } catch (err) {
+          // Silently fail - not critical
+          console.warn('Failed to fetch total stocks count:', err)
+        }
+      }
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to load sector performance data'
       setError(errorMessage)
@@ -307,20 +325,50 @@ export function SectorQuarterlyPerformance() {
 
           {/* Summary Stats */}
           {!loadingData && !error && selectedSector && data.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
-              <div className="p-4 border rounded-lg">
-                <div className="text-sm text-muted-foreground">Selected Sector</div>
-                <div className="text-2xl font-bold mt-1">{selectedSector}</div>
-              </div>
-              <div className="p-4 border rounded-lg">
-                <div className="text-sm text-muted-foreground">Quarters Analyzed</div>
-                <div className="text-2xl font-bold mt-1">{data.length}</div>
-              </div>
-              <div className="p-4 border rounded-lg">
-                <div className="text-sm text-muted-foreground">Dividend Adjustment</div>
-                <div className="text-2xl font-bold mt-1">
-                  {includeDividends ? 'Enabled' : 'Disabled'}
+            <div className="space-y-4 pt-4 border-t">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 border rounded-lg">
+                  <div className="text-sm text-muted-foreground">Selected Sector</div>
+                  <div className="text-2xl font-bold mt-1">{selectedSector}</div>
+                  {totalStocksInSector !== null && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {totalStocksInSector} stocks in sector
+                    </div>
+                  )}
                 </div>
+                <div className="p-4 border rounded-lg">
+                  <div className="text-sm text-muted-foreground">Quarters Analyzed</div>
+                  <div className="text-2xl font-bold mt-1">{data.length}</div>
+                </div>
+                <div className="p-4 border rounded-lg">
+                  <div className="text-sm text-muted-foreground">Dividend Adjustment</div>
+                  <div className="text-2xl font-bold mt-1">
+                    {includeDividends ? 'Enabled' : 'Disabled'}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Link to view stocks */}
+              <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                <div className="flex-1">
+                  <p className="text-sm font-medium">View Stocks in Sector</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    See all stocks included in the {selectedSector} sector performance calculation
+                    {totalStocksInSector !== null && ` (${totalStocksInSector} stocks)`}
+                  </p>
+                </div>
+                <Link
+                  href={`/advance-decline/stocks?${new URLSearchParams({
+                    sector: selectedSector,
+                    limit: '10000', // Show all stocks in sector
+                  }).toString()}`}
+                  target="_blank"
+                  className="text-sm text-primary hover:underline flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-background transition-colors"
+                >
+                  <List className="h-4 w-4" />
+                  View Stocks
+                  <ExternalLink className="h-3 w-3" />
+                </Link>
               </div>
             </div>
           )}
