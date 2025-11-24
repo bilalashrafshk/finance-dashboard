@@ -239,12 +239,28 @@ export async function GET(request: NextRequest) {
     })
   } catch (error: any) {
     console.error('[Economic Data API] Error fetching economic data:', error)
+    
+    // Provide more specific error messages
+    let errorMessage = error.message || 'Unknown error'
+    let statusCode = 500
+    
+    if (error.message?.includes('does not exist') || error.message?.includes('relation')) {
+      errorMessage = 'Database tables do not exist. Please run the migration script or SQL schema.'
+      statusCode = 500
+    } else if (error.message?.includes('SBP_API_KEY')) {
+      errorMessage = 'SBP_API_KEY environment variable is not set'
+      statusCode = 500
+    }
+    
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to fetch economic data',
-        details: error.message 
+        details: errorMessage,
+        hint: error.message?.includes('does not exist') 
+          ? 'Run the SQL from scripts/create-sbp-economic-tables.sql in your Neon SQL Editor'
+          : undefined
       },
-      { status: 500 }
+      { status: statusCode }
     )
   }
 }
