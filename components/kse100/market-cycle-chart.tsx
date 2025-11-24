@@ -1,9 +1,11 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useTheme } from "next-themes"
 import { Loader2 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
   ResponsiveContainer, 
   LineChart, 
@@ -14,7 +16,7 @@ import {
   Legend,
   CartesianGrid
 } from "recharts"
-import { normalizeCyclesForChart, type MarketCycle } from "@/lib/algorithms/market-cycle-detection"
+import { normalizeCyclesForChart, detectMarketCycles, type MarketCycle } from "@/lib/algorithms/market-cycle-detection"
 import type { PriceDataPoint } from "@/lib/asset-screener/metrics-calculations"
 
 interface MarketCycleChartProps {
@@ -38,6 +40,13 @@ const CYCLE_COLORS = [
   "#22c55e", // green-500
 ]
 
+const SERIES_KEY = 'TS_GP_ER_FAERPKR_M.E00220'
+
+interface ExchangeRateData {
+  date: string
+  value: number
+}
+
 // CustomTooltip component that shows all cycles with ROI
 export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) {
   const { theme } = useTheme()
@@ -46,6 +55,16 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
   const [cycles, setCycles] = useState<MarketCycle[]>([])
   const [visibleCycles, setVisibleCycles] = useState<Set<string>>(new Set())
   const [isDark, setIsDark] = useState(false)
+  const [currency, setCurrency] = useState<'PKR' | 'USD'>('PKR')
+  
+  // Cache for exchange rate data
+  const exchangeRateCacheRef = useRef<{
+    data: ExchangeRateData[]
+    map: Map<string, number>
+    timestamp: number
+  } | null>(null)
+  
+  const EXCHANGE_RATE_CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours
 
   // Detect theme
   useEffect(() => {
@@ -61,6 +80,89 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
     
     return () => observer.disconnect()
   }, [])
+
+  // Load exchange rate data with caching
+  const loadExchangeRateData = useCallback(async (): Promise<Map<string, number>> => {
+    const now = Date.now()
+    
+    // Check cache
+    if (exchangeRateCacheRef.current && 
+        (now - exchangeRateCacheRef.current.timestamp) < EXCHANGE_RATE_CACHE_DURATION) {
+      return exchangeRateCacheRef.current.map
+    }
+
+    // Fetch exchange rate data
+    const exchangeResponse = await fetch(`/api/sbp/economic-data?seriesKey=${encodeURIComponent(SERIES_KEY)}`)
+    if (!exchangeResponse.ok) {
+      throw new Error('Failed to fetch exchange rate data')
+    }
+    const exchangeResult = await exchangeResponse.json()
+    const exchangeData: ExchangeRateData[] = exchangeResult.data || []
+
+    if (exchangeData.length === 0) {
+      throw new Error('No exchange rate data available')
+    }
+
+    // Sort exchange data by date
+    const sortedExchangeData = [...exchangeData].sort((a, b) => 
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+    )
+
+    // Create a map of exchange rates by month (YYYY-MM format)
+    const exchangeRateMap = new Map<string, number>()
+    for (const item of sortedExchangeData) {
+      const date = new Date(item.date)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      // Store the latest exchange rate for each month
+      exchangeRateMap.set(monthKey, item.value)
+    }
+
+    // Update cache
+    exchangeRateCacheRef.current = {
+      data: sortedExchangeData,
+      map: exchangeRateMap,
+      timestamp: now
+    }
+
+    return exchangeRateMap
+  }, [])
+
+  // Convert price data to USD
+  const convertToUSD = useCallback(async (data: PriceDataPoint[]): Promise<PriceDataPoint[]> => {
+    const exchangeRateMap = await loadExchangeRateData()
+    
+    const converted: PriceDataPoint[] = []
+    for (const point of data) {
+      const priceDate = new Date(point.date)
+      const monthKey = `${priceDate.getFullYear()}-${String(priceDate.getMonth() + 1).padStart(2, '0')}`
+      
+      // Find the exchange rate for this month (or closest previous month)
+      let exchangeRate: number | null = null
+      if (exchangeRateMap.has(monthKey)) {
+        exchangeRate = exchangeRateMap.get(monthKey)!
+      } else {
+        // Find closest previous month's exchange rate
+        for (let i = 1; i <= 12; i++) {
+          const checkDate = new Date(priceDate)
+          checkDate.setMonth(checkDate.getMonth() - i)
+          const checkKey = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}`
+          if (exchangeRateMap.has(checkKey)) {
+            exchangeRate = exchangeRateMap.get(checkKey)!
+            break
+          }
+        }
+      }
+
+      if (exchangeRate !== null) {
+        converted.push({
+          date: point.date,
+          close: point.close / exchangeRate
+        })
+      }
+    }
+
+    return converted
+  }, [loadExchangeRateData])
 
   // Fetch KSE100 data if not provided
   useEffect(() => {
@@ -95,7 +197,6 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
           throw new Error('Invalid data format')
         }
       } catch (error) {
-        console.error('Error loading KSE100 data:', error)
         setPriceData([])
       } finally {
         setLoading(false)
@@ -105,7 +206,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
     loadData()
   }, [providedData])
 
-  // Load cycles from API (saved cycles + current cycle)
+  // Load cycles from API (saved cycles + current cycle) or detect client-side for USD
   useEffect(() => {
     const loadCycles = async () => {
       if (priceData.length === 0) {
@@ -114,57 +215,69 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
 
       setLoading(true)
       try {
-        // Fetch cycles from API (handles saved cycles + detects new ones)
-        const response = await fetch('/api/market-cycles?assetType=kse100&symbol=KSE100')
+        let dataToUse = priceData
         
-        if (!response.ok) {
-          throw new Error('Failed to fetch market cycles')
+        // Convert to USD if needed
+        if (currency === 'USD') {
+          dataToUse = await convertToUSD(priceData)
         }
-        
-        const data = await response.json()
-        
-        // Convert cycles to MarketCycle format (from cache + current)
-        const allCycles: MarketCycle[] = data.allCycles.map((c: any) => ({
-          cycleId: c.cycleId,
-          cycleName: c.cycleName,
-          startDate: c.startDate,
-          endDate: c.endDate,
-          startPrice: c.startPrice,
-          endPrice: c.endPrice,
-          roi: c.roi,
-          durationTradingDays: c.durationTradingDays,
-          // For charting, we need to generate priceData from historical data
-          priceData: []
-        }))
-        
-        // Generate priceData for each cycle from historical data
-        const cyclesWithData = allCycles.map(cycle => {
-          const startDate = new Date(cycle.startDate)
-          const endDate = new Date(cycle.endDate)
+
+        if (currency === 'PKR') {
+          // Use API for PKR (with caching)
+          const response = await fetch('/api/market-cycles?assetType=kse100&symbol=KSE100')
           
-          const cyclePriceData = priceData
-            .filter(p => {
-              const pDate = new Date(p.date)
-              return pDate >= startDate && pDate <= endDate
-            })
-            .map((p, idx) => ({
-              date: p.date,
-              price: p.close,
-              tradingDay: idx
-            }))
-          
-          return {
-            ...cycle,
-            priceData: cyclePriceData
+          if (!response.ok) {
+            throw new Error('Failed to fetch market cycles')
           }
-        })
-        
-        setCycles(cyclesWithData)
-        
-        // Initialize all cycles as visible
-        setVisibleCycles(new Set(cyclesWithData.map(c => c.cycleName)))
+          
+          const data = await response.json()
+          
+          // Convert cycles to MarketCycle format (from cache + current)
+          const allCycles: MarketCycle[] = data.allCycles.map((c: any) => ({
+            cycleId: c.cycleId,
+            cycleName: c.cycleName,
+            startDate: c.startDate,
+            endDate: c.endDate,
+            startPrice: c.startPrice,
+            endPrice: c.endPrice,
+            roi: c.roi,
+            durationTradingDays: c.durationTradingDays,
+            priceData: []
+          }))
+          
+          // Generate priceData for each cycle from historical data
+          const cyclesWithData = allCycles.map(cycle => {
+            const startDate = new Date(cycle.startDate)
+            const endDate = new Date(cycle.endDate)
+            
+            const cyclePriceData = priceData
+              .filter(p => {
+                const pDate = new Date(p.date)
+                return pDate >= startDate && pDate <= endDate
+              })
+              .map((p, idx) => ({
+                date: p.date,
+                price: p.close,
+                tradingDay: idx
+              }))
+            
+            return {
+              ...cycle,
+              priceData: cyclePriceData
+            }
+          })
+          
+          setCycles(cyclesWithData)
+          setVisibleCycles(new Set(cyclesWithData.map(c => c.cycleName)))
+        } else {
+          // For USD, detect cycles client-side on USD data
+          const detectedCycles = detectMarketCycles(dataToUse)
+          
+          // Use the priceData already calculated by detectMarketCycles
+          setCycles(detectedCycles)
+          setVisibleCycles(new Set(detectedCycles.map(c => c.cycleName)))
+        }
       } catch (error) {
-        console.error('Error loading cycles:', error)
         setCycles([])
       } finally {
         setLoading(false)
@@ -172,7 +285,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
     }
 
     loadCycles()
-  }, [priceData])
+  }, [priceData, currency, convertToUSD])
 
   // Prepare chart data
   const chartData = useMemo(() => {
@@ -297,7 +410,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Market Cycle ROI Chart - KSE100</CardTitle>
+          <CardTitle>Market Cycle ROI Chart - KSE100 ({currency})</CardTitle>
           <CardDescription>Detecting cycles from historical data...</CardDescription>
         </CardHeader>
         <CardContent>
@@ -313,7 +426,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Market Cycle ROI Chart - KSE100</CardTitle>
+          <CardTitle>Market Cycle ROI Chart - KSE100 ({currency})</CardTitle>
           <CardDescription>No cycles detected in the data</CardDescription>
         </CardHeader>
         <CardContent>
@@ -328,13 +441,26 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Market Cycle ROI Chart - KSE100</CardTitle>
+        <CardTitle>Market Cycle ROI Chart - KSE100 ({currency})</CardTitle>
         <CardDescription>
           Trough-to-peak cycles overlaid from 100% baseline. Click legend items to show/hide cycles.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
+          {/* Currency Selector */}
+          <div className="flex items-center gap-4 pb-4 border-b">
+            <Label htmlFor="currency-select">Currency:</Label>
+            <Select value={currency} onValueChange={(value) => setCurrency(value as 'PKR' | 'USD')}>
+              <SelectTrigger id="currency-select" className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="PKR">PKR</SelectItem>
+                <SelectItem value="USD">USD</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           {/* Cycle Summary Table */}
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
@@ -388,9 +514,11 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
                         {cycle.durationTradingDays} days ({durationYears} yrs)
                       </td>
                       <td className="text-right p-2 text-muted-foreground font-mono">
+                        {currency === 'USD' ? '$' : 'PKR '}
                         {cycle.startPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="text-right p-2 text-muted-foreground font-mono">
+                        {currency === 'USD' ? '$' : 'PKR '}
                         {cycle.endPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                     </tr>
@@ -425,7 +553,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
                   stroke={axisColor}
                   tick={{ fill: axisColor, fontSize: 12 }}
                   label={{ 
-                    value: 'Normalized Price (%)', 
+                    value: `Normalized Price (%) - ${currency}`, 
                     angle: -90, 
                     position: 'insideLeft', 
                     fill: axisLabelColor, 
