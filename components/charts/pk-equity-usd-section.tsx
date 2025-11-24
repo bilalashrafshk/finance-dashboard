@@ -68,7 +68,6 @@ export function PKEquityUSDSection() {
   const { toast } = useToast()
   
   // Asset selection
-  const [searchQuery, setSearchQuery] = useState('')
   const [pkStocks, setPkStocks] = useState<StockInfo[]>([])
   const [loadingStocks, setLoadingStocks] = useState(false)
   const [selectedSymbol, setSelectedSymbol] = useState<string>('')
@@ -78,6 +77,9 @@ export function PKEquityUSDSection() {
   // Time frame selection
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>(getDefaultPeriod('daily'))
   const [customRange, setCustomRange] = useState<DateRange>({ startDate: null, endDate: null })
+  
+  // Frequency selection
+  const [frequency, setFrequency] = useState<'daily' | 'weekly' | 'monthly'>('daily')
   
   // Data
   const [allCombinedData, setAllCombinedData] = useState<CombinedDataPoint[]>([])
@@ -112,18 +114,62 @@ export function PKEquityUSDSection() {
     }
   }
 
-  // Filter stocks by search
-  const filteredStocks = useMemo(() => {
-    if (!searchQuery.trim()) return pkStocks
-    const query = searchQuery.toLowerCase()
-    return pkStocks.filter(
-      stock =>
-        stock.symbol.toLowerCase().includes(query) ||
-        stock.name.toLowerCase().includes(query) ||
-        stock.sector?.toLowerCase().includes(query) ||
-        stock.industry?.toLowerCase().includes(query)
-    )
-  }, [pkStocks, searchQuery])
+  // Aggregate data by frequency
+  const aggregateByFrequency = (data: CombinedDataPoint[], freq: 'daily' | 'weekly' | 'monthly'): CombinedDataPoint[] => {
+    if (freq === 'daily' || data.length === 0) {
+      return data
+    }
+
+    const aggregated: CombinedDataPoint[] = []
+    const grouped = new Map<string, CombinedDataPoint[]>()
+
+    // Group data points
+    data.forEach(point => {
+      const date = new Date(point.date)
+      let key: string
+
+      if (freq === 'weekly') {
+        // Get the start of the week (Monday = 1, Sunday = 0)
+        const weekStart = new Date(date)
+        const day = weekStart.getDay()
+        const diff = weekStart.getDate() - day + (day === 0 ? -6 : 1) // Adjust to Monday
+        weekStart.setDate(diff)
+        weekStart.setHours(0, 0, 0, 0)
+        // Use year and week number
+        const year = weekStart.getFullYear()
+        const weekNum = getWeekNumber(weekStart)
+        key = `${year}-W${String(weekNum).padStart(2, '0')}`
+      } else if (freq === 'monthly') {
+        key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      } else {
+        key = point.date
+      }
+
+      if (!grouped.has(key)) {
+        grouped.set(key, [])
+      }
+      grouped.get(key)!.push(point)
+    })
+
+    // For each group, take the last data point (most recent)
+    grouped.forEach((points) => {
+      // Sort by date and take the last one
+      const sorted = points.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      aggregated.push(sorted[sorted.length - 1])
+    })
+
+    // Sort aggregated data by date
+    return aggregated.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  }
+
+  // Helper function to get week number
+  const getWeekNumber = (date: Date): number => {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+    const dayNum = d.getUTCDay() || 7
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+  }
 
   // Load data when symbol changes
   useEffect(() => {
@@ -243,10 +289,11 @@ export function PKEquityUSDSection() {
     }
   }
 
-  // Filter data based on selected time frame
+  // Filter data based on selected time frame and aggregate by frequency
   const data = useMemo(() => {
-    return filterDataByTimeFrame(allCombinedData, chartPeriod, customRange)
-  }, [allCombinedData, chartPeriod, customRange])
+    const filtered = filterDataByTimeFrame(allCombinedData, chartPeriod, customRange)
+    return aggregateByFrequency(filtered, frequency)
+  }, [allCombinedData, chartPeriod, customRange, frequency])
 
   // Prepare chart data
   const chartData = useMemo(() => {
@@ -254,8 +301,20 @@ export function PKEquityUSDSection() {
       return null
     }
 
+    // Format labels based on frequency
+    const formatLabel = (date: string) => {
+      const d = new Date(date)
+      if (frequency === 'monthly') {
+        return format(d, 'MMM yyyy')
+      } else if (frequency === 'weekly') {
+        return format(d, 'MMM dd, yyyy')
+      } else {
+        return format(d, 'MMM dd, yyyy')
+      }
+    }
+
     return {
-      labels: data.map(d => format(new Date(d.date), 'MMM dd, yyyy')),
+      labels: data.map(d => formatLabel(d.date)),
       datasets: [
         {
           label: `${selectedAssetName || selectedSymbol} (USD)`,
@@ -264,12 +323,12 @@ export function PKEquityUSDSection() {
           backgroundColor: `${colors.price || 'rgb(59, 130, 246)'}20`,
           fill: true,
           tension: 0.4,
-          pointRadius: 2,
-          pointHoverRadius: 5,
+          pointRadius: frequency === 'daily' ? 2 : 4,
+          pointHoverRadius: frequency === 'daily' ? 5 : 7,
         },
       ],
     }
-  }, [data, colors, selectedAssetName, selectedSymbol])
+  }, [data, colors, selectedAssetName, selectedSymbol, frequency])
 
   const chartOptions = useMemo(() => ({
     responsive: true,
@@ -373,15 +432,6 @@ export function PKEquityUSDSection() {
         <CardContent className="space-y-6">
           {/* Asset Selection */}
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="asset-search">Search Asset</Label>
-              <Input
-                id="asset-search"
-                placeholder="Search by symbol, name, sector, or industry..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
             {loadingStocks ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -402,7 +452,7 @@ export function PKEquityUSDSection() {
                     <SelectValue placeholder="Select a PK equity or index" />
                   </SelectTrigger>
                   <SelectContent>
-                    {filteredStocks.slice(0, 100).map((stock) => (
+                    {pkStocks.map((stock) => (
                       <SelectItem key={stock.symbol} value={stock.symbol}>
                         {stock.symbol} - {stock.name}
                       </SelectItem>
@@ -413,34 +463,49 @@ export function PKEquityUSDSection() {
             )}
           </div>
 
-          {/* Time Frame Selector */}
+          {/* Time Frame and Frequency Selectors */}
           {selectedSymbol && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="time-frame">Time Frame</Label>
-                <Select value={chartPeriod} onValueChange={(value) => {
-                  setChartPeriod(value as ChartPeriod)
-                  if (value !== 'CUSTOM') {
-                    setCustomRange({ startDate: null, endDate: null })
-                  }
-                }}>
-                  <SelectTrigger id="time-frame">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1M">Last 1 Month</SelectItem>
-                    <SelectItem value="3M">Last 3 Months</SelectItem>
-                    <SelectItem value="6M">Last 6 Months</SelectItem>
-                    <SelectItem value="1Y">Last 1 Year</SelectItem>
-                    <SelectItem value="2Y">Last 2 Years</SelectItem>
-                    <SelectItem value="5Y">Last 5 Years</SelectItem>
-                    <SelectItem value="ALL">All Time</SelectItem>
-                    <SelectItem value="CUSTOM">Custom Range</SelectItem>
-                  </SelectContent>
-                </Select>
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="time-frame">Time Frame</Label>
+                  <Select value={chartPeriod} onValueChange={(value) => {
+                    setChartPeriod(value as ChartPeriod)
+                    if (value !== 'CUSTOM') {
+                      setCustomRange({ startDate: null, endDate: null })
+                    }
+                  }}>
+                    <SelectTrigger id="time-frame">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1M">Last 1 Month</SelectItem>
+                      <SelectItem value="3M">Last 3 Months</SelectItem>
+                      <SelectItem value="6M">Last 6 Months</SelectItem>
+                      <SelectItem value="1Y">Last 1 Year</SelectItem>
+                      <SelectItem value="2Y">Last 2 Years</SelectItem>
+                      <SelectItem value="5Y">Last 5 Years</SelectItem>
+                      <SelectItem value="ALL">All Time</SelectItem>
+                      <SelectItem value="CUSTOM">Custom Range</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="frequency">Frequency</Label>
+                  <Select value={frequency} onValueChange={(value) => setFrequency(value as 'daily' | 'weekly' | 'monthly')}>
+                    <SelectTrigger id="frequency">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="daily">Daily</SelectItem>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               {chartPeriod === 'CUSTOM' && (
-                <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="start-date">Start Date</Label>
                     <Input
@@ -459,9 +524,9 @@ export function PKEquityUSDSection() {
                       onChange={(e) => setCustomRange({ ...customRange, endDate: e.target.value || null })}
                     />
                   </div>
-                </>
+                </div>
               )}
-            </div>
+            </>
           )}
 
           {/* Current Value Display */}
