@@ -1701,14 +1701,21 @@ export async function insertSBPEconomicData(
       }
       
       // Update metadata
+      // Get total records count first
+      const countResult = await client.query(
+        'SELECT COUNT(*) as count FROM sbp_economic_data WHERE series_key = $1',
+        [seriesKey]
+      )
+      const totalRecords = parseInt(countResult.rows[0].count) || 0
+      
       await client.query(
         `INSERT INTO sbp_economic_metadata (series_key, last_stored_date, last_updated, total_records, source)
-         VALUES ($1, $2, NOW(), (SELECT COUNT(*) FROM sbp_economic_data WHERE series_key = $1), $3)
+         VALUES ($1, $2, NOW(), $3, $4)
          ON CONFLICT (series_key) DO UPDATE SET
            last_stored_date = EXCLUDED.last_stored_date,
            last_updated = NOW(),
-           total_records = (SELECT COUNT(*) FROM sbp_economic_data WHERE series_key = $1)`,
-        [seriesKey, latestDate, 'sbp-easydata']
+           total_records = $3`,
+        [seriesKey, latestDate, totalRecords, 'sbp-easydata']
       )
       
       await client.query('COMMIT')
