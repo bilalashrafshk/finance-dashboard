@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { Loader2, Info, Settings, ExternalLink, List } from "lucide-react"
 import Link from "next/link"
 import { Line } from "react-chartjs-2"
@@ -80,9 +81,30 @@ export function AdvanceDeclineChart({
   const [availableSectors, setAvailableSectors] = useState<string[]>([])
   const [topN, setTopN] = useState(limit)
   const [totalStocksInSector, setTotalStocksInSector] = useState<number | null>(null)
+  
+  // Initialize dates: use props if provided, otherwise default to 1 year ago to today
+  const getDefaultStartDate = (): string => {
+    if (startDate) return startDate
+    const date = new Date()
+    date.setFullYear(date.getFullYear() - 1)
+    return date.toISOString().split('T')[0]
+  }
+  const getDefaultEndDate = (): string => {
+    if (endDate) return endDate
+    return new Date().toISOString().split('T')[0]
+  }
+  
+  const [internalStartDate, setInternalStartDate] = useState<string>(getDefaultStartDate())
+  const [internalEndDate, setInternalEndDate] = useState<string>(getDefaultEndDate())
   const { theme } = useTheme()
   const colors = getThemeColors()
   const { toast } = useToast()
+
+  // Update internal dates when props change
+  useEffect(() => {
+    if (startDate) setInternalStartDate(startDate)
+    if (endDate) setInternalEndDate(endDate)
+  }, [startDate, endDate])
 
   // Fetch available sectors on mount
   useEffect(() => {
@@ -118,8 +140,8 @@ export function AdvanceDeclineChart({
       try {
         // Fetch AD Line data
         const params = new URLSearchParams()
-        if (startDate) params.append('startDate', startDate)
-        if (endDate) params.append('endDate', endDate)
+        if (internalStartDate) params.append('startDate', internalStartDate)
+        if (internalEndDate) params.append('endDate', internalEndDate)
         params.append('limit', topN.toString())
         if (selectedSector && selectedSector !== 'all') {
           params.append('sector', selectedSector)
@@ -141,11 +163,11 @@ export function AdvanceDeclineChart({
         }
 
         // Fetch sector index if sector is selected
-        if (selectedSector && selectedSector !== 'all' && startDate) {
+        if (selectedSector && selectedSector !== 'all' && internalStartDate) {
           const sectorIndexParams = new URLSearchParams()
           sectorIndexParams.append('sector', selectedSector)
-          sectorIndexParams.append('startDate', startDate)
-          if (endDate) sectorIndexParams.append('endDate', endDate)
+          sectorIndexParams.append('startDate', internalStartDate)
+          if (internalEndDate) sectorIndexParams.append('endDate', internalEndDate)
           
           const sectorIndexResponse = await fetch(`/api/sector-index?${sectorIndexParams.toString()}`)
           
@@ -167,8 +189,8 @@ export function AdvanceDeclineChart({
           const kse100Params = new URLSearchParams()
           kse100Params.append('assetType', 'kse100')
           kse100Params.append('symbol', 'KSE100')
-          if (startDate) kse100Params.append('startDate', startDate)
-          if (endDate) kse100Params.append('endDate', endDate)
+          if (internalStartDate) kse100Params.append('startDate', internalStartDate)
+          if (internalEndDate) kse100Params.append('endDate', internalEndDate)
           
           const kse100Response = await fetch(`/api/historical-data?${kse100Params.toString()}`)
           
@@ -218,7 +240,7 @@ export function AdvanceDeclineChart({
     }
 
     fetchData()
-  }, [startDate, endDate, topN, showKse100, selectedSector, toast])
+  }, [internalStartDate, internalEndDate, topN, showKse100, selectedSector, toast])
 
   const chartData = useMemo(() => {
     if (!data || data.length === 0) {
@@ -640,7 +662,7 @@ export function AdvanceDeclineChart({
                 <Settings className="h-5 w-5" />
                 Chart Settings
               </CardTitle>
-              <CardDescription>Configure filters and overlays</CardDescription>
+              <CardDescription>Configure date range, filters and overlays</CardDescription>
             </div>
             <Button
               variant="ghost"
@@ -653,6 +675,31 @@ export function AdvanceDeclineChart({
         </CardHeader>
         {showSettings && (
           <CardContent className="space-y-4">
+            {/* Date Range */}
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="start-date">Start Date</Label>
+                <Input
+                  id="start-date"
+                  type="date"
+                  value={internalStartDate}
+                  onChange={(e) => setInternalStartDate(e.target.value)}
+                  max={internalEndDate}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="end-date">End Date</Label>
+                <Input
+                  id="end-date"
+                  type="date"
+                  value={internalEndDate}
+                  onChange={(e) => setInternalEndDate(e.target.value)}
+                  min={internalStartDate}
+                  max={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+            </div>
+
             {/* Sector Filter */}
             <div className="space-y-2">
               <Label htmlFor="sector-filter">Sector</Label>
