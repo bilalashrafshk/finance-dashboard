@@ -261,6 +261,24 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
                 tradingDay: idx
               }))
             
+            // Find the actual peak (maximum price) in the cycle
+            if (cyclePriceData.length > 0) {
+              const maxPricePoint = cyclePriceData.reduce((max, point) => 
+                point.price > max.price ? point : max
+              )
+              
+              // Calculate actual peak ROI from start to maximum price
+              const actualPeakROI = ((maxPricePoint.price - cycle.startPrice) / cycle.startPrice) * 100
+              
+              return {
+                ...cycle,
+                endPrice: maxPricePoint.price,
+                endDate: maxPricePoint.date,
+                roi: actualPeakROI,
+                priceData: cyclePriceData
+              }
+            }
+            
             return {
               ...cycle,
               priceData: cyclePriceData
@@ -273,9 +291,29 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
           // For USD, detect cycles client-side on USD data
           const detectedCycles = detectMarketCycles(dataToUse)
           
-          // Use the priceData already calculated by detectMarketCycles
-          setCycles(detectedCycles)
-          setVisibleCycles(new Set(detectedCycles.map(c => c.cycleName)))
+          // Recalculate peak ROI from actual maximum price in each cycle
+          const cyclesWithCorrectPeakROI = detectedCycles.map(cycle => {
+            if (cycle.priceData.length > 0) {
+              // Find the actual peak (maximum price) in the cycle
+              const maxPricePoint = cycle.priceData.reduce((max, point) => 
+                point.price > max.price ? point : max
+              )
+              
+              // Calculate actual peak ROI from start to maximum price
+              const actualPeakROI = ((maxPricePoint.price - cycle.startPrice) / cycle.startPrice) * 100
+              
+              return {
+                ...cycle,
+                endPrice: maxPricePoint.price,
+                endDate: maxPricePoint.date,
+                roi: actualPeakROI
+              }
+            }
+            return cycle
+          })
+          
+          setCycles(cyclesWithCorrectPeakROI)
+          setVisibleCycles(new Set(cyclesWithCorrectPeakROI.map(c => c.cycleName)))
         }
       } catch (error) {
         setCycles([])
