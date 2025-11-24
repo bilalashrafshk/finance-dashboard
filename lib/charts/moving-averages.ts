@@ -1,6 +1,9 @@
 /**
  * Moving Average Calculations and Data Resampling Utilities
+ * Uses technicalindicators library for optimized calculations
  */
+
+import { SMA, EMA } from 'technicalindicators'
 
 export interface PriceDataPoint {
   date: string
@@ -82,69 +85,47 @@ function getWeekEndSunday(date: Date): Date {
 }
 
 /**
- * Calculate Simple Moving Average (SMA)
+ * Calculate Simple Moving Average (SMA) using optimized library
  */
 export function calculateSMA(
   data: PriceDataPoint[],
   period: number
 ): number[] {
-  if (period <= 0 || period > data.length) {
+  if (period <= 0 || period > data.length || data.length === 0) {
     return new Array(data.length).fill(NaN)
   }
 
-  const sma: number[] = []
-  for (let i = 0; i < data.length; i++) {
-    if (i < period - 1) {
-      sma.push(NaN)
-    } else {
-      const sum = data
-        .slice(i - period + 1, i + 1)
-        .reduce((acc, point) => acc + point.close, 0)
-      sma.push(sum / period)
-    }
-  }
-  return sma
+  // Extract close prices as array
+  const closes = data.map(d => d.close)
+  
+  // Use technicalindicators library for optimized calculation
+  const smaValues = SMA.calculate({ values: closes, period })
+  
+  // Pad with NaN for initial values
+  const padding = data.length - smaValues.length
+  return [...new Array(padding).fill(NaN), ...smaValues]
 }
 
 /**
- * Calculate Exponential Moving Average (EMA)
+ * Calculate Exponential Moving Average (EMA) using optimized library
  */
 export function calculateEMA(
   data: PriceDataPoint[],
   period: number
 ): number[] {
-  if (period <= 0 || period > data.length) {
+  if (period <= 0 || period > data.length || data.length === 0) {
     return new Array(data.length).fill(NaN)
   }
 
-  const ema: number[] = []
-  const multiplier = 2 / (period + 1)
-
-  // Start with SMA for the first value
-  let sum = 0
-  for (let i = 0; i < period && i < data.length; i++) {
-    sum += data[i].close
-  }
-  const initialSMA = sum / Math.min(period, data.length)
-  ema.push(initialSMA)
-
-  // Calculate EMA for remaining values
-  for (let i = 1; i < data.length; i++) {
-    if (i < period) {
-      // Still building up to period, use SMA
-      sum = 0
-      for (let j = 0; j <= i; j++) {
-        sum += data[j].close
-      }
-      ema.push(sum / (i + 1))
-    } else {
-      // Full EMA calculation
-      const currentEMA = (data[i].close - ema[i - 1]) * multiplier + ema[i - 1]
-      ema.push(currentEMA)
-    }
-  }
-
-  return ema
+  // Extract close prices as array
+  const closes = data.map(d => d.close)
+  
+  // Use technicalindicators library for optimized calculation
+  const emaValues = EMA.calculate({ values: closes, period })
+  
+  // Pad with NaN for initial values
+  const padding = data.length - emaValues.length
+  return [...new Array(padding).fill(NaN), ...emaValues]
 }
 
 /**

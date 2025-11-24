@@ -258,9 +258,10 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     return resampleData(allData, frequency)
   }, [allData, frequency])
 
-  // Calculate moving averages
+  // Calculate moving averages - optimized
   const maData = useMemo(() => {
     const maResults: Record<string, number[]> = {}
+    
     movingAverages.forEach((ma) => {
       if (!ma.enabled) return
 
@@ -271,39 +272,60 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
         dataForMA = resampleData(allData, ma.periodType)
       }
 
-      // Calculate the moving average
+      // Calculate the moving average using optimized library
       const maValues = calculateMovingAverage(dataForMA, ma.type, ma.length)
 
-      // Align with resampledData dates
-      const alignedValues: number[] = []
-      const maDateMap = new Map<string, number>()
-      dataForMA.forEach((point, idx) => {
-        if (idx < maValues.length && !isNaN(maValues[idx])) {
-          maDateMap.set(point.date, maValues[idx])
-        }
-      })
-
-      // For each date in resampledData, find the closest MA value
-      resampledData.forEach((point) => {
-        const pointDate = new Date(point.date)
-        let closestValue = NaN
-        let closestDateDiff = Infinity
-
-        // Find the closest MA date
-        maDateMap.forEach((value, maDate) => {
-          const maDateObj = new Date(maDate)
-          const diff = Math.abs(pointDate.getTime() - maDateObj.getTime())
-          if (diff < closestDateDiff) {
-            closestDateDiff = diff
-            closestValue = value
+      // Optimized alignment: if frequencies match, use direct mapping
+      if (ma.periodType === frequency) {
+        maResults[ma.id] = maValues
+      } else {
+        // Only do date alignment if frequencies differ
+        const alignedValues: number[] = []
+        const maDateMap = new Map<string, number>()
+        
+        // Build date map once
+        dataForMA.forEach((point, idx) => {
+          if (idx < maValues.length && !isNaN(maValues[idx])) {
+            maDateMap.set(point.date, maValues[idx])
           }
         })
 
-        alignedValues.push(closestValue)
-      })
+        // Use binary search-like approach for faster lookups
+        const maDates = Array.from(maDateMap.keys()).sort()
+        const maDateTimestamps = maDates.map(d => new Date(d).getTime())
 
-      maResults[ma.id] = alignedValues
+        resampledData.forEach((point) => {
+          const pointTimestamp = new Date(point.date).getTime()
+          
+          // Binary search for closest date
+          let left = 0
+          let right = maDateTimestamps.length - 1
+          let closestIdx = 0
+          let minDiff = Infinity
+
+          while (left <= right) {
+            const mid = Math.floor((left + right) / 2)
+            const diff = Math.abs(maDateTimestamps[mid] - pointTimestamp)
+            
+            if (diff < minDiff) {
+              minDiff = diff
+              closestIdx = mid
+            }
+            
+            if (maDateTimestamps[mid] < pointTimestamp) {
+              left = mid + 1
+            } else {
+              right = mid - 1
+            }
+          }
+
+          alignedValues.push(maDateMap.get(maDates[closestIdx]) ?? NaN)
+        })
+
+        maResults[ma.id] = alignedValues
+      }
     })
+    
     return maResults
   }, [resampledData, movingAverages, frequency, allData])
 
@@ -316,17 +338,20 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     return 'USD'
   }
 
-  // Prepare chart data with time-based x-axis
+  // Prepare chart data with time-based x-axis - optimized
   const chartData = useMemo(() => {
     if (resampledData.length === 0) {
       return null
     }
 
+    // Pre-compute timestamps once
+    const timestamps = resampledData.map(d => new Date(d.date).getTime())
+
     const datasets: any[] = [
       {
         label: `${selectedSymbol} Price`,
-        data: resampledData.map(d => ({
-          x: new Date(d.date).getTime(),
+        data: resampledData.map((d, idx) => ({
+          x: timestamps[idx],
           y: d.close,
         })),
         borderColor: colors.price || 'rgb(59, 130, 246)',
@@ -339,27 +364,27 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
       },
     ]
 
-    // Add moving averages
+    // Add moving averages - only process enabled ones
     movingAverages.forEach((ma) => {
       if (!ma.enabled) return
-      const values = maData[ma.id] || []
-      if (values.length > 0) {
-        datasets.push({
-          label: `${ma.type} ${generatePeriodString(ma.length, ma.periodType)}`,
-          data: resampledData.map((d, idx) => ({
-            x: new Date(d.date).getTime(),
-            y: values[idx] || null,
-          })),
-          borderColor: ma.color || MA_COLORS[0],
-          backgroundColor: 'transparent',
-          fill: false,
-          tension: 0.1,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          borderWidth: 1.5,
-          borderDash: ma.type === 'EMA' ? [5, 5] : undefined,
-        })
-      }
+      const values = maData[ma.id]
+      if (!values || values.length === 0) return
+      
+      datasets.push({
+        label: `${ma.type} ${generatePeriodString(ma.length, ma.periodType)}`,
+        data: resampledData.map((d, idx) => ({
+          x: timestamps[idx],
+          y: values[idx] || null,
+        })),
+        borderColor: ma.color || MA_COLORS[0],
+        backgroundColor: 'transparent',
+        fill: false,
+        tension: 0.1,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        borderWidth: 1.5,
+        borderDash: ma.type === 'EMA' ? [5, 5] : undefined,
+      })
     })
 
     return {
@@ -367,17 +392,16 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     }
   }, [resampledData, movingAverages, maData, selectedSymbol, colors])
 
-  // Calculate initial zoom range (show last 2 years by default)
+  // Calculate initial zoom range (show last 1 year by default, but allow full pan/zoom)
   const getInitialZoomRange = useMemo(() => {
     if (resampledData.length === 0) return null
     
-    const now = new Date().getTime()
-    const twoYearsAgo = now - (2 * 365 * 24 * 60 * 60 * 1000)
-    const firstDate = new Date(resampledData[0].date).getTime()
     const lastDate = new Date(resampledData[resampledData.length - 1].date).getTime()
+    const oneYearAgo = lastDate - (365 * 24 * 60 * 60 * 1000)
+    const firstDate = new Date(resampledData[0].date).getTime()
     
-    // Use the more recent of: 2 years ago or first available date
-    const minDate = Math.max(twoYearsAgo, firstDate)
+    // Start with last 1 year, but allow panning to see all data
+    const minDate = Math.max(oneYearAgo, firstDate)
     
     return {
       min: minDate,
@@ -429,6 +453,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
           zoom: {
             wheel: {
               enabled: true,
+              speed: 0.1,
             },
             pinch: {
               enabled: true,
@@ -438,6 +463,8 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
           pan: {
             enabled: true,
             mode: 'x' as const,
+            threshold: 5,
+            modifierKey: null, // Allow panning without modifier key
           },
           limits: {
             x: {
@@ -472,6 +499,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
               month: 'MMM yyyy',
             },
           },
+          // Set initial view to last 1 year, but pan/zoom allows accessing all data
           ...(initialZoom ? {
             min: initialZoom.min,
             max: initialZoom.max,
@@ -558,16 +586,18 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
 
   const currency = getCurrency()
 
-  // Reset zoom function
+  // Reset zoom function - show all data
   const resetZoom = () => {
     if (chartRef.current) {
       const chart = chartRef.current.chartInstance || chartRef.current
       if (chart && chart.resetZoom) {
         chart.resetZoom()
-      } else if (chart && chart.scales && chart.scales.x) {
-        // Manual reset if resetZoom is not available
-        chart.scales.x.options.min = undefined
-        chart.scales.x.options.max = undefined
+      } else if (chart && chart.scales && chart.scales.x && resampledData.length > 0) {
+        // Manual reset to show all data
+        const firstDate = new Date(resampledData[0].date).getTime()
+        const lastDate = new Date(resampledData[resampledData.length - 1].date).getTime()
+        chart.scales.x.options.min = firstDate
+        chart.scales.x.options.max = lastDate
         chart.update('none')
       }
     }
@@ -820,7 +850,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
           ) : (
             <div className="space-y-2">
               <div className="text-xs text-muted-foreground">
-                💡 Use mouse wheel to zoom, drag to pan. Chart shows last 2 years by default.
+                💡 Scroll to zoom, click and drag left/right to pan through all historical data. Chart starts with last 1 year.
               </div>
               <div className="h-[500px] w-full">
                 <Line ref={chartRef} data={chartData} options={chartOptions} />
