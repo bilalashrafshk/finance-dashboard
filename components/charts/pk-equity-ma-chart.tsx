@@ -10,21 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Loader2, Plus, X, TrendingUp, TrendingDown, ChevronDown, ChevronUp, RotateCcw } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { Line } from "react-chartjs-2"
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  TimeScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
-} from "chart.js"
-import zoomPlugin from "chartjs-plugin-zoom"
-import "chartjs-adapter-date-fns"
+import { createChart, IChartApi, ISeriesApi, LineStyleOptions, LineData, Time } from "lightweight-charts"
 import { format } from "date-fns"
 import { getThemeColors } from "@/lib/charts/theme-colors"
 import { useTheme } from "next-themes"
@@ -37,20 +23,6 @@ import {
   type Frequency,
   type MovingAverageType,
 } from "@/lib/charts/moving-averages"
-
-// Register Chart.js components
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  TimeScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
-  zoomPlugin
-)
 
 interface MovingAverageConfig {
   id: string
@@ -89,11 +61,21 @@ const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   'spx500': 'SPX500 Index',
 }
 
+// Convert date string to TradingView time format
+function dateToTime(dateStr: string): Time {
+  const date = new Date(dateStr)
+  return date.getTime() / 1000 as Time // TradingView uses Unix timestamp in seconds
+}
+
 export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAssetType }: PKEquityMAChartProps) {
   const { theme } = useTheme()
   const colors = getThemeColors()
   const { toast } = useToast()
-  const chartRef = useRef<any>(null)
+  const chartContainerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<IChartApi | null>(null)
+  const priceSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const maSeriesRefs = useRef<Map<string, ISeriesApi<'Line'>>>(new Map())
+  
   const [assetType, setAssetType] = useState<AssetType>(initialAssetType || 'pk-equity')
   const [selectedSymbol, setSelectedSymbol] = useState<string>(initialSymbol || '')
   const [availableSymbols, setAvailableSymbols] = useState<Array<{ symbol: string; name?: string }>>([])
@@ -123,6 +105,68 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     },
   ])
 
+  // Initialize chart
+  useEffect(() => {
+    if (!chartContainerRef.current) return
+
+    // Create chart with theme
+    const isDark = theme === 'dark'
+    const chart = createChart(chartContainerRef.current, {
+      layout: {
+        background: { type: 'solid', color: isDark ? colors.background : '#ffffff' },
+        textColor: colors.foreground,
+      },
+      grid: {
+        vertLines: { color: colors.grid },
+        horzLines: { color: colors.grid },
+      },
+      crosshair: {
+        mode: 0, // Normal crosshair
+      },
+      rightPriceScale: {
+        borderColor: colors.border,
+      },
+      timeScale: {
+        borderColor: colors.border,
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      width: chartContainerRef.current.clientWidth,
+      height: 500,
+    })
+
+    chartRef.current = chart
+
+    // Create price series
+    const priceSeries = chart.addLineSeries({
+      color: colors.price || '#3b82f6',
+      lineWidth: 2,
+      title: selectedSymbol || 'Price',
+    })
+    priceSeriesRef.current = priceSeries
+
+    // Handle resize
+    const handleResize = () => {
+      if (chartContainerRef.current && chartRef.current) {
+        chartRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+        })
+      }
+    }
+
+    window.addEventListener('resize', handleResize)
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      if (chartRef.current) {
+        chartRef.current.remove()
+        chartRef.current = null
+      }
+      priceSeriesRef.current = null
+      maSeriesRefs.current.clear()
+    }
+  }, [theme, colors, selectedSymbol])
+
   // Load available symbols based on asset type
   useEffect(() => {
     const loadSymbols = async () => {
@@ -142,8 +186,6 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
             }
           }
         } else if (assetType === 'us-equity') {
-          // For US equity, user can enter any symbol
-          // We'll allow manual entry
           symbols = []
         } else if (assetType === 'crypto') {
           try {
@@ -161,7 +203,6 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
         } else if (assetType === 'spx500') {
           symbols = [{ symbol: 'SPX500', name: 'S&P 500 Index' }]
         } else if (assetType === 'metals') {
-          // Common metals
           symbols = [
             { symbol: 'GOLD', name: 'Gold' },
             { symbol: 'SILVER', name: 'Silver' },
@@ -195,7 +236,6 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
       setError(null)
       try {
         let apiUrl = ''
-        let market: string | null = null
 
         if (assetType === 'pk-equity') {
           apiUrl = `/api/historical-data?assetType=pk-equity&symbol=${encodeURIComponent(selectedSymbol)}&market=PSX`
@@ -260,46 +300,38 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     return resampleData(allData, frequency)
   }, [allData, frequency])
 
-  // Calculate moving averages - optimized
+  // Calculate moving averages
   const maData = useMemo(() => {
     const maResults: Record<string, number[]> = {}
     
     movingAverages.forEach((ma) => {
       if (!ma.enabled) return
 
-      // Resample data to the MA period type if different from chart frequency
       let dataForMA = resampledData
       if (ma.periodType !== frequency) {
-        // Resample to MA period type
         dataForMA = resampleData(allData, ma.periodType)
       }
 
-      // Calculate the moving average using optimized library
       const maValues = calculateMovingAverage(dataForMA, ma.type, ma.length)
 
-      // Optimized alignment: if frequencies match, use direct mapping
       if (ma.periodType === frequency) {
         maResults[ma.id] = maValues
       } else {
-        // Only do date alignment if frequencies differ
         const alignedValues: number[] = []
         const maDateMap = new Map<string, number>()
         
-        // Build date map once
         dataForMA.forEach((point, idx) => {
           if (idx < maValues.length && !isNaN(maValues[idx])) {
             maDateMap.set(point.date, maValues[idx])
           }
         })
 
-        // Use binary search-like approach for faster lookups
         const maDates = Array.from(maDateMap.keys()).sort()
         const maDateTimestamps = maDates.map(d => new Date(d).getTime())
 
         resampledData.forEach((point) => {
           const pointTimestamp = new Date(point.date).getTime()
           
-          // Binary search for closest date
           let left = 0
           let right = maDateTimestamps.length - 1
           let closestIdx = 0
@@ -331,6 +363,96 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     return maResults
   }, [resampledData, movingAverages, frequency, allData])
 
+  // Update chart with data
+  useEffect(() => {
+    if (!chartRef.current || !priceSeriesRef.current || resampledData.length === 0) return
+
+    // Update price series
+    const priceData: LineData[] = resampledData.map(d => ({
+      time: dateToTime(d.date),
+      value: d.close,
+    }))
+    priceSeriesRef.current.setData(priceData)
+
+    // Update/create MA series
+    movingAverages.forEach((ma) => {
+      if (!ma.enabled) {
+        // Remove series if disabled
+        const existingSeries = maSeriesRefs.current.get(ma.id)
+        if (existingSeries && chartRef.current) {
+          chartRef.current.removeSeries(existingSeries)
+          maSeriesRefs.current.delete(ma.id)
+        }
+        return
+      }
+
+      const values = maData[ma.id]
+      if (!values || values.length === 0) return
+
+      const maLineData: LineData[] = resampledData
+        .map((d, idx) => ({
+          time: dateToTime(d.date),
+          value: values[idx] || NaN,
+        }))
+        .filter(d => !isNaN(d.value))
+
+      if (maLineData.length === 0) return
+
+      let maSeries = maSeriesRefs.current.get(ma.id)
+      if (!maSeries && chartRef.current) {
+        // Create new series
+        maSeries = chartRef.current.addLineSeries({
+          color: ma.color || MA_COLORS[0],
+          lineWidth: 1.5,
+          lineStyle: ma.type === 'EMA' ? 1 : 0, // 1 = dashed, 0 = solid
+          title: `${ma.type} ${generatePeriodString(ma.length, ma.periodType)}`,
+        })
+        maSeriesRefs.current.set(ma.id, maSeries)
+      }
+
+      if (maSeries) {
+        maSeries.setData(maLineData)
+      }
+    })
+
+    // Remove series that are no longer in movingAverages
+    const currentIds = new Set(movingAverages.map(ma => ma.id))
+    maSeriesRefs.current.forEach((series, id) => {
+      if (!currentIds.has(id) && chartRef.current) {
+        chartRef.current.removeSeries(series)
+        maSeriesRefs.current.delete(id)
+      }
+    })
+
+    // Fit content to show all data
+    if (chartRef.current) {
+      chartRef.current.timeScale().fitContent()
+    }
+  }, [resampledData, maData, movingAverages])
+
+  // Update chart theme when theme changes
+  useEffect(() => {
+    if (!chartRef.current) return
+
+    const isDark = theme === 'dark'
+    chartRef.current.applyOptions({
+      layout: {
+        background: { type: 'solid', color: isDark ? colors.background : '#ffffff' },
+        textColor: colors.foreground,
+      },
+      grid: {
+        vertLines: { color: colors.grid },
+        horzLines: { color: colors.grid },
+      },
+      rightPriceScale: {
+        borderColor: colors.border,
+      },
+      timeScale: {
+        borderColor: colors.border,
+      },
+    })
+  }, [theme, colors])
+
   // Get currency symbol based on asset type
   const getCurrency = () => {
     if (assetType === 'pk-equity' || assetType === 'kse100') return 'PKR'
@@ -339,191 +461,6 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     if (assetType === 'metals') return 'USD'
     return 'USD'
   }
-
-  // Prepare chart data with time-based x-axis - optimized
-  const chartData = useMemo(() => {
-    if (resampledData.length === 0) {
-      return null
-    }
-
-    // Pre-compute timestamps once
-    const timestamps = resampledData.map(d => new Date(d.date).getTime())
-
-    const datasets: any[] = [
-      {
-        label: `${selectedSymbol} Price`,
-        data: resampledData.map((d, idx) => ({
-          x: timestamps[idx],
-          y: d.close,
-        })),
-        borderColor: colors.price || 'rgb(59, 130, 246)',
-        backgroundColor: `${colors.price || 'rgb(59, 130, 246)'}20`,
-        fill: false,
-        tension: 0.1,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-        borderWidth: 2,
-      },
-    ]
-
-    // Add moving averages - only process enabled ones
-    movingAverages.forEach((ma) => {
-      if (!ma.enabled) return
-      const values = maData[ma.id]
-      if (!values || values.length === 0) return
-      
-      datasets.push({
-        label: `${ma.type} ${generatePeriodString(ma.length, ma.periodType)}`,
-        data: resampledData.map((d, idx) => ({
-          x: timestamps[idx],
-          y: values[idx] || null,
-        })),
-        borderColor: ma.color || MA_COLORS[0],
-        backgroundColor: 'transparent',
-        fill: false,
-        tension: 0.1,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-        borderWidth: 1.5,
-        borderDash: ma.type === 'EMA' ? [5, 5] : undefined,
-      })
-    })
-
-    return {
-      datasets,
-    }
-  }, [resampledData, movingAverages, maData, selectedSymbol, colors])
-
-  // No initial zoom restriction - show all data by default, user can zoom/pan freely
-
-  const chartOptions = useMemo(() => {
-    const currency = getCurrency()
-    
-    return {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: true,
-          position: 'top' as const,
-          labels: {
-            color: colors.foreground,
-            usePointStyle: true,
-          },
-        },
-        tooltip: {
-          mode: 'index' as const,
-          intersect: false,
-          backgroundColor: colors.background,
-          titleColor: colors.foreground,
-          bodyColor: colors.foreground,
-          borderColor: colors.border,
-          borderWidth: 1,
-          callbacks: {
-            title: function(context: any) {
-              const date = new Date(context[0].parsed.x)
-              if (frequency === 'daily' || frequency === 'weekly') {
-                return format(date, 'MMM dd, yyyy')
-              } else {
-                return format(date, 'MMM yyyy')
-              }
-            },
-            label: function(context: any) {
-              const value = context.parsed.y
-              if (isNaN(value) || value === null) return `${context.dataset.label}: N/A`
-              return `${context.dataset.label}: ${currency === 'PKR' ? value.toFixed(2) : value.toFixed(4)} ${currency}`
-            },
-          },
-        },
-        zoom: {
-          zoom: {
-            wheel: {
-              enabled: true,
-              speed: 0.05, // Slower zoom for better control
-            },
-            pinch: {
-              enabled: true,
-            },
-            drag: {
-              enabled: true,
-              modifierKey: 'ctrl' as const, // Ctrl+drag to zoom (TradingView style)
-            },
-            mode: 'xy' as const, // Allow zoom on both axes
-          },
-          pan: {
-            enabled: true,
-            mode: 'xy' as const, // Allow panning on both axes
-            threshold: 3, // Lower threshold for more responsive panning
-            modifierKey: null, // Click and drag to pan (no modifier needed)
-          },
-          limits: {
-            x: {
-              min: 'original' as const,
-              max: 'original' as const,
-            },
-            y: {
-              min: 'original' as const,
-              max: 'original' as const,
-            },
-          },
-        },
-      },
-      scales: {
-        x: {
-          type: 'time' as const,
-          display: true,
-          title: {
-            display: true,
-            text: 'Date',
-            color: colors.foreground,
-          },
-          ticks: {
-            color: colors.foreground,
-            maxRotation: 45,
-            minRotation: 45,
-          },
-          grid: {
-            color: colors.grid,
-          },
-          time: {
-            unit: frequency === 'daily' ? 'day' : frequency === 'weekly' ? 'week' : 'month',
-            displayFormats: {
-              day: 'MMM dd, yyyy',
-              week: 'MMM dd, yyyy',
-              month: 'MMM yyyy',
-            },
-          },
-          // No initial zoom - show all data, user can zoom/pan freely
-        },
-        y: {
-          display: true,
-          title: {
-            display: true,
-            text: `Price (${currency})`,
-            color: colors.foreground,
-          },
-          ticks: {
-            color: colors.foreground,
-            callback: function(value: any) {
-              return typeof value === 'number' ? value.toFixed(2) : value
-            },
-          },
-          grid: {
-            color: colors.grid,
-          },
-        },
-      },
-      interaction: {
-        mode: 'nearest' as const,
-        axis: 'x' as const,
-        intersect: false,
-      },
-      // Disable default Chart.js interactions that conflict with zoom/pan
-      onHover: (event: any, activeElements: any) => {
-        // Allow hover for tooltips
-      },
-    }
-  }, [colors, theme, getCurrency, frequency])
 
   // Calculate current price and change
   const latestPrice = resampledData.length > 0 ? resampledData[resampledData.length - 1].close : null
@@ -564,15 +501,14 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     )
   }
 
-  // Handle MA period input change (store raw value, don't parse yet)
+  // Handle MA period input change
   const handleMAPeriodInputChange = (id: string, value: string) => {
     setMaPeriodInputs(prev => ({ ...prev, [id]: value }))
   }
 
-  // Parse and set MA period when user finishes typing (onBlur or Enter)
+  // Parse and set MA period when user finishes typing
   const handleMAPeriodInputBlur = (id: string, value: string) => {
     if (!value.trim()) {
-      // If empty, restore the current value
       const ma = movingAverages.find(m => m.id === id)
       if (ma) {
         setMaPeriodInputs(prev => ({ ...prev, [id]: generatePeriodString(ma.length, ma.periodType) }))
@@ -583,10 +519,8 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     try {
       const { length, periodType } = parseMAPeriod(value)
       updateMovingAverage(id, { length, periodType })
-      // Update the input to show the formatted value
       setMaPeriodInputs(prev => ({ ...prev, [id]: generatePeriodString(length, periodType) }))
     } catch (err: any) {
-      // Restore the previous valid value on error
       const ma = movingAverages.find(m => m.id === id)
       if (ma) {
         setMaPeriodInputs(prev => ({ ...prev, [id]: generatePeriodString(ma.length, ma.periodType) }))
@@ -621,35 +555,14 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     }
   }, [movingAverages])
 
-  const currency = getCurrency()
-
-  // Reset zoom function - show all data
+  // Reset zoom function
   const resetZoom = () => {
     if (chartRef.current) {
-      const chart = chartRef.current.chartInstance || chartRef.current
-      if (chart && chart.resetZoom) {
-        chart.resetZoom()
-      } else if (chart && chart.scales && resampledData.length > 0) {
-        // Manual reset to show all data
-        const firstDate = new Date(resampledData[0].date).getTime()
-        const lastDate = new Date(resampledData[resampledData.length - 1].date).getTime()
-        
-        // Reset X axis
-        if (chart.scales.x) {
-          chart.scales.x.options.min = undefined
-          chart.scales.x.options.max = undefined
-        }
-        
-        // Reset Y axis
-        if (chart.scales.y) {
-          chart.scales.y.options.min = undefined
-          chart.scales.y.options.max = undefined
-        }
-        
-        chart.update('none')
-      }
+      chartRef.current.timeScale().fitContent()
     }
   }
+
+  const currency = getCurrency()
 
   return (
     <div className="space-y-6">
@@ -715,7 +628,6 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
               )}
             </div>
 
-            {/* Frequency Selection */}
             <div className="space-y-2">
               <Label htmlFor="frequency">Data Frequency</Label>
               <Select
@@ -880,7 +792,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
                 <p className="text-sm mt-2">{error}</p>
               </div>
             </div>
-          ) : !chartData ? (
+          ) : resampledData.length === 0 ? (
             <div className="flex items-center justify-center h-[500px] border rounded-lg bg-muted/10">
               <div className="text-center text-muted-foreground">
                 <p>Select a symbol to view the chart</p>
@@ -890,7 +802,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
             <div className="space-y-2">
               <div className="text-xs text-muted-foreground flex items-center gap-4 flex-wrap">
                 <span>💡 <strong>Scroll</strong> to zoom in/out</span>
-                <span>🖱️ <strong>Click & drag</strong> to pan left/right/up/down</span>
+                <span>🖱️ <strong>Click & drag</strong> to pan</span>
                 <span>⌨️ <strong>Ctrl + drag</strong> to zoom (box selection)</span>
                 <Button
                   variant="ghost"
@@ -903,9 +815,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
                   Reset
                 </Button>
               </div>
-              <div className="h-[500px] w-full">
-                <Line ref={chartRef} data={chartData} options={chartOptions} />
-              </div>
+              <div ref={chartContainerRef} className="h-[500px] w-full" />
             </div>
           )}
         </CardContent>
