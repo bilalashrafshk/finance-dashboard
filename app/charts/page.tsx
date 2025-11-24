@@ -54,7 +54,7 @@ export default function ChartsPage() {
                         isSidebarOpen ? "w-80 translate-x-0" : "w-0 -translate-x-full md:translate-x-0 md:w-0 overflow-hidden border-none"
                     )}
                 >
-                    <div className="p-4 border-b flex items-center justify-between">
+                    <div className="p-4 border-b flex items-center justify-between flex-shrink-0">
                         <div className="relative flex-1 mr-2">
                             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
@@ -74,7 +74,7 @@ export default function ChartsPage() {
                         </Button>
                     </div>
 
-                    <ScrollArea className="flex-1">
+                    <ScrollArea className="flex-1 min-h-0">
                         <div className="p-4">
                             <Accordion
                                 type="multiple"

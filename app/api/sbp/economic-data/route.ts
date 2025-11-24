@@ -115,26 +115,15 @@ export async function GET(request: NextRequest) {
   }
   
   try {
-    // Get data from database first (will return empty if table doesn't exist)
+    // Check if we need to refresh (3-day cache)
+    const needsRefresh = refresh || await shouldRefreshSBPEconomicData(seriesKey)
+    
+    // Get data from database first
     let { data, latestStoredDate, earliestStoredDate } = await getSBPEconomicData(
       seriesKey,
       startDate,
       endDate
     )
-    
-    // Check if we need to refresh (3-day cache)
-    // If table doesn't exist, shouldRefreshSBPEconomicData will return null, which means we should refresh
-    let needsRefresh = refresh
-    try {
-      needsRefresh = refresh || await shouldRefreshSBPEconomicData(seriesKey)
-    } catch (error: any) {
-      // If metadata table doesn't exist, treat as needs refresh
-      if (error.message.includes('does not exist') || error.code === '42P01') {
-        needsRefresh = true
-      } else {
-        throw error
-      }
-    }
     
     // If no data in database or needs refresh, fetch from API
     if (needsRefresh || data.length === 0) {
