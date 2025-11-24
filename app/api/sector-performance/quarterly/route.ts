@@ -114,12 +114,25 @@ async function calculateSectorQuarterReturn(
     }
 
     // Calculate market-cap weighted index for start and end of quarter
+    // Find first trading date on or after quarter start, and last trading date on or before quarter end
     const sortedDates = Array.from(pricesByDate.keys()).sort()
-    const quarterStartDate = sortedDates[0]
-    const quarterEndDate = sortedDates[sortedDates.length - 1]
+    
+    if (sortedDates.length === 0) {
+      return null
+    }
 
-    const startPrices = pricesByDate.get(quarterStartDate) || []
-    const endPrices = pricesByDate.get(quarterEndDate) || []
+    // Find first trading date on or after quarter start
+    const firstTradingDate = sortedDates.find(d => d >= quarterStart) || sortedDates[0]
+    // Find last trading date on or before quarter end
+    const lastTradingDate = sortedDates.filter(d => d <= quarterEnd).pop() || sortedDates[sortedDates.length - 1]
+
+    if (!firstTradingDate || !lastTradingDate || firstTradingDate > lastTradingDate) {
+      console.warn(`[Sector ${sector}] Invalid date range: first=${firstTradingDate}, last=${lastTradingDate}, quarter=${quarterStart} to ${quarterEnd}`)
+      return null
+    }
+
+    const startPrices = pricesByDate.get(firstTradingDate) || []
+    const endPrices = pricesByDate.get(lastTradingDate) || []
 
     // Calculate weighted average for start
     let startWeightedPrice = 0
@@ -217,7 +230,7 @@ async function calculateSectorQuarterReturn(
 }
 
 /**
- * Calculate quarterly return for KSE100
+ * Calculate quarterly return for KSE100 using centralized route
  */
 async function calculateKSE100QuarterReturn(
   quarterStart: string,
@@ -226,40 +239,65 @@ async function calculateKSE100QuarterReturn(
   client: any
 ): Promise<number | null> {
   try {
-    // Get KSE100 price data
-    const priceQuery = `
-      SELECT date, close as price
-      FROM historical_price_data
-      WHERE asset_type = 'kse100'
-        AND symbol = 'KSE100'
-        AND date >= $1
-        AND date <= $2
-      ORDER BY date ASC
-    `
-    const priceResult = await client.query(priceQuery, [quarterStart, quarterEnd])
+    // Use centralized historical data route (same as other components)
+    const { getHistoricalDataWithMetadata } = await import('@/lib/portfolio/db-client')
+    
+    const { data } = await getHistoricalDataWithMetadata(
+      'kse100',
+      'KSE100',
+      quarterStart,
+      quarterEnd
+    )
 
-    if (priceResult.rows.length === 0) {
+    if (!data || data.length === 0) {
+      console.warn(`[KSE100] No data found for ${quarterStart} to ${quarterEnd}`)
       return null
     }
 
-    const priceData: PriceDataPoint[] = priceResult.rows.map(row => ({
-      date: row.date,
-      close: parseFloat(row.price) || 0,
-    })).sort((a, b) => a.date.localeCompare(b.date))
+    // Sort by date
+    const sortedData = [...data].sort((a, b) => a.date.localeCompare(b.date))
 
-    const startPrice = priceData[0].close
-    const endPrice = priceData[priceData.length - 1].close
+    if (sortedData.length === 0) {
+      console.warn(`[KSE100] No data returned from getHistoricalDataWithMetadata for ${quarterStart} to ${quarterEnd}`)
+      return null
+    }
 
-    if (startPrice === 0) {
+    // Find first trading date on or after quarter start
+    const firstDate = sortedData.find(d => d.date >= quarterStart) || sortedData[0]
+    // Find last trading date on or before quarter end
+    const lastDate = sortedData.filter(d => d.date <= quarterEnd).pop() || sortedData[sortedData.length - 1]
+
+    if (!firstDate || !lastDate) {
+      console.warn(`[KSE100] Could not find valid dates: first=${firstDate?.date}, last=${lastDate?.date}, quarter=${quarterStart} to ${quarterEnd}`)
+      return null
+    }
+
+    if (firstDate.date > lastDate.date) {
+      console.warn(`[KSE100] Invalid date order: first=${firstDate.date}, last=${lastDate.date}`)
+      return null
+    }
+
+    const startPrice = parseFloat(firstDate.close) || 0
+    const endPrice = parseFloat(lastDate.close) || 0
+
+    if (startPrice === 0 || endPrice === 0) {
+      console.warn(`[KSE100] Invalid prices: start=${startPrice} (date=${firstDate.date}), end=${endPrice} (date=${lastDate.date})`)
       return null
     }
 
     // Note: KSE100 is an index, so it typically doesn't have dividends
     // But if includeDividends is true, we could theoretically adjust for constituent dividends
     // For now, we'll just return price return for KSE100
-    return ((endPrice - startPrice) / startPrice) * 100
+    const returnPct = ((endPrice - startPrice) / startPrice) * 100
+    
+    if (isNaN(returnPct) || !isFinite(returnPct)) {
+      console.warn(`[KSE100] Invalid return calculation: ${returnPct}% (start=${startPrice}, end=${endPrice})`)
+      return null
+    }
+    
+    return returnPct
   } catch (error) {
-    console.error(`Error calculating KSE100 quarter return:`, error)
+    console.error(`[KSE100] Error calculating quarter return for ${quarterStart} to ${quarterEnd}:`, error)
     return null
   }
 }
@@ -332,6 +370,7 @@ export async function GET(request: NextRequest) {
       if (cachedKse100) {
         kse100Returns = new Map(Object.entries(cachedKse100))
       } else {
+        console.log(`[Sector Performance] Calculating KSE100 returns for ${year} (${quarters.length} quarters)`)
         for (const quarter of quarters) {
           const kse100Return = await calculateKSE100QuarterReturn(
             quarter.startDate,
@@ -339,13 +378,19 @@ export async function GET(request: NextRequest) {
             includeDividends,
             client
           )
-          if (kse100Return !== null) {
+          if (kse100Return !== null && !isNaN(kse100Return)) {
             kse100Returns.set(quarter.quarter, kse100Return)
+            console.log(`[Sector Performance] KSE100 ${quarter.quarter}: ${kse100Return.toFixed(2)}%`)
+          } else {
+            console.warn(`[Sector Performance] KSE100 return is null/NaN for ${quarter.quarter} (${quarter.startDate} to ${quarter.endDate})`)
           }
         }
         // Cache KSE100 returns for 24 hours (as plain object for serialization)
         if (kse100Returns.size > 0) {
           await cacheManager.set(kse100CacheKey, Object.fromEntries(kse100Returns), 'kse100-performance', { isHistorical: true })
+          console.log(`[Sector Performance] Cached ${kse100Returns.size} KSE100 returns`)
+        } else {
+          console.warn(`[Sector Performance] No KSE100 returns calculated for ${year}`)
         }
       }
 
@@ -361,7 +406,8 @@ export async function GET(request: NextRequest) {
 
         const kse100Return = kse100Returns?.get(quarter.quarter)
 
-        if (sectorReturn !== null && kse100Return !== null) {
+        // Only add quarter if we have both sector and KSE100 data
+        if (sectorReturn !== null && kse100Return !== null && !isNaN(sectorReturn) && !isNaN(kse100Return)) {
           const outperformance = sectorReturn - kse100Return
           quarterPerformances.push({
             quarter: quarter.quarter,
@@ -372,6 +418,14 @@ export async function GET(request: NextRequest) {
             outperformance,
             outperformed: outperformance > 0,
           })
+        } else {
+          // Log missing data for debugging
+          if (sectorReturn === null) {
+            console.warn(`[Sector Performance] Missing sector return for ${sector} in ${quarter.quarter}`)
+          }
+          if (kse100Return === null || kse100Return === undefined) {
+            console.warn(`[Sector Performance] Missing KSE100 return for ${quarter.quarter}`)
+          }
         }
       }
 
