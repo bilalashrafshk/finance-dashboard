@@ -72,11 +72,18 @@ export function GDPSection() {
       setError(null)
 
       const url = `/api/sbp/economic-data?seriesKey=${encodeURIComponent(SERIES_KEY)}`
-      const response = await fetch(url)
+      
+      // Add timeout to prevent hanging
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout
+      
+      const response = await fetch(url, {
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeoutId))
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to fetch GDP data')
+        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }))
+        throw new Error(errorData.error || errorData.details || 'Failed to fetch GDP data')
       }
 
       const result: GDPResponse = await response.json()
@@ -98,10 +105,13 @@ export function GDPSection() {
       })
     } catch (err: any) {
       console.error('Error loading GDP data:', err)
-      setError(err.message || 'Failed to load GDP data')
+      const errorMessage = err.name === 'AbortError' 
+        ? 'Request timed out. Please try again.'
+        : err.message || 'Failed to load GDP data'
+      setError(errorMessage)
       toast({
         title: "Error",
-        description: err.message || 'Failed to load GDP data',
+        description: errorMessage,
         variant: "destructive",
       })
     } finally {
