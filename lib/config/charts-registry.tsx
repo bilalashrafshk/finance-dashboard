@@ -96,9 +96,12 @@ const SectorQuarterlyPerformance = dynamic(() => import("@/components/charts/sec
 const PKEquityUSDSection = dynamic(() => import("@/components/charts/pk-equity-usd-section").then(mod => mod.PKEquityUSDSection), {
     loading: () => <ChartLoader />,
 })
+const PKEquityMAChart = dynamic(() => import("@/components/charts/pk-equity-ma-chart").then(mod => mod.PKEquityMAChart), {
+    loading: () => <ChartLoader />,
+})
 
 // Types
-export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments" | "interest-rate-equities" | "cpi" | "gdp" | "exchange-rate" | "remittances" | "kibor" | "sbp-reserves" | "fdi" | "m2" | "deposits" | "vehicle-sales" | "cement-sales" | "electricity-generation" | "pol-sales" | "scra" | "sector-quarterly-performance" | "pk-equity-usd"
+export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments" | "interest-rate-equities" | "cpi" | "gdp" | "exchange-rate" | "remittances" | "kibor" | "sbp-reserves" | "fdi" | "m2" | "deposits" | "vehicle-sales" | "cement-sales" | "electricity-generation" | "pol-sales" | "scra" | "sector-quarterly-performance" | "pk-equity-usd" | "pk-equity-ma"
 
 export interface ChartDefinition {
     id: ChartId
@@ -170,6 +173,13 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 icon: DollarSign,
                 component: <PKEquityUSDSection />,
                 keywords: ["pk equity", "usd", "exchange rate", "conversion", "pkr", "kse100", "index", "price", "currency"],
+            },
+            {
+                id: "pk-equity-ma",
+                title: "PK Equity Price Chart with Moving Averages",
+                icon: LineChart,
+                component: <PKEquityMAChart />,
+                keywords: ["pk equity", "price chart", "moving average", "sma", "ema", "technical analysis", "trend", "stocks"],
             },
         ],
     },
