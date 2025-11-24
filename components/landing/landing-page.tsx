@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { SharedNavbar } from "@/components/shared-navbar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,8 +22,51 @@ import {
   Filter,
 } from "lucide-react"
 import Link from "next/link"
+import DashboardPreviewSimple from "./dashboard-preview-simple"
+
+interface Stats {
+  totalCompanies: number
+  pkCompanies: number
+  usCompanies: number
+  dataPoints: number
+  chartCount: number
+}
 
 export default function LandingPage() {
+  const [stats, setStats] = useState<Stats | null>(null)
+
+  useEffect(() => {
+    // Fetch stats from API
+    fetch("/api/stats")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setStats(data.stats)
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch stats:", err)
+        // Set fallback stats
+        setStats({
+          totalCompanies: 0,
+          pkCompanies: 0,
+          usCompanies: 0,
+          dataPoints: 0,
+          chartCount: 25,
+        })
+      })
+  }, [])
+
+  const formatNumber = (num: number): string => {
+    if (num >= 1000000) {
+      return `${(num / 1000000).toFixed(1)}M+`
+    }
+    if (num >= 1000) {
+      return `${(num / 1000).toFixed(1)}K+`
+    }
+    return `${num}+`
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <SharedNavbar />
@@ -42,17 +85,19 @@ export default function LandingPage() {
             </h1>
             <p className="text-lg text-muted-foreground text-pretty md:text-xl">
               Make data-driven investment decisions with advanced quantitative tools, real-time analytics, and
-              comprehensive risk management for the Pakistan Stock Exchange.
+              comprehensive risk management. Focused on PK equities with research capabilities for US equities, crypto, and metals.
             </p>
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
               <Button size="lg" className="gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700" asChild>
                 <Link href="/charts">
-                  Start Free Trial
+                  Sign Up for Free
                   <ChevronRightIcon className="h-4 w-4" />
                 </Link>
               </Button>
-              <Button size="lg" variant="outline">
-                Watch Demo
+              <Button size="lg" variant="outline" asChild>
+                <Link href="/charts">
+                  Explore Charts
+                </Link>
               </Button>
             </div>
             <div className="flex items-center justify-center gap-8 pt-4 text-sm text-muted-foreground">
@@ -62,22 +107,13 @@ export default function LandingPage() {
               </div>
               <div className="flex items-center gap-2">
                 <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                Free for everyone
+                Free forever
               </div>
             </div>
           </div>
 
           {/* Dashboard Preview */}
-          <div className="mx-auto mt-16 max-w-5xl">
-            <div className="rounded-xl border border-border bg-card/50 p-2 shadow-2xl backdrop-blur">
-              <div className="aspect-video rounded-lg bg-gradient-to-br from-blue-600/10 to-cyan-600/10 flex items-center justify-center">
-                <div className="text-center space-y-2">
-                  <BarChart3Icon className="h-16 w-16 text-blue-600 dark:text-blue-400 mx-auto" />
-                  <p className="text-sm text-muted-foreground">Dashboard Preview</p>
-                </div>
-              </div>
-            </div>
-          </div>
+          <DashboardPreviewSimple />
         </div>
       </section>
 
@@ -86,15 +122,21 @@ export default function LandingPage() {
         <div className="container mx-auto px-4 py-12">
           <div className="grid gap-8 md:grid-cols-4">
             <div className="text-center space-y-2">
-              <div className="text-3xl font-bold font-mono bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">500+</div>
+              <div className="text-3xl font-bold font-mono bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
+                {stats ? formatNumber(stats.totalCompanies) : "—"}
+              </div>
               <div className="text-sm text-muted-foreground">Listed Companies</div>
             </div>
             <div className="text-center space-y-2">
-              <div className="text-3xl font-bold font-mono bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">50M+</div>
+              <div className="text-3xl font-bold font-mono bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
+                {stats ? formatNumber(stats.dataPoints) : "—"}
+              </div>
               <div className="text-sm text-muted-foreground">Data Points Analyzed</div>
             </div>
             <div className="text-center space-y-2">
-              <div className="text-3xl font-bold font-mono bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">25+</div>
+              <div className="text-3xl font-bold font-mono bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
+                {stats ? `${stats.chartCount}+` : "—"}
+              </div>
               <div className="text-sm text-muted-foreground">Market Charts</div>
             </div>
             <div className="text-center space-y-2">
@@ -113,7 +155,7 @@ export default function LandingPage() {
               Everything You Need for Quantitative Analysis
             </h2>
             <p className="text-lg text-muted-foreground text-pretty">
-              Powerful tools designed for professional investors and traders in the Pakistani market
+              Powerful tools designed for professional investors and traders. Focused on Pakistani equities with research capabilities for US equities, crypto, and metals.
             </p>
           </div>
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -124,7 +166,7 @@ export default function LandingPage() {
                 </div>
                 <CardTitle>Market Charts & Analytics</CardTitle>
                 <CardDescription>
-                  KSE100 Market Cycle, Market Heatmap, Advance-Decline indicators, P/E Ratio analysis, and Interest Rate correlations
+                  KSE100 Market Cycle, Market Heatmap, Advance-Decline indicators, P/E Ratio analysis, and Interest Rate correlations for PK equities
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -160,7 +202,7 @@ export default function LandingPage() {
                 </div>
                 <CardTitle>Multi-Asset Portfolio Tracking</CardTitle>
                 <CardDescription>
-                  Track US equities, PK equities, crypto, commodities, and indices with detailed performance analytics
+                  Track PK equities, US equities, crypto, commodities, and indices with detailed performance analytics
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -184,7 +226,7 @@ export default function LandingPage() {
                 </div>
                 <CardTitle>Asset Screening</CardTitle>
                 <CardDescription>
-                  Build and save custom stock screeners with fundamental and technical criteria for finding opportunities
+                  Build and save custom stock screeners with fundamental and technical criteria for finding opportunities across PK and US equities
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -276,8 +318,8 @@ export default function LandingPage() {
                     <span className="text-sm">Modern Portfolio Theory</span>
                   </li>
                 </ul>
-                <Button className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700">
-                  Get Started
+                <Button className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700" asChild>
+                  <Link href="/charts">Get Started</Link>
                 </Button>
               </CardContent>
             </Card>
@@ -315,8 +357,8 @@ export default function LandingPage() {
                     <span className="text-sm">All charts & analytics</span>
                   </li>
                 </ul>
-                <Button className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700">
-                  Get Started
+                <Button className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700" asChild>
+                  <Link href="/charts">Get Started</Link>
                 </Button>
               </CardContent>
             </Card>
@@ -349,36 +391,11 @@ export default function LandingPage() {
                     <span className="text-sm">Regular updates</span>
                   </li>
                 </ul>
-                <Button variant="outline" className="w-full bg-transparent">
-                  Get Started
+                <Button variant="outline" className="w-full bg-transparent" asChild>
+                  <Link href="/charts">Get Started</Link>
                 </Button>
               </CardContent>
             </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-24">
-        <div className="container mx-auto px-4">
-          <div className="mx-auto max-w-3xl rounded-2xl bg-gradient-to-br from-blue-600/10 via-cyan-600/10 to-blue-600/10 border border-border p-12 text-center space-y-6">
-            <h2 className="text-3xl font-bold tracking-tight text-balance md:text-4xl">
-              Ready to Make Better Investment Decisions?
-            </h2>
-            <p className="text-lg text-muted-foreground text-pretty">
-              Join thousands of traders using CONVICTION PLAY for quantitative analysis
-            </p>
-            <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
-              <Button size="lg" className="gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700" asChild>
-                <Link href="/charts">
-                  Start Your Free Trial
-                  <ChevronRightIcon className="h-4 w-4" />
-                </Link>
-              </Button>
-              <Button size="lg" variant="outline">
-                Schedule Demo
-              </Button>
-            </div>
           </div>
         </div>
       </section>
@@ -395,55 +412,15 @@ export default function LandingPage() {
                 <span className="font-bold">CONVICTION PLAY</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Professional quantitative research platform for Pakistani equities
+                Professional quantitative research platform for Pakistani equities, with research capabilities for US equities, crypto, and metals.
               </p>
-            </div>
-            <div>
-              <h3 className="font-semibold mb-3">Product</h3>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>
-                  <Link href="#features" className="hover:text-foreground transition-colors">
-                    Features
-                  </Link>
-                </li>
-                <li>
-                  <Link href="#pricing" className="hover:text-foreground transition-colors">
-                    Pricing
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/charts" className="hover:text-foreground transition-colors">
-                    Charts
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/portfolio" className="hover:text-foreground transition-colors">
-                    Portfolio
-                  </Link>
-                </li>
-              </ul>
             </div>
             <div>
               <h3 className="font-semibold mb-3">Company</h3>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li>
-                  <Link href="#about" className="hover:text-foreground transition-colors">
+                  <Link href="/about" className="hover:text-foreground transition-colors">
                     About
-                  </Link>
-                </li>
-                <li>
-                  <Link href="#" className="hover:text-foreground transition-colors">
-                    Blog
-                  </Link>
-                </li>
-                <li>
-                  <Link href="#" className="hover:text-foreground transition-colors">
-                    Careers
-                  </Link>
-                </li>
-                <li>
-                  <Link href="#" className="hover:text-foreground transition-colors">
-                    Contact
                   </Link>
                 </li>
               </ul>
@@ -457,12 +434,12 @@ export default function LandingPage() {
                   </Link>
                 </li>
                 <li>
-                  <Link href="#" className="hover:text-foreground transition-colors">
+                  <Link href="/terms" className="hover:text-foreground transition-colors">
                     Terms
                   </Link>
                 </li>
                 <li>
-                  <Link href="#" className="hover:text-foreground transition-colors">
+                  <Link href="/security" className="hover:text-foreground transition-colors">
                     Security
                   </Link>
                 </li>

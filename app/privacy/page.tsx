@@ -147,8 +147,7 @@ export default function PrivacyPolicyPage() {
                   If you have any questions about this Privacy Policy, please contact us:
                 </p>
                 <ul className="list-none pl-0 space-y-2 mt-2">
-                  <li><strong>Email:</strong> support@stackthemgains.com</li>
-                  <li><strong>Website:</strong> <a href="/" className="text-blue-600 dark:text-blue-400 hover:underline">stackthemgains.com</a></li>
+                  <li><strong>Email:</strong> support@convictionplay.com</li>
                 </ul>
               </section>
 
