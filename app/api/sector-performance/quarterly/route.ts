@@ -130,38 +130,6 @@ async function calculateSectorQuarterReturn(
       return null
     }
 
-    const startPrices = pricesByDate.get(firstTradingDate) || []
-    const endPrices = pricesByDate.get(lastTradingDate) || []
-
-    // Calculate weighted average for start
-    let startWeightedPrice = 0
-    let startTotalMarketCap = 0
-    for (const { symbol, price } of startPrices) {
-      const marketCap = marketCapMap.get(symbol) || 0
-      if (marketCap > 0 && price > 0) {
-        startWeightedPrice += price * marketCap
-        startTotalMarketCap += marketCap
-      }
-    }
-
-    // Calculate weighted average for end
-    let endWeightedPrice = 0
-    let endTotalMarketCap = 0
-    for (const { symbol, price } of endPrices) {
-      const marketCap = marketCapMap.get(symbol) || 0
-      if (marketCap > 0 && price > 0) {
-        endWeightedPrice += price * marketCap
-        endTotalMarketCap += marketCap
-      }
-    }
-
-    if (startTotalMarketCap === 0 || endTotalMarketCap === 0) {
-      return null
-    }
-
-    const startAvgPrice = startWeightedPrice / startTotalMarketCap
-    const endAvgPrice = endWeightedPrice / endTotalMarketCap
-
     // If dividends are included, we need to adjust for dividends
     if (includeDividends) {
       // Batch fetch all dividends for all stocks in parallel
@@ -227,10 +195,43 @@ async function calculateSectorQuarterReturn(
         }
         return totalMarketCap > 0 ? totalWeightedReturn / totalMarketCap : null
       }
+    } else {
+      // Calculate returns for all stocks (without dividends)
+      const stockReturnPromises = sectorStocks.map(async (stock) => {
+        const stockPrices = priceResult.rows
+          .filter(r => r.symbol === stock.symbol)
+          .map(r => ({ date: r.date, close: parseFloat(r.price) || 0 }))
+          .sort((a, b) => a.date.localeCompare(b.date))
+
+        if (stockPrices.length === 0) return null
+
+        // Find first price on or after quarter start
+        const startPrice = stockPrices.find(p => p.date >= quarterStart)?.close
+        // Find last price on or before quarter end
+        const endPrice = stockPrices.filter(p => p.date <= quarterEnd).pop()?.close
+
+        if (!startPrice || !endPrice || startPrice === 0) return null
+
+        // Calculate simple price return
+        const returnPct = ((endPrice - startPrice) / startPrice) * 100
+        return { symbol: stock.symbol, return: returnPct, marketCap: stock.marketCap }
+      })
+
+      const stockReturns = (await Promise.all(stockReturnPromises)).filter((r): r is { symbol: string; return: number; marketCap: number } => r !== null)
+
+      // Calculate market-cap weighted average return
+      if (stockReturns.length > 0) {
+        let totalWeightedReturn = 0
+        let totalMarketCap = 0
+        for (const { return: returnPct, marketCap } of stockReturns) {
+          totalWeightedReturn += returnPct * marketCap
+          totalMarketCap += marketCap
+        }
+        return totalMarketCap > 0 ? totalWeightedReturn / totalMarketCap : null
+      }
     }
 
-    // Simple price return without dividends
-    return ((endAvgPrice - startAvgPrice) / startAvgPrice) * 100
+    return null
   } catch (error) {
     return null
   }

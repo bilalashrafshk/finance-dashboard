@@ -5,9 +5,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Loader2, CheckCircle2, XCircle, List, ExternalLink } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Loader2, CheckCircle2, XCircle, List } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import Link from "next/link"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import {
   Table,
   TableBody,
@@ -17,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useTheme } from "next-themes"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface QuarterPerformance {
   quarter: string
@@ -26,6 +35,24 @@ interface QuarterPerformance {
   kse100Return: number
   outperformance: number
   outperformed: boolean
+}
+
+interface StockQuarterDetail {
+  symbol: string
+  name?: string
+  marketCap: number
+  weight: number
+  startPrice: number | null
+  endPrice: number | null
+  return: number | null
+}
+
+interface QuarterStockDetails {
+  quarter: string
+  startDate: string
+  endDate: string
+  stocks: StockQuarterDetail[]
+  totalMarketCap: number
 }
 
 
@@ -42,6 +69,9 @@ export function SectorQuarterlyPerformance() {
   const [year, setYear] = useState(new Date().getFullYear())
   const [includeDividends, setIncludeDividends] = useState(false)
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
+  const [stockDetailsOpen, setStockDetailsOpen] = useState(false)
+  const [loadingStockDetails, setLoadingStockDetails] = useState(false)
+  const [stockDetails, setStockDetails] = useState<QuarterStockDetails[]>([])
 
   // Generate years list (last 10 years)
   const years = Array.from({ length: 10 }, (_, i) => currentYear - i)
@@ -197,6 +227,51 @@ export function SectorQuarterlyPerformance() {
       return 'text-muted-foreground'
     }
     return value >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+  }
+
+  // Load stock details when dialog opens
+  const loadStockDetails = async () => {
+    if (!selectedSector) return
+
+    try {
+      setLoadingStockDetails(true)
+      const params = new URLSearchParams()
+      params.append('sector', selectedSector)
+      params.append('year', year.toString())
+      params.append('includeDividends', includeDividends.toString())
+
+      const response = await fetch(`/api/sector-performance/quarterly/stocks?${params.toString()}`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch stock details')
+      }
+
+      const result = await response.json()
+      if (result.success && result.quarters) {
+        setStockDetails(result.quarters)
+      }
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message || 'Failed to load stock details',
+        variant: "destructive",
+      })
+    } finally {
+      setLoadingStockDetails(false)
+    }
+  }
+
+  // Format market cap
+  const formatMarketCap = (value: number): string => {
+    if (value >= 1e12) return `${(value / 1e12).toFixed(2)}T`
+    if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`
+    if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`
+    return value.toLocaleString('en-US', { maximumFractionDigits: 0 })
+  }
+
+  // Format price
+  const formatPrice = (value: number | null): string => {
+    if (value === null || isNaN(value)) return 'N/A'
+    return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
 
   return (
@@ -366,28 +441,111 @@ export function SectorQuarterlyPerformance() {
                 </div>
               </div>
               
-              {/* Link to view stocks */}
-              <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
-                <div className="flex-1">
-                  <p className="text-sm font-medium">View Stocks in Sector</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    See all stocks included in the {selectedSector} sector performance calculation
-                    {totalStocksInSector !== null && ` (${totalStocksInSector} stocks)`}
-                  </p>
+              {/* Dialog to view stocks */}
+              <Dialog open={stockDetailsOpen} onOpenChange={(open) => {
+                setStockDetailsOpen(open)
+                if (open) {
+                  loadStockDetails()
+                }
+              }}>
+                <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">View Stocks in Sector</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      See all stocks included in the {selectedSector} sector performance calculation
+                      {totalStocksInSector !== null && ` (${totalStocksInSector} stocks)`}
+                    </p>
+                  </div>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="flex items-center gap-2">
+                      <List className="h-4 w-4" />
+                      View Stocks
+                    </Button>
+                  </DialogTrigger>
                 </div>
-                <Link
-                  href={`/advance-decline/stocks?${new URLSearchParams({
-                    sector: selectedSector,
-                    limit: '10000', // Show all stocks in sector
-                  }).toString()}`}
-                  target="_blank"
-                  className="text-sm text-primary hover:underline flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-background transition-colors"
-                >
-                  <List className="h-4 w-4" />
-                  View Stocks
-                  <ExternalLink className="h-3 w-3" />
-                </Link>
-              </div>
+                <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Stocks in {selectedSector} Sector</DialogTitle>
+                    <DialogDescription>
+                      Detailed quarter-wise performance breakdown for each stock
+                    </DialogDescription>
+                  </DialogHeader>
+                  {loadingStockDetails ? (
+                    <div className="flex items-center justify-center h-[400px]">
+                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                        <Loader2 className="w-8 h-8 animate-spin" />
+                        <p>Loading stock details...</p>
+                      </div>
+                    </div>
+                  ) : stockDetails.length === 0 ? (
+                    <div className="flex items-center justify-center h-[400px] text-muted-foreground">
+                      <p>No stock details available</p>
+                    </div>
+                  ) : (
+                    <Tabs defaultValue={stockDetails[0]?.quarter} className="w-full">
+                      <TabsList className="grid w-full grid-cols-4">
+                        {stockDetails.map((quarter) => (
+                          <TabsTrigger key={quarter.quarter} value={quarter.quarter}>
+                            {quarter.quarter}
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
+                      {stockDetails.map((quarter) => (
+                        <TabsContent key={quarter.quarter} value={quarter.quarter} className="mt-4">
+                          <div className="space-y-4">
+                            <div className="text-sm text-muted-foreground">
+                              Period: {new Date(quarter.startDate).toLocaleDateString()} - {new Date(quarter.endDate).toLocaleDateString()}
+                            </div>
+                            <div className="overflow-x-auto border rounded-lg">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Symbol</TableHead>
+                                    <TableHead className="text-right">Market Cap</TableHead>
+                                    <TableHead className="text-right">Weight</TableHead>
+                                    <TableHead className="text-right">Start Price</TableHead>
+                                    <TableHead className="text-right">End Price</TableHead>
+                                    <TableHead className="text-right">Return</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {quarter.stocks.map((stock) => (
+                                    <TableRow key={stock.symbol}>
+                                      <TableCell className="font-medium">
+                                        <div>
+                                          <div>{stock.symbol}</div>
+                                          {stock.name && stock.name !== stock.symbol && (
+                                            <div className="text-xs text-muted-foreground">{stock.name}</div>
+                                          )}
+                                        </div>
+                                      </TableCell>
+                                      <TableCell className="text-right font-mono">
+                                        {formatMarketCap(stock.marketCap)}
+                                      </TableCell>
+                                      <TableCell className="text-right font-mono">
+                                        {stock.weight.toFixed(2)}%
+                                      </TableCell>
+                                      <TableCell className="text-right font-mono">
+                                        {formatPrice(stock.startPrice)}
+                                      </TableCell>
+                                      <TableCell className="text-right font-mono">
+                                        {formatPrice(stock.endPrice)}
+                                      </TableCell>
+                                      <TableCell className={`text-right font-mono font-semibold ${getReturnColor(stock.return)}`}>
+                                        {formatPercent(stock.return)}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          </div>
+                        </TabsContent>
+                      ))}
+                    </Tabs>
+                  )}
+                </DialogContent>
+              </Dialog>
             </div>
           )}
         </CardContent>
