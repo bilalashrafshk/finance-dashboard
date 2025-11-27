@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { SharedNavbar } from "@/components/shared-navbar"
 import { Search, ChevronRight, LayoutGrid } from "lucide-react"
 import { Input } from "@/components/ui/input"
@@ -14,10 +15,14 @@ import {
     AccordionTrigger,
 } from "@/components/ui/accordion"
 import { CHART_CATEGORIES, type ChartId } from "@/lib/config/charts-registry"
+import { ChartsWelcome } from "./charts-welcome"
 
 export default function ChartsPage() {
-    const [selectedChartId, setSelectedChartId] = useState<ChartId>("market-cycle")
+    const router = useRouter()
+    const searchParams = useSearchParams()
+    const selectedChartId = searchParams.get("chart") as ChartId | null
     const [searchQuery, setSearchQuery] = useState("")
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true)
 
     // Filter categories and charts based on search query
     const filteredCategories = useMemo(() => {
@@ -36,11 +41,16 @@ export default function ChartsPage() {
             .filter((category) => category.charts.length > 0)
     }, [searchQuery])
 
-    const selectedChart = CHART_CATEGORIES
-        .flatMap((c) => c.charts)
-        .find((c) => c.id === selectedChartId)
+    const selectedChart = selectedChartId
+        ? CHART_CATEGORIES
+            .flatMap((c) => c.charts)
+            .find((c) => c.id === selectedChartId)
+        : null
 
-    const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+    const handleChartSelect = (chartId: string) => {
+        router.push(`/charts?chart=${chartId}`)
+        if (window.innerWidth < 768) setIsSidebarOpen(false)
+    }
 
     return (
         <div className="min-h-screen bg-background flex flex-col">
@@ -50,7 +60,7 @@ export default function ChartsPage() {
                 {/* Sidebar */}
                 <aside
                     className={cn(
-                        "border-r bg-muted/10 flex flex-col h-[calc(100vh-64px)] transition-all duration-300 ease-in-out absolute md:relative z-20 bg-background md:bg-muted/10",
+                        "border-r bg-muted/10 flex flex-col h-full transition-all duration-300 ease-in-out absolute md:relative z-20 bg-background md:bg-muted/10",
                         isSidebarOpen ? "w-80 translate-x-0" : "w-0 -translate-x-full md:translate-x-0 md:w-0 overflow-hidden border-none"
                     )}
                 >
@@ -101,10 +111,7 @@ export default function ChartsPage() {
                                                                 ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
                                                                 : "text-muted-foreground hover:text-foreground"
                                                         )}
-                                                        onClick={() => {
-                                                            setSelectedChartId(chart.id)
-                                                            if (window.innerWidth < 768) setIsSidebarOpen(false)
-                                                        }}
+                                                        onClick={() => handleChartSelect(chart.id)}
                                                     >
                                                         <div className="flex items-center gap-2 w-full">
                                                             <chart.icon className="w-4 h-4 opacity-70" />
@@ -132,7 +139,7 @@ export default function ChartsPage() {
 
                 {/* Main Content */}
                 <main className="flex-1 overflow-auto bg-background w-full">
-                    <div className="flex items-center gap-2 mb-6">
+                    <div className="flex items-center gap-2 mb-6 sticky top-0 bg-background/95 backdrop-blur z-10 p-4 border-b md:static md:bg-transparent md:p-0 md:border-none md:m-6 md:mb-6">
                         {!isSidebarOpen && (
                             <Button
                                 variant="outline"
@@ -155,24 +162,21 @@ export default function ChartsPage() {
                                 <ChevronRight className="h-4 w-4 rotate-180" />
                             </Button>
                         )}
+                        {selectedChart && (
+                            <div className="flex items-center gap-2">
+                                <selectedChart.icon className="w-5 h-5 text-muted-foreground" />
+                                <h1 className="text-xl font-semibold tracking-tight">{selectedChart.title}</h1>
+                            </div>
+                        )}
                     </div>
-                    <div className="container max-w-6xl mx-auto p-6 md:p-8">
-                        {selectedChart ? (
-                            <div className="space-y-6 animate-in fade-in duration-300">
-                                <div className="flex items-center gap-2 pb-4 border-b">
-                                    <selectedChart.icon className="w-6 h-6 text-muted-foreground" />
-                                    <h1 className="text-2xl font-bold tracking-tight">{selectedChart.title}</h1>
-                                </div>
 
-                                <div className="min-h-[500px]">
-                                    {selectedChart.component}
-                                </div>
+                    <div className="container max-w-6xl mx-auto p-4 md:p-8 pt-0 md:pt-0">
+                        {selectedChart ? (
+                            <div className="space-y-6 animate-in fade-in duration-300 min-h-[500px]">
+                                {selectedChart.component}
                             </div>
                         ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                                <LayoutGrid className="w-16 h-16 mb-4 opacity-20" />
-                                <p className="text-lg font-medium">Select a chart to view</p>
-                            </div>
+                            <ChartsWelcome />
                         )}
                     </div>
                 </main>

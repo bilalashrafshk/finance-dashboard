@@ -150,7 +150,7 @@ async function fetchNewDataInBackground(
         newData = filtered.map(convertStockAnalysisToRecord)
         source = 'stockanalysis'
       }
-      
+
       // Fallback to SCSTrade if StockAnalysis failed or returned no data
       if (newData.length === 0) {
         try {
@@ -160,7 +160,7 @@ async function fetchNewDataInBackground(
             1000,
             5000
           )
-          
+
           if (scstradeData && scstradeData.length > 0) {
             newData = scstradeData
             source = 'scstrade'
@@ -383,6 +383,7 @@ export async function GET(request: NextRequest) {
     }, {
       headers: {
         'X-Cache': fromCache ? 'HIT' : 'MISS',
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
       },
     })
   } catch (error: any) {

@@ -96,7 +96,7 @@ const SectorQuarterlyPerformance = dynamic(() => import("@/components/charts/sec
 const PKEquityUSDSection = dynamic(() => import("@/components/charts/pk-equity-usd-section").then(mod => mod.PKEquityUSDSection), {
     loading: () => <ChartLoader />,
 })
-const PKEquityMAChart = dynamic(() => import("@/components/charts/pk-equity-ma-chart").then(mod => mod.PKEquityMAChart), {
+const UnifiedPriceChart = dynamic(() => import("@/components/charts/unified-price-chart").then(mod => mod.UnifiedPriceChart), {
     loading: () => <ChartLoader />,
 })
 
@@ -174,13 +174,6 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 component: <PKEquityUSDSection />,
                 keywords: ["pk equity", "usd", "exchange rate", "conversion", "pkr", "kse100", "index", "price", "currency"],
             },
-            {
-                id: "pk-equity-ma",
-                title: "Price Chart with MA",
-                icon: LineChart,
-                component: <PKEquityMAChart />,
-                keywords: ["pk equity", "price chart", "moving average", "sma", "ema", "technical analysis", "trend", "stocks"],
-            },
         ],
     },
     {
@@ -240,8 +233,8 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 id: "price-chart",
                 title: "Price Chart",
                 icon: LineChart,
-                component: <PriceChartSection />,
-                keywords: ["price", "chart", "historical", "pe", "ratio", "trends", "analysis"],
+                component: <UnifiedPriceChart />,
+                keywords: ["price", "chart", "historical", "pe", "ratio", "trends", "analysis", "moving average", "ma"],
             },
         ],
     },
