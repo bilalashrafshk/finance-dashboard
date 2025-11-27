@@ -173,6 +173,12 @@ export function SectorQuarterlyPerformance() {
     }
 
     try {
+      console.log('🔍 [Sector Quarterly Performance] Loading data:', {
+        sector: selectedSector,
+        year,
+        includeDividends,
+      })
+
       setLoadingData(true)
       setError(null)
 
@@ -181,28 +187,46 @@ export function SectorQuarterlyPerformance() {
       params.append('year', year.toString())
       params.append('includeDividends', includeDividends.toString())
 
+      const url = `/api/sector-performance/quarterly?${params.toString()}`
+      console.log('📡 [Sector Quarterly Performance] Fetching from:', url)
+
       // API handles caching server-side
-      const response = await fetch(`/api/sector-performance/quarterly?${params.toString()}`, {
+      const response = await fetch(url, {
         headers: {
           'Cache-Control': 'max-age=3600', // 1 hour
         },
       })
 
+      console.log('📥 [Sector Quarterly Performance] Response status:', response.status, response.ok)
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
+        console.error('❌ [Sector Quarterly Performance] Error response:', errorData)
         throw new Error(errorData.error || errorData.details || 'Failed to fetch sector performance data')
       }
 
       const result = await response.json()
+      console.log('📊 [Sector Quarterly Performance] API Response:', {
+        success: result.success,
+        quartersCount: result.quarters?.length || 0,
+        stockCount: result.stockCount,
+        message: result.message,
+        cached: result.cached,
+        quarters: result.quarters,
+      })
 
       if (!result.success || !result.quarters) {
+        console.error('❌ [Sector Quarterly Performance] Invalid response format:', result)
         throw new Error('Invalid response format')
       }
 
+      console.log('✅ [Sector Quarterly Performance] Setting data:', result.quarters.length, 'quarters')
       setData(result.quarters)
       
       // Show message if no data and message is provided (as info, not error)
       if (result.quarters.length === 0 && result.message) {
+        console.warn('⚠️ [Sector Quarterly Performance] No data available:', result.message)
+        console.warn('⚠️ [Sector Quarterly Performance] Stock count:', result.stockCount)
         setNoDataMessage(result.message)
         setError(null) // Clear error state
       } else {

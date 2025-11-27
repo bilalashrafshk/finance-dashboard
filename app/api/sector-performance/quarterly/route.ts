@@ -64,6 +64,8 @@ async function calculateSectorQuarterReturn(
   client: any
 ): Promise<number | null> {
   try {
+    console.log(`[Sector Return Calc] Starting calculation for ${sector}, quarter: ${quarterStart} to ${quarterEnd}`)
+    
     // Get all stocks in the sector
     const sectorStocksQuery = `
       SELECT symbol, market_cap
@@ -80,7 +82,12 @@ async function calculateSectorQuarterReturn(
       marketCap: parseFloat(row.market_cap) || 0,
     }))
 
+    console.log(`[Sector Return Calc] Found ${sectorStocks.length} stocks in sector ${sector}:`, 
+      sectorStocks.map(s => s.symbol).slice(0, 10).join(', '), 
+      sectorStocks.length > 10 ? `... (${sectorStocks.length} total)` : '')
+
     if (sectorStocks.length === 0) {
+      console.warn(`[Sector Return Calc] No stocks found for sector: ${sector}`)
       return null
     }
 
@@ -97,19 +104,31 @@ async function calculateSectorQuarterReturn(
         AND date <= $3
       ORDER BY date ASC, symbol ASC
     `
+    console.log(`[Sector Return Calc] Querying price data for ${sectorSymbols.length} symbols from ${quarterStart} to ${quarterEnd}`)
     const priceResult = await client.query(priceQuery, [sectorSymbols, quarterStart, quarterEnd])
+    console.log(`[Sector Return Calc] Found ${priceResult.rows.length} price records`)
 
     // Group prices by date
     const pricesByDate = new Map<string, Array<{ symbol: string; price: number }>>()
+    const symbolsWithData = new Set<string>()
     for (const row of priceResult.rows) {
       const date = row.date
       if (!pricesByDate.has(date)) {
         pricesByDate.set(date, [])
       }
       pricesByDate.get(date)!.push({ symbol: row.symbol, price: parseFloat(row.price) || 0 })
+      symbolsWithData.add(row.symbol)
+    }
+
+    console.log(`[Sector Return Calc] Prices grouped by ${pricesByDate.size} unique dates`)
+    console.log(`[Sector Return Calc] Symbols with price data: ${symbolsWithData.size} out of ${sectorSymbols.length}`)
+    const symbolsWithoutData = sectorSymbols.filter(s => !symbolsWithData.has(s))
+    if (symbolsWithoutData.length > 0) {
+      console.warn(`[Sector Return Calc] Symbols without price data: ${symbolsWithoutData.slice(0, 10).join(', ')}${symbolsWithoutData.length > 10 ? `... (${symbolsWithoutData.length} total)` : ''}`)
     }
 
     if (pricesByDate.size === 0) {
+      console.warn(`[Sector Return Calc] No price data found for any dates in quarter ${quarterStart} to ${quarterEnd}`)
       return null
     }
 
@@ -118,6 +137,7 @@ async function calculateSectorQuarterReturn(
     const sortedDates = Array.from(pricesByDate.keys()).sort()
     
     if (sortedDates.length === 0) {
+      console.warn(`[Sector Return Calc] No sorted dates available`)
       return null
     }
 
@@ -126,7 +146,11 @@ async function calculateSectorQuarterReturn(
     // Find last trading date on or before quarter end
     const lastTradingDate = sortedDates.filter(d => d <= quarterEnd).pop() || sortedDates[sortedDates.length - 1]
 
+    console.log(`[Sector Return Calc] First trading date: ${firstTradingDate}, Last trading date: ${lastTradingDate}`)
+    console.log(`[Sector Return Calc] Quarter range: ${quarterStart} to ${quarterEnd}`)
+
     if (!firstTradingDate || !lastTradingDate || firstTradingDate > lastTradingDate) {
+      console.warn(`[Sector Return Calc] Invalid date range: first=${firstTradingDate}, last=${lastTradingDate}`)
       return null
     }
 
@@ -187,6 +211,8 @@ async function calculateSectorQuarterReturn(
 
       const stockReturns = (await Promise.all(stockReturnPromises)).filter((r): r is { symbol: string; return: number; marketCap: number } => r !== null)
 
+      console.log(`[Sector Return Calc] (with dividends) Calculated returns for ${stockReturns.length} stocks`)
+
       // Calculate market-cap weighted average return
       if (stockReturns.length > 0) {
         let totalWeightedReturn = 0
@@ -195,7 +221,9 @@ async function calculateSectorQuarterReturn(
           totalWeightedReturn += returnPct * marketCap
           totalMarketCap += marketCap
         }
-        return totalMarketCap > 0 ? totalWeightedReturn / totalMarketCap : null
+        const result = totalMarketCap > 0 ? totalWeightedReturn / totalMarketCap : null
+        console.log(`[Sector Return Calc] (with dividends) Sector return: ${result}%`)
+        return result
       }
     } else {
       // Calculate returns for all stocks (without dividends)
@@ -212,7 +240,10 @@ async function calculateSectorQuarterReturn(
         // Find last price on or before quarter end
         const endPrice = stockPrices.filter(p => p.date <= quarterEnd).pop()?.close
 
-        if (!startPrice || !endPrice || startPrice === 0) return null
+        if (!startPrice || !endPrice || startPrice === 0) {
+          console.warn(`[Sector Return Calc] (no dividends) Missing prices for ${stock.symbol}: start=${startPrice}, end=${endPrice}`)
+          return null
+        }
 
         // Calculate simple price return
         const returnPct = ((endPrice - startPrice) / startPrice) * 100
@@ -220,6 +251,8 @@ async function calculateSectorQuarterReturn(
       })
 
       const stockReturns = (await Promise.all(stockReturnPromises)).filter((r): r is { symbol: string; return: number; marketCap: number } => r !== null)
+
+      console.log(`[Sector Return Calc] (no dividends) Calculated returns for ${stockReturns.length} out of ${sectorStocks.length} stocks`)
 
       // Calculate market-cap weighted average return
       if (stockReturns.length > 0) {
@@ -229,10 +262,15 @@ async function calculateSectorQuarterReturn(
           totalWeightedReturn += returnPct * marketCap
           totalMarketCap += marketCap
         }
-        return totalMarketCap > 0 ? totalWeightedReturn / totalMarketCap : null
+        const result = totalMarketCap > 0 ? totalWeightedReturn / totalMarketCap : null
+        console.log(`[Sector Return Calc] (no dividends) Sector return: ${result}%`)
+        return result
+      } else {
+        console.warn(`[Sector Return Calc] (no dividends) No valid stock returns calculated`)
       }
     }
 
+    console.warn(`[Sector Return Calc] Returning null for ${sector}, quarter: ${quarterStart} to ${quarterEnd}`)
     return null
   } catch (error) {
     return null
@@ -393,6 +431,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Calculate sector returns in parallel for better performance
+      console.log(`[Sector Performance API] Calculating sector returns for ${quarters.length} quarters`)
       const sectorReturnPromises = quarters.map(quarter =>
         calculateSectorQuarterReturn(
           sector,
@@ -400,7 +439,10 @@ export async function GET(request: NextRequest) {
           quarter.endDate,
           includeDividends,
           client
-        ).then(returnVal => ({ quarter: quarter.quarter, startDate: quarter.startDate, endDate: quarter.endDate, return: returnVal }))
+        ).then(returnVal => {
+          console.log(`[Sector Performance API] Quarter ${quarter.quarter}: sector return = ${returnVal}`)
+          return { quarter: quarter.quarter, startDate: quarter.startDate, endDate: quarter.endDate, return: returnVal }
+        })
       )
       const sectorResults = await Promise.all(sectorReturnPromises)
 
@@ -415,10 +457,16 @@ export async function GET(request: NextRequest) {
       `
       const sectorStocksCheck = await client.query(sectorStocksCheckQuery, [sector])
       const stockCount = parseInt(sectorStocksCheck.rows[0]?.count || '0', 10)
+      console.log(`[Sector Performance API] Found ${stockCount} stocks in sector ${sector}`)
+
+      console.log(`[Sector Performance API] Sector results:`, sectorResults.map(r => ({ quarter: r.quarter, return: r.return })))
+      console.log(`[Sector Performance API] KSE100 returns:`, Array.from(kse100Returns.entries()))
 
       // Combine sector and KSE100 returns
       for (const { quarter, startDate, endDate, return: sectorReturn } of sectorResults) {
         const kse100Return = kse100Returns?.get(quarter)
+
+        console.log(`[Sector Performance API] Processing quarter ${quarter}: sector=${sectorReturn}, kse100=${kse100Return}`)
 
         // Only add quarter if we have both sector and KSE100 data
         if (sectorReturn !== null && kse100Return !== null && !isNaN(sectorReturn) && !isNaN(kse100Return)) {
@@ -432,8 +480,13 @@ export async function GET(request: NextRequest) {
             outperformance,
             outperformed: outperformance > 0,
           })
+          console.log(`[Sector Performance API] Added quarter ${quarter} to results`)
+        } else {
+          console.warn(`[Sector Performance API] Skipping quarter ${quarter}: sector=${sectorReturn}, kse100=${kse100Return}`)
         }
       }
+
+      console.log(`[Sector Performance API] Final result: ${quarterPerformances.length} quarters with data`)
 
       // Cache the result for 1 hour
       await cacheManager.set(cacheKey, quarterPerformances, 'sector-performance', { isHistorical: true })
