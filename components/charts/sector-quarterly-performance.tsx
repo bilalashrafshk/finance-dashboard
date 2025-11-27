@@ -255,6 +255,32 @@ export function SectorQuarterlyPerformance() {
     return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`
   }
 
+  // Format quarter as date range
+  const formatQuarterAsDateRange = (quarter: string, startDate: string, endDate: string): string => {
+    try {
+      const start = new Date(startDate)
+      const end = new Date(endDate)
+      
+      const startDay = start.getDate()
+      const startMonth = start.toLocaleDateString('en-US', { month: 'short' })
+      const startYear = start.getFullYear()
+      
+      const endDay = end.getDate()
+      const endMonth = end.toLocaleDateString('en-US', { month: 'short' })
+      const endYear = end.getFullYear()
+      
+      // Format: "Jan 1 - Mar 31, 2025" or "Jan 1, 2025 - Mar 31, 2025" if different years
+      if (startYear === endYear) {
+        return `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${startYear}`
+      } else {
+        return `${startMonth} ${startDay}, ${startYear} - ${endMonth} ${endDay}, ${endYear}`
+      }
+    } catch (error) {
+      // Fallback to quarter label if date parsing fails
+      return quarter
+    }
+  }
+
   // Get color for return value
   const getReturnColor = (value: number | null | undefined): string => {
     if (value === null || value === undefined || isNaN(value)) {
@@ -417,7 +443,7 @@ export function SectorQuarterlyPerformance() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-[150px]">Quarter</TableHead>
+                    <TableHead className="min-w-[200px]">Period</TableHead>
                     <TableHead className="text-center min-w-[120px]">Sector Return</TableHead>
                     <TableHead className="text-center min-w-[120px]">KSE100 Return</TableHead>
                     <TableHead className="text-center min-w-[120px]">Outperformance</TableHead>
@@ -428,7 +454,10 @@ export function SectorQuarterlyPerformance() {
                   {data.map((quarterData) => (
                     <TableRow key={quarterData.quarter}>
                       <TableCell className="font-medium">
-                        {quarterData.quarter}
+                        <div>
+                          <div>{formatQuarterAsDateRange(quarterData.quarter, quarterData.startDate, quarterData.endDate)}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">{quarterData.quarter}</div>
+                        </div>
                       </TableCell>
                       <TableCell className={`text-center font-semibold ${getReturnColor(quarterData.sectorReturn)}`}>
                         {formatPercent(quarterData.sectorReturn)}

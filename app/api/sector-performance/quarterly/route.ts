@@ -172,24 +172,40 @@ async function calculateSectorQuarterReturn(
       const stockReturnPromises = sectorStocks.map(async (stock) => {
         const stockPrices = priceResult.rows
           .filter(r => r.symbol === stock.symbol)
-          .map(r => ({ date: r.date, close: parseFloat(r.price) || 0 }))
+          .map(r => ({ date: String(r.date).split('T')[0], close: parseFloat(r.price) || 0 })) // Ensure date is string in YYYY-MM-DD format
           .sort((a, b) => a.date.localeCompare(b.date))
 
         if (stockPrices.length === 0) return null
 
-        // Find first price on or after quarter start
-        const startPrice = stockPrices.find(p => p.date >= quarterStart)?.close
-        // Find last price on or before quarter end
-        const endPrice = stockPrices.filter(p => p.date <= quarterEnd).pop()?.close
+        // Filter prices to only those within the quarter range
+        const pricesInRange = stockPrices.filter(p => p.date >= quarterStart && p.date <= quarterEnd)
+        
+        if (pricesInRange.length === 0) {
+          console.warn(`[Sector Return Calc] (with dividends) ${stock.symbol}: No prices within quarter range ${quarterStart} to ${quarterEnd}`)
+          return null
+        }
 
-        if (!startPrice || !endPrice || startPrice === 0) return null
+        // Use the first data point within the quarter range as start price
+        const startPriceData = pricesInRange[0]
+        const startPrice = startPriceData.close
+        
+        // Use the last data point within the quarter range as end price
+        const endPriceData = pricesInRange[pricesInRange.length - 1]
+        const endPrice = endPriceData.close
+
+        if (!startPrice || !endPrice || startPrice === 0) {
+          console.warn(`[Sector Return Calc] (with dividends) ${stock.symbol}: Invalid prices: start=${startPrice}, end=${endPrice}`)
+          return null
+        }
+        
+        console.log(`[Sector Return Calc] (with dividends) ${stock.symbol}: Using first price ${startPriceData.date} (${startPrice}) and last price ${endPriceData.date} (${endPrice}) within quarter range`)
 
         const dividends = dividendsMap.get(stock.symbol) || []
         
         if (dividends.length > 0) {
-          // Calculate dividend-adjusted return
+          // Calculate dividend-adjusted return using prices within range
           const adjustedData = calculateDividendAdjustedPrices(
-            stockPrices.map(p => ({ date: p.date, close: p.close })),
+            pricesInRange.map(p => ({ date: p.date, close: p.close })),
             dividends.map(d => ({ date: d.date, dividend_amount: d.dividend_amount }))
           )
 
@@ -245,23 +261,23 @@ async function calculateSectorQuarterReturn(
           console.log(`[Sector Return Calc] (no dividends) ${stock.symbol}: ${stockPrices.length} prices, range: ${firstDate} to ${lastDate}, quarter: ${quarterStart} to ${quarterEnd}`)
         }
 
-        // Find first price on or after quarter start
-        let startPriceData = stockPrices.find(p => p.date >= quarterStart)
-        // If no price on or after quarter start, use the first available price (might be before quarter start)
-        if (!startPriceData && stockPrices.length > 0) {
-          startPriceData = stockPrices[0]
-          console.log(`[Sector Return Calc] (no dividends) ${stock.symbol}: Using first available price ${stockPrices[0].date} as start (before quarter start)`)
-        }
-        const startPrice = startPriceData?.close
+        // Filter prices to only those within the quarter range
+        const pricesInRange = stockPrices.filter(p => p.date >= quarterStart && p.date <= quarterEnd)
         
-        // Find last price on or before quarter end
-        let endPriceData = stockPrices.filter(p => p.date <= quarterEnd).pop()
-        // If no price on or before quarter end, use the last available price (might be after quarter end)
-        if (!endPriceData && stockPrices.length > 0) {
-          endPriceData = stockPrices[stockPrices.length - 1]
-          console.log(`[Sector Return Calc] (no dividends) ${stock.symbol}: Using last available price ${stockPrices[stockPrices.length - 1].date} as end (after quarter end)`)
+        if (pricesInRange.length === 0) {
+          console.warn(`[Sector Return Calc] (no dividends) ${stock.symbol}: No prices within quarter range ${quarterStart} to ${quarterEnd}`)
+          return null
         }
-        const endPrice = endPriceData?.close
+
+        // Use the first data point within the quarter range as start price
+        const startPriceData = pricesInRange[0]
+        const startPrice = startPriceData.close
+        
+        // Use the last data point within the quarter range as end price
+        const endPriceData = pricesInRange[pricesInRange.length - 1]
+        const endPrice = endPriceData.close
+        
+        console.log(`[Sector Return Calc] (no dividends) ${stock.symbol}: Using first price ${startPriceData.date} (${startPrice}) and last price ${endPriceData.date} (${endPrice}) within quarter range`)
 
         if (!startPrice || !endPrice || startPrice === 0) {
           console.warn(`[Sector Return Calc] (no dividends) Missing prices for ${stock.symbol}: start=${startPrice}, end=${endPrice}, prices count=${stockPrices.length}`)
@@ -432,7 +448,7 @@ export async function GET(request: NextRequest) {
         kse100Returns = new Map(Object.entries(cachedKse100))
       } else {
         // Calculate all KSE100 returns in parallel for better performance
-        const kse100Promises = quarters.map(quarter =>
+        const kse100Promises = validQuarters.map(quarter =>
           calculateKSE100QuarterReturn(
             quarter.startDate,
             quarter.endDate,
@@ -455,8 +471,8 @@ export async function GET(request: NextRequest) {
       }
 
       // Calculate sector returns in parallel for better performance
-      console.log(`[Sector Performance API] Calculating sector returns for ${quarters.length} quarters`)
-      const sectorReturnPromises = quarters.map(quarter =>
+      console.log(`[Sector Performance API] Calculating sector returns for ${validQuarters.length} quarters`)
+      const sectorReturnPromises = validQuarters.map(quarter =>
         calculateSectorQuarterReturn(
           sector,
           quarter.startDate,
