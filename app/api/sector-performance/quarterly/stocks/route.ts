@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
 
       // Get quarter boundaries
       const quarters = getQuarterBoundaries(year)
-      const quartersToProcess = quarterParam 
+      const quartersToProcess = quarterParam
         ? quarters.filter(q => q.quarter === quarterParam)
         : quarters
 
@@ -133,26 +133,39 @@ export async function GET(request: NextRequest) {
       const pricesBySymbol = new Map<string, Array<{ date: string; price: number }>>()
       for (const row of priceResult.rows) {
         const symbol = row.symbol
+        // Ensure date is a string YYYY-MM-DD
+        const dateStr = row.date instanceof Date
+          ? row.date.toISOString().split('T')[0]
+          : new Date(row.date).toISOString().split('T')[0]
+
         if (!pricesBySymbol.has(symbol)) {
           pricesBySymbol.set(symbol, [])
         }
         pricesBySymbol.get(symbol)!.push({
-          date: row.date,
+          date: dateStr,
           price: parseFloat(row.price) || 0,
         })
       }
 
       // Process each quarter
       const quarterDetails: QuarterStockDetails[] = []
+      const today = new Date().toISOString().split('T')[0]
 
       for (const quarter of quartersToProcess) {
         const { quarter: quarterName, startDate, endDate } = quarter
+
+        // Skip future quarters entirely
+        if (startDate > today) continue
+
+        // Determine if ongoing and effective end date
+        const isOngoing = endDate >= today
+        const effectiveEndDate = isOngoing ? today : endDate
 
         // Get dividends if needed
         let dividendsMap = new Map<string, DividendRecord[]>()
         if (includeDividends) {
           const dividendPromises = sectorStocks.map(stock =>
-            getDividendData('pk-equity', stock.symbol, startDate, endDate)
+            getDividendData('pk-equity', stock.symbol, startDate, effectiveEndDate)
           )
           const allDividends = await Promise.all(dividendPromises)
           sectorStocks.forEach((stock, index) => {
@@ -164,6 +177,7 @@ export async function GET(request: NextRequest) {
 
         // Calculate details for each stock
         const stockDetails: StockQuarterDetail[] = []
+        let maxDataDate = startDate // Track the latest data date found in this quarter
 
         for (const stock of sectorStocks) {
           const stockPrices = pricesBySymbol.get(stock.symbol) || []
@@ -185,12 +199,17 @@ export async function GET(request: NextRequest) {
 
           // Find first price on or after quarter start
           const startPriceData = sortedPrices.find(p => p.date >= startDate)
-          // Find last price on or before quarter end
-          const endPriceData = sortedPrices.filter(p => p.date <= endDate).pop()
+          // Find last price on or before effective end date
+          const endPriceData = sortedPrices.filter(p => p.date <= effectiveEndDate).pop()
 
           let startPrice: number | null = startPriceData?.price || null
           let endPrice: number | null = endPriceData?.price || null
           let returnPct: number | null = null
+
+          // Update max data date if we found data in this quarter
+          if (endPriceData && endPriceData.date > maxDataDate) {
+            maxDataDate = endPriceData.date
+          }
 
           if (includeDividends && startPrice !== null && endPrice !== null) {
             const dividends = dividendsMap.get(stock.symbol) || []
@@ -203,7 +222,7 @@ export async function GET(request: NextRequest) {
 
               if (adjustedData.length > 0) {
                 const startAdjusted = adjustedData.find(d => d.date >= startDate)?.adjustedValue
-                const endAdjusted = adjustedData.filter(d => d.date <= endDate).pop()?.adjustedValue
+                const endAdjusted = adjustedData.filter(d => d.date <= effectiveEndDate).pop()?.adjustedValue
 
                 if (startAdjusted && endAdjusted && startAdjusted > 0) {
                   startPrice = startAdjusted
@@ -236,10 +255,14 @@ export async function GET(request: NextRequest) {
         // Sort by market cap (descending)
         stockDetails.sort((a, b) => b.marketCap - a.marketCap)
 
+        // For ongoing quarters, use the max data date found as the end date
+        // For past quarters, use the official end date (unless data is missing, but usually we stick to quarter boundaries)
+        const finalEndDate = isOngoing ? (maxDataDate > startDate ? maxDataDate : effectiveEndDate) : endDate
+
         quarterDetails.push({
           quarter: quarterName,
           startDate,
-          endDate,
+          endDate: finalEndDate,
           stocks: stockDetails,
           totalMarketCap,
         })

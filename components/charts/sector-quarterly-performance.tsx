@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Loader2, CheckCircle2, XCircle, List } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
@@ -24,13 +23,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { useTheme } from "next-themes"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface QuarterPerformance {
   quarter: string
   startDate: string
   endDate: string
+  isOngoing: boolean
   sectorReturn: number
   kse100Return: number
   outperformance: number
@@ -55,9 +54,7 @@ interface QuarterStockDetails {
   totalMarketCap: number
 }
 
-
 export function SectorQuarterlyPerformance() {
-  const { theme } = useTheme()
   const { toast } = useToast()
   const [loadingSectors, setLoadingSectors] = useState(true)
   const [loadingData, setLoadingData] = useState(false)
@@ -77,13 +74,13 @@ export function SectorQuarterlyPerformance() {
   // Generate years list (last 10 years)
   const years = Array.from({ length: 10 }, (_, i) => currentYear - i)
 
-  // Load sectors on mount (cached)
+  // Load sectors on mount
   useEffect(() => {
     loadSectors()
     setCurrentYear(new Date().getFullYear())
   }, [])
 
-  // Load data when sector, year, or dividend setting changes
+  // Load data when sector or year changes
   useEffect(() => {
     if (selectedSector) {
       loadData()
@@ -91,7 +88,7 @@ export function SectorQuarterlyPerformance() {
       setData([])
       setTotalStocksInSector(null)
     }
-  }, [selectedSector, year, includeDividends])
+  }, [selectedSector, year])
 
   // Fetch total stocks count for the sector (separate effect for better performance)
   useEffect(() => {
@@ -107,8 +104,8 @@ export function SectorQuarterlyPerformance() {
     fetch(`/api/advance-decline/stocks?sector=${encodeURIComponent(selectedSector)}&limit=10000`, {
       signal: controller.signal,
       headers: {
-            'Cache-Control': 'max-age=86400', // 24 hours
-          },
+        'Cache-Control': 'max-age=86400', // 24 hours
+      },
     })
       .then(res => res.ok ? res.json() : null)
       .then(result => {
@@ -131,16 +128,10 @@ export function SectorQuarterlyPerformance() {
       setLoadingSectors(true)
       setError(null)
 
-      // Fetch from API (API handles caching)
       const response = await fetch('/api/screener/stocks', {
-        headers: {
-          'Cache-Control': 'max-age=86400', // 24 hours
-        },
+        headers: { 'Cache-Control': 'max-age=86400' },
       })
-      if (!response.ok) {
-        throw new Error('Failed to fetch sectors')
-      }
-
+      if (!response.ok) throw new Error('Failed to fetch sectors')
       const result = await response.json()
       if (result.success && result.stocks) {
         const uniqueSectors = Array.from(
@@ -150,95 +141,48 @@ export function SectorQuarterlyPerformance() {
               .filter((sector: string | null) => sector && sector !== 'Unknown')
           )
         ).sort() as string[]
-
         setSectors(uniqueSectors)
       }
     } catch (err: any) {
-      const errorMessage = err.message || 'Failed to load sectors'
-      setError(errorMessage)
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
-      })
+      console.error("Failed to load sectors:", err)
     } finally {
       setLoadingSectors(false)
     }
   }
 
   const loadData = async () => {
-    if (!selectedSector) {
-      setData([])
-      return
-    }
+    if (!selectedSector) return
 
     try {
-      console.log('🔍 [Sector Quarterly Performance] Loading data:', {
-        sector: selectedSector,
-        year,
-        includeDividends,
-      })
-
       setLoadingData(true)
       setError(null)
+      setNoDataMessage(null)
 
       const params = new URLSearchParams()
       params.append('sector', selectedSector)
       params.append('year', year.toString())
-      params.append('includeDividends', includeDividends.toString())
 
-      const url = `/api/sector-performance/quarterly?${params.toString()}`
-      console.log('📡 [Sector Quarterly Performance] Fetching from:', url)
-
-      // API handles caching server-side
-      const response = await fetch(url, {
-        headers: {
-          'Cache-Control': 'max-age=3600', // 1 hour
-        },
-      })
-
-      console.log('📥 [Sector Quarterly Performance] Response status:', response.status, response.ok)
+      const response = await fetch(`/api/sector-performance/quarterly?${params.toString()}`)
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
-        console.error('❌ [Sector Quarterly Performance] Error response:', errorData)
-        throw new Error(errorData.error || errorData.details || 'Failed to fetch sector performance data')
+        throw new Error(`HTTP ${response.status}`)
       }
 
       const result = await response.json()
-      console.log('📊 [Sector Quarterly Performance] API Response:', {
-        success: result.success,
-        quartersCount: result.quarters?.length || 0,
-        stockCount: result.stockCount,
-        message: result.message,
-        cached: result.cached,
-        quarters: result.quarters,
-      })
 
-      if (!result.success || !result.quarters) {
-        console.error('❌ [Sector Quarterly Performance] Invalid response format:', result)
-        throw new Error('Invalid response format')
-      }
-
-      console.log('✅ [Sector Quarterly Performance] Setting data:', result.quarters.length, 'quarters')
-      setData(result.quarters)
-      
-      // Show message if no data and message is provided (as info, not error)
-      if (result.quarters.length === 0 && result.message) {
-        console.warn('⚠️ [Sector Quarterly Performance] No data available:', result.message)
-        console.warn('⚠️ [Sector Quarterly Performance] Stock count:', result.stockCount)
-        setNoDataMessage(result.message)
-        setError(null) // Clear error state
+      if (result.success) {
+        setData(result.quarters || [])
+        if (result.message && (!result.quarters || result.quarters.length === 0)) {
+          setNoDataMessage(result.message)
+        }
       } else {
-        setNoDataMessage(null)
-        setError(null)
+        throw new Error(result.error || 'Failed to load data')
       }
     } catch (err: any) {
-      const errorMessage = err.message || 'Failed to load sector performance data'
-      setError(errorMessage)
+      setError(err.message || 'Failed to load sector performance data')
       toast({
         title: "Error",
-        description: errorMessage,
+        description: err.message,
         variant: "destructive",
       })
     } finally {
@@ -246,13 +190,50 @@ export function SectorQuarterlyPerformance() {
     }
   }
 
+  const loadStockDetails = async () => {
+    if (!selectedSector) return
 
-  // Format percentage
-  const formatPercent = (value: number | null | undefined): string => {
-    if (value === null || value === undefined || isNaN(value)) {
-      return 'N/A'
+    try {
+      setLoadingStockDetails(true)
+      const params = new URLSearchParams()
+      params.append('sector', selectedSector)
+      params.append('year', year.toString())
+      // Dividends disabled for now in main view, so disabled here too for consistency
+      params.append('includeDividends', 'false')
+
+      const response = await fetch(`/api/sector-performance/quarterly/stocks?${params.toString()}`)
+      if (!response.ok) throw new Error('Failed to fetch stock details')
+
+      const result = await response.json()
+      if (result.success && result.quarters) {
+        setStockDetails(result.quarters)
+      }
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message,
+        variant: "destructive",
+      })
+    } finally {
+      setLoadingStockDetails(false)
     }
+  }
+
+  const formatPercent = (value: number | null | undefined) => {
+    if (value === null || value === undefined || isNaN(value)) return 'N/A'
     return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`
+  }
+
+  const getReturnColor = (value: number | null | undefined) => {
+    if (value === null || value === undefined || isNaN(value)) return 'text-muted-foreground'
+    return value >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+  }
+
+  const formatMarketCap = (value: number) => {
+    if (value >= 1e12) return `${(value / 1e12).toFixed(2)}T`
+    if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`
+    if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`
+    return value.toLocaleString('en-US', { maximumFractionDigits: 0 })
   }
 
   // Format quarter as date range
@@ -260,15 +241,15 @@ export function SectorQuarterlyPerformance() {
     try {
       const start = new Date(startDate)
       const end = new Date(endDate)
-      
+
       const startDay = start.getDate()
       const startMonth = start.toLocaleDateString('en-US', { month: 'short' })
       const startYear = start.getFullYear()
-      
+
       const endDay = end.getDate()
       const endMonth = end.toLocaleDateString('en-US', { month: 'short' })
       const endYear = end.getFullYear()
-      
+
       // Format: "Jan 1 - Mar 31, 2025" or "Jan 1, 2025 - Mar 31, 2025" if different years
       if (startYear === endYear) {
         return `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${startYear}`
@@ -279,59 +260,6 @@ export function SectorQuarterlyPerformance() {
       // Fallback to quarter label if date parsing fails
       return quarter
     }
-  }
-
-  // Get color for return value
-  const getReturnColor = (value: number | null | undefined): string => {
-    if (value === null || value === undefined || isNaN(value)) {
-      return 'text-muted-foreground'
-    }
-    return value >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-  }
-
-  // Load stock details when dialog opens
-  const loadStockDetails = async () => {
-    if (!selectedSector) return
-
-    try {
-      setLoadingStockDetails(true)
-      const params = new URLSearchParams()
-      params.append('sector', selectedSector)
-      params.append('year', year.toString())
-      params.append('includeDividends', includeDividends.toString())
-
-      const response = await fetch(`/api/sector-performance/quarterly/stocks?${params.toString()}`)
-      if (!response.ok) {
-        throw new Error('Failed to fetch stock details')
-      }
-
-      const result = await response.json()
-      if (result.success && result.quarters) {
-        setStockDetails(result.quarters)
-      }
-    } catch (err: any) {
-      toast({
-        title: "Error",
-        description: err.message || 'Failed to load stock details',
-        variant: "destructive",
-      })
-    } finally {
-      setLoadingStockDetails(false)
-    }
-  }
-
-  // Format market cap
-  const formatMarketCap = (value: number): string => {
-    if (value >= 1e12) return `${(value / 1e12).toFixed(2)}T`
-    if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`
-    if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`
-    return value.toLocaleString('en-US', { maximumFractionDigits: 0 })
-  }
-
-  // Format price
-  const formatPrice = (value: number | null): string => {
-    if (value === null || isNaN(value)) return 'N/A'
-    return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
 
   return (
@@ -345,7 +273,7 @@ export function SectorQuarterlyPerformance() {
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Controls */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="sector">Sector</Label>
               {loadingSectors ? (
@@ -383,226 +311,151 @@ export function SectorQuarterlyPerformance() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="dividends" className="flex items-center justify-between">
-                <span>Include Dividends</span>
-                <Switch
-                  id="dividends"
-                  checked={includeDividends}
-                  onCheckedChange={setIncludeDividends}
-                  disabled={!selectedSector}
-                />
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                {includeDividends
-                  ? 'Returns include dividend reinvestment'
-                  : 'Returns are price-only (no dividends)'}
-              </p>
-            </div>
           </div>
 
-          {/* Table */}
+          {/* Content */}
           {!selectedSector ? (
-            <div className="flex items-center justify-center h-[400px] border rounded-lg bg-muted/10">
-              <div className="text-center text-muted-foreground">
-                <p className="text-lg font-medium">Select a sector to view performance</p>
-                <p className="text-sm mt-2">Choose a sector from the dropdown above</p>
-              </div>
+            <div className="flex items-center justify-center h-[300px] border rounded-lg bg-muted/10">
+              <p className="text-muted-foreground">Select a sector to view performance</p>
             </div>
           ) : loadingData ? (
-            <div className="flex items-center justify-center h-[400px] border rounded-lg bg-muted/10">
+            <div className="flex items-center justify-center h-[300px] border rounded-lg bg-muted/10">
               <div className="flex flex-col items-center gap-2 text-muted-foreground">
                 <Loader2 className="w-8 h-8 animate-spin" />
-                <p>Loading sector performance data...</p>
+                <p>Loading data...</p>
               </div>
             </div>
           ) : error ? (
-            <div className="flex items-center justify-center h-[400px] border rounded-lg bg-destructive/10">
-              <div className="text-center text-destructive">
+            <div className="flex items-center justify-center h-[300px] border rounded-lg bg-muted/10">
+              <div className="text-center text-muted-foreground">
                 <p className="font-medium">Error loading data</p>
-                <p className="text-sm mt-2">{error}</p>
+                <p className="text-sm mt-1">{error}</p>
               </div>
             </div>
           ) : data.length === 0 ? (
-            <div className="flex items-center justify-center h-[400px] border rounded-lg bg-muted/10">
+            <div className="flex items-center justify-center h-[300px] border rounded-lg bg-muted/10">
               <div className="text-center text-muted-foreground">
-                <p className="font-medium">No data available for {selectedSector} in {year}</p>
-                {noDataMessage && (
-                  <p className="text-sm mt-2 text-muted-foreground/80">{noDataMessage}</p>
-                )}
-                <p className="text-xs mt-4 text-muted-foreground/60">
-                  This may be because:
-                  <br />• No price data is available for this sector in {year}
-                  <br />• The year selected is in the future or has incomplete data
-                  <br />• Try selecting a different year
-                </p>
+                <p className="font-medium">No performance data found for {selectedSector} in {year}</p>
+                {noDataMessage && <p className="text-sm mt-1">{noDataMessage}</p>}
               </div>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="min-w-[200px]">Period</TableHead>
-                    <TableHead className="text-center min-w-[120px]">Sector Return</TableHead>
-                    <TableHead className="text-center min-w-[120px]">KSE100 Return</TableHead>
-                    <TableHead className="text-center min-w-[120px]">Outperformance</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.map((quarterData) => (
-                    <TableRow key={quarterData.quarter}>
-                      <TableCell className="font-medium">
-                        <div>
-                          <div>{formatQuarterAsDateRange(quarterData.quarter, quarterData.startDate, quarterData.endDate)}</div>
-                          <div className="text-xs text-muted-foreground mt-0.5">{quarterData.quarter}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell className={`text-center font-semibold ${getReturnColor(quarterData.sectorReturn)}`}>
-                        {formatPercent(quarterData.sectorReturn)}
-                      </TableCell>
-                      <TableCell className={`text-center font-semibold ${getReturnColor(quarterData.kse100Return)}`}>
-                        {formatPercent(quarterData.kse100Return)}
-                      </TableCell>
-                      <TableCell className={`text-center font-semibold ${getReturnColor(quarterData.outperformance)}`}>
-                        {formatPercent(quarterData.outperformance)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {quarterData.outperformed ? (
-                          <div className="flex items-center justify-center gap-1">
-                            <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                            <span className="text-xs text-green-600 dark:text-green-400">Outperformed</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center gap-1">
-                            <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                            <span className="text-xs text-red-600 dark:text-red-400">Underperformed</span>
-                          </div>
-                        )}
-                      </TableCell>
+            <>
+              <div className="overflow-x-auto border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Quarter</TableHead>
+                      <TableHead className="text-center">Sector Return</TableHead>
+                      <TableHead className="text-center">KSE100 Return</TableHead>
+                      <TableHead className="text-center">Outperformance</TableHead>
+                      <TableHead className="text-center">Status</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-
-          {/* Summary Stats */}
-          {!loadingData && !error && selectedSector && data.length > 0 && (
-            <div className="space-y-4 pt-4 border-t">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 border rounded-lg">
-                  <div className="text-sm text-muted-foreground">Selected Sector</div>
-                  <div className="text-2xl font-bold mt-1">{selectedSector}</div>
-                  {totalStocksInSector !== null && (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {totalStocksInSector} stocks in sector
-                    </div>
-                  )}
-                </div>
-                <div className="p-4 border rounded-lg">
-                  <div className="text-sm text-muted-foreground">Quarters Analyzed</div>
-                  <div className="text-2xl font-bold mt-1">{data.length}</div>
-                </div>
-                <div className="p-4 border rounded-lg">
-                  <div className="text-sm text-muted-foreground">Dividend Adjustment</div>
-                  <div className="text-2xl font-bold mt-1">
-                    {includeDividends ? 'Enabled' : 'Disabled'}
-                  </div>
-                </div>
+                  </TableHeader>
+                  <TableBody>
+                    {data.map((row) => (
+                      <TableRow key={row.quarter}>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <span>{row.quarter}</span>
+                            {row.isOngoing && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 rounded-full">
+                                ONGOING
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground font-normal mt-0.5">
+                            {formatQuarterAsDateRange(row.quarter, row.startDate, row.endDate)}
+                          </div>
+                        </TableCell>
+                        <TableCell className={`text-center font-semibold ${getReturnColor(row.sectorReturn)}`}>
+                          {formatPercent(row.sectorReturn)}
+                        </TableCell>
+                        <TableCell className={`text-center font-semibold ${getReturnColor(row.kse100Return)}`}>
+                          {formatPercent(row.kse100Return)}
+                        </TableCell>
+                        <TableCell className={`text-center font-semibold ${getReturnColor(row.outperformance)}`}>
+                          {formatPercent(row.outperformance)}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {row.outperformed ? (
+                            <div className="flex items-center justify-center gap-1 text-green-600 dark:text-green-400">
+                              <CheckCircle2 className="h-4 w-4" />
+                              <span className="text-xs">Outperformed</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center gap-1 text-red-600 dark:text-red-400">
+                              <XCircle className="h-4 w-4" />
+                              <span className="text-xs">Underperformed</span>
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
-              
-              {/* Dialog to view stocks */}
-              <Dialog open={stockDetailsOpen} onOpenChange={(open) => {
-                setStockDetailsOpen(open)
-                if (open) {
-                  loadStockDetails()
-                }
-              }}>
-              <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
-                <div className="flex-1">
-                  <p className="text-sm font-medium">View Stocks in Sector</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    See all stocks included in the {selectedSector} sector performance calculation
-                    {totalStocksInSector !== null && ` (${totalStocksInSector} stocks)`}
-                  </p>
+
+              {/* Summary & Details */}
+              <div className="flex items-center justify-between pt-4">
+                <div className="text-sm text-muted-foreground">
+                  Showing {data.length} quarters for {selectedSector}
                 </div>
+
+                <Dialog open={stockDetailsOpen} onOpenChange={(open) => {
+                  setStockDetailsOpen(open)
+                  if (open) loadStockDetails()
+                }}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" className="flex items-center gap-2">
-                  <List className="h-4 w-4" />
-                  View Stocks
+                    <Button variant="outline" size="sm" className="gap-2">
+                      <List className="h-4 w-4" />
+                      View Stock Details
                     </Button>
                   </DialogTrigger>
-                </div>
-                <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>Stocks in {selectedSector} Sector</DialogTitle>
-                    <DialogDescription>
-                      Detailed quarter-wise performance breakdown for each stock
-                    </DialogDescription>
-                  </DialogHeader>
-                  {loadingStockDetails ? (
-                    <div className="flex items-center justify-center h-[400px]">
-                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                        <Loader2 className="w-8 h-8 animate-spin" />
-                        <p>Loading stock details...</p>
+                  <DialogContent className="max-w-5xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Stock Performance Details</DialogTitle>
+                      <DialogDescription>
+                        Breakdown by stock for {selectedSector} in {year}
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    {loadingStockDetails ? (
+                      <div className="flex justify-center p-8">
+                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                       </div>
-                    </div>
-                  ) : stockDetails.length === 0 ? (
-                    <div className="flex items-center justify-center h-[400px] text-muted-foreground">
-                      <p>No stock details available</p>
-                    </div>
-                  ) : (
-                    <Tabs defaultValue={stockDetails[0]?.quarter} className="w-full">
-                      <TabsList className="grid w-full grid-cols-4">
-                        {stockDetails.map((quarter) => (
-                          <TabsTrigger key={quarter.quarter} value={quarter.quarter}>
-                            {quarter.quarter}
-                          </TabsTrigger>
-                        ))}
-                      </TabsList>
-                      {stockDetails.map((quarter) => (
-                        <TabsContent key={quarter.quarter} value={quarter.quarter} className="mt-4">
-                          <div className="space-y-4">
-                            <div className="text-sm text-muted-foreground">
-                              Period: {new Date(quarter.startDate).toLocaleDateString()} - {new Date(quarter.endDate).toLocaleDateString()}
-                            </div>
-                            <div className="overflow-x-auto border rounded-lg">
+                    ) : stockDetails.length === 0 ? (
+                      <div className="text-center p-8 text-muted-foreground">
+                        No detailed data available
+                      </div>
+                    ) : (
+                      <Tabs defaultValue={stockDetails[0]?.quarter} className="w-full">
+                        <TabsList className="grid w-full grid-cols-4 mb-4">
+                          {stockDetails.map(q => (
+                            <TabsTrigger key={q.quarter} value={q.quarter}>{q.quarter}</TabsTrigger>
+                          ))}
+                        </TabsList>
+                        {stockDetails.map(q => (
+                          <TabsContent key={q.quarter} value={q.quarter}>
+                            <div className="border rounded-lg overflow-hidden">
                               <Table>
                                 <TableHeader>
                                   <TableRow>
                                     <TableHead>Symbol</TableHead>
                                     <TableHead className="text-right">Market Cap</TableHead>
                                     <TableHead className="text-right">Weight</TableHead>
-                                    <TableHead className="text-right">Start Price</TableHead>
-                                    <TableHead className="text-right">End Price</TableHead>
                                     <TableHead className="text-right">Return</TableHead>
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                  {quarter.stocks.map((stock) => (
+                                  {q.stocks.map(stock => (
                                     <TableRow key={stock.symbol}>
                                       <TableCell className="font-medium">
-                                        <div>
-                                          <div>{stock.symbol}</div>
-                                          {stock.name && stock.name !== stock.symbol && (
-                                            <div className="text-xs text-muted-foreground">{stock.name}</div>
-                                          )}
-                                        </div>
+                                        {stock.symbol}
+                                        {stock.name && <div className="text-xs text-muted-foreground">{stock.name}</div>}
                                       </TableCell>
-                                      <TableCell className="text-right font-mono">
-                                        {formatMarketCap(stock.marketCap)}
-                                      </TableCell>
-                                      <TableCell className="text-right font-mono">
-                                        {stock.weight.toFixed(2)}%
-                                      </TableCell>
-                                      <TableCell className="text-right font-mono">
-                                        {formatPrice(stock.startPrice)}
-                                      </TableCell>
-                                      <TableCell className="text-right font-mono">
-                                        {formatPrice(stock.endPrice)}
-                                      </TableCell>
+                                      <TableCell className="text-right font-mono">{formatMarketCap(stock.marketCap)}</TableCell>
+                                      <TableCell className="text-right font-mono">{stock.weight.toFixed(2)}%</TableCell>
                                       <TableCell className={`text-right font-mono font-semibold ${getReturnColor(stock.return)}`}>
                                         {formatPercent(stock.return)}
                                       </TableCell>
@@ -611,14 +464,14 @@ export function SectorQuarterlyPerformance() {
                                 </TableBody>
                               </Table>
                             </div>
+                          </TabsContent>
+                        ))}
+                      </Tabs>
+                    )}
+                  </DialogContent>
+                </Dialog>
               </div>
-                        </TabsContent>
-                      ))}
-                    </Tabs>
-                  )}
-                </DialogContent>
-              </Dialog>
-            </div>
+            </>
           )}
         </CardContent>
       </Card>
