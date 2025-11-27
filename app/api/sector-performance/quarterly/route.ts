@@ -153,8 +153,10 @@ async function calculateSectorQuarterReturn(
 
         if (stockPrices.length === 0) return null
 
+        // Find first price on or after quarter start
         const startPrice = stockPrices.find(p => p.date >= quarterStart)?.close
-        const endPrice = stockPrices[stockPrices.length - 1]?.close
+        // Find last price on or before quarter end
+        const endPrice = stockPrices.filter(p => p.date <= quarterEnd).pop()?.close
 
         if (!startPrice || !endPrice || startPrice === 0) return null
 
@@ -402,6 +404,18 @@ export async function GET(request: NextRequest) {
       )
       const sectorResults = await Promise.all(sectorReturnPromises)
 
+      // Check if we have any stocks in the sector
+      const sectorStocksCheckQuery = `
+        SELECT COUNT(*) as count
+        FROM company_profiles
+        WHERE asset_type = 'pk-equity'
+          AND sector = $1
+          AND market_cap IS NOT NULL
+          AND market_cap > 0
+      `
+      const sectorStocksCheck = await client.query(sectorStocksCheckQuery, [sector])
+      const stockCount = parseInt(sectorStocksCheck.rows[0]?.count || '0', 10)
+
       // Combine sector and KSE100 returns
       for (const { quarter, startDate, endDate, return: sectorReturn } of sectorResults) {
         const kse100Return = kse100Returns?.get(quarter)
@@ -431,6 +445,12 @@ export async function GET(request: NextRequest) {
         includeDividends,
         quarters: quarterPerformances,
         count: quarterPerformances.length,
+        stockCount,
+        message: quarterPerformances.length === 0 
+          ? (stockCount === 0 
+            ? 'No stocks found in this sector' 
+            : 'No price data available for this sector in the selected year')
+          : undefined,
         cached: false,
       }, {
         headers: {

@@ -199,6 +199,13 @@ export function SectorQuarterlyPerformance() {
       }
 
       setData(result.quarters)
+      
+      // Show message if no data and message is provided
+      if (result.quarters.length === 0 && result.message) {
+        setError(result.message)
+      } else {
+        setError(null)
+      }
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to load sector performance data'
       setError(errorMessage)
@@ -366,7 +373,16 @@ export function SectorQuarterlyPerformance() {
           ) : data.length === 0 ? (
             <div className="flex items-center justify-center h-[400px] border rounded-lg bg-muted/10">
               <div className="text-center text-muted-foreground">
-                <p>No data available for {selectedSector} in {year}</p>
+                <p className="font-medium">No data available for {selectedSector} in {year}</p>
+                {error && (
+                  <p className="text-sm mt-2 text-muted-foreground/80">{error}</p>
+                )}
+                <p className="text-xs mt-4 text-muted-foreground/60">
+                  This may be because:
+                  <br />• No price data is available for this sector in {year}
+                  <br />• The year selected is in the future or has incomplete data
+                  <br />• Try selecting a different year
+                </p>
               </div>
             </div>
           ) : (
