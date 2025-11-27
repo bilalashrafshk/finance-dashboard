@@ -230,23 +230,47 @@ async function calculateSectorQuarterReturn(
       const stockReturnPromises = sectorStocks.map(async (stock) => {
         const stockPrices = priceResult.rows
           .filter(r => r.symbol === stock.symbol)
-          .map(r => ({ date: r.date, close: parseFloat(r.price) || 0 }))
+          .map(r => ({ date: String(r.date).split('T')[0], close: parseFloat(r.price) || 0 })) // Ensure date is string in YYYY-MM-DD format
           .sort((a, b) => a.date.localeCompare(b.date))
 
-        if (stockPrices.length === 0) return null
+        if (stockPrices.length === 0) {
+          console.warn(`[Sector Return Calc] (no dividends) No price data for ${stock.symbol} in quarter ${quarterStart} to ${quarterEnd}`)
+          return null
+        }
+
+        // Log available dates for debugging
+        if (stockPrices.length > 0) {
+          const firstDate = stockPrices[0].date
+          const lastDate = stockPrices[stockPrices.length - 1].date
+          console.log(`[Sector Return Calc] (no dividends) ${stock.symbol}: ${stockPrices.length} prices, range: ${firstDate} to ${lastDate}, quarter: ${quarterStart} to ${quarterEnd}`)
+        }
 
         // Find first price on or after quarter start
-        const startPrice = stockPrices.find(p => p.date >= quarterStart)?.close
+        let startPriceData = stockPrices.find(p => p.date >= quarterStart)
+        // If no price on or after quarter start, use the first available price (might be before quarter start)
+        if (!startPriceData && stockPrices.length > 0) {
+          startPriceData = stockPrices[0]
+          console.log(`[Sector Return Calc] (no dividends) ${stock.symbol}: Using first available price ${stockPrices[0].date} as start (before quarter start)`)
+        }
+        const startPrice = startPriceData?.close
+        
         // Find last price on or before quarter end
-        const endPrice = stockPrices.filter(p => p.date <= quarterEnd).pop()?.close
+        let endPriceData = stockPrices.filter(p => p.date <= quarterEnd).pop()
+        // If no price on or before quarter end, use the last available price (might be after quarter end)
+        if (!endPriceData && stockPrices.length > 0) {
+          endPriceData = stockPrices[stockPrices.length - 1]
+          console.log(`[Sector Return Calc] (no dividends) ${stock.symbol}: Using last available price ${stockPrices[stockPrices.length - 1].date} as end (after quarter end)`)
+        }
+        const endPrice = endPriceData?.close
 
         if (!startPrice || !endPrice || startPrice === 0) {
-          console.warn(`[Sector Return Calc] (no dividends) Missing prices for ${stock.symbol}: start=${startPrice}, end=${endPrice}`)
+          console.warn(`[Sector Return Calc] (no dividends) Missing prices for ${stock.symbol}: start=${startPrice}, end=${endPrice}, prices count=${stockPrices.length}`)
           return null
         }
 
         // Calculate simple price return
         const returnPct = ((endPrice - startPrice) / startPrice) * 100
+        console.log(`[Sector Return Calc] (no dividends) ${stock.symbol}: start=${startPrice}, end=${endPrice}, return=${returnPct.toFixed(2)}%`)
         return { symbol: stock.symbol, return: returnPct, marketCap: stock.marketCap }
       })
 
