@@ -23,8 +23,8 @@ import { PortfolioUpdateSection } from "./portfolio-update-section"
 import { MyDividends } from "./my-dividends"
 import type { Holding, AssetType } from "@/lib/portfolio/types"
 import { loadPortfolio, addHolding, updateHolding, deleteHolding, sellHolding } from "@/lib/portfolio/portfolio-db-storage"
-import { 
-  calculatePortfolioSummary, 
+import {
+  calculatePortfolioSummary,
   calculatePortfolioSummaryWithDividends,
   calculateAssetAllocation,
   groupHoldingsByCurrency,
@@ -53,14 +53,18 @@ export function PortfolioDashboard() {
 
   useEffect(() => {
     if (!authLoading && user) {
-      loadHoldings()
+      // Fast load first (instant render from DB)
+      loadHoldings(true).then(() => {
+        // Then refresh prices in background to get latest data
+        handleRefreshPrices()
+      })
     }
   }, [authLoading, user])
 
-  const loadHoldings = async () => {
+  const loadHoldings = async (fast: boolean = false) => {
     try {
       // Use cache-busting to ensure fresh data after transactions
-      const portfolio = await loadPortfolio()
+      const portfolio = await loadPortfolio(fast)
       setHoldings(portfolio.holdings)
     } catch (error) {
       console.error('Error loading holdings:', error)
@@ -84,7 +88,7 @@ export function PortfolioDashboard() {
             const cashBalance = error.details.cashBalance
             const required = error.details.required
             const currency = error.details.currency
-            
+
             // Show confirmation dialog for auto-deposit
             const confirmed = window.confirm(
               `Insufficient cash balance!\n\n` +
@@ -93,7 +97,7 @@ export function PortfolioDashboard() {
               `Shortfall: ${formatCurrency(shortfall, currency)}\n\n` +
               `Would you like to auto-deposit ${formatCurrency(shortfall, currency)} to complete this purchase?`
             )
-            
+
             if (confirmed) {
               // Retry with auto-deposit
               return handleAddHolding({ ...holdingData, autoDeposit: true })
@@ -103,7 +107,7 @@ export function PortfolioDashboard() {
           }
           throw error
         }
-        
+
         // Auto-add to asset screener if it's a supported asset type
         const supportedTypes: AssetType[] = ['us-equity', 'pk-equity', 'crypto', 'metals', 'kse100', 'spx500']
         if (supportedTypes.includes(holdingData.assetType)) {
@@ -116,14 +120,14 @@ export function PortfolioDashboard() {
                   'Authorization': `Bearer ${token}`,
                 },
               })
-              
+
               if (checkResponse.ok) {
                 const checkData = await checkResponse.json()
                 if (checkData.success) {
                   const existingAsset = checkData.assets.find(
                     (a: any) => a.assetType === holdingData.assetType && a.symbol === holdingData.symbol
                   )
-                  
+
                   // Only add if it doesn't already exist
                   if (!existingAsset) {
                     await fetch('/api/user/tracked-assets', {
@@ -197,77 +201,89 @@ export function PortfolioDashboard() {
     const pkEquityHoldings = holdings.filter((h) => h.assetType === 'pk-equity')
     const usEquityHoldings = holdings.filter((h) => h.assetType === 'us-equity')
     const metalsHoldings = holdings.filter((h) => h.assetType === 'metals')
-    
+
     if (cryptoHoldings.length === 0 && pkEquityHoldings.length === 0 && usEquityHoldings.length === 0 && metalsHoldings.length === 0) return
 
     try {
       setRefreshingPrices(true)
-      let updatedCount = 0
 
-      // Refresh crypto prices
-      for (const holding of cryptoHoldings) {
+      // Import APIs dynamically but in parallel if possible, or just upfront
+      const { fetchCryptoPrice, fetchPKEquityPrice, fetchUSEquityPrice, fetchMetalsPrice } = await import('@/lib/portfolio/unified-price-api')
+
+      const updates: Promise<any>[] = []
+      const priceUpdates: { id: string, price: number }[] = []
+
+      // Create fetch promises for all assets
+      const cryptoPromises = cryptoHoldings.map(async (holding) => {
         try {
           const binanceSymbol = parseSymbolToBinance(holding.symbol)
-          const { fetchCryptoPrice } = await import('@/lib/portfolio/unified-price-api')
           const data = await fetchCryptoPrice(binanceSymbol)
-          
           if (data && data.price !== null && data.price !== holding.currentPrice) {
-            updateHolding(holding.id, { currentPrice: data.price })
-            updatedCount++
+            return { id: holding.id, price: data.price }
           }
-        } catch (error) {
-          console.error(`Error updating price for ${holding.symbol}:`, error)
+        } catch (e) {
+          console.error(`Error fetching crypto price for ${holding.symbol}`, e)
         }
-      }
+        return null
+      })
 
-      // Refresh PK equity prices
-      for (const holding of pkEquityHoldings) {
+      const pkEquityPromises = pkEquityHoldings.map(async (holding) => {
         try {
-          const { fetchPKEquityPrice } = await import('@/lib/portfolio/unified-price-api')
           const data = await fetchPKEquityPrice(holding.symbol)
-          
           if (data && data.price !== null && data.price !== holding.currentPrice) {
-            updateHolding(holding.id, { currentPrice: data.price })
-            updatedCount++
+            return { id: holding.id, price: data.price }
           }
-        } catch (error) {
-          console.error(`Error updating price for ${holding.symbol}:`, error)
+        } catch (e) {
+          console.error(`Error fetching PK equity price for ${holding.symbol}`, e)
         }
-      }
+        return null
+      })
 
-      // Refresh US equity prices
-      for (const holding of usEquityHoldings) {
+      const usEquityPromises = usEquityHoldings.map(async (holding) => {
         try {
-          const { fetchUSEquityPrice } = await import('@/lib/portfolio/unified-price-api')
           const data = await fetchUSEquityPrice(holding.symbol)
-          
           if (data && data.price !== null && data.price !== holding.currentPrice) {
-            updateHolding(holding.id, { currentPrice: data.price })
-            updatedCount++
+            return { id: holding.id, price: data.price }
           }
-        } catch (error) {
-          console.error(`Error updating price for ${holding.symbol}:`, error)
+        } catch (e) {
+          console.error(`Error fetching US equity price for ${holding.symbol}`, e)
         }
-      }
+        return null
+      })
 
-      // Refresh metals prices
-      for (const holding of metalsHoldings) {
+      const metalsPromises = metalsHoldings.map(async (holding) => {
         try {
-          const { fetchMetalsPrice } = await import('@/lib/portfolio/unified-price-api')
           const data = await fetchMetalsPrice(holding.symbol)
-          
           if (data && data.price !== null && data.price !== holding.currentPrice) {
-            updateHolding(holding.id, { currentPrice: data.price })
-            updatedCount++
+            return { id: holding.id, price: data.price }
           }
-        } catch (error) {
-          console.error(`Error updating price for ${holding.symbol}:`, error)
+        } catch (e) {
+          console.error(`Error fetching metals price for ${holding.symbol}`, e)
         }
+        return null
+      })
+
+      // Execute all fetches in parallel
+      const allResults = await Promise.all([
+        ...cryptoPromises,
+        ...pkEquityPromises,
+        ...usEquityPromises,
+        ...metalsPromises
+      ])
+
+      // Filter out nulls and collect updates
+      allResults.forEach(result => {
+        if (result) {
+          priceUpdates.push(result)
+        }
+      })
+
+      // Perform DB updates in parallel
+      if (priceUpdates.length > 0) {
+        await Promise.all(priceUpdates.map(update => updateHolding(update.id, { currentPrice: update.price })))
+        await loadHoldings()
       }
 
-      if (updatedCount > 0) {
-        loadHoldings()
-      }
     } catch (error) {
       console.error('Error refreshing prices:', error)
     } finally {
@@ -278,10 +294,10 @@ export function PortfolioDashboard() {
   // Group holdings by currency (memoized to avoid recreation on every render)
   const holdingsByCurrency = useMemo(() => groupHoldingsByCurrency(holdings), [holdings])
   const currencies = useMemo(() => Array.from(holdingsByCurrency.keys()).sort(), [holdingsByCurrency])
-  
+
   // Get unique currencies that need exchange rates (excluding USD)
   const currenciesNeedingRates = useMemo(() => currencies.filter(c => c !== 'USD'), [currencies])
-  
+
   // Convert exchangeRates Map to a stable string for dependency checking
   const exchangeRatesKey = useMemo(() => {
     return Array.from(exchangeRates.entries())
@@ -289,29 +305,35 @@ export function PortfolioDashboard() {
       .map(([currency, rate]) => `${currency}:${rate}`)
       .join(',')
   }, [exchangeRates])
-  
+
   // Check if all required exchange rates are available
   const allExchangeRatesAvailable = useMemo(() => {
-    return currenciesNeedingRates.length === 0 || 
+    return currenciesNeedingRates.length === 0 ||
       currenciesNeedingRates.every(c => exchangeRates.has(c))
   }, [currenciesNeedingRates, exchangeRatesKey, exchangeRates])
-  
+
   // Calculate summaries with dividends (async)
   useEffect(() => {
     const calculateSummaries = async () => {
       // Recalculate inside useEffect to avoid dependency issues
       const currentHoldingsByCurrency = groupHoldingsByCurrency(holdings)
       const currentCurrencies = Array.from(currentHoldingsByCurrency.keys()).sort()
-      
-      // Calculate summaries for each currency with dividends
-      const newSummaries = new Map<string, ReturnType<typeof calculatePortfolioSummary>>()
-      for (const currency of currentCurrencies) {
+
+      // Calculate summaries for each currency with dividends in parallel
+      const summaryPromises = currentCurrencies.map(async (currency) => {
         const currencyHoldings = currentHoldingsByCurrency.get(currency) || []
         const summary = await calculatePortfolioSummaryWithDividends(currencyHoldings)
+        return { currency, summary }
+      })
+
+      const summaries = await Promise.all(summaryPromises)
+
+      const newSummaries = new Map<string, ReturnType<typeof calculatePortfolioSummary>>()
+      summaries.forEach(({ currency, summary }) => {
         newSummaries.set(currency, summary)
-      }
+      })
       setSummariesByCurrency(newSummaries)
-      
+
       // Calculate unified USD summary with dividends and realized PnL
       if (viewMode === 'unified' && allExchangeRatesAvailable) {
         try {
@@ -336,7 +358,7 @@ export function PortfolioDashboard() {
         setUnifiedSummary(null)
       }
     }
-    
+
     if (holdings.length > 0) {
       calculateSummaries()
     } else {
@@ -344,7 +366,7 @@ export function PortfolioDashboard() {
       setUnifiedSummary(null)
     }
   }, [holdings, exchangeRatesKey, viewMode, allExchangeRatesAvailable])
-  
+
   const allocation = calculateAssetAllocation(holdings)
   const hasAutoPriceHoldings = holdings.some(
     (h) => h.assetType === 'crypto' || h.assetType === 'pk-equity' || h.assetType === 'us-equity' || h.assetType === 'metals'
@@ -418,8 +440,8 @@ export function PortfolioDashboard() {
       </div>
 
       {/* Portfolio Update Section - Always show to allow adding transactions */}
-      <PortfolioUpdateSection 
-        holdings={holdings} 
+      <PortfolioUpdateSection
+        holdings={holdings}
         onUpdate={loadHoldings}
       />
 
@@ -431,8 +453,8 @@ export function PortfolioDashboard() {
               <div>
                 <Label className="text-base font-semibold">Portfolio View Mode</Label>
                 <p className="text-sm text-muted-foreground">
-                  {viewMode === 'unified' 
-                    ? 'View all holdings combined in USD' 
+                  {viewMode === 'unified'
+                    ? 'View all holdings combined in USD'
                     : 'View holdings separated by currency'}
                 </p>
               </div>
@@ -501,7 +523,7 @@ export function PortfolioDashboard() {
               </CardContent>
             </Card>
           )}
-          
+
           {unifiedSummary && (
             <>
               <Card className="border-2 border-primary">
@@ -551,51 +573,51 @@ export function PortfolioDashboard() {
               })()}
 
               <div className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <AllocationChart allocation={calculateUnifiedAssetAllocation(holdings, exchangeRates)} holdings={holdings} currency="USD" />
-                    <PortfolioHistoryChart currency="USD" />
-                  </div>
-                  <PnLBreakdown holdings={holdings} currency="USD" />
-                  {/* US Equities Portfolio Chart */}
-                  {(() => {
-                    const usEquityHoldings = holdings.filter(h => h.assetType === 'us-equity')
-                    return usEquityHoldings.length > 0 ? (
-                      <USEquityPortfolioChart 
-                        holdings={usEquityHoldings} 
-                        currency="USD"
-                      />
-                    ) : null
-                  })()}
-                  {/* PK Equities Portfolio Chart */}
-                  {(() => {
-                    const pkEquityHoldings = holdings.filter(h => h.assetType === 'pk-equity')
-                    return pkEquityHoldings.length > 0 ? (
-                      <PKEquityPortfolioChart 
-                        holdings={pkEquityHoldings} 
-                        currency="USD"
-                      />
-                    ) : null
-                  })()}
-                  {/* Crypto Portfolio Chart */}
-                  {(() => {
-                    const cryptoHoldings = holdings.filter(h => h.assetType === 'crypto')
-                    return cryptoHoldings.length > 0 ? (
-                      <CryptoPortfolioChart 
-                        holdings={cryptoHoldings} 
-                        currency="USD"
-                      />
-                    ) : null
-                  })()}
-                  {/* Metals Portfolio Chart */}
-                  {(() => {
-                    const metalsHoldings = holdings.filter(h => h.assetType === 'metals')
-                    return metalsHoldings.length > 0 ? (
-                      <MetalsPortfolioChart 
-                        holdings={metalsHoldings} 
-                        currency="USD"
-                      />
-                    ) : null
-                  })()}
+                <div className="grid gap-4 md:grid-cols-2">
+                  <AllocationChart allocation={calculateUnifiedAssetAllocation(holdings, exchangeRates)} holdings={holdings} currency="USD" />
+                  <PortfolioHistoryChart currency="USD" />
+                </div>
+                <PnLBreakdown holdings={holdings} currency="USD" />
+                {/* US Equities Portfolio Chart */}
+                {(() => {
+                  const usEquityHoldings = holdings.filter(h => h.assetType === 'us-equity')
+                  return usEquityHoldings.length > 0 ? (
+                    <USEquityPortfolioChart
+                      holdings={usEquityHoldings}
+                      currency="USD"
+                    />
+                  ) : null
+                })()}
+                {/* PK Equities Portfolio Chart */}
+                {(() => {
+                  const pkEquityHoldings = holdings.filter(h => h.assetType === 'pk-equity')
+                  return pkEquityHoldings.length > 0 ? (
+                    <PKEquityPortfolioChart
+                      holdings={pkEquityHoldings}
+                      currency="USD"
+                    />
+                  ) : null
+                })()}
+                {/* Crypto Portfolio Chart */}
+                {(() => {
+                  const cryptoHoldings = holdings.filter(h => h.assetType === 'crypto')
+                  return cryptoHoldings.length > 0 ? (
+                    <CryptoPortfolioChart
+                      holdings={cryptoHoldings}
+                      currency="USD"
+                    />
+                  ) : null
+                })()}
+                {/* Metals Portfolio Chart */}
+                {(() => {
+                  const metalsHoldings = holdings.filter(h => h.assetType === 'metals')
+                  return metalsHoldings.length > 0 ? (
+                    <MetalsPortfolioChart
+                      holdings={metalsHoldings}
+                      currency="USD"
+                    />
+                  ) : null
+                })()}
               </div>
             </>
           )}
@@ -606,12 +628,12 @@ export function PortfolioDashboard() {
       {viewMode === 'segregated' && currencies.map((currency) => {
         const currencyHoldings = holdingsByCurrency.get(currency) || []
         const summary = summariesByCurrency.get(currency)
-        
+
         // Skip rendering if summary is not yet calculated
         if (!summary) {
           return null
         }
-        
+
         return (
           <div key={currency} className="space-y-4">
             <Card>
@@ -668,8 +690,8 @@ export function PortfolioDashboard() {
               {currency === 'PKR' && (() => {
                 const pkEquityHoldings = currencyHoldings.filter(h => h.assetType === 'pk-equity')
                 return pkEquityHoldings.length > 0 ? (
-                  <PKEquityPortfolioChart 
-                    holdings={pkEquityHoldings} 
+                  <PKEquityPortfolioChart
+                    holdings={pkEquityHoldings}
                     currency={currency}
                   />
                 ) : null
@@ -678,8 +700,8 @@ export function PortfolioDashboard() {
               {currency === 'USD' && (() => {
                 const usEquityHoldings = currencyHoldings.filter(h => h.assetType === 'us-equity')
                 return usEquityHoldings.length > 0 ? (
-                  <USEquityPortfolioChart 
-                    holdings={usEquityHoldings} 
+                  <USEquityPortfolioChart
+                    holdings={usEquityHoldings}
                     currency={currency}
                   />
                 ) : null
@@ -688,8 +710,8 @@ export function PortfolioDashboard() {
               {(() => {
                 const cryptoHoldings = currencyHoldings.filter(h => h.assetType === 'crypto')
                 return cryptoHoldings.length > 0 ? (
-                  <CryptoPortfolioChart 
-                    holdings={cryptoHoldings} 
+                  <CryptoPortfolioChart
+                    holdings={cryptoHoldings}
                     currency={currency}
                   />
                 ) : null
@@ -698,8 +720,8 @@ export function PortfolioDashboard() {
               {currency === 'USD' && (() => {
                 const metalsHoldings = currencyHoldings.filter(h => h.assetType === 'metals')
                 return metalsHoldings.length > 0 ? (
-                  <MetalsPortfolioChart 
-                    holdings={metalsHoldings} 
+                  <MetalsPortfolioChart
+                    holdings={metalsHoldings}
                     currency={currency}
                   />
                 ) : null
@@ -753,7 +775,7 @@ export function PortfolioDashboard() {
         onSave={handleAddHolding}
         editingHolding={editingHolding?.assetType === 'commodities' ? editingHolding : null}
       />
-      
+
     </div>
   )
 }

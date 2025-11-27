@@ -248,17 +248,64 @@ export function UnifiedPriceChart() {
                     if (!response.ok) throw new Error('Failed to fetch price data')
                     const result = await response.json()
 
-                    let priceData: PriceDataPoint[] = (result.data || [])
-                        .map((record: any) => ({
-                            date: record.date,
-                            close: parseFloat(record.close) || 0,
-                            open: parseFloat(record.open) || parseFloat(record.close) || 0,
-                            high: parseFloat(record.high) || parseFloat(record.close) || 0,
-                            low: parseFloat(record.low) || parseFloat(record.close) || 0,
-                            volume: record.volume ? parseFloat(record.volume) : undefined,
-                        }))
-                        .filter((point: PriceDataPoint) => point.close > 0)
-                        .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
+                    let priceData: PriceDataPoint[] = []
+
+                    // Handle client-side fetch requirement (e.g. for Metals, SPX500)
+                    if (result.needsClientFetch && result.instrumentId) {
+                        console.log(`[UnifiedPriceChart] Client-side fetch required for ${selectedSymbol}`)
+                        const { fetchInvestingHistoricalDataClient } = await import('@/lib/portfolio/investing-client-api')
+
+                        // Fetch data from 2010 to today
+                        const startDate = '2010-01-01'
+                        const endDate = new Date().toISOString().split('T')[0]
+
+                        const clientData = await fetchInvestingHistoricalDataClient(
+                            result.instrumentId,
+                            startDate,
+                            endDate
+                        )
+
+                        if (clientData && clientData.length > 0) {
+                            // Store in DB
+                            try {
+                                await fetch('/api/historical-data/store', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        assetType,
+                                        symbol: selectedSymbol,
+                                        data: clientData,
+                                        source: 'investing',
+                                    }),
+                                })
+                            } catch (e) {
+                                console.error("Failed to store client data", e)
+                            }
+
+                            priceData = clientData.map(d => ({
+                                date: d.date,
+                                close: d.close,
+                                open: d.open || d.close,
+                                high: d.high || d.close,
+                                low: d.low || d.close,
+                                volume: d.volume || undefined
+                            })).sort((a, b) => a.date.localeCompare(b.date))
+                        } else {
+                            throw new Error('Failed to fetch data from client source')
+                        }
+                    } else {
+                        priceData = (result.data || [])
+                            .map((record: any) => ({
+                                date: record.date,
+                                close: parseFloat(record.close) || 0,
+                                open: parseFloat(record.open) || parseFloat(record.close) || 0,
+                                high: parseFloat(record.high) || parseFloat(record.close) || 0,
+                                low: parseFloat(record.low) || parseFloat(record.close) || 0,
+                                volume: record.volume ? parseFloat(record.volume) : undefined,
+                            }))
+                            .filter((point: PriceDataPoint) => point.close > 0)
+                            .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
+                    }
 
                     if (priceData.length === 0) throw new Error('No price data available')
 

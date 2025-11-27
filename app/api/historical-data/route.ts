@@ -210,11 +210,24 @@ async function fetchNewDataInBackground(
       console.log(`[${assetType}] Index data must be fetched client-side (Cloudflare protection). Background fetch skipped - client should handle.`)
       // Don't fetch here - let client handle it
     } else if (assetType === 'kse100') {
-      // For indices, we can't fetch server-side due to Cloudflare blocking
-      // Return a flag indicating client should fetch and store
-      // The client will fetch using client-side API and send to /api/historical-data/store
-      console.log(`[${assetType}] Index data must be fetched client-side (Cloudflare protection). Background fetch skipped - client should handle.`)
-      // Don't fetch here - let client handle it
+      // Fetch KSE100 from SCSTrade (server-side)
+      const kseStartDate = fetchStartDate || '2000-01-01'
+      console.log(`[${assetType}] Fetching from SCSTrade API (dates: ${kseStartDate} to ${today})`)
+
+      const { fetchKSE100Data } = await import('@/lib/portfolio/scstrade-indices-api')
+
+      const apiData = await retryWithBackoff(
+        () => fetchKSE100Data(kseStartDate, today),
+        3,
+        1000,
+        10000
+      )
+
+      if (apiData) {
+        console.log(`[${assetType}] Received ${apiData.length} records from SCSTrade API`)
+        newData = apiData
+        source = 'scstrade'
+      }
     } else if (assetType === 'metals') {
       // For metals, we can't fetch server-side due to Cloudflare blocking
       // Return a flag indicating client should fetch and store
@@ -323,12 +336,12 @@ export async function GET(request: NextRequest) {
       : undefined // No stored data, fetch from beginning
 
     // Step 3: Gap Detection - Check for missing dates and trigger fetch
-    // Only fetch for asset types that support server-side fetching (pk-equity, us-equity, crypto)
-    const supportsServerSideFetch = assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto'
+    // Only fetch for asset types that support server-side fetching (pk-equity, us-equity, crypto, kse100)
+    const supportsServerSideFetch = assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'kse100'
 
     if (supportsServerSideFetch) {
       // Get today's date in the appropriate market timezone
-      const marketForTimezone = assetType === 'pk-equity' ? 'PSX' : assetType === 'us-equity' ? 'US' : 'crypto'
+      const marketForTimezone = (assetType === 'pk-equity' || assetType === 'kse100') ? 'PSX' : assetType === 'us-equity' ? 'US' : 'crypto'
       const todayInMarketTimezone = getTodayInMarketTimezone(marketForTimezone)
 
       // Handle both cases: empty DB (fetchStartDate is undefined) and gaps (fetchStartDate exists)

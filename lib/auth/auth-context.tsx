@@ -31,21 +31,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Load auth state from localStorage on mount
   useEffect(() => {
-    const storedToken = localStorage.getItem(TOKEN_KEY)
-    const storedUser = localStorage.getItem(USER_KEY)
-    
-    if (storedToken && storedUser) {
-      setToken(storedToken)
-      try {
-        setUser(JSON.parse(storedUser))
-      } catch (e) {
-        // Invalid stored user, clear it
-        localStorage.removeItem(TOKEN_KEY)
-        localStorage.removeItem(USER_KEY)
+    const initAuth = async () => {
+      const storedToken = localStorage.getItem(TOKEN_KEY)
+      const storedUser = localStorage.getItem(USER_KEY)
+
+      if (storedToken && storedUser) {
+        setToken(storedToken)
+        try {
+          setUser(JSON.parse(storedUser))
+          // Verify token with server
+          try {
+            const response = await fetch('/api/auth/me', {
+              headers: {
+                'Authorization': `Bearer ${storedToken}`,
+              },
+            })
+
+            if (!response.ok) {
+              // Token invalid, clear auth
+              console.warn('Token invalid on init, logging out')
+              localStorage.removeItem(TOKEN_KEY)
+              localStorage.removeItem(USER_KEY)
+              setToken(null)
+              setUser(null)
+            }
+          } catch (err) {
+            console.error('Error verifying token on init:', err)
+          }
+        } catch (e) {
+          // Invalid stored user, clear it
+          localStorage.removeItem(TOKEN_KEY)
+          localStorage.removeItem(USER_KEY)
+          setToken(null)
+          setUser(null)
+        }
       }
+
+      setLoading(false)
     }
-    
-    setLoading(false)
+
+    initAuth()
   }, [])
 
   // Verify token and refresh user data

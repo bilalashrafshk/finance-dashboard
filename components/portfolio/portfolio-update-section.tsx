@@ -165,7 +165,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
         if (priceInfo && priceInfo.price !== null && priceInfo.price !== holding.currentPrice) {
           holding.currentPrice = priceInfo.price
           // Update in storage (fire and forget)
-          import('@/lib/portfolio/portfolio-storage').then(({ updateHolding }) => {
+          import('@/lib/portfolio/portfolio-db-storage').then(({ updateHolding }) => {
             updateHolding(holding.id, { currentPrice: priceInfo.price }).catch(err =>
               console.error(`Failed to update holding ${holding.id}:`, err)
             )
@@ -352,7 +352,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
         if (newPrice !== null && priceDate) {
           // Update holding price in portfolio
           if (newPrice !== holding.currentPrice) {
-            const { updateHolding } = await import('@/lib/portfolio/portfolio-storage')
+            const { updateHolding } = await import('@/lib/portfolio/portfolio-db-storage')
             updateHolding(holding.id, { currentPrice: newPrice })
           }
 

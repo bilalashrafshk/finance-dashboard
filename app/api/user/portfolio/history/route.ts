@@ -9,11 +9,11 @@ import { parseSymbolToBinance } from '@/lib/portfolio/binance-api'
 
 function getPool(): Pool {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
-  
+
   if (!connectionString) {
     throw new Error('DATABASE_URL or POSTGRES_URL environment variable is required')
   }
-  
+
   return new Pool({
     connectionString,
     ssl: connectionString.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
@@ -37,12 +37,14 @@ export async function GET(request: NextRequest) {
     const user = await requireAuth(request)
     const pool = getPool()
     const client = await pool.connect()
-    
+
     try {
       const url = new URL(request.url)
       const currency = url.searchParams.get('currency') || 'USD'
-      const days = url.searchParams.get('days') ? parseInt(url.searchParams.get('days')!) : 30
-      
+      const daysParam = url.searchParams.get('days')
+      const isAllTime = daysParam === 'ALL'
+      const days = daysParam && !isAllTime ? parseInt(daysParam) : 30
+
       // 1. Get all trades
       const tradesResult = await client.query(
         `SELECT id, user_id, holding_id, trade_type, asset_type, symbol, name, quantity,
@@ -52,7 +54,7 @@ export async function GET(request: NextRequest) {
          ORDER BY trade_date ASC, created_at ASC`,
         [user.id]
       )
-      
+
       const trades: Trade[] = tradesResult.rows.map(row => {
         // Ensure trade_date is properly formatted
         let tradeDate: string
@@ -64,7 +66,7 @@ export async function GET(request: NextRequest) {
           // Fallback: use current date if invalid
           tradeDate = new Date().toISOString().split('T')[0]
         }
-        
+
         return {
           id: row.id,
           userId: row.user_id,
@@ -91,7 +93,7 @@ export async function GET(request: NextRequest) {
       const endDate = new Date()
       const startDate = new Date()
       startDate.setDate(endDate.getDate() - days)
-      
+
       // Identify all unique assets to fetch history for
       const uniqueAssets = new Map<string, { assetType: string; symbol: string; currency: string }>()
       trades.forEach(t => {
@@ -106,38 +108,38 @@ export async function GET(request: NextRequest) {
           }
         }
       })
-      
+
       // 3. Pre-fetch historical prices for all assets in the date range using centralized route
       // This creates a map: assetKey -> date -> price for quick lookups
       const historicalPriceMap = new Map<string, Map<string, number>>()
       const todayStr = new Date().toISOString().split('T')[0]
       const baseUrl = request.nextUrl.origin
-      
+
       // Fetch historical prices for each unique asset using centralized /api/historical-data route
       for (const [assetKey, asset] of uniqueAssets.entries()) {
         try {
           const priceMap = new Map<string, number>()
-          
+
           // Convert crypto symbols to Binance format (e.g., ETH -> ETHUSDT)
           let symbolToFetch = asset.symbol
           if (asset.assetType === 'crypto') {
             symbolToFetch = parseSymbolToBinance(asset.symbol)
           }
-          
+
           // Use centralized historical data route (same as crypto portfolio chart)
           // Note: We could add date range for optimization, but keeping it simple like crypto chart
           const historicalDataUrl = `${baseUrl}/api/historical-data?assetType=${asset.assetType}&symbol=${encodeURIComponent(symbolToFetch)}`
-          
+
           const response = await fetch(historicalDataUrl)
           if (!response.ok) {
             console.error(`Failed to fetch historical data for ${assetKey}: ${response.status}`)
             // Continue with other assets
             continue
           }
-          
+
           const apiData = await response.json()
           const dbRecords = apiData.data || []
-          
+
           // Build a map of date -> price
           dbRecords.forEach((record: any) => {
             const price = record.adjusted_close || record.close
@@ -145,7 +147,7 @@ export async function GET(request: NextRequest) {
               priceMap.set(record.date, price)
             }
           })
-          
+
           // If today's price is not in historical data, try to fetch current price
           if (!priceMap.has(todayStr)) {
             try {
@@ -158,14 +160,14 @@ export async function GET(request: NextRequest) {
               // Continue without today's price
             }
           }
-          
+
           historicalPriceMap.set(assetKey, priceMap)
         } catch (error) {
           console.error(`Error fetching historical prices for ${assetKey}:`, error)
           // Continue with other assets
         }
       }
-      
+
       // Helper function to get price for a specific date
       // Falls back to closest earlier date, then purchase price, then 0
       const getPriceForDate = (assetKey: string, dateStr: string, fallbackPrice: number): number => {
@@ -174,12 +176,12 @@ export async function GET(request: NextRequest) {
           // No historical data, use fallback (purchase price)
           return fallbackPrice
         }
-        
+
         // Try exact date first
         if (priceMap.has(dateStr)) {
           return priceMap.get(dateStr)!
         }
-        
+
         // Find closest earlier date
         const dates = Array.from(priceMap.keys()).sort().reverse()
         for (const date of dates) {
@@ -187,38 +189,53 @@ export async function GET(request: NextRequest) {
             return priceMap.get(date)!
           }
         }
-        
+
         // No historical price found, use fallback
         return fallbackPrice
       }
-      
+
       const dailyHoldings: Record<string, { date: string, cash: number, invested: number }> = {}
-      
+
+      // Filter trades by currency to determine the correct start date for this specific currency view
+      // This prevents the graph from showing a long flat line if the user has older trades in a different currency
+      const relevantTrades = trades.filter(t => t.currency.toUpperCase() === currency.toUpperCase())
+
+      if (relevantTrades.length === 0) {
+        return NextResponse.json({ success: true, history: [] })
+      }
+
       // Generate daily points
-      // Start from the first trade date or requested start date, whichever is earlier
-      const firstTradeDate = new Date(trades[0].tradeDate)
-      const actualStartDate = firstTradeDate < startDate ? firstTradeDate : startDate
-      
+      // Start from the first RELEVANT trade date or requested start date
+      const firstTradeDate = new Date(relevantTrades[0].tradeDate)
+
+      let actualStartDate: Date
+      if (isAllTime) {
+        actualStartDate = firstTradeDate
+      } else {
+        // If filtering by days, start at startDate, unless first trade was later
+        actualStartDate = firstTradeDate > startDate ? firstTradeDate : startDate
+      }
+
       // Ensure we don't go beyond today
       const today = new Date()
       today.setHours(23, 59, 59, 999)
       const finalEndDate = endDate > today ? today : endDate
-      
+
       // Generate date range safely
       let currentDate = new Date(actualStartDate)
       currentDate.setHours(0, 0, 0, 0)
-      
+
       const maxIterations = 1000 // Safety limit to prevent infinite loops
       let iterationCount = 0
-      
+
       while (currentDate <= finalEndDate && iterationCount < maxIterations) {
         iterationCount++
         const dateStr = currentDate.toISOString().split('T')[0]
-        
+
         try {
           // Filter trades up to this date (inclusive)
           const tradesUntilDate = trades.filter(t => t.tradeDate <= dateStr)
-          
+
           if (tradesUntilDate.length === 0) {
             // No trades yet, set to zero
             dailyHoldings[dateStr] = {
@@ -229,10 +246,10 @@ export async function GET(request: NextRequest) {
           } else {
             // Calculate holdings for this date
             const holdings = calculateHoldingsFromTransactions(tradesUntilDate)
-            
+
             let cashBalance = 0
             let bookValue = 0 // Book Value = Cash + Current Market Value (includes unrealized P&L)
-            
+
             holdings.forEach(h => {
               try {
                 if (h.assetType === 'cash') {
@@ -257,7 +274,7 @@ export async function GET(request: NextRequest) {
                 // Continue with other holdings
               }
             })
-            
+
             dailyHoldings[dateStr] = {
               date: dateStr,
               cash: cashBalance,
@@ -273,22 +290,22 @@ export async function GET(request: NextRequest) {
             invested: 0
           }
         }
-        
+
         // Move to next day
         currentDate.setDate(currentDate.getDate() + 1)
       }
-      
+
       if (iterationCount >= maxIterations) {
         console.warn('Date loop reached max iterations, possible infinite loop prevented')
       }
-      
+
       // Sort by date to ensure chronological order
-      const sortedHistory = Object.values(dailyHoldings).sort((a: any, b: any) => 
+      const sortedHistory = Object.values(dailyHoldings).sort((a: any, b: any) =>
         new Date(a.date).getTime() - new Date(b.date).getTime()
       )
-      
+
       return NextResponse.json({ success: true, history: sortedHistory })
-      
+
     } finally {
       client.release()
     }
@@ -297,8 +314,8 @@ export async function GET(request: NextRequest) {
     console.error('Error stack:', error.stack)
     console.error('Error message:', error.message)
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: error.message || 'Failed to get portfolio history',
         details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       },

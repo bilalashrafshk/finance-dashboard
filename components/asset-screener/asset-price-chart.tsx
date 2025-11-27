@@ -26,11 +26,11 @@ import type { TrackedAsset } from "./add-asset-dialog"
 import type { PriceDataPoint } from "@/lib/asset-screener/metrics-calculations"
 import { getThemeColors } from "@/lib/charts/theme-colors"
 import { createAssetPriceYAxisScaleConfig } from "@/lib/charts/portfolio-chart-utils"
-import { 
-  calculateDividendAdjustedPrices, 
-  normalizeToPercentage, 
+import {
+  calculateDividendAdjustedPrices,
+  normalizeToPercentage,
   normalizeOriginalPricesToPercentage,
-  type DividendRecord 
+  type DividendRecord
 } from "@/lib/asset-screener/dividend-adjusted-prices"
 
 ChartJS.register(
@@ -109,7 +109,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
 
         // Fetch historical data for the asset
         let historicalDataUrl = ''
-        
+
         if (asset.assetType === 'crypto') {
           const { parseSymbolToBinance } = await import('@/lib/portfolio/binance-api')
           const binanceSymbol = parseSymbolToBinance(asset.symbol)
@@ -128,10 +128,47 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
         // Fetch asset data
         const assetResponse = await fetch(historicalDataUrl)
         let assetData: PriceDataPoint[] = []
-        
+
         if (assetResponse.ok) {
           const responseData = await assetResponse.json()
-          if (responseData.data && Array.isArray(responseData.data)) {
+
+          // Handle client-side fetch requirement
+          if (responseData.needsClientFetch && responseData.instrumentId) {
+            const { fetchInvestingHistoricalDataClient } = await import('@/lib/portfolio/investing-client-api')
+            // Fetch data based on limit/period
+            // For simplicity, fetch last 5 years if period is long, or 1 year if short
+            const startDate = '2015-01-01'
+            const endDate = new Date().toISOString().split('T')[0]
+
+            const clientData = await fetchInvestingHistoricalDataClient(
+              responseData.instrumentId,
+              startDate,
+              endDate
+            )
+
+            if (clientData && clientData.length > 0) {
+              // Store in DB
+              try {
+                await fetch('/api/historical-data/store', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    assetType: asset.assetType,
+                    symbol: asset.symbol,
+                    data: clientData,
+                    source: 'investing',
+                  }),
+                })
+              } catch (e) {
+                console.error("Failed to store client data", e)
+              }
+
+              assetData = clientData.map(d => ({
+                date: d.date,
+                close: d.close
+              })).sort((a, b) => a.date.localeCompare(b.date))
+            }
+          } else if (responseData.data && Array.isArray(responseData.data)) {
             assetData = responseData.data
               .map((record: any) => ({
                 date: record.date,
@@ -159,7 +196,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
           '5Y': new Date(now.getFullYear() - 5, now.getMonth(), now.getDate()),
           'ALL': new Date(0),
         }
-        
+
         const cutoffDate = periodCutoffs[chartPeriod]
         const filteredAssetData = assetData.filter((point: PriceDataPoint) => {
           const pointDate = new Date(point.date)
@@ -251,7 +288,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
 
           alignedDates = Array.from(commonDates).sort()
           alignedAdjustedPrices = alignedDates.map(date => adjustedMap.get(date) || 100)
-          
+
           // Normalize comparison to percentage change from start
           const comparisonStart = comparisonMap.get(alignedDates[0]) || 1
           alignedComparisonPrices = alignedDates.map(date => {
@@ -262,7 +299,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
           // When total return is enabled, use normalized prices
           alignedDates = normalizedOriginalPrices.map((point: PriceDataPoint) => point.date)
           alignedAssetPrices = normalizedOriginalPrices.map((point: PriceDataPoint) => point.close)
-          
+
           // Align adjusted prices to same dates
           const adjustedMap = new Map<string, number>()
           adjustedPriceData.forEach((point: PriceDataPoint) => {
@@ -291,14 +328,14 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
 
           alignedDates = Array.from(commonDates).sort()
           alignedAssetPrices = alignedDates.map(date => assetMap.get(date) || 0)
-          
+
           // Normalize comparison to percentage change from start (for better comparison)
           const comparisonStart = comparisonMap.get(alignedDates[0]) || 1
           alignedComparisonPrices = alignedDates.map(date => {
             const price = comparisonMap.get(date) || comparisonStart
             return (price / comparisonStart) * 100
           })
-          
+
           // Normalize asset prices to percentage change from start
           const assetStart = alignedAssetPrices[0] || 1
           alignedAssetPrices = alignedAssetPrices.map(price => (price / assetStart) * 100)
@@ -332,8 +369,8 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
           datasets.push({
             label: asset.symbol,
             data: alignedAssetPrices,
-            borderColor: colors.primary || '#3b82f6',
-            backgroundColor: (colors.primary || '#3b82f6') + '20',
+            borderColor: colors.price || '#3b82f6',
+            backgroundColor: (colors.price || '#3b82f6') + '20',
             fill: true,
           })
         }
@@ -356,10 +393,10 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
             const d = new Date(date)
             // Show year for periods that span multiple years (1Y, 2Y, 5Y, ALL)
             const showYear = chartPeriod === 'ALL' || chartPeriod === '1Y' || chartPeriod === '2Y' || chartPeriod === '5Y'
-            return d.toLocaleDateString('en-US', { 
-              month: 'short', 
-              day: 'numeric', 
-              year: showYear ? 'numeric' : undefined 
+            return d.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: showYear ? 'numeric' : undefined
             })
           }),
           datasets,
@@ -373,7 +410,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
     }
 
     loadChartData()
-  }, [asset, chartPeriod, showComparison, showTotalReturn, canShowComparison, canShowTotalReturn, comparisonIndex, colors.primary])
+  }, [asset, chartPeriod, showComparison, showTotalReturn, canShowComparison, canShowTotalReturn, comparisonIndex, colors.price])
 
   const formatCurrency = (value: number, currency: string, decimals: number = 2): string => {
     if (isNaN(value)) return 'N/A'

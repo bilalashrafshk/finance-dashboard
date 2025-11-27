@@ -6,17 +6,18 @@ import { Loader2 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { 
-  ResponsiveContainer, 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
   Legend,
   CartesianGrid
 } from "recharts"
 import { normalizeCyclesForChart, detectMarketCycles, type MarketCycle } from "@/lib/algorithms/market-cycle-detection"
+import { type InvestingHistoricalDataPoint } from "@/lib/portfolio/investing-client-api"
 import type { PriceDataPoint } from "@/lib/asset-screener/metrics-calculations"
 
 interface MarketCycleChartProps {
@@ -56,38 +57,38 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
   const [visibleCycles, setVisibleCycles] = useState<Set<string>>(new Set())
   const [isDark, setIsDark] = useState(false)
   const [currency, setCurrency] = useState<'PKR' | 'USD'>('PKR')
-  
+
   // Cache for exchange rate data
   const exchangeRateCacheRef = useRef<{
     data: ExchangeRateData[]
     map: Map<string, number>
     timestamp: number
   } | null>(null)
-  
+
   const EXCHANGE_RATE_CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours
 
   // Detect theme
   useEffect(() => {
     const checkTheme = () => {
-      const isDarkMode = document.documentElement.classList.contains('dark') || 
-                        window.matchMedia('(prefers-color-scheme: dark)').matches
+      const isDarkMode = document.documentElement.classList.contains('dark') ||
+        window.matchMedia('(prefers-color-scheme: dark)').matches
       setIsDark(isDarkMode)
     }
-    
+
     checkTheme()
     const observer = new MutationObserver(checkTheme)
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
-    
+
     return () => observer.disconnect()
   }, [])
 
   // Load exchange rate data with caching
   const loadExchangeRateData = useCallback(async (): Promise<Map<string, number>> => {
     const now = Date.now()
-    
+
     // Check cache
-    if (exchangeRateCacheRef.current && 
-        (now - exchangeRateCacheRef.current.timestamp) < EXCHANGE_RATE_CACHE_DURATION) {
+    if (exchangeRateCacheRef.current &&
+      (now - exchangeRateCacheRef.current.timestamp) < EXCHANGE_RATE_CACHE_DURATION) {
       return exchangeRateCacheRef.current.map
     }
 
@@ -104,7 +105,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
     }
 
     // Sort exchange data by date
-    const sortedExchangeData = [...exchangeData].sort((a, b) => 
+    const sortedExchangeData = [...exchangeData].sort((a, b) =>
       new Date(a.date).getTime() - new Date(b.date).getTime()
     )
 
@@ -130,12 +131,12 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
   // Convert price data to USD
   const convertToUSD = useCallback(async (data: PriceDataPoint[]): Promise<PriceDataPoint[]> => {
     const exchangeRateMap = await loadExchangeRateData()
-    
+
     const converted: PriceDataPoint[] = []
     for (const point of data) {
       const priceDate = new Date(point.date)
       const monthKey = `${priceDate.getFullYear()}-${String(priceDate.getMonth() + 1).padStart(2, '0')}`
-      
+
       // Find the exchange rate for this month (or closest previous month)
       let exchangeRate: number | null = null
       if (exchangeRateMap.has(monthKey)) {
@@ -177,11 +178,11 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
       try {
         // Fetch all available KSE100 historical data
         const response = await fetch('/api/historical-data?assetType=kse100&symbol=KSE100&limit=10000')
-        
+
         if (!response.ok) {
           throw new Error('Failed to fetch KSE100 data')
         }
-        
+
         const responseData = await response.json()
         if (responseData.data && Array.isArray(responseData.data)) {
           const data: PriceDataPoint[] = responseData.data
@@ -191,7 +192,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
             }))
             .filter((point: PriceDataPoint) => !isNaN(point.close))
             .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
-          
+
           setPriceData(data)
         } else {
           throw new Error('Invalid data format')
@@ -216,7 +217,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
       setLoading(true)
       try {
         let dataToUse = priceData
-        
+
         // Convert to USD if needed
         if (currency === 'USD') {
           dataToUse = await convertToUSD(priceData)
@@ -225,13 +226,13 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
         if (currency === 'PKR') {
           // Use API for PKR (with caching)
           const response = await fetch('/api/market-cycles?assetType=kse100&symbol=KSE100')
-          
+
           if (!response.ok) {
             throw new Error('Failed to fetch market cycles')
           }
-          
+
           const data = await response.json()
-          
+
           // Convert cycles to MarketCycle format (from cache + current)
           const allCycles: MarketCycle[] = data.allCycles.map((c: any) => ({
             cycleId: c.cycleId,
@@ -244,18 +245,18 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
             durationTradingDays: c.durationTradingDays,
             priceData: []
           }))
-          
+
           // Generate priceData for each cycle from historical data - only up to peak
           const cyclesWithData = allCycles.map(cycle => {
             const startDate = new Date(cycle.startDate)
             const endDate = new Date(cycle.endDate)
-            
+
             // Find all price points from start to peak (inclusive) - stop at peak
             const cyclePricePoints = priceData.filter(p => {
               const pDate = new Date(p.date)
               return pDate >= startDate && pDate <= endDate
             })
-            
+
             // Calculate trading days
             let tradingDayCounter = 0
             const cyclePriceData = cyclePricePoints.map((p, idx) => {
@@ -277,30 +278,30 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
                 }
                 tradingDayCounter += days
               }
-              
+
               return {
                 date: p.date,
                 price: p.close,
                 tradingDay: tradingDayCounter
               }
             })
-            
+
             // Find the actual peak (maximum price) in the cycle
             if (cyclePriceData.length > 0) {
-              const maxPricePoint = cyclePriceData.reduce((max, point) => 
+              const maxPricePoint = cyclePriceData.reduce((max, point) =>
                 point.price > max.price ? point : max
               )
-              
+
               // Only include data up to and including the peak
               const peakIndex = cyclePriceData.findIndex(p => p.date === maxPricePoint.date)
               const priceDataUpToPeak = cyclePriceData.slice(0, peakIndex + 1)
-              
+
               // Calculate actual peak ROI from start to maximum price
               const actualPeakROI = ((maxPricePoint.price - cycle.startPrice) / cycle.startPrice) * 100
-              
+
               // Calculate actual calendar days
               const actualCalendarDays = Math.ceil((new Date(maxPricePoint.date).getTime() - new Date(cycle.startDate).getTime()) / (1000 * 60 * 60 * 24))
-              
+
               return {
                 ...cycle,
                 endPrice: maxPricePoint.price,
@@ -310,37 +311,37 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
                 priceData: priceDataUpToPeak
               }
             }
-            
+
             return {
               ...cycle,
               priceData: cyclePriceData
             }
           })
-          
+
           setCycles(cyclesWithData)
           setVisibleCycles(new Set(cyclesWithData.map(c => c.cycleName)))
         } else {
           // For USD, detect cycles client-side on USD data
           const detectedCycles = detectMarketCycles(dataToUse)
-          
+
           // Recalculate peak ROI and filter data to only include up to peak
           const cyclesWithCorrectPeakROI = detectedCycles.map(cycle => {
             if (cycle.priceData.length > 0) {
               // Find the actual peak (maximum price) in the cycle
-              const maxPricePoint = cycle.priceData.reduce((max, point) => 
+              const maxPricePoint = cycle.priceData.reduce((max, point) =>
                 point.price > max.price ? point : max
               )
-              
+
               // Only include data up to and including the peak
               const peakIndex = cycle.priceData.findIndex(p => p.date === maxPricePoint.date)
               const priceDataUpToPeak = cycle.priceData.slice(0, peakIndex + 1)
-              
+
               // Calculate actual peak ROI from start to maximum price
               const actualPeakROI = ((maxPricePoint.price - cycle.startPrice) / cycle.startPrice) * 100
-              
+
               // Calculate actual calendar days
               const actualCalendarDays = Math.ceil((new Date(maxPricePoint.date).getTime() - new Date(cycle.startDate).getTime()) / (1000 * 60 * 60 * 24))
-              
+
               return {
                 ...cycle,
                 endPrice: maxPricePoint.price,
@@ -352,7 +353,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
             }
             return cycle
           })
-          
+
           setCycles(cyclesWithCorrectPeakROI)
           setVisibleCycles(new Set(cyclesWithCorrectPeakROI.map(c => c.cycleName)))
         }
@@ -373,7 +374,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
     }
 
     const normalizedCycles = normalizeCyclesForChart(cycles)
-    
+
     // Create a map of all unique trading days from all visible cycles
     const tradingDaySet = new Set<number>()
     normalizedCycles.forEach(cycle => {
@@ -381,19 +382,19 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
         cycle.data.forEach(d => tradingDaySet.add(d.tradingDay))
       }
     })
-    
+
     const sortedTradingDays = Array.from(tradingDaySet).sort((a, b) => a - b)
-    
+
     // Sample every Nth day for performance (but include all actual data points if possible)
     const sampleInterval = Math.max(1, Math.floor(sortedTradingDays.length / 1000)) // Max 1000 points
     const sampledDays = sortedTradingDays.filter((_, idx) => idx % sampleInterval === 0)
-    
+
     // Create data points
-    const dataPoints: Array<{ tradingDay: number; [key: string]: number | string }> = []
-    
+    const dataPoints: Array<{ tradingDay: number;[key: string]: number | string }> = []
+
     sampledDays.forEach(day => {
-      const point: { tradingDay: number; [key: string]: number | string } = { tradingDay: day }
-      
+      const point: { tradingDay: number;[key: string]: number | string } = { tradingDay: day }
+
       normalizedCycles.forEach(cycle => {
         if (visibleCycles.has(cycle.cycleName)) {
           const match = cycle.data.find(d => d.tradingDay === day)
@@ -402,7 +403,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
           }
         }
       })
-      
+
       // Only add point if it has at least one cycle value
       if (Object.keys(point).length > 1) {
         dataPoints.push(point)
@@ -430,7 +431,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
     if (active && payload && payload.length) {
       const data = payload[0].payload
       const tradingDay = data.tradingDay
-      
+
       // Filter out baseline and get all cycle data
       const cycleData = payload
         .filter((item: any) => item.dataKey !== 'baseline' && item.value !== undefined)
@@ -448,11 +449,11 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
             color: item.color
           }
         })
-      
+
       if (cycleData.length === 0) {
         return null
       }
-      
+
       return (
         <div className="bg-popover border border-border p-3 rounded-lg shadow-lg text-sm min-w-[200px]">
           <div className="font-bold mb-2 text-popover-foreground">Trading Day: {tradingDay}</div>
@@ -460,8 +461,8 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
             {cycleData.map((cycle: any, idx: number) => (
               <div key={idx} className="flex items-center justify-between gap-4 border-b border-border/50 pb-2 last:border-0 last:pb-0">
                 <div className="flex items-center gap-2">
-                  <div 
-                    className="w-3 h-3 rounded-full" 
+                  <div
+                    className="w-3 h-3 rounded-full"
                     style={{ backgroundColor: cycle.color }}
                   />
                   <span className="font-medium text-popover-foreground">{cycle.cycleName}</span>
@@ -558,29 +559,29 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
               </thead>
               <tbody>
                 {cycles.map((cycle, idx) => {
-                  const startDate = new Date(cycle.startDate).toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: 'short', 
-                    day: 'numeric' 
+                  const startDate = new Date(cycle.startDate).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
                   })
-                  const endDate = new Date(cycle.endDate).toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: 'short', 
-                    day: 'numeric' 
+                  const endDate = new Date(cycle.endDate).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
                   })
                   const durationYears = (cycle.durationTradingDays / 365.25).toFixed(1)
                   const isVisible = visibleCycles.has(cycle.cycleName)
-                  
+
                   return (
-                    <tr 
+                    <tr
                       key={cycle.cycleId}
                       className={`border-b cursor-pointer hover:bg-muted/50 ${!isVisible ? 'opacity-50' : ''}`}
                       onClick={() => handleLegendClick(cycle.cycleName)}
                     >
                       <td className="p-2 font-medium">
                         <div className="flex items-center gap-2">
-                          <div 
-                            className="w-3 h-3 rounded-full" 
+                          <div
+                            className="w-3 h-3 rounded-full"
                             style={{ backgroundColor: CYCLE_COLORS[idx % CYCLE_COLORS.length] }}
                           />
                           {cycle.cycleName}
@@ -615,36 +616,36 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: 20, right: 30, bottom: 50, left: 50 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={gridColor} opacity={0.4} />
-                
-                <XAxis 
+
+                <XAxis
                   dataKey="tradingDay"
                   name="Trading Days"
                   stroke={axisColor}
                   tick={{ fill: axisColor, fontSize: 12 }}
-                  label={{ 
-                    value: 'Trading Days from Cycle Start', 
-                    position: 'bottom', 
-                    offset: 10, 
-                    fill: axisLabelColor, 
-                    fontSize: 13 
+                  label={{
+                    value: 'Trading Days from Cycle Start',
+                    position: 'bottom',
+                    offset: 10,
+                    fill: axisLabelColor,
+                    fontSize: 13
                   }}
                 />
-                
-                <YAxis 
+
+                <YAxis
                   name="Normalized Price"
                   stroke={axisColor}
                   tick={{ fill: axisColor, fontSize: 12 }}
-                  label={{ 
-                    value: `Normalized Price (%) - ${currency}`, 
-                    angle: -90, 
-                    position: 'insideLeft', 
-                    fill: axisLabelColor, 
-                    fontSize: 13 
+                  label={{
+                    value: `Normalized Price (%) - ${currency}`,
+                    angle: -90,
+                    position: 'insideLeft',
+                    fill: axisLabelColor,
+                    fontSize: 13
                   }}
                 />
-                
+
                 <Tooltip content={<CustomTooltip />} />
-                
+
                 {/* Reference line at 100% */}
                 <Line
                   type="monotone"
@@ -656,13 +657,13 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
                   data={chartData.map(d => ({ ...d, baseline: 100 }))}
                   legendType="none"
                 />
-                
+
                 {/* Cycle lines */}
                 {cycles.map((cycle, idx) => {
                   if (!visibleCycles.has(cycle.cycleName)) {
                     return null
                   }
-                  
+
                   return (
                     <Line
                       key={cycle.cycleId}
@@ -690,14 +691,13 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
                 <div
                   key={cycle.cycleId}
                   onClick={() => handleLegendClick(cycle.cycleName)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-all ${
-                    isVisible 
-                      ? 'bg-muted hover:bg-muted/80' 
-                      : 'opacity-50 hover:opacity-70'
-                  }`}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-all ${isVisible
+                    ? 'bg-muted hover:bg-muted/80'
+                    : 'opacity-50 hover:opacity-70'
+                    }`}
                 >
-                  <div 
-                    className="w-4 h-4 rounded-full border-2 border-background" 
+                  <div
+                    className="w-4 h-4 rounded-full border-2 border-background"
                     style={{ backgroundColor: CYCLE_COLORS[idx % CYCLE_COLORS.length] }}
                   />
                   <span className="text-sm font-medium">

@@ -27,7 +27,15 @@ interface AllocationChartProps {
 
 export function AllocationChart({ allocation, holdings, currency = 'USD' }: AllocationChartProps) {
   const { theme } = useTheme()
-  const colors = getThemeColors()
+  const isDark = theme === 'dark'
+
+  // Define colors based on theme directly
+  const colors = useMemo(() => ({
+    foreground: isDark ? 'rgb(250, 250, 250)' : 'rgb(23, 23, 23)',
+    background: isDark ? 'rgb(23, 23, 23)' : 'rgb(255, 255, 255)',
+    border: isDark ? 'rgb(64, 64, 64)' : 'rgb(229, 229, 229)',
+  }), [isDark])
+
   const [expandedAssetType, setExpandedAssetType] = useState<AssetType | null>(null)
 
   // Automatically expand to show holdings breakdown if there's only one asset type
@@ -69,14 +77,14 @@ export function AllocationChart({ allocation, holdings, currency = 'USD' }: Allo
   // Calculate holdings breakdown for expanded asset type
   const holdingsBreakdown = useMemo(() => {
     if (!expandedAssetType) return null
-    
+
     // Combine holdings by asset before filtering
     const combinedHoldings = combineHoldingsByAsset(holdings)
     const assetHoldings = combinedHoldings.filter(h => h.assetType === expandedAssetType)
     if (assetHoldings.length === 0) return null
-    
+
     const totalValue = assetHoldings.reduce((sum, h) => sum + calculateCurrentValue(h), 0)
-    
+
     return assetHoldings.map(holding => {
       const value = calculateCurrentValue(holding)
       return {
@@ -90,10 +98,10 @@ export function AllocationChart({ allocation, holdings, currency = 'USD' }: Allo
 
   const holdingsChartData = useMemo(() => {
     if (!holdingsBreakdown || holdingsBreakdown.length === 0) return null
-    
+
     // Generate colors for holdings (use variations of the asset type color)
     const baseColor = ASSET_TYPE_COLORS[expandedAssetType!]
-    
+
     // Convert hex to RGB for manipulation
     const hexToRgb = (hex: string): [number, number, number] => {
       const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
@@ -101,18 +109,18 @@ export function AllocationChart({ allocation, holdings, currency = 'USD' }: Allo
         ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)]
         : [0, 0, 0]
     }
-    
+
     const rgbToHex = (r: number, g: number, b: number): string => {
       return `#${[r, g, b].map(x => {
         const hex = Math.max(0, Math.min(255, Math.round(x))).toString(16)
         return hex.length === 1 ? '0' + hex : hex
       }).join('')}`
     }
-    
+
     const generateColors = (count: number): string[] => {
       const [r, g, b] = hexToRgb(baseColor)
       const colors: string[] = []
-      
+
       for (let i = 0; i < count; i++) {
         // Create variations by adjusting brightness
         const factor = 0.7 + (i % 4) * 0.1 // Vary between 0.7 and 1.0
@@ -121,10 +129,10 @@ export function AllocationChart({ allocation, holdings, currency = 'USD' }: Allo
         const newB = Math.min(255, b * factor)
         colors.push(rgbToHex(newR, newG, newB))
       }
-      
+
       return colors
     }
-    
+
     return {
       labels: holdingsBreakdown.map(h => `${h.symbol}${h.name !== h.symbol ? ` (${h.name})` : ''}`),
       datasets: [{
@@ -161,13 +169,13 @@ export function AllocationChart({ allocation, holdings, currency = 'USD' }: Allo
           generateLabels: (chart: any) => {
             const data = chart.data
             if (data.labels.length === 0) return []
-            
+
             return data.labels.map((label: string, index: number) => {
               const value = data.datasets[0].data[index]
               const percentage = allocation[index]?.percentage || 0
               const assetType = allocation[index]?.assetType
               const isExpanded = expandedAssetType === assetType
-              
+
               return {
                 text: `${label} - ${formatCurrency(value, currency)} (${percentage.toFixed(1)}%)${isExpanded ? ' ▼' : ''}`,
                 fillStyle: data.datasets[0].backgroundColor[index],
@@ -219,7 +227,7 @@ export function AllocationChart({ allocation, holdings, currency = 'USD' }: Allo
           generateLabels: (chart: any) => {
             const data = chart.data
             if (data.labels.length === 0) return []
-            
+
             return data.labels.map((label: string, index: number) => {
               const value = data.datasets[0].data[index]
               const percentage = holdingsBreakdown?.[index]?.percentage || 0
@@ -309,7 +317,7 @@ export function AllocationChart({ allocation, holdings, currency = 'USD' }: Allo
             <div className="h-[300px]">
               <Pie data={chartData} options={chartOptions} />
             </div>
-            
+
             {expandedAssetType && holdingsChartData && (
               <div className="border-t pt-4">
                 <div className="flex items-center justify-between mb-2">

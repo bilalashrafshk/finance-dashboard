@@ -26,7 +26,7 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { fetchInvestingHistoricalDataClient, type InvestingHistoricalDataPoint, KSE100_INSTRUMENT_ID } from "@/lib/portfolio/investing-client-api"
+import { type InvestingHistoricalDataPoint } from "@/lib/portfolio/investing-client-api"
 import { calculateDividendAdjustedPrices, normalizeToPercentage, normalizeOriginalPricesToPercentage } from "@/lib/asset-screener/dividend-adjusted-prices"
 import type { PriceDataPoint } from "@/lib/asset-screener/metrics-calculations"
 import { convertDividendToRupees, filterDividendsByPurchaseDate } from "@/lib/portfolio/dividend-utils"
@@ -77,7 +77,7 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
       try {
         // Fetch historical data for all PK equity holdings in parallel (optimized)
         const historicalDataMap = new Map<string, StockAnalysisDataPoint[]>()
-        
+
         // Fetch all holdings in parallel instead of sequentially
         const fetchPromises = pkEquityHoldings.map(async (holding) => {
           try {
@@ -98,7 +98,7 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
           }
           return null
         })
-        
+
         // Wait for all fetches to complete
         const results = await Promise.all(fetchPromises)
         results.forEach(result => {
@@ -106,7 +106,7 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
             historicalDataMap.set(result.symbol, result.data)
           }
         })
-        
+
         // If no historical data found, don't render chart
         if (historicalDataMap.size === 0) {
           setChartData(null)
@@ -117,11 +117,11 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
         // Find the earliest purchase date among all holdings
         const purchaseDates = pkEquityHoldings.map(h => new Date(h.purchaseDate))
         const earliestPurchaseDate = new Date(Math.min(...purchaseDates.map(d => d.getTime())))
-        
+
         // Calculate date range based on period
         const today = new Date()
         let periodStartDate: Date
-        
+
         switch (chartPeriod) {
           case '1M':
             periodStartDate = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate())
@@ -145,7 +145,7 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
             periodStartDate = earliestPurchaseDate // Start from earliest purchase, not 2000
             break
         }
-        
+
         // The actual start date should be the later of: period start or earliest purchase date
         // We don't want to show portfolio value before the user owned any stocks
         const startDate = periodStartDate > earliestPurchaseDate ? periodStartDate : earliestPurchaseDate
@@ -166,7 +166,7 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
 
         // Sort dates chronologically (oldest first)
         const sortedDates = Array.from(allDates).sort((a, b) => a.localeCompare(b))
-        
+
         // Ensure we start from at least the earliest purchase date
         if (sortedDates.length > 0 && sortedDates[0] < earliestPurchaseDate.toISOString().split('T')[0]) {
           // Filter out any dates before earliest purchase
@@ -210,36 +210,36 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
         historicalDataMap.forEach((data, symbol) => {
           historicalPriceMap.set(symbol, data.map(d => ({ date: d.t, price: d.c })))
         })
-        
+
         // Calculate base portfolio value for each date using centralized function
         const portfolioValues: number[] = []
         const portfolioValuesWithDividends: number[] = []
-        
+
         for (const date of sortedDates) {
           // Use centralized function for base value (ensures consistency with summary)
           const baseValue = calculatePortfolioValueForDate(pkEquityHoldings, date, historicalPriceMap)
           portfolioValues.push(baseValue)
-          
+
           // Calculate dividend-adjusted value if total return is enabled
           if (showTotalReturn) {
             let totalValueWithDividends = 0
-            
+
             for (const holding of pkEquityHoldings) {
               const purchaseDate = new Date(holding.purchaseDate)
               const dateObj = new Date(date)
-              
+
               // Only include holdings purchased on or before this date
               if (dateObj >= purchaseDate) {
                 const data = historicalDataMap.get(holding.symbol)
                 const dividends = dividendDataMap.get(holding.symbol) || []
-                
+
                 if (data && dividends.length > 0) {
                   // Convert historical data to PriceDataPoint format
                   const priceData: PriceDataPoint[] = data
                     .filter(d => d.t >= holding.purchaseDate && d.t <= date)
                     .map(d => ({ date: d.t, close: d.c }))
                     .sort((a, b) => a.date.localeCompare(b.date))
-                  
+
                   if (priceData.length > 0) {
                     // Calculate dividend-adjusted prices for this holding
                     const adjustedPoints = calculateDividendAdjustedPrices(priceData, dividends)
@@ -265,7 +265,7 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
                 }
               }
             }
-            
+
             portfolioValuesWithDividends.push(totalValueWithDividends)
           } else {
             portfolioValuesWithDividends.push(baseValue)
@@ -274,7 +274,7 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
 
         // Use dividend-adjusted values if total return is enabled
         const valuesToUse = showTotalReturn ? portfolioValuesWithDividends : portfolioValues
-        
+
         // Normalize portfolio values to percentage change from start (for comparison with KSE 100)
         const startValue = valuesToUse[0] || 1
         setPortfolioStartValue(startValue)
@@ -284,176 +284,78 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
         let kse100Data: number[] | null = null
         let alignedDates = sortedDates
         let alignedPortfolioValues = showKSE100Comparison ? normalizedPortfolioValues : valuesToUse
-        
+
         if (showKSE100Comparison) {
           try {
             // First check database
             const { deduplicatedFetch } = await import('@/lib/portfolio/request-deduplication')
             let kse100Historical: InvestingHistoricalDataPoint[] | null = null
-            
+
             const dbResponse = await deduplicatedFetch(`/api/historical-data?assetType=kse100&symbol=KSE100`)
             if (dbResponse.ok) {
               const dbData = await dbResponse.json()
               const dbRecords = dbData.data || []
-              
+
               if (dbRecords.length > 0) {
                 // Convert database records to Investing format
                 const { dbRecordToInvesting } = await import('@/lib/portfolio/db-to-chart-format')
                 kse100Historical = dbRecords.map(dbRecordToInvesting)
-                
-                // Check if today's data is missing - if so, fetch and store it using centralized route
-                // Use PSX market timezone for KSE100
+
+                // Check if today's data is missing - if so, try to fetch it
+                // The API now handles server-side fetching for KSE100, so we just need to call it
                 const { getTodayInMarketTimezone } = await import('@/lib/portfolio/market-hours')
                 const today = getTodayInMarketTimezone('PSX')
                 const hasTodayData = kse100Historical.some(d => d.date === today)
-                
-                if (!hasTodayData) {
-                  // Use unified API route to fetch latest price (handles client-side fetch if needed)
-                  const { fetchIndicesPrice } = await import('@/lib/portfolio/unified-price-api')
-                  const latestPriceData = await fetchIndicesPrice('KSE100', true) // refresh=true to force fetch
-                  
-                  if (latestPriceData && latestPriceData.price && latestPriceData.date) {
-                    // Store the latest price in database
-                    const storeResponse = await fetch('/api/historical-data/store', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        assetType: 'kse100',
-                        symbol: 'KSE100',
-                        data: [{
+
+                if (!hasTodayData && kse100Historical) {
+                  // Call API to ensure latest data is fetched (server-side now)
+                  // We don't need to handle client-side fetch for KSE100 anymore
+                  try {
+                    const { fetchIndicesPrice } = await import('@/lib/portfolio/unified-price-api')
+                    const latestPriceData = await fetchIndicesPrice('KSE100', true) // refresh=true to force check/fetch
+
+                    if (latestPriceData && latestPriceData.price && latestPriceData.date) {
+                      // Add to our local data if it's new
+                      if (kse100Historical && !kse100Historical.some(d => d.date === latestPriceData.date)) {
+                        kse100Historical.push({
                           date: latestPriceData.date,
                           open: latestPriceData.price,
                           high: latestPriceData.price,
                           low: latestPriceData.price,
                           close: latestPriceData.price,
                           volume: null,
-                        }],
-                        source: 'investing',
-                      }),
-                    })
-                    
-                    if (storeResponse.ok) {
-                      // Add today's data to historical array
-                      kse100Historical.push({
-                        date: latestPriceData.date,
-                        open: latestPriceData.price,
-                        high: latestPriceData.price,
-                        low: latestPriceData.price,
-                        close: latestPriceData.price,
-                        volume: null,
-                      })
-                      // Sort by date
-                      kse100Historical.sort((a, b) => a.date.localeCompare(b.date))
-                    } else {
-                      console.error(`[PK Equity Chart] Failed to store today's KSE100 price`)
-                      // Don't show comparison if we can't store today's data
-                      kse100Historical = null
+                        })
+                        kse100Historical.sort((a, b) => a.date.localeCompare(b.date))
+                      }
                     }
-                  } else {
-                    // Don't show comparison if we can't fetch today's data
-                    kse100Historical = null
+                  } catch (e) {
+                    console.error("Error refreshing KSE100 data", e)
                   }
                 }
-              } else {
-                // No data in database - fetch it client-side and store it
-                try {
-                  const { fetchInvestingHistoricalDataClient } = await import('@/lib/portfolio/investing-client-api')
-                  const { KSE100_INSTRUMENT_ID } = await import('@/lib/portfolio/investing-client-api')
-                  
-                  // Fetch all historical data (from 2000 to today)
-                  const clientData = await fetchInvestingHistoricalDataClient(
-                    KSE100_INSTRUMENT_ID,
-                    '2000-01-01',
-                    new Date().toISOString().split('T')[0]
-                  )
-                  
-                  if (clientData && clientData.length > 0) {
-                    // Store in database
-                    const storeResponse = await fetch('/api/historical-data/store', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        assetType: 'kse100',
-                        symbol: 'KSE100',
-                        data: clientData,
-                        source: 'investing',
-                      }),
-                    })
-                    
-                    if (storeResponse.ok) {
-                      kse100Historical = clientData
-                    } else {
-                      console.error(`[PK Equity Chart] Failed to store KSE100 data`)
-                      kse100Historical = clientData // Use it anyway even if storage failed
-                    }
-                  } else {
-                    console.error(`[PK Equity Chart] Failed to fetch KSE100 data from Investing.com`)
-                    kse100Historical = null
-                  }
-                } catch (fetchError) {
-                  console.error(`[PK Equity Chart] Error fetching KSE100 data:`, fetchError)
-                  kse100Historical = null
-                }
-              }
-            } else {
-              // Database check failed - try to fetch anyway
-              try {
-                const { fetchInvestingHistoricalDataClient } = await import('@/lib/portfolio/investing-client-api')
-                const { KSE100_INSTRUMENT_ID } = await import('@/lib/portfolio/investing-client-api')
-                
-                const clientData = await fetchInvestingHistoricalDataClient(
-                  KSE100_INSTRUMENT_ID,
-                  '2000-01-01',
-                  new Date().toISOString().split('T')[0]
-                )
-                
-                if (clientData && clientData.length > 0) {
-                  kse100Historical = clientData
-                  // Try to store it
-                  try {
-                    await fetch('/api/historical-data/store', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        assetType: 'kse100',
-                        symbol: 'KSE100',
-                        data: clientData,
-                        source: 'investing',
-                      }),
-                    })
-                  } catch (storeError) {
-                    console.error(`[PK Equity Chart] Failed to store KSE100 data:`, storeError)
-                  }
-                } else {
-                  kse100Historical = null
-                }
-              } catch (fetchError) {
-                console.error(`[PK Equity Chart] Error fetching KSE100 data:`, fetchError)
-                kse100Historical = null
               }
             }
-            
+
             if (kse100Historical && kse100Historical.length > 0) {
               // Map KSE 100 data to our date range
               const kse100Mapped: (number | null)[] = sortedDates.map(date => {
                 // Find exact match or closest before
                 let ksePoint = kse100Historical!.find(d => d.date === date)
-                
+
                 if (!ksePoint) {
                   const beforeDates = kse100Historical!.filter(d => d.date <= date)
                   if (beforeDates.length > 0) {
                     ksePoint = beforeDates.sort((a, b) => b.date.localeCompare(a.date))[0]
                   }
                 }
-                
+
                 return ksePoint ? ksePoint.close : null
               })
-              
+
               // Only use data points that have values for both portfolio and KSE 100
               const validKseData: number[] = []
               const validPortfolioValues: number[] = []
               const validDates: string[] = []
-              
+
               for (let i = 0; i < sortedDates.length; i++) {
                 if (kse100Mapped[i] !== null && normalizedPortfolioValues[i] !== undefined) {
                   validKseData.push(kse100Mapped[i]!)
@@ -461,12 +363,12 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
                   validDates.push(sortedDates[i])
                 }
               }
-              
+
               if (validKseData.length > 0 && validKseData[0] > 0) {
                 // Normalize KSE 100 to percentage change from start (for comparison)
                 const kse100StartValue = validKseData[0]
                 kse100Data = validKseData.map(value => (value / kse100StartValue) * 100)
-                
+
                 // Use aligned data
                 alignedDates = validDates
                 alignedPortfolioValues = validPortfolioValues
@@ -485,14 +387,14 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
           backgroundColor: string
           fill: boolean
         }> = [
-          {
-            label: 'Portfolio Value',
-            data: alignedPortfolioValues,
-            borderColor: colors.primary || '#10b981',
-            backgroundColor: (colors.primary || '#10b981') + '20',
-            fill: true,
-          },
-        ]
+            {
+              label: 'Portfolio Value',
+              data: alignedPortfolioValues,
+              borderColor: colors.primary || '#10b981',
+              backgroundColor: (colors.primary || '#10b981') + '20',
+              fill: true,
+            },
+          ]
 
         // Add KSE 100 comparison line if enabled and data is available
         if (showKSE100Comparison && kse100Data && kse100Data.length > 0) {
@@ -527,7 +429,7 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
     // Re-run when holdings, period, comparison toggle, total return toggle, or log scale changes
     // When comparison toggle changes, we need to re-process the data (but not re-fetch from API)
   }, [pkEquityHoldings, chartPeriod, showKSE100Comparison, showTotalReturn, useLogScale])
-  
+
   // Show warning when comparing with KSE100 using price return only
   useEffect(() => {
     if (showKSE100Comparison && !showTotalReturn) {
@@ -560,7 +462,7 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
           label: (context: any) => {
             const value = context.parsed.y || 0
             const datasetLabel = context.dataset.label || ''
-            
+
             if (showKSE100Comparison) {
               // Show percentage change when comparing
               if (datasetLabel === 'KSE 100 Index') {

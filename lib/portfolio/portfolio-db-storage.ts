@@ -12,14 +12,15 @@ const API_BASE = '/api/user/holdings'
 /**
  * Load portfolio from database
  */
-export async function loadPortfolio(): Promise<Portfolio> {
+export async function loadPortfolio(fast: boolean = false): Promise<Portfolio> {
   const token = getAuthToken()
   if (!token) {
     return { holdings: [], lastUpdated: new Date().toISOString() }
   }
 
   try {
-    const response = await fetch(API_BASE, {
+    const url = fast ? `${API_BASE}?fast=true` : API_BASE
+    const response = await fetch(url, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -64,7 +65,7 @@ export async function savePortfolio(portfolio: Portfolio): Promise<void> {
 /**
  * Add a new holding
  */
-export async function addHolding(holding: Omit<Holding, 'id' | 'createdAt' | 'updatedAt'>): Promise<Holding> {
+export async function addHolding(holding: Omit<Holding, 'id' | 'createdAt' | 'updatedAt'> & { autoDeposit?: boolean }): Promise<Holding> {
   const token = getAuthToken()
   if (!token) {
     throw new Error('Authentication required')
