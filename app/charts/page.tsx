@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { SharedNavbar } from "@/components/shared-navbar"
 import { Search, ChevronRight, LayoutGrid } from "lucide-react"
@@ -17,7 +17,7 @@ import {
 import { CHART_CATEGORIES, type ChartId } from "@/lib/config/charts-registry"
 import { ChartsWelcome } from "./charts-welcome"
 
-export default function ChartsPage() {
+function ChartsContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const selectedChartId = searchParams.get("chart") as ChartId | null
@@ -182,5 +182,13 @@ export default function ChartsPage() {
                 </main>
             </div>
         </div>
+    )
+}
+
+export default function ChartsPage() {
+    return (
+        <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
+            <ChartsContent />
+        </Suspense>
     )
 }
