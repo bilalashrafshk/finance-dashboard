@@ -435,6 +435,13 @@ export async function GET(request: NextRequest) {
     try {
       // Get quarter boundaries
       const quarters = getQuarterBoundaries(year)
+      
+      // Filter out future quarters (quarters that haven't started yet)
+      const today = new Date()
+      const currentDateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      const validQuarters = quarters.filter(q => q.startDate <= currentDateStr)
+      
+      console.log(`[Sector Performance API] Year ${year}: ${quarters.length} total quarters, ${validQuarters.length} valid quarters (not in future)`)
 
       // Calculate performance for the selected sector
       const quarterPerformances: QuarterPerformance[] = []
