@@ -72,6 +72,7 @@ export function SectorQuarterlyPerformance() {
   const [stockDetailsOpen, setStockDetailsOpen] = useState(false)
   const [loadingStockDetails, setLoadingStockDetails] = useState(false)
   const [stockDetails, setStockDetails] = useState<QuarterStockDetails[]>([])
+  const [noDataMessage, setNoDataMessage] = useState<string | null>(null)
 
   // Generate years list (last 10 years)
   const years = Array.from({ length: 10 }, (_, i) => currentYear - i)
@@ -200,10 +201,12 @@ export function SectorQuarterlyPerformance() {
 
       setData(result.quarters)
       
-      // Show message if no data and message is provided
+      // Show message if no data and message is provided (as info, not error)
       if (result.quarters.length === 0 && result.message) {
-        setError(result.message)
+        setNoDataMessage(result.message)
+        setError(null) // Clear error state
       } else {
+        setNoDataMessage(null)
         setError(null)
       }
     } catch (err: any) {
@@ -374,8 +377,8 @@ export function SectorQuarterlyPerformance() {
             <div className="flex items-center justify-center h-[400px] border rounded-lg bg-muted/10">
               <div className="text-center text-muted-foreground">
                 <p className="font-medium">No data available for {selectedSector} in {year}</p>
-                {error && (
-                  <p className="text-sm mt-2 text-muted-foreground/80">{error}</p>
+                {noDataMessage && (
+                  <p className="text-sm mt-2 text-muted-foreground/80">{noDataMessage}</p>
                 )}
                 <p className="text-xs mt-4 text-muted-foreground/60">
                   This may be because:
@@ -464,18 +467,18 @@ export function SectorQuarterlyPerformance() {
                   loadStockDetails()
                 }
               }}>
-                <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">View Stocks in Sector</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      See all stocks included in the {selectedSector} sector performance calculation
-                      {totalStocksInSector !== null && ` (${totalStocksInSector} stocks)`}
-                    </p>
-                  </div>
+              <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                <div className="flex-1">
+                  <p className="text-sm font-medium">View Stocks in Sector</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    See all stocks included in the {selectedSector} sector performance calculation
+                    {totalStocksInSector !== null && ` (${totalStocksInSector} stocks)`}
+                  </p>
+                </div>
                   <DialogTrigger asChild>
                     <Button variant="outline" className="flex items-center gap-2">
-                      <List className="h-4 w-4" />
-                      View Stocks
+                  <List className="h-4 w-4" />
+                  View Stocks
                     </Button>
                   </DialogTrigger>
                 </div>
@@ -555,7 +558,7 @@ export function SectorQuarterlyPerformance() {
                                 </TableBody>
                               </Table>
                             </div>
-                          </div>
+              </div>
                         </TabsContent>
                       ))}
                     </Tabs>
