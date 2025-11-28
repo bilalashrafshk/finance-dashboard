@@ -15,10 +15,25 @@ import { PortfolioSummary } from "./portfolio-summary"
 import { AllocationChart } from "./allocation-chart"
 import { PortfolioHistoryChart } from "./portfolio-history-chart"
 import { PnLBreakdown } from "./pnl-breakdown"
-import { PKEquityPortfolioChart } from "./pk-equity-portfolio-chart"
-import { CryptoPortfolioChart } from "./crypto-portfolio-chart"
-import { USEquityPortfolioChart } from "./us-equity-portfolio-chart"
-import { MetalsPortfolioChart } from "./metals-portfolio-chart"
+import { LazyChartWrapper } from "./lazy-chart-wrapper"
+import dynamic from "next/dynamic"
+
+// Lazy load heavy chart components
+const PKEquityPortfolioChart = dynamic(() => import("./pk-equity-portfolio-chart").then(mod => ({ default: mod.PKEquityPortfolioChart })), {
+  ssr: false,
+})
+
+const CryptoPortfolioChart = dynamic(() => import("./crypto-portfolio-chart").then(mod => ({ default: mod.CryptoPortfolioChart })), {
+  ssr: false,
+})
+
+const USEquityPortfolioChart = dynamic(() => import("./us-equity-portfolio-chart").then(mod => ({ default: mod.USEquityPortfolioChart })), {
+  ssr: false,
+})
+
+const MetalsPortfolioChart = dynamic(() => import("./metals-portfolio-chart").then(mod => ({ default: mod.MetalsPortfolioChart })), {
+  ssr: false,
+})
 import { PortfolioUpdateSection } from "./portfolio-update-section"
 import { MyDividends } from "./my-dividends"
 import type { Holding, AssetType } from "@/lib/portfolio/types"
@@ -55,8 +70,10 @@ export function PortfolioDashboard() {
     if (!authLoading && user) {
       // Fast load first (instant render from DB)
       loadHoldings(true).then(() => {
-        // Then refresh prices in background to get latest data
-        handleRefreshPrices()
+        // Defer price refresh by 1.5 seconds to allow initial render
+        setTimeout(() => {
+          handleRefreshPrices()
+        }, 1500)
       })
     }
   }, [authLoading, user])
@@ -312,51 +329,68 @@ export function PortfolioDashboard() {
       currenciesNeedingRates.every(c => exchangeRates.has(c))
   }, [currenciesNeedingRates, exchangeRatesKey, exchangeRates])
 
-  // Calculate summaries with dividends (async)
+  // Calculate summaries - defer heavy calculations (dividends/realized PnL) until after initial render
   useEffect(() => {
     const calculateSummaries = async () => {
       // Recalculate inside useEffect to avoid dependency issues
       const currentHoldingsByCurrency = groupHoldingsByCurrency(holdings)
       const currentCurrencies = Array.from(currentHoldingsByCurrency.keys()).sort()
 
-      // Calculate summaries for each currency with dividends in parallel
-      const summaryPromises = currentCurrencies.map(async (currency) => {
+      // First, calculate basic summaries without dividends/realized PnL for fast initial render
+      const basicSummaryPromises = currentCurrencies.map(async (currency) => {
         const currencyHoldings = currentHoldingsByCurrency.get(currency) || []
-        const summary = await calculatePortfolioSummaryWithDividends(currencyHoldings)
+        const summary = calculatePortfolioSummary(currencyHoldings)
         return { currency, summary }
       })
 
-      const summaries = await Promise.all(summaryPromises)
-
+      const basicSummaries = await Promise.all(basicSummaryPromises)
       const newSummaries = new Map<string, ReturnType<typeof calculatePortfolioSummary>>()
-      summaries.forEach(({ currency, summary }) => {
+      basicSummaries.forEach(({ currency, summary }) => {
         newSummaries.set(currency, summary)
       })
       setSummariesByCurrency(newSummaries)
 
-      // Calculate unified USD summary with dividends and realized PnL
-      if (viewMode === 'unified' && allExchangeRatesAvailable) {
-        try {
-          const { calculateUnifiedPortfolioSummaryWithRealizedPnL } = await import('@/lib/portfolio/portfolio-utils')
-          const unified = await calculateUnifiedPortfolioSummaryWithRealizedPnL(holdings, exchangeRates)
-          // Add dividends to unified summary
-          const pkEquityHoldings = holdings.filter(h => h.assetType === 'pk-equity')
-          if (pkEquityHoldings.length > 0) {
-            const { calculateTotalDividendsCollected } = await import('@/lib/portfolio/portfolio-utils')
-            const dividendsCollected = await calculateTotalDividendsCollected(holdings)
-            unified.dividendsCollected = dividendsCollected
-            unified.dividendsCollectedPercent = unified.totalInvested > 0 ? (dividendsCollected / unified.totalInvested) * 100 : 0
+      // Defer heavy calculations (dividends/realized PnL) by 500ms to allow initial render
+      setTimeout(async () => {
+        // Calculate summaries with dividends in parallel
+        const summaryPromises = currentCurrencies.map(async (currency) => {
+          const currencyHoldings = currentHoldingsByCurrency.get(currency) || []
+          const summary = await calculatePortfolioSummaryWithDividends(currencyHoldings)
+          return { currency, summary }
+        })
+
+        const summaries = await Promise.all(summaryPromises)
+
+        const updatedSummaries = new Map<string, ReturnType<typeof calculatePortfolioSummary>>()
+        summaries.forEach(({ currency, summary }) => {
+          updatedSummaries.set(currency, summary)
+        })
+        setSummariesByCurrency(updatedSummaries)
+
+        // Calculate unified USD summary with dividends and realized PnL
+        if (viewMode === 'unified' && allExchangeRatesAvailable) {
+          try {
+            const { calculateUnifiedPortfolioSummaryWithRealizedPnL } = await import('@/lib/portfolio/portfolio-utils')
+            const unified = await calculateUnifiedPortfolioSummaryWithRealizedPnL(holdings, exchangeRates)
+            // Add dividends to unified summary
+            const pkEquityHoldings = holdings.filter(h => h.assetType === 'pk-equity')
+            if (pkEquityHoldings.length > 0) {
+              const { calculateTotalDividendsCollected } = await import('@/lib/portfolio/portfolio-utils')
+              const dividendsCollected = await calculateTotalDividendsCollected(holdings)
+              unified.dividendsCollected = dividendsCollected
+              unified.dividendsCollectedPercent = unified.totalInvested > 0 ? (dividendsCollected / unified.totalInvested) * 100 : 0
+            }
+            setUnifiedSummary(unified)
+          } catch (error) {
+            console.error('Error calculating unified summary:', error)
+            // Fallback to basic unified summary without realized PnL
+            const { calculateUnifiedPortfolioSummary } = await import('@/lib/portfolio/portfolio-utils')
+            setUnifiedSummary(calculateUnifiedPortfolioSummary(holdings, exchangeRates))
           }
-          setUnifiedSummary(unified)
-        } catch (error) {
-          console.error('Error calculating unified summary:', error)
-          // Fallback to basic unified summary without realized PnL
-          const { calculateUnifiedPortfolioSummary } = await import('@/lib/portfolio/portfolio-utils')
-          setUnifiedSummary(calculateUnifiedPortfolioSummary(holdings, exchangeRates))
+        } else {
+          setUnifiedSummary(null)
         }
-      } else {
-        setUnifiedSummary(null)
-      }
+      }, 500)
     }
 
     if (holdings.length > 0) {
@@ -367,7 +401,8 @@ export function PortfolioDashboard() {
     }
   }, [holdings, exchangeRatesKey, viewMode, allExchangeRatesAvailable])
 
-  const allocation = calculateAssetAllocation(holdings)
+  // Memoize allocation calculation
+  const allocation = useMemo(() => calculateAssetAllocation(holdings), [holdings])
   const hasAutoPriceHoldings = holdings.some(
     (h) => h.assetType === 'crypto' || h.assetType === 'pk-equity' || h.assetType === 'us-equity' || h.assetType === 'metals'
   )
@@ -578,44 +613,52 @@ export function PortfolioDashboard() {
                   <PortfolioHistoryChart currency="USD" />
                 </div>
                 <PnLBreakdown holdings={holdings} currency="USD" />
-                {/* US Equities Portfolio Chart */}
+                {/* US Equities Portfolio Chart - Lazy loaded */}
                 {(() => {
                   const usEquityHoldings = holdings.filter(h => h.assetType === 'us-equity')
                   return usEquityHoldings.length > 0 ? (
-                    <USEquityPortfolioChart
-                      holdings={usEquityHoldings}
-                      currency="USD"
-                    />
+                    <LazyChartWrapper pieChart title="US Equities Holdings Breakdown">
+                      <USEquityPortfolioChart
+                        holdings={usEquityHoldings}
+                        currency="USD"
+                      />
+                    </LazyChartWrapper>
                   ) : null
                 })()}
-                {/* PK Equities Portfolio Chart */}
+                {/* PK Equities Portfolio Chart - Lazy loaded */}
                 {(() => {
                   const pkEquityHoldings = holdings.filter(h => h.assetType === 'pk-equity')
                   return pkEquityHoldings.length > 0 ? (
-                    <PKEquityPortfolioChart
-                      holdings={pkEquityHoldings}
-                      currency="USD"
-                    />
+                    <LazyChartWrapper pieChart title="PK Equities Holdings Breakdown">
+                      <PKEquityPortfolioChart
+                        holdings={pkEquityHoldings}
+                        currency="USD"
+                      />
+                    </LazyChartWrapper>
                   ) : null
                 })()}
-                {/* Crypto Portfolio Chart */}
+                {/* Crypto Portfolio Chart - Lazy loaded */}
                 {(() => {
                   const cryptoHoldings = holdings.filter(h => h.assetType === 'crypto')
                   return cryptoHoldings.length > 0 ? (
-                    <CryptoPortfolioChart
-                      holdings={cryptoHoldings}
-                      currency="USD"
-                    />
+                    <LazyChartWrapper pieChart title="Crypto Holdings Breakdown">
+                      <CryptoPortfolioChart
+                        holdings={cryptoHoldings}
+                        currency="USD"
+                      />
+                    </LazyChartWrapper>
                   ) : null
                 })()}
-                {/* Metals Portfolio Chart */}
+                {/* Metals Portfolio Chart - Lazy loaded */}
                 {(() => {
                   const metalsHoldings = holdings.filter(h => h.assetType === 'metals')
                   return metalsHoldings.length > 0 ? (
-                    <MetalsPortfolioChart
-                      holdings={metalsHoldings}
-                      currency="USD"
-                    />
+                    <LazyChartWrapper pieChart title="Metals Holdings Breakdown">
+                      <MetalsPortfolioChart
+                        holdings={metalsHoldings}
+                        currency="USD"
+                      />
+                    </LazyChartWrapper>
                   ) : null
                 })()}
               </div>
@@ -686,44 +729,52 @@ export function PortfolioDashboard() {
                 <PortfolioHistoryChart currency={currency} />
               </div>
               <PnLBreakdown holdings={currencyHoldings} currency={currency} />
-              {/* PK Equities Portfolio Chart - only show for PKR currency with actual PK equity holdings */}
+              {/* PK Equities Portfolio Chart - only show for PKR currency with actual PK equity holdings - Lazy loaded */}
               {currency === 'PKR' && (() => {
                 const pkEquityHoldings = currencyHoldings.filter(h => h.assetType === 'pk-equity')
                 return pkEquityHoldings.length > 0 ? (
-                  <PKEquityPortfolioChart
-                    holdings={pkEquityHoldings}
-                    currency={currency}
-                  />
+                  <LazyChartWrapper pieChart title="PK Equities Holdings Breakdown">
+                    <PKEquityPortfolioChart
+                      holdings={pkEquityHoldings}
+                      currency={currency}
+                    />
+                  </LazyChartWrapper>
                 ) : null
               })()}
-              {/* US Equities Portfolio Chart - show for USD currency with actual US equity holdings */}
+              {/* US Equities Portfolio Chart - show for USD currency with actual US equity holdings - Lazy loaded */}
               {currency === 'USD' && (() => {
                 const usEquityHoldings = currencyHoldings.filter(h => h.assetType === 'us-equity')
                 return usEquityHoldings.length > 0 ? (
-                  <USEquityPortfolioChart
-                    holdings={usEquityHoldings}
-                    currency={currency}
-                  />
+                  <LazyChartWrapper pieChart title="US Equities Holdings Breakdown">
+                    <USEquityPortfolioChart
+                      holdings={usEquityHoldings}
+                      currency={currency}
+                    />
+                  </LazyChartWrapper>
                 ) : null
               })()}
-              {/* Crypto Portfolio Chart - show for any currency with crypto holdings */}
+              {/* Crypto Portfolio Chart - show for any currency with crypto holdings - Lazy loaded */}
               {(() => {
                 const cryptoHoldings = currencyHoldings.filter(h => h.assetType === 'crypto')
                 return cryptoHoldings.length > 0 ? (
-                  <CryptoPortfolioChart
-                    holdings={cryptoHoldings}
-                    currency={currency}
-                  />
+                  <LazyChartWrapper pieChart title="Crypto Holdings Breakdown">
+                    <CryptoPortfolioChart
+                      holdings={cryptoHoldings}
+                      currency={currency}
+                    />
+                  </LazyChartWrapper>
                 ) : null
               })()}
-              {/* Metals Portfolio Chart - show for USD currency with metals holdings */}
+              {/* Metals Portfolio Chart - show for USD currency with metals holdings - Lazy loaded */}
               {currency === 'USD' && (() => {
                 const metalsHoldings = currencyHoldings.filter(h => h.assetType === 'metals')
                 return metalsHoldings.length > 0 ? (
-                  <MetalsPortfolioChart
-                    holdings={metalsHoldings}
-                    currency={currency}
-                  />
+                  <LazyChartWrapper pieChart title="Metals Holdings Breakdown">
+                    <MetalsPortfolioChart
+                      holdings={metalsHoldings}
+                      currency={currency}
+                    />
+                  </LazyChartWrapper>
                 ) : null
               })()}
             </div>

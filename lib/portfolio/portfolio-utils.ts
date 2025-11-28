@@ -308,7 +308,8 @@ export async function calculateTotalRealizedPnL(): Promise<number> {
       return 0
     }
 
-    const response = await fetch('/api/user/trades', {
+    // Use optimized endpoint with caching
+    const response = await fetch('/api/user/realized-pnl', {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -319,24 +320,7 @@ export async function calculateTotalRealizedPnL(): Promise<number> {
     }
 
     const data = await response.json()
-    const trades = data.trades || []
-
-    // Sum realized PnL from all sell transactions
-    let totalRealizedPnL = 0
-    trades.forEach((trade: any) => {
-      if (trade.tradeType === 'sell' && trade.notes) {
-        // Extract realized PnL from notes: "Realized P&L: 123.45 USD"
-        const match = trade.notes.match(/Realized P&L: ([\d.-]+)/)
-        if (match) {
-          const pnl = parseFloat(match[1])
-          if (!isNaN(pnl)) {
-            totalRealizedPnL += pnl
-          }
-        }
-      }
-    })
-
-    return totalRealizedPnL
+    return data.realizedPnL || 0
   } catch (error) {
     // Silently fail - this is not critical for the app to function
     if (process.env.NODE_ENV === 'development') {
@@ -411,11 +395,27 @@ export async function calculateUnifiedPortfolioSummaryWithRealizedPnL(
   return summary
 }
 
+// Memoization cache for asset allocation calculations
+const assetAllocationCache = new Map<string, AssetTypeAllocation[]>()
+const ALLOCATION_CACHE_TTL = 30 * 1000 // 30 seconds
+
 /**
  * Calculate asset type allocation
  * Combines holdings by asset (assetType + symbol + currency) before calculation
+ * Memoized to avoid recalculating on every render
  */
 export function calculateAssetAllocation(holdings: Holding[]): AssetTypeAllocation[] {
+  // Create cache key from holdings
+  const cacheKey = holdings
+    .map(h => `${h.assetType}:${h.symbol}:${h.currency}:${h.quantity}:${h.currentPrice}`)
+    .sort()
+    .join('|')
+  
+  // Check cache
+  const cached = assetAllocationCache.get(cacheKey)
+  if (cached) {
+    return cached
+  }
   // Combine holdings by asset before calculation
   const combinedHoldings = combineHoldingsByAsset(holdings)
   
@@ -436,7 +436,7 @@ export function calculateAssetAllocation(holdings: Holding[]): AssetTypeAllocati
     })
   })
 
-  return Array.from(allocationMap.entries())
+  const result = Array.from(allocationMap.entries())
     .map(([assetType, data]) => ({
       assetType,
       value: data.value,
@@ -444,6 +444,21 @@ export function calculateAssetAllocation(holdings: Holding[]): AssetTypeAllocati
       count: data.count,
     }))
     .sort((a, b) => b.value - a.value)
+
+  // Cache the result
+  assetAllocationCache.set(cacheKey, result)
+  
+  // Clean up old cache entries periodically
+  if (assetAllocationCache.size > 100) {
+    // Keep only the most recent 50 entries
+    const entries = Array.from(assetAllocationCache.entries())
+    assetAllocationCache.clear()
+    entries.slice(-50).forEach(([key, value]) => {
+      assetAllocationCache.set(key, value)
+    })
+  }
+
+  return result
 }
 
 /**
@@ -627,7 +642,58 @@ export async function calculateDividendsCollected(
     return []
   }
 
-  // Fetch dividends for all holdings in parallel
+  // Use batch API for better performance
+  try {
+    const token = localStorage.getItem('auth_token')
+    const holdingsData = pkEquityHoldings.map(h => ({
+      symbol: h.symbol,
+      purchaseDate: h.purchaseDate,
+    }))
+    
+    const response = await fetch(
+      `/api/user/dividends/batch?holdings=${encodeURIComponent(JSON.stringify(holdingsData))}`,
+      {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      }
+    )
+
+    if (response.ok) {
+      const data = await response.json()
+      const dividendsMap = data.dividends || {}
+
+      // Process results
+      return pkEquityHoldings.map((holding) => {
+        const dividendRecords = dividendsMap[holding.symbol.toUpperCase()] || []
+        
+        // Filter dividends that occurred on or after purchase date
+        const relevantDividends = filterDividendsByPurchaseDate(dividendRecords, holding.purchaseDate)
+          .map((d: any) => {
+            // Convert dividend_amount (percent/10) to rupees
+            const dividendAmountRupees = convertDividendToRupees(d.dividend_amount)
+            const totalCollected = calculateTotalDividendsForHolding(dividendAmountRupees, holding.quantity)
+            
+            return {
+              date: d.date,
+              dividendAmount: dividendAmountRupees,
+              totalCollected
+            }
+          })
+        
+        const totalCollected = relevantDividends.reduce((sum: number, d: any) => sum + d.totalCollected, 0)
+        
+        return {
+          holdingId: holding.id,
+          symbol: holding.symbol,
+          dividends: relevantDividends,
+          totalCollected
+        }
+      })
+    }
+  } catch (error) {
+    console.error('Error fetching batch dividends:', error)
+  }
+
+  // Fallback to individual calls if batch fails
   const dividendPromises = pkEquityHoldings.map(async (holding) => {
     try {
       const response = await fetch(`/api/pk-equity/dividend?ticker=${encodeURIComponent(holding.symbol)}`)

@@ -181,6 +181,8 @@ export function AllocationChart({ allocation, holdings, currency = 'USD' }: Allo
                 fillStyle: data.datasets[0].backgroundColor[index],
                 strokeStyle: data.datasets[0].borderColor,
                 lineWidth: data.datasets[0].borderWidth,
+                fontColor: colors.foreground,
+                color: colors.foreground,
                 hidden: false,
                 index,
               }
@@ -236,6 +238,8 @@ export function AllocationChart({ allocation, holdings, currency = 'USD' }: Allo
                 fillStyle: data.datasets[0].backgroundColor[index],
                 strokeStyle: data.datasets[0].borderColor,
                 lineWidth: data.datasets[0].borderWidth,
+                fontColor: colors.foreground,
+                color: colors.foreground,
                 hidden: false,
                 index,
               }

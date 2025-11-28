@@ -86,7 +86,14 @@ export async function GET(request: NextRequest) {
       }).filter(t => t.tradeDate) // Filter out any trades with invalid dates
 
       if (trades.length === 0) {
-        return NextResponse.json({ success: true, history: [] })
+        return NextResponse.json(
+          { success: true, history: [] },
+          {
+            headers: {
+              'Cache-Control': 'private, max-age=60, must-revalidate',
+            },
+          }
+        )
       }
 
       // 2. Generate date range
@@ -201,7 +208,14 @@ export async function GET(request: NextRequest) {
       const relevantTrades = trades.filter(t => t.currency.toUpperCase() === currency.toUpperCase())
 
       if (relevantTrades.length === 0) {
-        return NextResponse.json({ success: true, history: [] })
+        return NextResponse.json(
+          { success: true, history: [] },
+          {
+            headers: {
+              'Cache-Control': 'private, max-age=60, must-revalidate',
+            },
+          }
+        )
       }
 
       // Generate daily points
@@ -304,7 +318,16 @@ export async function GET(request: NextRequest) {
         new Date(a.date).getTime() - new Date(b.date).getTime()
       )
 
-      return NextResponse.json({ success: true, history: sortedHistory })
+      // Cache for 1 minute (portfolio history changes frequently with transactions)
+      return NextResponse.json(
+        { success: true, history: sortedHistory },
+        {
+          headers: {
+            'Cache-Control': 'private, max-age=60, must-revalidate', // 1 minute cache
+            'X-History-Count': sortedHistory.length.toString(),
+          },
+        }
+      )
 
     } finally {
       client.release()
