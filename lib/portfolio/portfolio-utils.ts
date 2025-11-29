@@ -556,7 +556,20 @@ export function formatCurrency(value: number, currency: string = 'USD'): string 
  * Format percentage
  */
 export function formatPercent(value: number, decimals: number = 2): string {
-  return `${value >= 0 ? '+' : ''}${value.toFixed(decimals)}%`
+  // Handle very large numbers that might cause scientific notation
+  // If value is too large, cap it at a reasonable maximum
+  if (Math.abs(value) > 1000000) {
+    return `${value >= 0 ? '+' : ''}∞%`
+  }
+  
+  // Use toLocaleString to avoid scientific notation for large numbers
+  const formatted = Math.abs(value).toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+    useGrouping: false
+  })
+  
+  return `${value >= 0 ? '+' : ''}${formatted}%`
 }
 
 /**

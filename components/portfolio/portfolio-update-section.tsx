@@ -12,13 +12,12 @@ import { formatCurrency } from "@/lib/portfolio/portfolio-utils"
 import { parseSymbolToBinance } from "@/lib/portfolio/binance-api"
 import Link from "next/link"
 import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { TransactionsView } from "./transactions-view"
 
 interface PortfolioUpdateSectionProps {
   holdings: Holding[]
   onUpdate: () => void
+  onNavigateToTransactions?: (asset?: { assetType: string; symbol: string; currency: string; name: string }) => void
   // Holdings are now read-only (calculated from transactions)
   // All modifications should be done through transactions
 }
@@ -34,11 +33,9 @@ interface HoldingUpdateStatus {
   originalHoldingIds?: string[] // For combined holdings, track all original IDs
 }
 
-export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSectionProps) {
+export function PortfolioUpdateSection({ holdings, onUpdate, onNavigateToTransactions }: PortfolioUpdateSectionProps) {
   const [updateStatuses, setUpdateStatuses] = useState<Map<string, HoldingUpdateStatus>>(new Map())
   const [isUpdatingAll, setIsUpdatingAll] = useState(false)
-  const [selectedAsset, setSelectedAsset] = useState<{ assetType: string; symbol: string; currency: string; name: string } | null>(null)
-  const [activeTab, setActiveTab] = useState<'updates' | 'transactions'>('updates')
   const isUpdatingRef = useRef(false)
   const holdingsIdsRef = useRef<string>('')
 
@@ -521,37 +518,30 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
           <div>
             <CardTitle>Portfolio Updates</CardTitle>
             <CardDescription>
-              {activeTab === 'updates'
-                ? 'View last updated dates and day changes for all holdings'
-                : selectedAsset
-                  ? `Transaction history for ${selectedAsset.name || selectedAsset.symbol}`
-                  : 'View all transactions and transaction history'}
+              View last updated dates and day changes for all holdings
             </CardDescription>
           </div>
+          <Button 
+            onClick={() => onNavigateToTransactions?.()}
+            variant="outline"
+            size="sm"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add Transaction
+          </Button>
         </div>
       </CardHeader>
       <CardContent>
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'updates' | 'transactions')}>
-          <TabsList>
-            <TabsTrigger value="updates">Portfolio Updates</TabsTrigger>
-            <TabsTrigger value="transactions">
-              Transactions
-              {selectedAsset && (
-                <span className="ml-2 text-xs">({selectedAsset.symbol})</span>
-              )}
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="updates" className="space-y-4">
-            {holdings.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <p className="text-muted-foreground mb-4">No holdings yet. Add your first transaction to get started!</p>
-                <Button onClick={() => setActiveTab('transactions')}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Your First Transaction
-                </Button>
-              </div>
-            ) : (
+        <div className="space-y-4">
+          {holdings.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <p className="text-muted-foreground mb-4">No holdings yet. Add your first transaction to get started!</p>
+              <Button onClick={() => onNavigateToTransactions?.()}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Your First Transaction
+              </Button>
+            </div>
+          ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -598,13 +588,12 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
                             <TableCell className="font-medium">
                               <button
                                 onClick={() => {
-                                  setSelectedAsset({
+                                  onNavigateToTransactions?.({
                                     assetType: status.holding.assetType,
                                     symbol: status.holding.symbol,
                                     currency: status.holding.currency,
                                     name: status.holding.name || status.holding.symbol,
                                   })
-                                  setActiveTab('transactions')
                                 }}
                                 className="hover:underline hover:text-primary transition-colors cursor-pointer text-left"
                                 title="View transaction history"
@@ -670,19 +659,8 @@ export function PortfolioUpdateSection({ holdings, onUpdate }: PortfolioUpdateSe
                 </Table>
               </div>
             )}
-          </TabsContent>
-
-          <TabsContent value="transactions" className="space-y-4">
-            <TransactionsView
-              holdings={holdings}
-              selectedAsset={selectedAsset}
-              onClearAssetFilter={() => setSelectedAsset(null)}
-              onHoldingsUpdate={onUpdate}
-            />
-          </TabsContent>
-        </Tabs>
+        </div>
       </CardContent>
-
     </Card>
   )
 }

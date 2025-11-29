@@ -193,6 +193,28 @@ export function USEquityPortfolioChart({ holdings, currency }: USEquityPortfolio
         
         if (showSPX500Comparison) {
           try {
+            // Fetch cash flows from portfolio history API to adjust benchmark
+            const token = localStorage.getItem('auth_token')
+            let cashFlowsByDate = new Map<string, number>()
+            
+            try {
+              const historyRes = await fetch(`/api/user/portfolio/history?days=ALL&currency=${currency}`, {
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+              })
+              if (historyRes.ok) {
+                const historyData = await historyRes.json()
+                const history = historyData.history || []
+                // Extract cash flows by date
+                history.forEach((point: any) => {
+                  if (point.cashFlow && Math.abs(point.cashFlow) > 0.01) {
+                    cashFlowsByDate.set(point.date, point.cashFlow)
+                  }
+                })
+              }
+            } catch (error) {
+              console.error('Error fetching cash flows for benchmark adjustment:', error)
+            }
+
             // Use same simple approach as asset screener - just fetch from API
             const { deduplicatedFetch } = await import('@/lib/portfolio/request-deduplication')
             const comparisonResponse = await deduplicatedFetch(`/api/historical-data?assetType=spx500&symbol=SPX500`)
@@ -239,13 +261,58 @@ export function USEquityPortfolioChart({ holdings, currency }: USEquityPortfolio
                   }
                   
                   if (validSpxData.length > 0 && validSpxData[0] > 0) {
-                    // Normalize S&P 500 to percentage change from start (for comparison)
-                    const spx500StartValue = validSpxData[0]
-                    spx500Data = validSpxData.map(value => (value / spx500StartValue) * 100)
+                    // Calculate benchmark value adjusted for cash flows
+                    // Standard approach: When cash is deposited, "buy" benchmark shares; when withdrawn, "sell" shares
+                    const benchmarkValues: number[] = []
+                    let benchmarkShares = 0 // Track shares of benchmark owned
+                    const startDate = validDates[0]
+                    const startSpxPrice = validSpxData[0]
+                    const startDateIndex = sortedDates.indexOf(startDate)
+                    const startPortfolioValue = startDateIndex >= 0 ? portfolioValues[startDateIndex] : portfolioValues[0]
                     
-                    // Use aligned data
-                    alignedDates = validDates
-                    alignedPortfolioValues = validPortfolioValues
+                    // Initial investment: calculate how many benchmark shares the initial portfolio value would buy
+                    if (startPortfolioValue > 0 && startSpxPrice > 0) {
+                      benchmarkShares = startPortfolioValue / startSpxPrice
+                    }
+
+                    for (let i = 0; i < validDates.length; i++) {
+                      const date = validDates[i]
+                      const spxPrice = validSpxData[i]
+                      
+                      if (spxPrice <= 0) {
+                        benchmarkValues.push(0)
+                        continue
+                      }
+
+                      // Check if there's a cash flow on this date
+                      // Note: Cash flows only come from 'add' (deposit) or 'remove' (withdrawal) transactions
+                      // Selling assets ('sell') doesn't create a cash flow unless the proceeds are withdrawn
+                      // This ensures fair comparison: internal rebalancing doesn't affect benchmark, only external cash flows do
+                      const cashFlow = cashFlowsByDate.get(date) || 0
+                      
+                      if (Math.abs(cashFlow) > 0.01) {
+                        // Adjust benchmark shares based on cash flow
+                        // Positive cash flow (deposit) = buy more shares
+                        // Negative cash flow (withdrawal) = sell shares proportionally
+                        // This handles trimming: if you sell assets and withdraw cash, benchmark also "sells" proportionally
+                        const sharesToAdd = cashFlow / spxPrice
+                        benchmarkShares += sharesToAdd
+                      }
+
+                      // Calculate current benchmark value
+                      const benchmarkValue = benchmarkShares * spxPrice
+                      benchmarkValues.push(benchmarkValue)
+                    }
+
+                    // Normalize benchmark to percentage change from start (same as portfolio)
+                    if (benchmarkValues.length > 0 && benchmarkValues[0] > 0) {
+                      const benchmarkStartValue = benchmarkValues[0]
+                      spx500Data = benchmarkValues.map(value => (value / benchmarkStartValue) * 100)
+                      
+                      // Use aligned data
+                      alignedDates = validDates
+                      alignedPortfolioValues = validPortfolioValues
+                    }
                   }
                 }
               }

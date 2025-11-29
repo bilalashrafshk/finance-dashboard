@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import { X, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '@/lib/auth/auth-context'
+import { ForgotPasswordDialog } from '@/components/auth/forgot-password-dialog'
 
 interface LoginModalProps {
   isOpen: boolean
@@ -17,6 +18,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
   const { login, register, refreshUser } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -152,9 +154,13 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                 />
                 <span className="text-sm text-slate-400">Remember me</span>
               </label>
-              <a href="#" className="text-sm text-blue-400 hover:text-blue-300">
+              <button
+                type="button"
+                onClick={() => setShowForgotPassword(true)}
+                className="text-sm text-blue-400 hover:text-blue-300"
+              >
                 Forgot password?
-              </a>
+              </button>
             </div>
           )}
 
@@ -201,6 +207,12 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
           </p>
         </div>
       </div>
+
+      {/* Forgot Password Dialog */}
+      <ForgotPasswordDialog
+        open={showForgotPassword}
+        onOpenChange={setShowForgotPassword}
+      />
     </div>
   )
 }

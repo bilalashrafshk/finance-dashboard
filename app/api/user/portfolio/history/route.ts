@@ -29,6 +29,7 @@ interface HistoricalValue {
   invested: number
   pnl: number
   currency: string
+  cashFlow?: number // Net cash flow on this date (deposits - withdrawals)
 }
 
 // GET - Get historical portfolio value
@@ -41,9 +42,36 @@ export async function GET(request: NextRequest) {
     try {
       const url = new URL(request.url)
       const currency = url.searchParams.get('currency') || 'USD'
+      const unified = url.searchParams.get('unified') === 'true'
       const daysParam = url.searchParams.get('days')
       const isAllTime = daysParam === 'ALL'
       const days = daysParam && !isAllTime ? parseInt(daysParam) : 30
+      
+      // Get exchange rate for PKR if unified mode
+      let exchangeRate: number | null = null
+      if (unified) {
+        try {
+          // Use the SBP economic data API to get exchange rate
+          const { getSBPEconomicData } = await import('@/lib/portfolio/db-client')
+          const oneMonthAgo = new Date()
+          oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1)
+          const exchangeResult = await getSBPEconomicData(
+            'TS_GP_ER_FAERPKR_M.E00220',
+            oneMonthAgo.toISOString().split('T')[0],
+            new Date().toISOString().split('T')[0]
+          )
+          if (exchangeResult && exchangeResult.data && exchangeResult.data.length > 0) {
+            // Sort by date descending to get the most recent exchange rate
+            const sorted = [...exchangeResult.data].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            exchangeRate = sorted[0].value
+            console.log(`[Portfolio History] Using exchange rate: ${exchangeRate} PKR/USD`)
+          } else {
+            console.warn('[Portfolio History] No exchange rate data available, PKR holdings will not be converted')
+          }
+        } catch (error) {
+          console.error('[Portfolio History] Error fetching exchange rate:', error)
+        }
+      }
 
       // 1. Get all trades
       const tradesResult = await client.query(
@@ -201,7 +229,19 @@ export async function GET(request: NextRequest) {
         return fallbackPrice
       }
 
-      const dailyHoldings: Record<string, { date: string, cash: number, invested: number }> = {}
+      const dailyHoldings: Record<string, { date: string, cash: number, invested: number, cashFlow: number }> = {}
+      
+      // Track cash flows by date (deposits/withdrawals)
+      const cashFlowsByDate = new Map<string, number>()
+      for (const trade of trades) {
+        if (trade.tradeType === 'add' || trade.tradeType === 'remove') {
+          const dateStr = trade.tradeDate
+          const currentFlow = cashFlowsByDate.get(dateStr) || 0
+          // 'add' is positive cash flow (deposit), 'remove' is negative (withdrawal)
+          const flowAmount = trade.tradeType === 'add' ? trade.totalAmount : -trade.totalAmount
+          cashFlowsByDate.set(dateStr, currentFlow + flowAmount)
+        }
+      }
 
       // Filter trades by currency to determine the correct start date for this specific currency view
       // This prevents the graph from showing a long flat line if the user has older trades in a different currency
@@ -255,7 +295,8 @@ export async function GET(request: NextRequest) {
             dailyHoldings[dateStr] = {
               date: dateStr,
               cash: 0,
-              invested: 0
+              invested: 0,
+              cashFlow: 0
             }
           } else {
             // Calculate holdings for this date
@@ -266,22 +307,53 @@ export async function GET(request: NextRequest) {
 
             holdings.forEach(h => {
               try {
-                if (h.assetType === 'cash') {
-                  // For cash, quantity is the value
-                  // Normalize currency comparison (PKR vs PKR, USD vs USD)
-                  if (h.currency && h.currency.toUpperCase() === currency.toUpperCase()) {
-                    cashBalance += h.quantity || 0
-                    bookValue += h.quantity || 0
+                const holdingCurrency = h.currency || 'USD'
+                let shouldInclude = false
+                let valueToAdd = 0
+                
+                if (unified) {
+                  // In unified mode, include all currencies and convert to USD
+                  shouldInclude = true
+                  if (h.assetType === 'cash') {
+                    valueToAdd = h.quantity || 0
+                  } else {
+                    const assetKey = `${h.assetType}:${h.symbol.toUpperCase()}:${holdingCurrency}`
+                    const historicalPrice = getPriceForDate(assetKey, dateStr, h.purchasePrice || 0)
+                    valueToAdd = (h.quantity || 0) * historicalPrice
+                  }
+                  
+                  // Convert to USD if not already USD
+                  if (holdingCurrency !== 'USD') {
+                    if (holdingCurrency === 'PKR' && exchangeRate) {
+                      // Exchange rate is PKR per USD (e.g., 277.78 means 1 USD = 277.78 PKR)
+                      // To convert PKR to USD: divide by exchange rate
+                      valueToAdd = valueToAdd / exchangeRate
+                    } else if (holdingCurrency === 'PKR' && !exchangeRate) {
+                      // If no exchange rate available, skip PKR holdings in unified mode
+                      console.warn(`[Portfolio History] Skipping PKR holding ${h.symbol} - no exchange rate available`)
+                      shouldInclude = false
+                    }
+                    // For other currencies, assume 1:1 if no exchange rate (shouldn't happen for PKR)
                   }
                 } else {
-                  // For assets, calculate current market value using historical price
-                  // This includes unrealized P&L
-                  if (h.currency && h.currency.toUpperCase() === currency.toUpperCase()) {
-                    const assetKey = `${h.assetType}:${h.symbol.toUpperCase()}:${h.currency}`
-                    const historicalPrice = getPriceForDate(assetKey, dateStr, h.purchasePrice || 0)
-                    const marketValue = (h.quantity || 0) * historicalPrice
-                    bookValue += marketValue
+                  // In currency-specific mode, only include matching currency
+                  if (holdingCurrency.toUpperCase() === currency.toUpperCase()) {
+                    shouldInclude = true
+                    if (h.assetType === 'cash') {
+                      valueToAdd = h.quantity || 0
+                    } else {
+                      const assetKey = `${h.assetType}:${h.symbol.toUpperCase()}:${holdingCurrency}`
+                      const historicalPrice = getPriceForDate(assetKey, dateStr, h.purchasePrice || 0)
+                      valueToAdd = (h.quantity || 0) * historicalPrice
+                    }
                   }
+                }
+                
+                if (shouldInclude) {
+                  if (h.assetType === 'cash') {
+                    cashBalance += valueToAdd
+                  }
+                  bookValue += valueToAdd
                 }
               } catch (holdingError) {
                 console.error(`Error processing holding ${h.symbol}:`, holdingError)
@@ -289,19 +361,23 @@ export async function GET(request: NextRequest) {
               }
             })
 
+            const cashFlow = cashFlowsByDate.get(dateStr) || 0
             dailyHoldings[dateStr] = {
               date: dateStr,
               cash: cashBalance,
-              invested: bookValue // Book Value = Cash + Market Value of Assets (includes unrealized P&L)
+              invested: bookValue, // Book Value = Cash + Market Value of Assets (includes unrealized P&L)
+              cashFlow: cashFlow
             }
           }
         } catch (dateError) {
           console.error(`Error processing date ${dateStr}:`, dateError)
           // Set default values for this date
+          const cashFlow = cashFlowsByDate.get(dateStr) || 0
           dailyHoldings[dateStr] = {
             date: dateStr,
             cash: 0,
-            invested: 0
+            invested: 0,
+            cashFlow: cashFlow
           }
         }
 

@@ -15,12 +15,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2 } from "lucide-react"
+import { ForgotPasswordDialog } from "@/components/auth/forgot-password-dialog"
 
 export function LoginDialog({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
   const { login } = useAuth()
   const { toast } = useToast()
 
@@ -72,7 +74,19 @@ export function LoginDialog({ children }: { children: React.ReactNode }) {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false)
+                  setShowForgotPassword(true)
+                }}
+                className="text-sm text-primary hover:underline"
+              >
+                Forgot password?
+              </button>
+            </div>
             <Input
               id="password"
               type="password"
@@ -89,6 +103,10 @@ export function LoginDialog({ children }: { children: React.ReactNode }) {
           </Button>
         </form>
       </DialogContent>
+      <ForgotPasswordDialog
+        open={showForgotPassword}
+        onOpenChange={setShowForgotPassword}
+      />
     </Dialog>
   )
 }

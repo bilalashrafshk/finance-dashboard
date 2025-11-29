@@ -21,7 +21,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface Trade {
   id: number
-  tradeType: 'buy' | 'sell' | 'add'
+  tradeType: 'buy' | 'sell' | 'add' | 'remove'
   assetType: string
   symbol: string
   name: string
@@ -42,7 +42,7 @@ interface AddTransactionDialogProps {
 }
 
 export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade, holdings = [] }: AddTransactionDialogProps) {
-  const [tradeType, setTradeType] = useState<'buy' | 'sell' | 'add'>('buy')
+  const [tradeType, setTradeType] = useState<'buy' | 'sell' | 'add' | 'remove'>('buy')
   const [assetType, setAssetType] = useState<AssetType>('us-equity')
   const [symbol, setSymbol] = useState('')
   const [name, setName] = useState('')
@@ -122,7 +122,16 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
 
   // Fetch cash balance for the selected currency
   const fetchCashBalance = useCallback(async () => {
-    if (tradeType !== 'buy' || assetType === 'cash' || editingTrade) {
+    // Fetch cash balance for buy transactions (non-cash assets) or remove transactions (cash withdrawals)
+    if (tradeType === 'buy' && assetType === 'cash') {
+      setCashBalance(null)
+      return
+    }
+    if (tradeType !== 'buy' && tradeType !== 'remove') {
+      setCashBalance(null)
+      return
+    }
+    if (editingTrade) {
       setCashBalance(null)
       return
     }
@@ -147,7 +156,8 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
           const cashHolding = data.holdings.find(
             (h: any) => h.assetType === 'cash' && h.symbol === 'CASH' && h.currency === currency
           )
-          setCashBalance(cashHolding ? cashHolding.quantity : 0)
+          const balance = cashHolding ? Math.max(0, cashHolding.quantity) : 0 // Ensure non-negative
+          setCashBalance(balance)
         } else {
           setCashBalance(0)
         }
@@ -164,7 +174,10 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
 
   // Fetch cash balance when dialog opens or currency/tradeType changes
   useEffect(() => {
-    if (open && !editingTrade && tradeType === 'buy' && assetType !== 'cash') {
+    if (open && !editingTrade && (tradeType === 'buy' || tradeType === 'remove') && assetType !== 'cash') {
+      fetchCashBalance()
+    } else if (open && !editingTrade && tradeType === 'remove' && assetType === 'cash') {
+      // For cash withdrawal, fetch cash balance
       fetchCashBalance()
     } else {
       setCashBalance(null)
@@ -514,7 +527,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     // Only fetch for asset types that support historical data
     const supportsHistoricalData = assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500'
     
-    if (!supportsHistoricalData || !symbol || !tradeDate || tradeType === 'add') {
+    if (!supportsHistoricalData || !symbol || !tradeDate || tradeType === 'add' || tradeType === 'remove') {
       setHistoricalPrice(null)
       setPriceRange(null)
       return
@@ -813,11 +826,11 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     e.preventDefault()
     
     const quantityNum = parseFloat(quantity)
-    // For buy transactions, use purchasePrice; for cash add, price is 1; for sell, use price
+    // For buy transactions, use purchasePrice; for cash add/remove, price is 1; for sell, use price
     let priceNum: number
     if (tradeType === 'buy') {
       priceNum = parseFloat(purchasePrice)
-    } else if (tradeType === 'add') {
+    } else if (tradeType === 'add' || tradeType === 'remove') {
       priceNum = 1
     } else {
       priceNum = parseFloat(price)
@@ -835,13 +848,22 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
       }
     }
 
+    // Validate withdraw amount doesn't exceed available cash
+    if (tradeType === 'remove' && assetType === 'cash') {
+      if (cashBalance !== null && quantityNum > cashBalance) {
+        setError(`Cannot withdraw more than available. You have ${formatCurrency(cashBalance, currency)} available.`)
+        setSaving(false)
+        return
+      }
+    }
+
     const totalAmount = quantityNum * priceNum
 
     setSaving(true)
     setError(null)
     try {
       await onSave({
-        tradeType,
+        tradeType: tradeType === 'remove' ? 'remove' : tradeType,
         assetType,
         symbol: symbol.toUpperCase(),
         name,
@@ -870,7 +892,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     tradeType === 'buy' || (tradeType === 'sell' && priceTab === 'historical')
   )
 
-  // Validation for cash balance
+  // Validation for cash balance (buy transactions)
   const buyTotalAmount = quantityNum * (parseFloat(purchasePrice) || 0)
   const ROUNDING_EPSILON = 0.0001 // Allow small floating point differences
   const hasInsufficientCash = tradeType === 'buy' && 
@@ -878,6 +900,14 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                               !editingTrade && 
                               cashBalance !== null && 
                               (buyTotalAmount - cashBalance > ROUNDING_EPSILON)
+
+  // Validation for cash withdrawal
+  const withdrawAmount = tradeType === 'remove' && assetType === 'cash' ? quantityNum : 0
+  const exceedsAvailableCash = tradeType === 'remove' && 
+                                assetType === 'cash' && 
+                                !editingTrade && 
+                                cashBalance !== null && 
+                                (withdrawAmount - cashBalance > ROUNDING_EPSILON)
 
   const isFormValid = 
     symbol && 
@@ -887,9 +917,11 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     !exceedsAvailable &&
     !loadingCashBalance && // Ensure cash balance is loaded
     !(hasInsufficientCash && !autoDeposit) && // Prevent submission if insufficient cash and auto-deposit not checked
+    !exceedsAvailableCash && // Prevent withdrawal if exceeds available cash
     (
       (tradeType === 'buy' && purchasePrice && parseFloat(purchasePrice) > 0) || 
       (tradeType === 'add') || 
+      (tradeType === 'remove') ||
       (tradeType === 'sell' && price && parseFloat(price) > 0)
     ) &&
     tradeDate &&
@@ -907,7 +939,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
           <DialogDescription>
             {editingTrade 
               ? 'Update the transaction details.' 
-              : 'Record a new transaction (buy, sell, or add cash/deposit).'}
+              : 'Record a new transaction (buy, sell, add cash/deposit, or withdraw cash).'}
           </DialogDescription>
         </DialogHeader>
         
@@ -916,9 +948,9 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
               <div className="space-y-2">
                 <Label htmlFor="tradeType">Transaction Type *</Label>
                 <Select value={tradeType} onValueChange={(value) => {
-                  const newType = value as 'buy' | 'sell' | 'add'
+                  const newType = value as 'buy' | 'sell' | 'add' | 'remove'
                   setTradeType(newType)
-                  if (newType === 'add') {
+                  if (newType === 'add' || newType === 'remove') {
                     setAssetType('cash')
                     setSymbol('CASH')
                     setName('Cash')
@@ -940,11 +972,17 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                     <SelectItem value="buy">Buy</SelectItem>
                     <SelectItem value="sell">Sell</SelectItem>
                     <SelectItem value="add">Add (Cash/Deposit)</SelectItem>
+                    <SelectItem value="remove">Withdraw Cash</SelectItem>
                   </SelectContent>
                 </Select>
                 {tradeType === 'add' && (
                   <p className="text-xs text-muted-foreground mt-1">
                     Add cash or deposits to your portfolio
+                  </p>
+                )}
+                {tradeType === 'remove' && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Withdraw cash from your portfolio
                   </p>
                 )}
               </div>
@@ -1048,7 +1086,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
               </div>
             )}
 
-            {tradeType !== 'add' && assetType !== 'cash' && (
+            {tradeType !== 'add' && tradeType !== 'remove' && assetType !== 'cash' && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="symbol">Symbol/Ticker *</Label>
@@ -1130,7 +1168,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                 <Label htmlFor="quantity">
-                  {tradeType === 'sell' ? 'Number of Shares to Sell *' : tradeType === 'add' ? 'Amount *' : 'Quantity *'}
+                  {tradeType === 'sell' ? 'Number of Shares to Sell *' : (tradeType === 'add' || tradeType === 'remove') ? 'Amount *' : 'Quantity *'}
                 </Label>
                   {tradeType === 'buy' && cashBalance !== null && purchasePrice && parseFloat(purchasePrice) > 0 && assetType !== 'cash' && !editingTrade && (
                     <Button
@@ -1342,7 +1380,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
               </div>
             ) : null}
 
-            {tradeType !== 'add' && (
+            {tradeType !== 'add' && tradeType !== 'remove' && (
               <div className="space-y-2">
                 <Label>Total Amount</Label>
                 <div className="h-10 px-3 py-2 bg-muted rounded-md flex items-center">
@@ -1353,6 +1391,62 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                       })
                     : '0.00'}
                 </div>
+              </div>
+            )}
+
+            {/* Cash Balance & Withdrawal Validation - Show for withdraw transactions */}
+            {tradeType === 'remove' && assetType === 'cash' && !editingTrade && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-2">
+                    <Wallet className="h-4 w-4" />
+                    Available Cash ({currency})
+                  </Label>
+                  {loadingCashBalance ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : (
+                    <span className={`font-semibold ${cashBalance !== null && cashBalance > 0 ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                      {cashBalance !== null ? formatCurrency(cashBalance, currency) : 'Loading...'}
+                    </span>
+                  )}
+                </div>
+                
+                {cashBalance !== null && quantity && parseFloat(quantity) > 0 && (
+                  <div className="space-y-2">
+                    {(() => {
+                      const withdrawAmount = parseFloat(quantity) || 0
+                      const ROUNDING_EPSILON = 0.0001
+                      const exceedsAvailable = (withdrawAmount - cashBalance) > ROUNDING_EPSILON
+
+                      return (
+                        <>
+                          {exceedsAvailable && (
+                            <Alert className="border-red-500 bg-red-50 dark:bg-red-950">
+                              <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                              <AlertDescription className="text-red-800 dark:text-red-200">
+                                <div className="space-y-1">
+                                  <p className="font-semibold">Insufficient cash balance!</p>
+                                  <p className="text-sm">
+                                    Requested: {formatCurrency(withdrawAmount, currency)}<br />
+                                    Available: {formatCurrency(cashBalance, currency)}<br />
+                                    Shortfall: {formatCurrency(withdrawAmount - cashBalance, currency)}
+                                  </p>
+                                </div>
+                              </AlertDescription>
+                            </Alert>
+                          )}
+                          
+                          {!exceedsAvailable && withdrawAmount > 0 && cashBalance > 0 && (
+                            <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Sufficient cash available for withdrawal
+                            </p>
+                          )}
+                        </>
+                      )
+                    })()}
+                  </div>
+                )}
               </div>
             )}
 

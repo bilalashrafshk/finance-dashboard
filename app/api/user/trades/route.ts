@@ -118,6 +118,62 @@ export async function POST(request: NextRequest) {
     try {
       await client.query('BEGIN')
       
+      // For cash withdrawals (remove), check cash balance
+      if (tradeType === 'remove' && assetType === 'cash') {
+        const assetCurrency = currency || 'USD'
+        
+        // Calculate cash balance from transactions
+        const existingTradesResult = await client.query(
+          `SELECT id, user_id, holding_id, trade_type, asset_type, symbol, name, quantity,
+                  price, total_amount, currency, trade_date, notes, created_at
+           FROM user_trades
+           WHERE user_id = $1
+           ORDER BY trade_date ASC, created_at ASC`,
+          [user.id]
+        )
+        
+        const existingTrades = existingTradesResult.rows.map(row => ({
+          id: row.id,
+          userId: row.user_id,
+          holdingId: row.holding_id,
+          tradeType: row.trade_type,
+          assetType: row.asset_type,
+          symbol: row.symbol,
+          name: row.name,
+          quantity: parseFloat(row.quantity),
+          price: parseFloat(row.price),
+          totalAmount: parseFloat(row.total_amount),
+          currency: row.currency,
+          tradeDate: row.trade_date.toISOString().split('T')[0],
+          notes: row.notes,
+          createdAt: row.created_at.toISOString(),
+        }))
+        
+        // Calculate holdings from transactions to get accurate cash balance
+        const calculatedHoldings = calculateHoldingsFromTransactions(existingTrades)
+        const cashHolding = calculatedHoldings.find(
+          h => h.assetType === 'cash' && h.symbol === 'CASH' && h.currency === assetCurrency
+        )
+        const cashBalance = cashHolding ? cashHolding.quantity : 0
+        
+        // Use epsilon for float comparison
+        const EPSILON = 0.0001
+        if (totalAmount - cashBalance > EPSILON) {
+          await client.query('ROLLBACK')
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: 'Insufficient cash balance for withdrawal',
+              cashBalance,
+              requested: totalAmount,
+              shortfall: totalAmount - cashBalance,
+              currency: assetCurrency
+            },
+            { status: 400 }
+          )
+        }
+      }
+      
       // For buy transactions of non-cash assets, check cash balance
       if (tradeType === 'buy' && assetType !== 'cash') {
         const { autoDeposit } = body

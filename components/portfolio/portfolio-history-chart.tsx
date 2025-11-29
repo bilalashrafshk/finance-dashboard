@@ -3,21 +3,24 @@
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import { Loader2, RefreshCw, TrendingUp } from "lucide-react"
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { formatCurrency } from "@/lib/portfolio/portfolio-utils"
-
 import { useTheme } from "next-themes"
 
 interface PortfolioHistoryProps {
   currency?: string
+  unified?: boolean
 }
 
-export function PortfolioHistoryChart({ currency = "USD" }: PortfolioHistoryProps) {
+export function PortfolioHistoryChart({ currency = "USD", unified = false }: PortfolioHistoryProps) {
   const [period, setPeriod] = useState("ALL") // Default to ALL for best first impression
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showTotalReturn, setShowTotalReturn] = useState(false)
   const { theme } = useTheme()
 
   const isDark = theme === 'dark'
@@ -35,7 +38,8 @@ export function PortfolioHistoryChart({ currency = "USD" }: PortfolioHistoryProp
         // 1. Fetch Portfolio Holdings History
         // Get token from localStorage to ensure we are authenticated
         const token = localStorage.getItem('auth_token')
-        const historyRes = await fetch(`/api/user/portfolio/history?days=${period}&currency=${currency}`, {
+        const unifiedParam = unified ? '&unified=true' : ''
+        const historyRes = await fetch(`/api/user/portfolio/history?days=${period}&currency=${currency}${unifiedParam}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -97,7 +101,7 @@ export function PortfolioHistoryChart({ currency = "USD" }: PortfolioHistoryProp
     }
 
     fetchHistory()
-  }, [period, currency])
+  }, [period, currency, unified, showTotalReturn])
 
   if (loading && data.length === 0) {
     return (
@@ -154,21 +158,35 @@ export function PortfolioHistoryChart({ currency = "USD" }: PortfolioHistoryProp
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            Includes Cash + Market Value of Assets (Realized & Unrealized P&L included)
+            {showTotalReturn 
+              ? 'Includes Cash + Market Value + Dividends (Total Return)'
+              : 'Includes Cash + Market Value of Assets (Realized & Unrealized P&L included)'}
           </p>
         </div>
-        <Select value={period} onValueChange={setPeriod}>
-          <SelectTrigger className="w-[120px]">
-            <SelectValue placeholder="Select period" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7">7 Days</SelectItem>
-            <SelectItem value="30">30 Days</SelectItem>
-            <SelectItem value="90">3 Months</SelectItem>
-            <SelectItem value="365">1 Year</SelectItem>
-            <SelectItem value="ALL">All Time</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="total-return"
+              checked={showTotalReturn}
+              onCheckedChange={setShowTotalReturn}
+            />
+            <Label htmlFor="total-return" className="text-sm cursor-pointer">
+              Total Return
+            </Label>
+          </div>
+          <Select value={period} onValueChange={setPeriod}>
+            <SelectTrigger className="w-[120px]">
+              <SelectValue placeholder="Select period" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">7 Days</SelectItem>
+              <SelectItem value="30">30 Days</SelectItem>
+              <SelectItem value="90">3 Months</SelectItem>
+              <SelectItem value="365">1 Year</SelectItem>
+              <SelectItem value="ALL">All Time</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </CardHeader>
       <CardContent>
         {data.length === 0 ? (

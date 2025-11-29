@@ -287,6 +287,42 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
 
         if (showKSE100Comparison) {
           try {
+            // Fetch PK equity trades (buy/sell) to adjust benchmark
+            // Since PK equity chart doesn't include cash, we track actual buy/sell transactions
+            const token = localStorage.getItem('auth_token')
+            let tradesByDate = new Map<string, Array<{ type: 'buy' | 'sell', amount: number }>>()
+            
+            try {
+              const tradesRes = await fetch(`/api/user/trades?limit=10000`, {
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+              })
+              if (tradesRes.ok) {
+                const tradesData = await tradesRes.json()
+                const trades = tradesData.trades || []
+                // Filter for PK equity trades only
+                const pkEquityTrades = trades.filter((t: any) => 
+                  t.assetType === 'pk-equity' && 
+                  (t.tradeType === 'buy' || t.tradeType === 'sell') &&
+                  t.currency.toUpperCase() === currency.toUpperCase()
+                )
+                
+                // Group trades by date
+                pkEquityTrades.forEach((trade: any) => {
+                  const date = trade.tradeDate
+                  if (!tradesByDate.has(date)) {
+                    tradesByDate.set(date, [])
+                  }
+                  const tradeType = trade.tradeType === 'buy' ? 'buy' : 'sell'
+                  tradesByDate.get(date)!.push({
+                    type: tradeType,
+                    amount: trade.totalAmount || 0
+                  })
+                })
+              }
+            } catch (error) {
+              console.error('Error fetching trades for benchmark adjustment:', error)
+            }
+
             // First check database
             const { deduplicatedFetch } = await import('@/lib/portfolio/request-deduplication')
             let kse100Historical: InvestingHistoricalDataPoint[] | null = null
@@ -353,25 +389,129 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
 
               // Only use data points that have values for both portfolio and KSE 100
               const validKseData: number[] = []
-              const validPortfolioValues: number[] = []
+              const validPortfolioValues: number[] = [] // Will store actual values, not normalized
               const validDates: string[] = []
 
               for (let i = 0; i < sortedDates.length; i++) {
-                if (kse100Mapped[i] !== null && normalizedPortfolioValues[i] !== undefined) {
+                if (kse100Mapped[i] !== null && valuesToUse[i] !== undefined) {
                   validKseData.push(kse100Mapped[i]!)
-                  validPortfolioValues.push(normalizedPortfolioValues[i])
+                  validPortfolioValues.push(valuesToUse[i]) // Use actual values, not normalized
                   validDates.push(sortedDates[i])
                 }
               }
 
               if (validKseData.length > 0 && validKseData[0] > 0) {
-                // Normalize KSE 100 to percentage change from start (for comparison)
-                const kse100StartValue = validKseData[0]
-                kse100Data = validKseData.map(value => (value / kse100StartValue) * 100)
+                // Calculate benchmark value adjusted for buy/sell transactions
+                // When you buy: add that amount to benchmark shares
+                // When you sell: calculate percentage of portfolio sold, and sell that percentage from benchmark
+                const benchmarkValues: number[] = []
+                let benchmarkShares = 0 // Track shares of benchmark owned
+                const startDate = validDates[0]
+                const startKsePrice = validKseData[0]
+                const startPortfolioValue = validPortfolioValues[0] // Use the first valid portfolio value
+                
+                // Initial investment: calculate how many benchmark shares the initial portfolio value would buy
+                // This ensures both portfolio and benchmark start from the exact same value on day 1
+                if (startPortfolioValue > 0 && startKsePrice > 0) {
+                  benchmarkShares = startPortfolioValue / startKsePrice
+                }
+
+                for (let i = 0; i < validDates.length; i++) {
+                  const date = validDates[i]
+                  const ksePrice = validKseData[i]
+                  
+                  if (ksePrice <= 0) {
+                    benchmarkValues.push(0)
+                    continue
+                  }
+
+                  // Get actual portfolio value for this date (market value of all holdings)
+                  const portfolioValueOnThisDate = validPortfolioValues[i]
+                  
+                  // Get portfolio value from previous day
+                  const portfolioValuePreviousDay = i > 0 ? validPortfolioValues[i - 1] : startPortfolioValue
+                  
+                  // Get previous benchmark value and KSE price for price movement calculation
+                  const previousBenchmarkValue = i > 0 ? benchmarkValues[i - 1] : startPortfolioValue
+                  const previousKsePrice = i > 0 ? validKseData[i - 1] : startKsePrice
+
+                  // Check if there are trades on this date
+                  const tradesOnDate = tradesByDate.get(date) || []
+                  
+                  // Calculate what benchmark value would be from price movements alone (before trades)
+                  // This accounts for the fact that benchmarkShares * ksePrice already includes price movements
+                  const benchmarkValueFromPriceMovement = previousKsePrice > 0 
+                    ? previousBenchmarkValue * (ksePrice / previousKsePrice)
+                    : previousBenchmarkValue
+                  
+                  // Update benchmark shares to reflect price movement first
+                  if (previousKsePrice > 0) {
+                    benchmarkShares = benchmarkValueFromPriceMovement / ksePrice
+                  }
+                  
+                  // Calculate portfolio value change
+                  const portfolioValueChange = portfolioValueOnThisDate - portfolioValuePreviousDay
+                  
+                  if (tradesOnDate.length > 0) {
+                    // There are trades on this date
+                    // Calculate total trade amounts
+                    const totalBuyAmount = tradesOnDate
+                      .filter(t => t.type === 'buy')
+                      .reduce((sum, t) => sum + t.amount, 0)
+                    const totalSellAmount = tradesOnDate
+                      .filter(t => t.type === 'sell')
+                      .reduce((sum, t) => sum + t.amount, 0)
+                    
+                    if (totalBuyAmount > 0) {
+                      // Buy: Estimate portfolio value change from price movements
+                      // Then the remaining change is from the new position
+                      const estimatedPriceMovement = portfolioValuePreviousDay * (ksePrice / previousKsePrice - 1)
+                      const newPositionValue = portfolioValueChange - estimatedPriceMovement
+                      
+                      // Add shares based on the market value of the new position
+                      if (newPositionValue > 0 && ksePrice > 0) {
+                        const sharesToAdd = newPositionValue / ksePrice
+                        benchmarkShares += sharesToAdd
+                      }
+                    } else if (totalSellAmount > 0 && portfolioValuePreviousDay > 0) {
+                      // Sell: calculate percentage based on market value of sold position
+                      const estimatedPriceMovement = portfolioValuePreviousDay * (ksePrice / previousKsePrice - 1)
+                      const soldPositionValue = Math.abs(portfolioValueChange - estimatedPriceMovement)
+                      
+                      if (soldPositionValue > 0 && benchmarkValueFromPriceMovement > 0) {
+                        const sellPercentage = soldPositionValue / benchmarkValueFromPriceMovement
+                        const sharesToRemove = benchmarkShares * sellPercentage
+                        benchmarkShares = Math.max(0, benchmarkShares - sharesToRemove)
+                      }
+                    }
+                  }
+
+                  // Calculate current benchmark value (notional, not percentage)
+                  let benchmarkValue = benchmarkShares * ksePrice
+                  
+                  // Ensure first day starts from exact same value as portfolio
+                  if (i === 0) {
+                    // Force benchmark to match portfolio on day 1 exactly
+                    benchmarkValue = startPortfolioValue
+                    // Recalculate shares to maintain consistency for future days
+                    if (ksePrice > 0) {
+                      benchmarkShares = startPortfolioValue / ksePrice
+                    }
+                  }
+                  
+                  benchmarkValues.push(benchmarkValue)
+                }
+
+                // Use notional values instead of percentages
+                if (benchmarkValues.length > 0) {
+                  kse100Data = benchmarkValues // Keep as notional values
+                  
+                  // Use actual portfolio values (already in notional form from valuesToUse)
+                  alignedPortfolioValues = validPortfolioValues
 
                 // Use aligned data
                 alignedDates = validDates
-                alignedPortfolioValues = validPortfolioValues
+                }
               }
             }
           } catch (error) {
@@ -493,7 +633,7 @@ export function PKEquityPortfolioChart({ holdings, currency }: PKEquityPortfolio
       },
       y: createYAxisScaleConfig({
         useLogScale,
-        isPercentage: showKSE100Comparison,
+        isPercentage: false, // Always show notional values when comparison is enabled
         currency,
       }),
     },

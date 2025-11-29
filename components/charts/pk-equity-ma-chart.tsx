@@ -68,14 +68,14 @@ function dateToTime(dateStr: string): Time {
 }
 
 export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAssetType }: PKEquityMAChartProps) {
-  const { theme } = useTheme()
+  const { resolvedTheme } = useTheme()
   const colors = getThemeColors()
   const { toast } = useToast()
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const priceSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const maSeriesRefs = useRef<Map<string, ISeriesApi<'Line'>>>(new Map())
-  
+
   const [assetType, setAssetType] = useState<AssetType>(initialAssetType || 'pk-equity')
   const [selectedSymbol, setSelectedSymbol] = useState<string>(initialSymbol || '')
   const [availableSymbols, setAvailableSymbols] = useState<Array<{ symbol: string; name?: string }>>([])
@@ -110,7 +110,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     if (!chartContainerRef.current) return
 
     // Create chart with theme
-    const isDark = theme === 'dark'
+    const isDark = resolvedTheme === 'dark'
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: 'solid', color: isDark ? colors.background : '#ffffff' },
@@ -165,7 +165,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
       priceSeriesRef.current = null
       maSeriesRefs.current.clear()
     }
-  }, [theme, colors, selectedSymbol])
+  }, [resolvedTheme, colors, selectedSymbol])
 
   // Load available symbols based on asset type
   useEffect(() => {
@@ -303,7 +303,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
   // Calculate moving averages
   const maData = useMemo(() => {
     const maResults: Record<string, number[]> = {}
-    
+
     movingAverages.forEach((ma) => {
       if (!ma.enabled) return
 
@@ -319,7 +319,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
       } else {
         const alignedValues: number[] = []
         const maDateMap = new Map<string, number>()
-        
+
         dataForMA.forEach((point, idx) => {
           if (idx < maValues.length && !isNaN(maValues[idx])) {
             maDateMap.set(point.date, maValues[idx])
@@ -331,7 +331,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
 
         resampledData.forEach((point) => {
           const pointTimestamp = new Date(point.date).getTime()
-          
+
           let left = 0
           let right = maDateTimestamps.length - 1
           let closestIdx = 0
@@ -340,12 +340,12 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
           while (left <= right) {
             const mid = Math.floor((left + right) / 2)
             const diff = Math.abs(maDateTimestamps[mid] - pointTimestamp)
-            
+
             if (diff < minDiff) {
               minDiff = diff
               closestIdx = mid
             }
-            
+
             if (maDateTimestamps[mid] < pointTimestamp) {
               left = mid + 1
             } else {
@@ -359,7 +359,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
         maResults[ma.id] = alignedValues
       }
     })
-    
+
     return maResults
   }, [resampledData, movingAverages, frequency, allData])
 
@@ -434,7 +434,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
   useEffect(() => {
     if (!chartRef.current) return
 
-    const isDark = theme === 'dark'
+    const isDark = resolvedTheme === 'dark'
     chartRef.current.applyOptions({
       layout: {
         background: { type: 'solid', color: isDark ? colors.background : '#ffffff' },
@@ -451,7 +451,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
         borderColor: colors.border,
       },
     })
-  }, [theme, colors])
+  }, [resolvedTheme, colors])
 
   // Get currency symbol based on asset type
   const getCurrency = () => {
@@ -475,7 +475,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     const newId = String(Date.now())
     const usedColors = new Set(movingAverages.map(ma => ma.color))
     const availableColor = MA_COLORS.find(c => !usedColors.has(c)) || MA_COLORS[0]
-    
+
     setMovingAverages([
       ...movingAverages,
       {
@@ -538,7 +538,7 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
     if (e.key === 'Enter') {
       e.preventDefault()
       handleMAPeriodInputBlur(id, value)
-      ;(e.target as HTMLInputElement).blur()
+        ; (e.target as HTMLInputElement).blur()
     }
   }
 
@@ -661,16 +661,14 @@ export function PKEquityMAChart({ symbol: initialSymbol, assetType: initialAsset
               {priceChange !== null && (
                 <div className="p-4 border rounded-lg">
                   <div className="text-sm text-muted-foreground">Change</div>
-                  <div className={`text-2xl font-bold mt-1 flex items-center gap-2 ${
-                    priceChange >= 0 ? 'text-green-600' : 'text-red-600'
-                  }`}>
+                  <div className={`text-2xl font-bold mt-1 flex items-center gap-2 ${priceChange >= 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
                     {priceChange >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
                     {priceChange > 0 ? '+' : ''}{priceChange.toFixed(currency === 'PKR' ? 2 : 4)} {currency}
                   </div>
                   {priceChangePercent !== null && (
-                    <div className={`text-sm mt-1 ${
-                      priceChangePercent >= 0 ? 'text-green-600' : 'text-red-600'
-                    }`}>
+                    <div className={`text-sm mt-1 ${priceChangePercent >= 0 ? 'text-green-600' : 'text-red-600'
+                      }`}>
                       {priceChangePercent > 0 ? '+' : ''}{priceChangePercent.toFixed(2)}%
                     </div>
                   )}
