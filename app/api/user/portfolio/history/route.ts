@@ -48,23 +48,18 @@ export async function GET(request: NextRequest) {
       const days = daysParam && !isAllTime ? parseInt(daysParam) : 30
 
       // Get exchange rate for PKR if unified mode
+      // Use the latest available exchange rate (even if it's from a previous month)
       let exchangeRate: number | null = null
       if (unified) {
         try {
-          // Use the SBP economic data API to get exchange rate
           const { getSBPEconomicData } = await import('@/lib/portfolio/db-client')
-          const oneMonthAgo = new Date()
-          oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1)
-          const exchangeResult = await getSBPEconomicData(
-            'TS_GP_ER_FAERPKR_M.E00220',
-            oneMonthAgo.toISOString().split('T')[0],
-            new Date().toISOString().split('T')[0]
-          )
+          // Get all available exchange rate data (no date restriction) to find the latest
+          const exchangeResult = await getSBPEconomicData('TS_GP_ER_FAERPKR_M.E00220')
           if (exchangeResult && exchangeResult.data && exchangeResult.data.length > 0) {
             // Sort by date descending to get the most recent exchange rate
             const sorted = [...exchangeResult.data].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
             exchangeRate = sorted[0].value
-            console.log(`[Portfolio History] Using exchange rate: ${exchangeRate} PKR/USD`)
+            console.log(`[Portfolio History] Using latest available exchange rate: ${exchangeRate} PKR/USD (Date: ${sorted[0].date})`)
           } else {
             console.warn('[Portfolio History] No exchange rate data available, PKR holdings will not be converted')
           }

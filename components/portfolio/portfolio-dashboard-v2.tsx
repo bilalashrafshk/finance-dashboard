@@ -241,13 +241,18 @@ export function PortfolioDashboardV2() {
             new Date(a.date).getTime() - new Date(b.date).getTime()
           )
 
-          const today = sortedHistory[sortedHistory.length - 1]
-          // If only 1 day of history (today), assume yesterday was 0
-          // Note: Assets purchased today/yesterday without price data are excluded from calculation
-          const yesterday = history.length >= 2 ? sortedHistory[sortedHistory.length - 2] : { invested: 0 }
+          // Use the last 2 available days (not necessarily today and yesterday)
+          // This handles cases where today's PK equity data isn't available yet
+          if (sortedHistory.length < 1) {
+            setTodayChange(null)
+            return
+          }
 
-          // Validate data (today must exist)
-          if (!today || today.invested === undefined) {
+          const latest = sortedHistory[sortedHistory.length - 1]
+          const previous = sortedHistory.length >= 2 ? sortedHistory[sortedHistory.length - 2] : { invested: 0, cashFlow: 0 }
+
+          // Validate data (latest must exist)
+          if (!latest || latest.invested === undefined) {
             setTodayChange(null)
             return
           }
@@ -255,14 +260,14 @@ export function PortfolioDashboardV2() {
           // Calculate Daily P&L using standard formula:
           // Daily P&L = (End Value - Start Value) - Net Flows
           
-          const todayCashFlow = today.cashFlow || 0
-          const yesterdayInvested = yesterday.invested || 0
+          const latestCashFlow = latest.cashFlow || 0
+          const previousInvested = previous.invested || 0
           
-          // Note: today.invested in API response is "Market Value + Cash".
-          const change = (today.invested - yesterdayInvested) - todayCashFlow
-          const changePercent = yesterdayInvested > 0 ? (change / yesterdayInvested) * 100 : 0
+          // Note: latest.invested in API response is "Market Value + Cash".
+          const change = (latest.invested - previousInvested) - latestCashFlow
+          const changePercent = previousInvested > 0 ? (change / previousInvested) * 100 : 0
 
-          // Only set if values are valid numbers
+          // Set if values are valid numbers (including 0 - don't filter out zero change)
           if (!isNaN(change) && !isNaN(changePercent) && isFinite(change) && isFinite(changePercent)) {
             setTodayChange({ value: change, percent: changePercent })
           } else {
