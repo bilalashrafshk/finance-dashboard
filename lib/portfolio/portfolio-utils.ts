@@ -851,6 +851,128 @@ export async function calculateDividendsCollected(
  * @param holdings - All holdings (will filter for PK equity)
  * @returns Promise resolving to total dividends collected
  */
+/**
+ * Portfolio history entry from API
+ */
+export interface PortfolioHistoryEntry {
+  date: string
+  invested: number // Portfolio value (cash + market value)
+  cashFlow?: number // Net cash flow on this date (deposits - withdrawals)
+  cash?: number
+  [key: string]: any // Allow other fields
+}
+
+/**
+ * Adjusted portfolio history entry (accounting for cash flows)
+ */
+export interface AdjustedPortfolioHistoryEntry {
+  date: string
+  rawValue: number // Original portfolio value
+  cashFlow: number // Net cash flow on this date
+  cumulativeCashFlows: number // Cumulative cash flows up to this date
+  adjustedValue: number // Portfolio value adjusted for cash flows (rawValue - cumulativeCashFlows)
+}
+
+/**
+ * Adjusted daily return entry
+ */
+export interface AdjustedDailyReturn {
+  date: string
+  return: number // Daily return as percentage
+  adjustedValue: number // Adjusted portfolio value on this date
+  rawValue: number // Raw portfolio value on this date
+}
+
+/**
+ * Calculate adjusted portfolio history accounting for net cash flows
+ * This is the centralized function used by all performance metrics
+ * 
+ * Formula: Adjusted Value = Portfolio Value - Cumulative Net Deposits
+ * 
+ * This ensures metrics measure investment performance, not portfolio growth from deposits
+ * 
+ * @param history - Raw portfolio history from API
+ * @returns Array of adjusted history entries
+ */
+export function calculateAdjustedPortfolioHistory(
+  history: PortfolioHistoryEntry[]
+): AdjustedPortfolioHistoryEntry[] {
+  if (!history || history.length === 0) {
+    return []
+  }
+
+  // Sort by date to ensure chronological order
+  const sortedHistory = [...history].sort((a, b) => 
+    new Date(a.date).getTime() - new Date(b.date).getTime()
+  )
+
+  let cumulativeCashFlows = 0
+  const adjustedHistory: AdjustedPortfolioHistoryEntry[] = []
+
+  for (const entry of sortedHistory) {
+    const cashFlow = entry.cashFlow || 0
+    cumulativeCashFlows += cashFlow
+    
+    adjustedHistory.push({
+      date: entry.date,
+      rawValue: entry.invested || 0,
+      cashFlow,
+      cumulativeCashFlows,
+      adjustedValue: (entry.invested || 0) - cumulativeCashFlows
+    })
+  }
+
+  return adjustedHistory
+}
+
+/**
+ * Calculate adjusted daily returns from adjusted portfolio history
+ * Excludes days with cash flows to avoid showing deposits/withdrawals as returns
+ * 
+ * @param adjustedHistory - Adjusted portfolio history (from calculateAdjustedPortfolioHistory)
+ * @param rawHistory - Raw portfolio history (to check for cash flows)
+ * @returns Array of daily return entries
+ */
+export function calculateAdjustedDailyReturns(
+  adjustedHistory: AdjustedPortfolioHistoryEntry[],
+  rawHistory: PortfolioHistoryEntry[]
+): AdjustedDailyReturn[] {
+  if (adjustedHistory.length < 2) {
+    return []
+  }
+
+  // Create a map of raw history for cash flow lookup
+  const rawHistoryMap = new Map(
+    rawHistory.map(entry => [entry.date, entry])
+  )
+
+  const dailyReturns: AdjustedDailyReturn[] = []
+
+  for (let i = 1; i < adjustedHistory.length; i++) {
+    const prev = adjustedHistory[i - 1]
+    const curr = adjustedHistory[i]
+    
+    // Get raw entry to check for cash flows
+    const rawEntry = rawHistoryMap.get(curr.date)
+    const cashFlow = rawEntry?.cashFlow || 0
+    
+    // Skip days with cash flows (deposits/withdrawals) to avoid showing them as returns
+    // Use small epsilon to handle floating point precision
+    if (prev.adjustedValue > 0 && Math.abs(cashFlow) < 0.01) {
+      const dailyReturn = ((curr.adjustedValue - prev.adjustedValue) / prev.adjustedValue) * 100
+      
+      dailyReturns.push({
+        date: curr.date,
+        return: dailyReturn,
+        adjustedValue: curr.adjustedValue,
+        rawValue: curr.rawValue
+      })
+    }
+  }
+
+  return dailyReturns
+}
+
 export async function calculateTotalDividendsCollected(
   holdings: Holding[]
 ): Promise<number> {

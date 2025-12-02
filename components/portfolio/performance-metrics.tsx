@@ -3,7 +3,15 @@
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Loader2, TrendingUp, TrendingDown, Activity, Shield, ArrowUpRight, ArrowDownRight } from "lucide-react"
-import { formatCurrency, formatPercent } from "@/lib/portfolio/portfolio-utils"
+import { 
+  formatCurrency, 
+  formatPercent,
+  calculateAdjustedPortfolioHistory,
+  calculateAdjustedDailyReturns,
+  type PortfolioHistoryEntry,
+  type AdjustedPortfolioHistoryEntry,
+  type AdjustedDailyReturn
+} from "@/lib/portfolio/portfolio-utils"
 
 interface PerformanceMetricsProps {
   currency?: string
@@ -60,153 +68,100 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
         }
 
         const historyData = await historyRes.json()
-        const history = historyData.history || []
+        const rawHistory: PortfolioHistoryEntry[] = historyData.history || []
 
-        if (history.length < 2) {
-          console.log('[Performance Metrics] Insufficient history data:', history.length)
+        if (rawHistory.length < 2) {
+          console.log('[Performance Metrics] Insufficient history data:', rawHistory.length)
           setLoading(false)
           return
         }
 
-        // Sort by date ascending
-        const sortedHistory = [...history].sort((a: any, b: any) => 
-          new Date(a.date).getTime() - new Date(b.date).getTime()
-        )
-
-        // Find first entry where portfolio value > 0 (for winning days calculation)
-        const firstPositiveEntryIndex = sortedHistory.findIndex((entry: any) => {
-          const value = entry?.invested ?? entry?.bookValue ?? 0
-          return value > 0
-        })
+        // Use centralized function to calculate adjusted history (accounting for cash flows)
+        const adjustedHistory = calculateAdjustedPortfolioHistory(rawHistory)
         
-        // Calculate daily returns (only from when portfolio value > 0)
-        // Exclude days with cash flows (deposits/withdrawals) to avoid inflating returns
-        const dailyReturns: Array<{ date: string; return: number; value: number }> = []
-        const startIndex = firstPositiveEntryIndex >= 0 ? firstPositiveEntryIndex : 0
-        
-        for (let i = startIndex + 1; i < sortedHistory.length; i++) {
-          const prev = sortedHistory[i - 1]
-          const curr = sortedHistory[i]
-          const prevValue = prev.invested || 0
-          const currValue = curr.invested || 0
-          const currCashFlow = curr.cashFlow || 0
-          
-          // Skip days with cash flows (deposits/withdrawals) to avoid showing them as returns
-          // Cash flows are tracked separately and shouldn't be counted as investment returns
-          if (prevValue > 0 && Math.abs(currCashFlow) < 0.01) { // Use small epsilon to handle floating point
-            const dailyReturn = ((currValue - prevValue) / prevValue) * 100
-            dailyReturns.push({
-              date: curr.date,
-              return: dailyReturn,
-              value: currValue - prevValue,
-            })
-          }
+        if (adjustedHistory.length < 2) {
+          console.log('[Performance Metrics] Insufficient adjusted history data')
+          setLoading(false)
+          return
         }
+
+        // Use centralized function to calculate adjusted daily returns
+        const dailyReturns = calculateAdjustedDailyReturns(adjustedHistory, rawHistory)
 
         if (dailyReturns.length === 0) {
+          console.log('[Performance Metrics] No daily returns calculated')
           setLoading(false)
           return
         }
 
-        // Calculate CAGR
-        // Standard approach: Annualize using actual time period (even if < 1 year)
-        // Formula: CAGR = ((Ending Value / Beginning Value) ^ (1 / years)) - 1
-        
-        // Find first non-zero entry (portfolio might have started at 0)
-        let firstEntry = sortedHistory.find((entry: any) => {
-          const value = entry?.invested ?? entry?.bookValue ?? 0
-          return value > 0
-        })
-        
-        // If no non-zero entry found, can't calculate CAGR
-        if (!firstEntry) {
-          firstEntry = sortedHistory[0] // Fallback, but CAGR will be null if value is 0
-        }
-        
-        const lastEntry = sortedHistory[sortedHistory.length - 1]
-        const firstValue = firstEntry?.invested ?? firstEntry?.bookValue ?? 0
-        const lastValue = lastEntry?.invested ?? lastEntry?.bookValue ?? 0
-        const firstDateStr = firstEntry?.date
-        const lastDateStr = lastEntry?.date
-        
+        // Calculate CAGR using adjusted values
+        // Formula: CAGR = ((Adjusted Ending Value / Adjusted Beginning Value) ^ (1 / years)) - 1
         let cagr: number | null = null
         
-        // Only calculate CAGR if we have valid start and end values (both > 0)
-        if (firstDateStr && lastDateStr && firstValue > 0 && lastValue > 0) {
-          try {
-            // Parse dates - handle both YYYY-MM-DD and ISO format
-            const firstDate = firstDateStr.includes('T') 
-              ? new Date(firstDateStr) 
-              : new Date(firstDateStr + 'T00:00:00')
-            const lastDate = lastDateStr.includes('T')
-              ? new Date(lastDateStr)
-              : new Date(lastDateStr + 'T00:00:00')
-            
-            // Validate dates
-            if (isNaN(firstDate.getTime()) || isNaN(lastDate.getTime())) {
-              console.warn('[Performance Metrics] Invalid dates:', { firstDateStr, lastDateStr })
-              cagr = null
-            } else {
-              const timeDiff = lastDate.getTime() - firstDate.getTime()
-              const years = timeDiff / (365.25 * 24 * 60 * 60 * 1000)
+        // Find first non-zero adjusted entry
+        const firstAdjustedEntry = adjustedHistory.find(entry => entry.adjustedValue > 0)
+        const lastAdjustedEntry = adjustedHistory[adjustedHistory.length - 1]
+        
+        if (firstAdjustedEntry && lastAdjustedEntry) {
+          const firstValue = firstAdjustedEntry.adjustedValue
+          const lastValue = lastAdjustedEntry.adjustedValue
+          const firstDateStr = firstAdjustedEntry.date
+          const lastDateStr = lastAdjustedEntry.date
+          
+          if (firstValue > 0 && lastValue > 0 && firstDateStr && lastDateStr) {
+            try {
+              // Parse dates - handle both YYYY-MM-DD and ISO format
+              const firstDate = firstDateStr.includes('T') 
+                ? new Date(firstDateStr) 
+                : new Date(firstDateStr + 'T00:00:00')
+              const lastDate = lastDateStr.includes('T')
+                ? new Date(lastDateStr)
+                : new Date(lastDateStr + 'T00:00:00')
               
-              // Calculate CAGR for any time period (standard annualization approach)
-              // Minimum: at least 1 day of data (0.00274 years)
-              if (years >= 0.00274 && !isNaN(years) && isFinite(years)) {
-                const ratio = lastValue / firstValue
-                if (ratio > 0 && isFinite(ratio)) {
-                  const cagrValue = (Math.pow(ratio, 1 / years) - 1) * 100
-                  // Validate result - cap extremely large values but allow reasonable ones
-                  // For 0.16% return over 5 days, CAGR should be around 12-13% annualized
-                  if (isNaN(cagrValue) || !isFinite(cagrValue)) {
-                    cagr = null
-                  } else if (cagrValue > 1000000) {
-                    // Cap at 1,000,000% to avoid display issues
-                    cagr = null
-                  } else {
-                    cagr = cagrValue
+              // Validate dates
+              if (!isNaN(firstDate.getTime()) && !isNaN(lastDate.getTime())) {
+                const timeDiff = lastDate.getTime() - firstDate.getTime()
+                const years = timeDiff / (365.25 * 24 * 60 * 60 * 1000)
+                
+                // Calculate CAGR for any time period (standard annualization approach)
+                // Minimum: at least 1 day of data (0.00274 years)
+                if (years >= 0.00274 && !isNaN(years) && isFinite(years)) {
+                  const ratio = lastValue / firstValue
+                  if (ratio > 0 && isFinite(ratio)) {
+                    const cagrValue = (Math.pow(ratio, 1 / years) - 1) * 100
+                    // Validate result
+                    if (!isNaN(cagrValue) && isFinite(cagrValue) && cagrValue <= 1000000) {
+                      cagr = cagrValue
+                    }
                   }
                 }
               }
+            } catch (error) {
+              console.error('[Performance Metrics] Error calculating CAGR:', error)
+              cagr = null
             }
-          } catch (error) {
-            console.error('[Performance Metrics] Error calculating CAGR:', error, {
-              firstValue,
-              lastValue,
-              firstDateStr,
-              lastDateStr
-            })
-            cagr = null
           }
-        } else {
-          console.warn('[Performance Metrics] Missing data for CAGR:', {
-            hasFirstDate: !!firstDateStr,
-            hasLastDate: !!lastDateStr,
-            firstValue,
-            lastValue,
-            firstEntry,
-            lastEntry
-          })
         }
 
-        // Calculate Max Drawdown
+        // Calculate Max Drawdown using adjusted values
         let maxDrawdown: number | null = null
-        let peak = sortedHistory[0].invested || 0
+        let peak: number | null = null
         let maxDD = 0
 
-        for (let i = 1; i < sortedHistory.length; i++) {
-          const value = sortedHistory[i].invested || 0
-          if (value > peak) {
-            peak = value
-          }
-          const drawdown = peak > 0 ? ((value - peak) / peak) * 100 : 0
-          if (drawdown < maxDD) {
-            maxDD = drawdown
+        for (const entry of adjustedHistory) {
+          if (entry.adjustedValue > 0) {
+            if (peak === null || entry.adjustedValue > peak) {
+              peak = entry.adjustedValue
+            }
+            const drawdown = peak > 0 ? ((entry.adjustedValue - peak) / peak) * 100 : 0
+            if (drawdown < maxDD) {
+              maxDD = drawdown
+            }
           }
         }
         maxDrawdown = maxDD
 
-        // Calculate 30-day Volatility (lowered minimum to 5 days for portfolios with less data)
+        // Calculate 30-day Volatility using adjusted returns
         const last30Days = dailyReturns.slice(-30)
         let volatility: number | null = null
         if (last30Days.length >= 5) {
@@ -218,8 +173,7 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
           volatility = stdDev * Math.sqrt(252) * 100
         }
 
-        // Calculate Sharpe Ratio (annualized, assuming 2.5% risk-free rate)
-        // Lowered minimum to 5 days for portfolios with less data (same as volatility and beta)
+        // Calculate Sharpe Ratio using adjusted returns
         let sharpeRatio: number | null = null
         if (dailyReturns.length >= 5) {
           const returns = dailyReturns.map(r => r.return / 100)
@@ -235,7 +189,7 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
           }
         }
 
-        // Calculate Beta (against benchmark)
+        // Calculate Beta using adjusted returns
         let beta: number | null = null
         try {
           // Determine benchmark based on currency
@@ -243,8 +197,11 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
           const benchmarkAssetType = currency === 'PKR' ? 'kse100' : 'spx500'
           
           // Fetch benchmark data for the same period
+          const firstDate = adjustedHistory[0].date
+          const lastDate = adjustedHistory[adjustedHistory.length - 1].date
+          
           const benchmarkRes = await fetch(
-            `/api/historical-data?assetType=${benchmarkAssetType}&symbol=${benchmarkSymbol}&startDate=${sortedHistory[0].date}&endDate=${sortedHistory[sortedHistory.length - 1].date}`
+            `/api/historical-data?assetType=${benchmarkAssetType}&symbol=${benchmarkSymbol}&startDate=${firstDate}&endDate=${lastDate}`
           )
           
           if (benchmarkRes.ok) {
@@ -253,36 +210,44 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
               new Date(a.date).getTime() - new Date(b.date).getTime()
             )
 
-            // Lowered minimum to 5 days for portfolios with less data (same as volatility)
             if (benchmarkPrices.length >= 5) {
-              // Calculate portfolio and benchmark returns
+              // Create maps for aligned date matching
+              const adjustedValueMap = new Map(adjustedHistory.map(h => [h.date, h.adjustedValue]))
+              const benchmarkMap = new Map(benchmarkPrices.map((p: any) => [p.date, p.close]))
+              
+              // Get all dates that exist in both adjusted history and benchmark
+              const commonDates = Array.from(adjustedValueMap.keys())
+                .filter(date => benchmarkMap.has(date))
+                .sort()
+              
+              // Calculate returns for consecutive dates (matching portfolio and benchmark)
               const portfolioReturns: number[] = []
               const benchmarkReturns: number[] = []
               
-              // Align dates
-              const portfolioMap = new Map(sortedHistory.map((h: any) => [h.date, h.invested]))
-              const benchmarkMap = new Map(benchmarkPrices.map((p: any) => [p.date, p.close]))
-              
-              const commonDates = Array.from(portfolioMap.keys()).filter(date => benchmarkMap.has(date))
-              commonDates.sort()
-
               for (let i = 1; i < commonDates.length; i++) {
                 const prevDate = commonDates[i - 1]
                 const currDate = commonDates[i]
-                const prevPortfolio = portfolioMap.get(prevDate) || 0
-                const currPortfolio = portfolioMap.get(currDate) || 0
+                
+                const prevAdjustedValue = adjustedValueMap.get(prevDate) || 0
+                const currAdjustedValue = adjustedValueMap.get(currDate) || 0
                 const prevBenchmark = benchmarkMap.get(prevDate) || 0
                 const currBenchmark = benchmarkMap.get(currDate) || 0
 
-                if (prevPortfolio > 0 && prevBenchmark > 0) {
-                  portfolioReturns.push((currPortfolio - prevPortfolio) / prevPortfolio)
-                  benchmarkReturns.push((currBenchmark - prevBenchmark) / prevBenchmark)
+                // Calculate returns from adjusted values (accounting for cash flows)
+                if (prevAdjustedValue > 0 && currAdjustedValue > 0 && prevBenchmark > 0 && currBenchmark > 0) {
+                  // Portfolio return from adjusted values (already accounts for cash flows)
+                  const portfolioReturn = (currAdjustedValue - prevAdjustedValue) / prevAdjustedValue
+                  
+                  // Benchmark return
+                  const benchmarkReturn = (currBenchmark - prevBenchmark) / prevBenchmark
+                  
+                  portfolioReturns.push(portfolioReturn)
+                  benchmarkReturns.push(benchmarkReturn)
                 }
               }
 
-              // Lowered minimum to 5 aligned returns for portfolios with less data
+              // Calculate beta if we have enough aligned returns
               if (portfolioReturns.length >= 5) {
-                // Calculate covariance and variance
                 const portfolioMean = portfolioReturns.reduce((sum, r) => sum + r, 0) / portfolioReturns.length
                 const benchmarkMean = benchmarkReturns.reduce((sum, r) => sum + r, 0) / benchmarkReturns.length
 
@@ -304,24 +269,52 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
             }
           }
         } catch (error) {
-          console.error('Error calculating beta:', error)
+          console.error('[Performance Metrics] Error calculating beta:', error)
         }
 
-        // Performance Highlights
+        // Performance Highlights using adjusted returns
         const last30DaysReturns = dailyReturns.slice(-30)
         const last90DaysReturns = dailyReturns.slice(-90)
 
-        // Best Day
-        const bestDay = dailyReturns.length > 0 ? dailyReturns.reduce((best, current) => 
-          current.value > (best?.value || -Infinity) ? current : best,
+        // Calculate dollar values for best/worst day
+        // Create a map of adjusted values by date for easy lookup
+        const adjustedValueMap = new Map(adjustedHistory.map(h => [h.date, h.adjustedValue]))
+        
+        // Best Day - find the day with highest return percentage, then calculate dollar change
+        const bestDayReturn = dailyReturns.length > 0 ? dailyReturns.reduce((best, current) => 
+          current.return > (best?.return || -Infinity) ? current : best,
           dailyReturns[0]
         ) : null
-
-        // Worst Day
-        const worstDay = dailyReturns.length > 0 ? dailyReturns.reduce((worst, current) => 
-          current.value < (worst?.value || Infinity) ? current : worst,
+        
+        // Worst Day - find the day with lowest return percentage, then calculate dollar change
+        const worstDayReturn = dailyReturns.length > 0 ? dailyReturns.reduce((worst, current) => 
+          current.return < (worst?.return || Infinity) ? current : worst,
           dailyReturns[0]
         ) : null
+        
+        // Calculate dollar values for best/worst day
+        let bestDay: { value: number; date: string } | null = null
+        let worstDay: { value: number; date: string } | null = null
+        
+        if (bestDayReturn) {
+          // Find previous day's adjusted value from adjusted history
+          const currentIndex = adjustedHistory.findIndex(h => h.date === bestDayReturn.date)
+          if (currentIndex > 0) {
+            const prevAdjustedValue = adjustedHistory[currentIndex - 1].adjustedValue
+            const dollarChange = bestDayReturn.adjustedValue - prevAdjustedValue
+            bestDay = { value: dollarChange, date: bestDayReturn.date }
+          }
+        }
+        
+        if (worstDayReturn) {
+          // Find previous day's adjusted value from adjusted history
+          const currentIndex = adjustedHistory.findIndex(h => h.date === worstDayReturn.date)
+          if (currentIndex > 0) {
+            const prevAdjustedValue = adjustedHistory[currentIndex - 1].adjustedValue
+            const dollarChange = worstDayReturn.adjustedValue - prevAdjustedValue
+            worstDay = { value: dollarChange, date: worstDayReturn.date }
+          }
+        }
 
         // Winning Days (last 30 days)
         const winningDays = last30DaysReturns.length > 0
