@@ -187,14 +187,31 @@ export function PortfolioDashboardV2() {
 
   // Calculate today's change
   useEffect(() => {
+    // DIAGNOSTIC: Track effect runs
+    const effectId = Math.random().toString(36).substring(7)
+    console.log(`[Today Change #${effectId}] Effect running`, {
+      holdingsLength: holdings.length,
+      holdingsRefChanged: 'check in React DevTools',
+      user: !!user,
+      activeTab,
+      timestamp: new Date().toISOString()
+    })
+    
     // Reset todayChange when tab changes to prevent showing stale data from previous tab
     setTodayChange(null)
     
     // Create an abort controller to cancel stale requests if tab changes quickly
     const controller = new AbortController()
+    let responseReceived = false
 
     const calculateTodayChange = async () => {
+      console.log(`[Today Change #${effectId}] Checking prerequisites`, {
+        holdingsLength: holdings.length,
+        hasUser: !!user
+      })
+      
       if (!holdings.length || !user) {
+        console.log(`[Today Change #${effectId}] Prerequisites not met - returning early`)
         setTodayChange(null)
         return
       }
@@ -216,6 +233,8 @@ export function PortfolioDashboardV2() {
           unified = true
         }
 
+        console.log(`[Today Change #${effectId}] Starting fetch`, { currency, unified })
+
         // Use fewer days (5) for faster loading (Today, Yesterday, + buffer for weekends)
         const unifiedParam = unified ? '&unified=true' : ''
         const response = await fetch(`/api/user/portfolio/history?days=5&currency=${currency}${unifiedParam}`, {
@@ -223,15 +242,32 @@ export function PortfolioDashboardV2() {
           signal: controller.signal
         })
 
+        console.log(`[Today Change #${effectId}] Response received`, {
+          ok: response.ok,
+          status: response.status,
+          aborted: controller.signal.aborted
+        })
+
         if (response.ok) {
           const data = await response.json()
           const history = data.history || []
 
+          console.log(`[Today Change #${effectId}] Parsed response`, {
+            historyLength: history.length,
+            aborted: controller.signal.aborted
+          })
+
           // If aborted, do nothing
-          if (controller.signal.aborted) return
+          if (controller.signal.aborted) {
+            console.log(`[Today Change #${effectId}] ❌ ABORTED - response arrived but was aborted`)
+            return
+          }
+
+          responseReceived = true
 
           // Need at least 1 day of history to show change (vs 0)
           if (history.length === 0) {
+            console.log(`[Today Change #${effectId}] ❌ No history data`)
             setTodayChange(null)
             return
           }
@@ -244,6 +280,7 @@ export function PortfolioDashboardV2() {
           // Use the last 2 available days (not necessarily today and yesterday)
           // This handles cases where today's PK equity data isn't available yet
           if (sortedHistory.length < 1) {
+            console.log(`[Today Change #${effectId}] ❌ Sorted history empty`)
             setTodayChange(null)
             return
           }
@@ -251,8 +288,14 @@ export function PortfolioDashboardV2() {
           const latest = sortedHistory[sortedHistory.length - 1]
           const previous = sortedHistory.length >= 2 ? sortedHistory[sortedHistory.length - 2] : { invested: 0, cashFlow: 0 }
 
+          console.log(`[Today Change #${effectId}] Calculation inputs`, {
+            latest: { date: latest.date, invested: latest.invested, cashFlow: latest.cashFlow },
+            previous: { date: previous.date || 'N/A', invested: previous.invested || 0, cashFlow: previous.cashFlow || 0 }
+          })
+
           // Validate data (latest must exist)
           if (!latest || latest.invested === undefined) {
+            console.log(`[Today Change #${effectId}] ❌ Latest invested is undefined`)
             setTodayChange(null)
             return
           }
@@ -267,22 +310,38 @@ export function PortfolioDashboardV2() {
           const change = (latest.invested - previousInvested) - latestCashFlow
           const changePercent = previousInvested > 0 ? (change / previousInvested) * 100 : 0
 
+          console.log(`[Today Change #${effectId}] Calculation result`, {
+            change,
+            changePercent,
+            isValid: !isNaN(change) && !isNaN(changePercent) && isFinite(change) && isFinite(changePercent)
+          })
+
           // Set if values are valid numbers (including 0 - don't filter out zero change)
           if (!isNaN(change) && !isNaN(changePercent) && isFinite(change) && isFinite(changePercent)) {
+            console.log(`[Today Change #${effectId}] ✅ Setting value`, { value: change, percent: changePercent })
             setTodayChange({ value: change, percent: changePercent })
           } else {
+            console.log(`[Today Change #${effectId}] ❌ Invalid calculation`, {
+              changeIsNaN: isNaN(change),
+              changePercentIsNaN: isNaN(changePercent),
+              changeIsFinite: isFinite(change),
+              changePercentIsFinite: isFinite(changePercent)
+            })
             setTodayChange(null)
           }
         } else {
           if (!controller.signal.aborted) {
+            console.log(`[Today Change #${effectId}] ❌ Response not OK`, { status: response.status })
             setTodayChange(null)
           }
         }
       } catch (error: any) {
         // Ignore abort errors
         if (error.name !== 'AbortError') {
-          console.error('[Today\'s Change] Fetch Error:', error)
+          console.error(`[Today Change #${effectId}] ❌ Error:`, error)
           setTodayChange(null)
+        } else {
+          console.log(`[Today Change #${effectId}] Request aborted (expected)`)
         }
       }
     }
@@ -293,8 +352,14 @@ export function PortfolioDashboardV2() {
     }, 100)
 
     return () => {
+      console.log(`[Today Change #${effectId}] Cleanup - aborting`, {
+        responseReceived,
+        aborted: controller.signal.aborted
+      })
       clearTimeout(timeoutId)
-      controller.abort() // Cancel any pending request when tab changes or unmounts
+      if (!responseReceived) {
+        controller.abort() // Only abort if response hasn't arrived yet
+      }
     }
   }, [holdings, user, activeTab])
 

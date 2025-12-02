@@ -1,4 +1,5 @@
 import useSWR from 'swr'
+import { useMemo } from 'react'
 import type { Holding } from '@/lib/portfolio/types'
 import { parseSymbolToBinance } from '@/lib/portfolio/binance-api'
 
@@ -80,34 +81,37 @@ export function usePortfolio() {
   )
 
   // 4. Combine Holdings with Prices
-  const holdings: Holding[] = rawHoldings.map((h: any) => {
-    const assetType = h.assetType
-    let symbol = h.symbol
-    if (assetType === 'crypto') {
-      symbol = parseSymbolToBinance(h.symbol)
-    }
-    
-    // Key format from batch API: "type:SYMBOL"
-    const priceKey = `${assetType}:${symbol.toUpperCase()}`
-    
-    let currentPrice = h.purchasePrice // Default fallback
-    
-    if (pricesData?.results?.[priceKey]) {
-      const result = pricesData.results[priceKey]
-      if (result.price !== null && !result.error) {
-        currentPrice = result.price
+  // Memoize to prevent reference changes on every render (DIAGNOSTIC: This fixes Issue #1)
+  const holdings: Holding[] = useMemo(() => {
+    return rawHoldings.map((h: any) => {
+      const assetType = h.assetType
+      let symbol = h.symbol
+      if (assetType === 'crypto') {
+        symbol = parseSymbolToBinance(h.symbol)
       }
-    } else if (h.currentPrice) {
-        // Fallback to price from holdings API (if any, though we requested fetchPrices=false, 
-        // fast load might return stored prices from DB)
-        currentPrice = h.currentPrice
-    }
+      
+      // Key format from batch API: "type:SYMBOL"
+      const priceKey = `${assetType}:${symbol.toUpperCase()}`
+      
+      let currentPrice = h.purchasePrice // Default fallback
+      
+      if (pricesData?.results?.[priceKey]) {
+        const result = pricesData.results[priceKey]
+        if (result.price !== null && !result.error) {
+          currentPrice = result.price
+        }
+      } else if (h.currentPrice) {
+          // Fallback to price from holdings API (if any, though we requested fetchPrices=false, 
+          // fast load might return stored prices from DB)
+          currentPrice = h.currentPrice
+      }
 
-    return {
-      ...h,
-      currentPrice
-    }
-  })
+      return {
+        ...h,
+        currentPrice
+      }
+    })
+  }, [rawHoldings, pricesData?.results])
 
   // 5. Fetch Exchange Rate (PKR)
   const { data: exchangeRateData } = useSWR(
