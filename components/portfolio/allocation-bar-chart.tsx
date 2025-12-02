@@ -116,6 +116,9 @@ export function AllocationBarChart({ allocation, holdings, currency = 'USD' }: A
     indexAxis: 'y' as const,
     responsive: true,
     maintainAspectRatio: false,
+    animation: {
+      duration: 300, // Fast animation for initial load only
+    },
     onClick: (event: any, elements: any[]) => {
       if (elements.length > 0 && !expandedAssetType) {
         const clickedIndex = elements[0].index
@@ -220,6 +223,21 @@ export function AllocationBarChart({ allocation, holdings, currency = 'USD' }: A
     indexAxis: 'y' as const,
     responsive: true,
     maintainAspectRatio: false,
+    animation: {
+      duration: 0, // Disable animation for instant rendering
+    },
+    transitions: {
+      show: {
+        animation: {
+          duration: 0,
+        },
+      },
+      hide: {
+        animation: {
+          duration: 0,
+        },
+      },
+    },
     plugins: {
       legend: {
         display: false,

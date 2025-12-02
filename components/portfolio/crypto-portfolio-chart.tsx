@@ -63,6 +63,8 @@ export function CryptoPortfolioChart({ holdings, currency }: CryptoPortfolioChar
       return
     }
 
+    const controller = new AbortController()
+
     const loadChartData = async () => {
       setLoading(true)
       try {
@@ -71,10 +73,13 @@ export function CryptoPortfolioChart({ holdings, currency }: CryptoPortfolioChar
         
         // Fetch all holdings in parallel instead of sequentially
         const fetchPromises = cryptoHoldings.map(async (holding) => {
+          if (controller.signal.aborted) return null
           try {
             const binanceSymbol = parseSymbolToBinance(holding.symbol)
             const { deduplicatedFetch } = await import('@/lib/portfolio/request-deduplication')
-            const response = await deduplicatedFetch(`/api/historical-data?assetType=crypto&symbol=${encodeURIComponent(binanceSymbol)}`)
+            const response = await deduplicatedFetch(`/api/historical-data?assetType=crypto&symbol=${encodeURIComponent(binanceSymbol)}`, {
+              signal: controller.signal
+            })
             if (response.ok) {
               const apiData = await response.json()
               const dbRecords = apiData.data || []
@@ -95,6 +100,9 @@ export function CryptoPortfolioChart({ holdings, currency }: CryptoPortfolioChar
         
         // Wait for all fetches to complete
         const results = await Promise.all(fetchPromises)
+        
+        if (controller.signal.aborted) return
+        
         results.forEach(result => {
           if (result) {
             historicalDataMap.set(result.symbol, result.data)
@@ -103,8 +111,10 @@ export function CryptoPortfolioChart({ holdings, currency }: CryptoPortfolioChar
         
         // If no historical data found, don't render chart
         if (historicalDataMap.size === 0) {
-          setChartData(null)
-          setLoading(false)
+          if (!controller.signal.aborted) {
+            setChartData(null)
+            setLoading(false)
+          }
           return
         }
 
@@ -178,36 +188,61 @@ export function CryptoPortfolioChart({ holdings, currency }: CryptoPortfolioChar
         }
 
         // Create chart data
-        setChartData({
-          labels: sortedDates.map(date => {
-            const d = new Date(date)
-            // Show year for periods that span multiple years (1Y, 2Y, 5Y, ALL)
-            const showYear = chartPeriod === 'ALL' || chartPeriod === '1Y' || chartPeriod === '2Y' || chartPeriod === '5Y'
-            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: showYear ? 'numeric' : undefined })
-          }),
-          datasets: [
-            {
-              label: 'Portfolio Value',
-              data: portfolioValues,
-              borderColor: colors.primary || '#f59e0b',
-              backgroundColor: (colors.primary || '#f59e0b') + '20',
-              fill: true,
-            },
-          ],
-        })
-      } catch (error) {
-        console.error('Error loading chart data:', error)
+        if (!controller.signal.aborted) {
+          setChartData({
+            labels: sortedDates.map(date => {
+              const d = new Date(date)
+              // Show year for periods that span multiple years (1Y, 2Y, 5Y, ALL)
+              const showYear = chartPeriod === 'ALL' || chartPeriod === '1Y' || chartPeriod === '2Y' || chartPeriod === '5Y'
+              return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: showYear ? 'numeric' : undefined })
+            }),
+            datasets: [
+              {
+                label: 'Portfolio Value',
+                data: portfolioValues,
+                borderColor: colors.primary || '#f59e0b',
+                backgroundColor: (colors.primary || '#f59e0b') + '20',
+                fill: true,
+              },
+            ],
+          })
+        }
+      } catch (error: any) {
+        if (error.name !== 'AbortError') {
+          console.error('Error loading chart data:', error)
+        }
       } finally {
-        setLoading(false)
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
       }
     }
 
     loadChartData()
-  }, [cryptoHoldings, chartPeriod, colors.primary, useLogScale])
+    
+    return () => {
+      controller.abort()
+    }
+  }, [cryptoHoldings, chartPeriod]) // Removed colors.primary and useLogScale - they don't affect data fetching
 
   const chartOptions = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
+    animation: {
+      duration: 0, // Disable animation to prevent glitches
+    },
+    transitions: {
+      show: {
+        animation: {
+          duration: 0,
+        },
+      },
+      hide: {
+        animation: {
+          duration: 0,
+        },
+      },
+    },
     plugins: {
       legend: {
         display: true,
