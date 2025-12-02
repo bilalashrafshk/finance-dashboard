@@ -147,7 +147,10 @@ export async function GET(request: NextRequest) {
 
       // Fetch historical prices for each unique asset using centralized /api/historical-data route
       // Optimize: Fetch in parallel to avoid waterfall
-      const priceFetchPromises = Array.from(uniqueAssets.entries()).map(async ([assetKey, asset]) => {
+      // Skip commodities - they don't have market prices (e.g., "cloth lawn" is just what you paid)
+      const priceFetchPromises = Array.from(uniqueAssets.entries())
+        .filter(([assetKey, asset]) => asset.assetType !== 'commodities')
+        .map(async ([assetKey, asset]) => {
         try {
           const priceMap = new Map<string, number>()
 
@@ -393,6 +396,10 @@ export async function GET(request: NextRequest) {
                   shouldInclude = true
                   if (h.assetType === 'cash') {
                     valueToAdd = h.quantity || 0
+                  } else if (h.assetType === 'commodities') {
+                    // Commodities don't have market prices - always use purchase price (no unrealized P&L)
+                    // e.g., "cloth lawn" is just what you paid, not a market price
+                    valueToAdd = (h.quantity || 0) * (h.purchasePrice || 0)
                   } else {
                     const assetKey = `${h.assetType}:${h.symbol.toUpperCase()}:${holdingCurrency}`
                     
@@ -432,6 +439,10 @@ export async function GET(request: NextRequest) {
                     shouldInclude = true
                     if (h.assetType === 'cash') {
                       valueToAdd = h.quantity || 0
+                    } else if (h.assetType === 'commodities') {
+                      // Commodities don't have market prices - always use purchase price (no unrealized P&L)
+                      // e.g., "cloth lawn" is just what you paid, not a market price
+                      valueToAdd = (h.quantity || 0) * (h.purchasePrice || 0)
                     } else {
                       const assetKey = `${h.assetType}:${h.symbol.toUpperCase()}:${holdingCurrency}`
                       
