@@ -243,6 +243,7 @@ export function PortfolioDashboardV2() {
 
           const today = sortedHistory[sortedHistory.length - 1]
           // If only 1 day of history (today), assume yesterday was 0
+          // Note: Assets purchased today/yesterday without price data are excluded from calculation
           const yesterday = history.length >= 2 ? sortedHistory[sortedHistory.length - 2] : { invested: 0 }
 
           // Validate data (today must exist)

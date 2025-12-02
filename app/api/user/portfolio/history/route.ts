@@ -236,6 +236,30 @@ export async function GET(request: NextRequest) {
         }
       })
 
+      // Helper function to check if we have valid historical price data for a date
+      // Returns true if we have actual historical data (not fallback)
+      const hasValidPriceForDate = (assetKey: string, dateStr: string): boolean => {
+        const priceMap = historicalPriceMap.get(assetKey)
+        if (!priceMap || priceMap.size === 0) {
+          return false
+        }
+
+        // Check if we have exact date match
+        if (priceMap.has(dateStr)) {
+          return true
+        }
+
+        // Check if we have a date on or before this date (valid historical data)
+        const dates = Array.from(priceMap.keys()).sort().reverse()
+        for (const date of dates) {
+          if (date <= dateStr) {
+            return true
+          }
+        }
+
+        return false
+      }
+
       // Helper function to get price for a specific date
       // Falls back to closest earlier date, then purchase price, then 0
       const getPriceForDate = (assetKey: string, dateStr: string, fallbackPrice: number): number => {
@@ -338,11 +362,23 @@ export async function GET(request: NextRequest) {
             let cashBalance = 0
             let bookValue = 0 // Book Value = Cash + Current Market Value (includes unrealized P&L)
 
+            // Get today's date string for comparison
+            const todayStr = new Date().toISOString().split('T')[0]
+            const yesterdayStr = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
             holdings.forEach(h => {
               try {
                 const holdingCurrency = h.currency || 'USD'
                 let shouldInclude = false
                 let valueToAdd = 0
+
+                // Check if this asset should be excluded from calculation
+                // If purchased today or yesterday and no price data available for the current date, exclude it
+                const isToday = dateStr === todayStr
+                const isYesterday = dateStr === yesterdayStr
+                const purchaseDateStr = h.purchaseDate ? new Date(h.purchaseDate).toISOString().split('T')[0] : null
+                const wasPurchasedToday = purchaseDateStr === todayStr
+                const wasPurchasedYesterday = purchaseDateStr === yesterdayStr
 
                 if (unified) {
                   // In unified mode, include all currencies and convert to USD
@@ -351,8 +387,22 @@ export async function GET(request: NextRequest) {
                     valueToAdd = h.quantity || 0
                   } else {
                     const assetKey = `${h.assetType}:${h.symbol.toUpperCase()}:${holdingCurrency}`
-                    const historicalPrice = getPriceForDate(assetKey, dateStr, h.purchasePrice || 0)
-                    valueToAdd = (h.quantity || 0) * historicalPrice
+                    
+                    // Exclude assets purchased today/yesterday if they don't have price data for the current date
+                    if ((isToday && wasPurchasedToday) || (isToday && wasPurchasedYesterday) || 
+                        (isYesterday && wasPurchasedYesterday)) {
+                      if (!hasValidPriceForDate(assetKey, dateStr)) {
+                        // Purchased recently and no price data for this date - exclude from calculation
+                        shouldInclude = false
+                      } else {
+                        const historicalPrice = getPriceForDate(assetKey, dateStr, h.purchasePrice || 0)
+                        valueToAdd = (h.quantity || 0) * historicalPrice
+                      }
+                    } else {
+                      // For past dates or assets purchased earlier, use normal logic
+                      const historicalPrice = getPriceForDate(assetKey, dateStr, h.purchasePrice || 0)
+                      valueToAdd = (h.quantity || 0) * historicalPrice
+                    }
                   }
 
                   // Convert to USD if not already USD
@@ -376,8 +426,22 @@ export async function GET(request: NextRequest) {
                       valueToAdd = h.quantity || 0
                     } else {
                       const assetKey = `${h.assetType}:${h.symbol.toUpperCase()}:${holdingCurrency}`
-                      const historicalPrice = getPriceForDate(assetKey, dateStr, h.purchasePrice || 0)
-                      valueToAdd = (h.quantity || 0) * historicalPrice
+                      
+                      // Exclude assets purchased today/yesterday if they don't have price data for the current date
+                      if ((isToday && wasPurchasedToday) || (isToday && wasPurchasedYesterday) || 
+                          (isYesterday && wasPurchasedYesterday)) {
+                        if (!hasValidPriceForDate(assetKey, dateStr)) {
+                          // Purchased recently and no price data for this date - exclude from calculation
+                          shouldInclude = false
+                        } else {
+                          const historicalPrice = getPriceForDate(assetKey, dateStr, h.purchasePrice || 0)
+                          valueToAdd = (h.quantity || 0) * historicalPrice
+                        }
+                      } else {
+                        // For past dates or assets purchased earlier, use normal logic
+                        const historicalPrice = getPriceForDate(assetKey, dateStr, h.purchasePrice || 0)
+                        valueToAdd = (h.quantity || 0) * historicalPrice
+                      }
                     }
                   }
                 }
