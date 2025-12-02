@@ -4,6 +4,7 @@ import { Pool } from 'pg'
 import type { Trade } from '../route'
 import { cacheManager } from '@/lib/cache/cache-manager'
 import { revalidateTag } from 'next/cache'
+import { calculateHoldingsFromTransactions } from '@/lib/portfolio/transaction-utils'
 
 function getPool(): Pool {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
@@ -19,6 +20,98 @@ function getPool(): Pool {
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
   })
+}
+
+// Helper function to sync user_holdings table from user_trades
+async function syncHoldingsFromTrades(client: any, userId: number) {
+  // Fetch all trades
+  const tradesResult = await client.query(
+    `SELECT id, user_id, holding_id, trade_type, asset_type, symbol, name, quantity,
+            price, total_amount, currency, trade_date, notes, created_at
+     FROM user_trades
+     WHERE user_id = $1
+     ORDER BY trade_date ASC, created_at ASC`,
+    [userId]
+  )
+  
+  const trades = tradesResult.rows.map(row => ({
+    id: row.id,
+    userId: row.user_id,
+    holdingId: row.holding_id,
+    tradeType: row.trade_type,
+    assetType: row.asset_type,
+    symbol: row.symbol,
+    name: row.name,
+    quantity: parseFloat(row.quantity),
+    price: parseFloat(row.price),
+    totalAmount: parseFloat(row.total_amount),
+    currency: row.currency,
+    tradeDate: row.trade_date.toISOString().split('T')[0],
+    notes: row.notes,
+    createdAt: row.created_at.toISOString(),
+  }))
+  
+  // Calculate correct holdings state
+  const calculatedHoldings = calculateHoldingsFromTransactions(trades)
+  
+  // Get existing holdings to compare/update
+  const existingHoldingsResult = await client.query(
+    `SELECT id, asset_type, symbol, currency FROM user_holdings WHERE user_id = $1`,
+    [userId]
+  )
+  
+  const existingMap = new Map<string, string>() // key -> id
+  existingHoldingsResult.rows.forEach(row => {
+    const key = `${row.asset_type}:${row.symbol}:${row.currency}`
+    existingMap.set(key, row.id)
+  })
+  
+  const processedIds = new Set<string>()
+  
+  // Update or insert holdings
+  for (const holding of calculatedHoldings) {
+    const key = `${holding.assetType}:${holding.symbol}:${holding.currency}`
+    const existingId = existingMap.get(key)
+    
+    if (existingId) {
+      // Update
+      await client.query(
+        `UPDATE user_holdings 
+         SET quantity = $1, purchase_price = $2, purchase_date = $3, updated_at = NOW()
+         WHERE id = $4`,
+        [holding.quantity, holding.purchasePrice, holding.purchaseDate, existingId]
+      )
+      processedIds.add(existingId)
+    } else {
+      // Insert (only if quantity > 0 or it's cash)
+      if (holding.quantity > 0 || holding.assetType === 'cash') {
+        await client.query(
+          `INSERT INTO user_holdings 
+           (user_id, asset_type, symbol, name, quantity, purchase_price, purchase_date, current_price, currency, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [
+            userId, 
+            holding.assetType, 
+            holding.symbol, 
+            holding.name, 
+            holding.quantity, 
+            holding.purchasePrice, 
+            holding.purchaseDate, 
+            holding.currentPrice || holding.purchasePrice, 
+            holding.currency, 
+            holding.notes || null
+          ]
+        )
+      }
+    }
+  }
+  
+  // Delete holdings that no longer exist
+  for (const [key, id] of existingMap.entries()) {
+    if (!processedIds.has(id)) {
+      await client.query(`DELETE FROM user_holdings WHERE id = $1`, [id])
+    }
+  }
 }
 
 // PUT - Update a trade
@@ -57,6 +150,8 @@ export async function PUT(
         )
       }
       
+      await client.query('BEGIN')
+      
       // Update the trade
       const result = await client.query(
         `UPDATE user_trades 
@@ -86,6 +181,11 @@ export async function PUT(
         createdAt: row.created_at.toISOString(),
       }
       
+      // Sync holdings table after trade update
+      await syncHoldingsFromTrades(client, user.id)
+      
+      await client.query('COMMIT')
+      
       // Invalidate holdings cache for this user (transaction changed)
       const holdingsCacheKey = `holdings-${user.id}`
       cacheManager.delete(holdingsCacheKey)
@@ -97,6 +197,9 @@ export async function PUT(
       }
       
       return NextResponse.json({ success: true, trade })
+    } catch (error: any) {
+      await client.query('ROLLBACK')
+      throw error
     } finally {
       client.release()
     }
@@ -142,11 +245,18 @@ export async function DELETE(
         )
       }
       
+      await client.query('BEGIN')
+      
       // Delete the trade
       await client.query(
         'DELETE FROM user_trades WHERE id = $1 AND user_id = $2',
         [tradeId, user.id]
       )
+      
+      // Sync holdings table after trade deletion
+      await syncHoldingsFromTrades(client, user.id)
+      
+      await client.query('COMMIT')
       
       // Invalidate holdings cache for this user (transaction deleted)
       const holdingsCacheKey = `holdings-${user.id}`
@@ -159,6 +269,9 @@ export async function DELETE(
       }
       
       return NextResponse.json({ success: true })
+    } catch (error: any) {
+      await client.query('ROLLBACK')
+      throw error
     } finally {
       client.release()
     }
