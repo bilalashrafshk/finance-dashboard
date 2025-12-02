@@ -452,19 +452,50 @@ export function PortfolioDashboardV2() {
     )
   }
 
+  // If no summary or holdings, show tabs with empty state but allow navigation
   if (!summary || holdings.length === 0) {
     return (
       <div className="container mx-auto p-4 md:p-6 space-y-6">
-        <PortfolioUpdateSection holdings={holdings} onUpdate={loadHoldings} />
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Wallet className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No Holdings Yet</h3>
-              <p className="text-sm text-muted-foreground">Start tracking your investments by adding your first holding</p>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Tabs Navigation */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="pkr">PKR Portfolio</TabsTrigger>
+            <TabsTrigger value="usd">USD Portfolio</TabsTrigger>
+            <TabsTrigger value="transactions">Transactions</TabsTrigger>
+          </TabsList>
+
+          {/* Overview Tab */}
+          <TabsContent value="overview" className="space-y-4">
+            <PortfolioUpdateSection 
+              holdings={holdings} 
+              onUpdate={loadHoldings}
+              onNavigateToTransactions={() => {
+                setSelectedAsset(null)
+                setActiveTab('transactions')
+              }}
+            />
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <Wallet className="h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No Holdings Yet</h3>
+                  <p className="text-sm text-muted-foreground">Start tracking your investments by adding your first holding</p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Transactions Tab */}
+          <TabsContent value="transactions" className="space-y-4">
+            <TransactionsView
+              holdings={holdings}
+              selectedAsset={selectedAsset}
+              onClearAssetFilter={() => setSelectedAsset(null)}
+              onHoldingsUpdate={loadHoldings}
+            />
+          </TabsContent>
+        </Tabs>
       </div>
     )
   }
