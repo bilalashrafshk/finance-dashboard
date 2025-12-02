@@ -53,7 +53,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [selectedHoldingId, setSelectedHoldingId] = useState<string>('')
-  
+
   // Price fetching states
   const [fetchingPrice, setFetchingPrice] = useState(false)
   const [priceFetched, setPriceFetched] = useState(false)
@@ -243,7 +243,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
       setCurrentPrice(null)
     }
   }, [selectedHoldingId, tradeType, availableHoldings, priceTab, historicalPrice])
-  
+
   // Update price when switching tabs for sell
   useEffect(() => {
     if (tradeType === 'sell' && selectedHolding) {
@@ -262,7 +262,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
       if (tradeType === 'sell' && selectedHoldingId) {
         return
       }
-      
+
       // Auto-set currency based on asset type
       if (assetType === 'pk-equity' || assetType === 'kse100') {
         setCurrency('PKR')
@@ -301,7 +301,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
   ): Promise<boolean> => {
     const startTime = Date.now()
     const { deduplicatedFetch } = await import('@/lib/portfolio/request-deduplication')
-    
+
     // For indices and metals, if DB is empty, fetch all historical data first
     if (assetType === 'kse100' || assetType === 'spx500' || assetType === 'metals') {
       try {
@@ -310,13 +310,13 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
         const checkUrl = `/api/historical-data?assetType=${assetType}&symbol=${encodeURIComponent(symbol)}${market ? `&market=${market}` : ''}&limit=1`
         const checkResponse = await deduplicatedFetch(checkUrl)
         const hasData = checkResponse.ok && (await checkResponse.json()).data?.length > 0
-        
+
         if (!hasData) {
           // DB is empty - fetch all historical data client-side and store it
           console.log(`[AddTransaction] DB is empty for ${assetType}/${symbol}, fetching all historical data...`)
-          
+
           let instrumentId: string | null = null
-          
+
           if (assetType === 'metals') {
             const { getMetalInstrumentId } = await import('@/lib/portfolio/metals-api')
             instrumentId = getMetalInstrumentId(symbol.toUpperCase())
@@ -324,7 +324,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
             const { KSE100_INSTRUMENT_ID, SPX500_INSTRUMENT_ID } = await import('@/lib/portfolio/investing-client-api')
             instrumentId = assetType === 'kse100' ? KSE100_INSTRUMENT_ID : SPX500_INSTRUMENT_ID
           }
-          
+
           if (instrumentId) {
             // Fetch all historical data client-side (bypasses Cloudflare)
             const { fetchInvestingHistoricalDataClient } = await import('@/lib/portfolio/investing-client-api')
@@ -334,7 +334,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
               defaultStartDate,
               new Date().toISOString().split('T')[0]
             )
-            
+
             if (clientData && clientData.length > 0) {
               // Store in database via API
               try {
@@ -348,53 +348,53 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                     source: 'investing',
                   }),
                 })
-                
-                  if (storeResponse.ok) {
-                    await storeResponse.json()
-                    // Data is now in DB, return true
-                    return true
-                  } else {
-                    const errorData = await storeResponse.json()
-                    console.error(`[AddTransaction] Failed to store data for ${symbol}:`, errorData)
-                  }
-                } catch (storeError) {
-                  console.error(`[AddTransaction] Error storing data for ${symbol}:`, storeError)
+
+                if (storeResponse.ok) {
+                  await storeResponse.json()
+                  // Data is now in DB, return true
+                  return true
+                } else {
+                  const errorData = await storeResponse.json()
+                  console.error(`[AddTransaction] Failed to store data for ${symbol}:`, errorData)
                 }
+              } catch (storeError) {
+                console.error(`[AddTransaction] Error storing data for ${symbol}:`, storeError)
+              }
             }
           }
         } else {
           // Data exists in DB
           return true
-          }
-        } catch (error) {
+        }
+      } catch (error) {
         console.error(`[AddTransaction] Error fetching historical data for ${assetType}/${symbol}:`, error)
       }
     }
-    
+
     // For other asset types or if fetch above failed, poll DB
     while (Date.now() - startTime < maxWaitTime) {
       try {
         const market = assetType === 'pk-equity' ? 'PSX' : assetType === 'us-equity' ? 'US' : null
         const url = `/api/historical-data?assetType=${assetType}&symbol=${encodeURIComponent(symbol)}${market ? `&market=${market}` : ''}`
         const response = await deduplicatedFetch(url)
-        
+
         if (response.ok) {
           const data = await response.json()
           const records = data.data || []
-          
+
           // If we have at least some data, consider it ready
           if (records.length > 0) {
             return true
-            }
           }
-        } catch (error) {
+        }
+      } catch (error) {
         console.error('Error checking historical data:', error)
       }
-      
+
       // Wait 500ms before checking again
       await new Promise(resolve => setTimeout(resolve, 500))
     }
-    
+
     return false
   }
 
@@ -407,19 +407,19 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
       setPriceFetched(false)
       setInitializingHistoricalData(false)
       setHistoricalDataReady(false)
-      
+
       // First, check if DB has data
       const { deduplicatedFetch } = await import('@/lib/portfolio/request-deduplication')
       const market = assetType === 'pk-equity' ? 'PSX' : assetType === 'us-equity' ? 'US' : null
       const checkUrl = `/api/historical-data?assetType=${assetType}&symbol=${encodeURIComponent(symbol.toUpperCase())}${market ? `&market=${market}` : ''}&limit=1`
       const checkResponse = await deduplicatedFetch(checkUrl)
       const hasExistingData = checkResponse.ok && (await checkResponse.json()).data?.length > 0
-      
-        if (!hasExistingData) {
-          // DB is empty - we need to fetch all historical data
-          setInitializingHistoricalData(true)
-        }
-      
+
+      if (!hasExistingData) {
+        // DB is empty - we need to fetch all historical data
+        setInitializingHistoricalData(true)
+      }
+
       if (assetType === 'crypto') {
         const binanceSymbol = parseSymbolToBinance(symbol)
         const { fetchCryptoPrice } = await import('@/lib/portfolio/unified-price-api')
@@ -431,7 +431,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
             setName(formatSymbolForDisplay(binanceSymbol))
           }
         }
-        
+
         // Wait for historical data if DB was empty
         if (!hasExistingData) {
           const dataReady = await waitForHistoricalData('crypto', binanceSymbol)
@@ -449,7 +449,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
             setName(symbol.toUpperCase())
           }
         }
-        
+
         // Wait for historical data if DB was empty
         if (!hasExistingData) {
           const dataReady = await waitForHistoricalData('pk-equity', symbol.toUpperCase())
@@ -467,7 +467,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
             setName(symbol.toUpperCase())
           }
         }
-        
+
         // Wait for historical data if DB was empty
         if (!hasExistingData) {
           const dataReady = await waitForHistoricalData('us-equity', symbol.toUpperCase())
@@ -486,7 +486,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
             setName(assetType === 'kse100' ? 'KSE 100 Index' : 'S&P 500 Index')
           }
         }
-        
+
         // Wait for historical data if DB was empty
         if (!hasExistingData) {
           const apiAssetType = assetType === 'kse100' ? 'kse100' : 'spx500'
@@ -505,11 +505,11 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
             setName(formatMetalForDisplay(symbol))
           }
         }
-        
+
         // For metals, historical data is fetched client-side in fetchHistoricalPriceForDate (or cached here?)
         // Wait for historical data if DB was empty
         if (data && data.price) {
-           setHistoricalDataReady(true)
+          setHistoricalDataReady(true)
         }
       }
     } catch (error) {
@@ -526,7 +526,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
   const fetchHistoricalPriceForDate = useCallback(async () => {
     // Only fetch for asset types that support historical data
     const supportsHistoricalData = assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500'
-    
+
     if (!supportsHistoricalData || !symbol || !tradeDate || tradeType === 'add' || tradeType === 'remove') {
       setHistoricalPrice(null)
       setPriceRange(null)
@@ -535,7 +535,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
 
     try {
       setFetchingHistoricalPrice(true)
-      
+
       // If we're still initializing historical data, wait a bit
       if (initializingHistoricalData) {
         let waitCount = 0
@@ -544,9 +544,9 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
           waitCount++
         }
       }
-      
+
       let historicalData: any[] | null = null
-      
+
       if (assetType === 'pk-equity') {
         const { deduplicatedFetch } = await import('@/lib/portfolio/request-deduplication')
         const response = await deduplicatedFetch(`/api/historical-data?assetType=pk-equity&symbol=${encodeURIComponent(symbol.toUpperCase())}&market=PSX`)
@@ -596,7 +596,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
           if (response.ok) {
             const data = await response.json()
             const dbRecords = data.data || []
-            
+
             if (dbRecords.length > 0) {
               const { dbRecordToInvesting } = await import('@/lib/portfolio/db-to-chart-format')
               historicalData = dbRecords.map(dbRecordToInvesting)
@@ -605,7 +605,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
             } else {
               // If no data in database, fetch from client-side API and store it
               let instrumentId: string | null = null
-              
+
               if (assetType === 'metals') {
                 const { getMetalInstrumentId } = await import('@/lib/portfolio/metals-api')
                 instrumentId = getMetalInstrumentId(symbol.toUpperCase())
@@ -613,7 +613,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                 const { KSE100_INSTRUMENT_ID, SPX500_INSTRUMENT_ID } = await import('@/lib/portfolio/investing-client-api')
                 instrumentId = assetType === 'kse100' ? KSE100_INSTRUMENT_ID : SPX500_INSTRUMENT_ID
               }
-              
+
               if (instrumentId) {
                 const { fetchInvestingHistoricalDataClient } = await import('@/lib/portfolio/investing-client-api')
                 const defaultStartDate = symbol.toUpperCase() === 'GOLD' ? '1990-01-01' : '1970-01-01'
@@ -622,10 +622,10 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                   defaultStartDate,
                   new Date().toISOString().split('T')[0]
                 )
-                
+
                 if (clientData && clientData.length > 0) {
                   setCachedHistoricalData(clientData)
-                  
+
                   // Store in database via API
                   try {
                     const storeResponse = await fetch('/api/historical-data/store', {
@@ -644,7 +644,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                   } catch (storeError) {
                     console.error(`[AddTransaction] Error storing data for ${symbol}:`, storeError)
                   }
-                  
+
                   historicalData = clientData
                 }
               }
@@ -658,7 +658,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
       if (historicalData && historicalData.length > 0) {
         const tradeDateStr = new Date(tradeDate).toISOString().split('T')[0]
         let pricePoint: any = null
-        
+
         if (assetType === 'crypto') {
           pricePoint = historicalData.find((d: any) => d.date === tradeDateStr)
           if (!pricePoint) {
@@ -691,9 +691,9 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
               center: closePrice,
               min: closePrice * 0.95,
               max: closePrice * 1.05,
-              })
+            })
           }
-          
+
           // If we fetched historical data and don't have current price yet, use latest from historical data (for sell references)
           if (!currentPrice && historicalData.length > 0) {
             const latestData = historicalData[historicalData.length - 1]
@@ -716,7 +716,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
               max: closePrice * 1.05,
             })
           }
-          
+
           if (!currentPrice && historicalData.length > 0) {
             const latestData = historicalData[historicalData.length - 1]
             setCurrentPrice(latestData.c.toString())
@@ -774,7 +774,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
   const priceValidation = useMemo(() => {
     // Only validate purchase price for buy transactions when we have a price range
     const shouldValidate = tradeType === 'buy' && priceRange && purchasePrice
-    
+
     if (!shouldValidate) {
       // For sell transactions, validate the price field
       if (tradeType === 'sell' && priceTab === 'historical' && priceRange && price) {
@@ -824,7 +824,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     const quantityNum = parseFloat(quantity)
     // For buy transactions, use purchasePrice; for cash add/remove, price is 1; for sell, use price
     let priceNum: number
@@ -835,7 +835,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     } else {
       priceNum = parseFloat(price)
     }
-    
+
     if (!quantityNum || !priceNum || !symbol || !name || !tradeDate) {
       return
     }
@@ -895,32 +895,32 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
   // Validation for cash balance (buy transactions)
   const buyTotalAmount = quantityNum * (parseFloat(purchasePrice) || 0)
   const ROUNDING_EPSILON = 0.0001 // Allow small floating point differences
-  const hasInsufficientCash = tradeType === 'buy' && 
-                              assetType !== 'cash' && 
-                              !editingTrade && 
-                              cashBalance !== null && 
-                              (buyTotalAmount - cashBalance > ROUNDING_EPSILON)
+  const hasInsufficientCash = tradeType === 'buy' &&
+    assetType !== 'cash' &&
+    !editingTrade &&
+    cashBalance !== null &&
+    (buyTotalAmount - cashBalance > ROUNDING_EPSILON)
 
   // Validation for cash withdrawal
   const withdrawAmount = tradeType === 'remove' && assetType === 'cash' ? quantityNum : 0
-  const exceedsAvailableCash = tradeType === 'remove' && 
-                                assetType === 'cash' && 
-                                !editingTrade && 
-                                cashBalance !== null && 
-                                (withdrawAmount - cashBalance > ROUNDING_EPSILON)
+  const exceedsAvailableCash = tradeType === 'remove' &&
+    assetType === 'cash' &&
+    !editingTrade &&
+    cashBalance !== null &&
+    (withdrawAmount - cashBalance > ROUNDING_EPSILON)
 
-  const isFormValid = 
-    symbol && 
-    name && 
-    quantity && 
+  const isFormValid =
+    symbol &&
+    name &&
+    quantity &&
     quantityNum > 0 &&
     !exceedsAvailable &&
     !loadingCashBalance && // Ensure cash balance is loaded
     !(hasInsufficientCash && !autoDeposit) && // Prevent submission if insufficient cash and auto-deposit not checked
     !exceedsAvailableCash && // Prevent withdrawal if exceeds available cash
     (
-      (tradeType === 'buy' && purchasePrice && parseFloat(purchasePrice) > 0) || 
-      (tradeType === 'add') || 
+      (tradeType === 'buy' && purchasePrice && parseFloat(purchasePrice) > 0) ||
+      (tradeType === 'add') ||
       (tradeType === 'remove') ||
       (tradeType === 'sell' && price && parseFloat(price) > 0)
     ) &&
@@ -937,55 +937,55 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
         <DialogHeader>
           <DialogTitle>{editingTrade ? 'Edit Transaction' : 'Add Transaction'}</DialogTitle>
           <DialogDescription>
-            {editingTrade 
-              ? 'Update the transaction details.' 
+            {editingTrade
+              ? 'Update the transaction details.'
               : 'Record a new transaction (buy, sell, add cash/deposit, or withdraw cash).'}
           </DialogDescription>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="tradeType">Transaction Type *</Label>
-                <Select value={tradeType} onValueChange={(value) => {
-                  const newType = value as 'buy' | 'sell' | 'add' | 'remove'
-                  setTradeType(newType)
-                  if (newType === 'add' || newType === 'remove') {
-                    setAssetType('cash')
-                    setSymbol('CASH')
-                    setName('Cash')
-                  } else if (assetType === 'cash') {
-                    setAssetType('us-equity') // Reset if moving away from cash
-                    setSymbol('')
-                    setName('')
-                  }
-                  setSelectedHoldingId('') // Reset holding selection when changing type
-                  setPriceFetched(false) // Reset price fetched state
-                  setHistoricalDataReady(false) // Reset historical data ready
-                  setHistoricalPrice(null) // Reset historical price
-                  setPriceRange(null) // Reset price range
-                }}>
-                  <SelectTrigger id="tradeType">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="buy">Buy</SelectItem>
-                    <SelectItem value="sell">Sell</SelectItem>
-                    <SelectItem value="add">Add (Cash/Deposit)</SelectItem>
-                    <SelectItem value="remove">Withdraw Cash</SelectItem>
-                  </SelectContent>
-                </Select>
-                {tradeType === 'add' && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Add cash or deposits to your portfolio
-                  </p>
-                )}
-                {tradeType === 'remove' && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Withdraw cash from your portfolio
-                  </p>
-                )}
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="tradeType">Transaction Type *</Label>
+              <Select value={tradeType} onValueChange={(value) => {
+                const newType = value as 'buy' | 'sell' | 'add' | 'remove'
+                setTradeType(newType)
+                if (newType === 'add' || newType === 'remove') {
+                  setAssetType('cash')
+                  setSymbol('CASH')
+                  setName('Cash')
+                } else if (assetType === 'cash') {
+                  setAssetType('us-equity') // Reset if moving away from cash
+                  setSymbol('')
+                  setName('')
+                }
+                setSelectedHoldingId('') // Reset holding selection when changing type
+                setPriceFetched(false) // Reset price fetched state
+                setHistoricalDataReady(false) // Reset historical data ready
+                setHistoricalPrice(null) // Reset historical price
+                setPriceRange(null) // Reset price range
+              }}>
+                <SelectTrigger id="tradeType">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="buy">Buy</SelectItem>
+                  <SelectItem value="sell">Sell</SelectItem>
+                  <SelectItem value="add">Add (Cash/Deposit)</SelectItem>
+                  <SelectItem value="remove">Withdraw Cash</SelectItem>
+                </SelectContent>
+              </Select>
+              {tradeType === 'add' && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Add cash or deposits to your portfolio
+                </p>
+              )}
+              {tradeType === 'remove' && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Withdraw cash from your portfolio
+                </p>
+              )}
+            </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -1126,8 +1126,8 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                         assetType === 'pk-equity'
                           ? 'PTC, HBL, UBL, etc.'
                           : assetType === 'cash'
-                          ? 'CASH'
-                          : 'AAPL, TSLA, etc.'
+                            ? 'CASH'
+                            : 'AAPL, TSLA, etc.'
                       }
                       required
                     />
@@ -1167,9 +1167,9 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                <Label htmlFor="quantity">
-                  {tradeType === 'sell' ? 'Number of Shares to Sell *' : (tradeType === 'add' || tradeType === 'remove') ? 'Amount *' : 'Quantity *'}
-                </Label>
+                  <Label htmlFor="quantity">
+                    {tradeType === 'sell' ? 'Number of Shares to Sell *' : (tradeType === 'add' || tradeType === 'remove') ? 'Amount *' : 'Quantity *'}
+                  </Label>
                   {tradeType === 'buy' && cashBalance !== null && purchasePrice && parseFloat(purchasePrice) > 0 && assetType !== 'cash' && !editingTrade && (
                     <Button
                       type="button"
@@ -1309,74 +1309,74 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                   )}
                 </div>
               </>
-            ) : tradeType === 'sell' && selectedHolding && (assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500') ? (
+            ) : tradeType === 'sell' && selectedHolding && (assetType === 'pk-equity' || assetType === 'us-equity' || assetType === 'crypto' || assetType === 'metals' || assetType === 'commodities' || assetType === 'kse100' || assetType === 'spx500') ? (
               <div className="space-y-2">
                 <Label htmlFor="price">Sell Price per Unit *</Label>
                 <Tabs value={priceTab} onValueChange={(v) => setPriceTab(v as 'current' | 'historical')}>
-                    <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="current">Current Price</TabsTrigger>
-                      <TabsTrigger value="historical">Price on {tradeDate}</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="current" className="space-y-2 mt-2">
-                      <div className="flex gap-2">
-                        <Input
-                          id="price"
-                          type="number"
-                          step="any"
-                          value={price}
-                          onChange={(e) => {
-                            const newPrice = e.target.value
-                            setPrice(newPrice)
-                            setPriceFetched(false) // Reset fetched flag if manually changed
-                          }}
-                          placeholder="0.00"
-                          required
-                          className="flex-1"
-                          disabled={currentPrice === null}
-                        />
-                      </div>
-                      {currentPrice !== null && (
-                        <p className="text-xs text-muted-foreground">
-                          Current market price: {currentPrice.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })}
-                        </p>
-                      )}
-                    </TabsContent>
-                    <TabsContent value="historical" className="space-y-2 mt-2">
-                      <div className="flex gap-2">
-                        <Input
-                          id="price"
-                          type="number"
-                          step="any"
-                          value={price}
-                          onChange={(e) => {
-                            const newPrice = e.target.value
-                            setPrice(newPrice)
-                            setPriceFetched(false) // Reset fetched flag if manually changed
-                          }}
-                          placeholder="0.00"
-                          required
-                          className={`flex-1 ${priceValidation.isWarning ? 'border-yellow-500 focus-visible:ring-yellow-500' : ''}`}
-                          disabled={historicalPrice === null}
-                        />
-                      </div>
-                      {fetchingHistoricalPrice && (
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          {priceRange ? `Updating historical price for ${tradeDate}...` : `Fetching historical price for ${tradeDate}...`}
-                        </p>
-                      )}
-                      {priceRange && (
-                        <p className="text-xs text-muted-foreground">
-                          Expected range: {priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - {priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} (±5% of {priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})
-                        </p>
-                      )}
-                      {priceValidation.message && priceTab === 'historical' && (
-                        <p className={`text-xs ${priceValidation.isWarning ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'}`}>
-                          {priceValidation.message}
-                        </p>
-                      )}
-                    </TabsContent>
-                  </Tabs>
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="current">Current Price</TabsTrigger>
+                    <TabsTrigger value="historical">Price on {tradeDate}</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="current" className="space-y-2 mt-2">
+                    <div className="flex gap-2">
+                      <Input
+                        id="price"
+                        type="number"
+                        step="any"
+                        value={price}
+                        onChange={(e) => {
+                          const newPrice = e.target.value
+                          setPrice(newPrice)
+                          setPriceFetched(false) // Reset fetched flag if manually changed
+                        }}
+                        placeholder="0.00"
+                        required
+                        className="flex-1"
+                        disabled={currentPrice === null}
+                      />
+                    </div>
+                    {currentPrice !== null && (
+                      <p className="text-xs text-muted-foreground">
+                        Current market price: {currentPrice.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })}
+                      </p>
+                    )}
+                  </TabsContent>
+                  <TabsContent value="historical" className="space-y-2 mt-2">
+                    <div className="flex gap-2">
+                      <Input
+                        id="price"
+                        type="number"
+                        step="any"
+                        value={price}
+                        onChange={(e) => {
+                          const newPrice = e.target.value
+                          setPrice(newPrice)
+                          setPriceFetched(false) // Reset fetched flag if manually changed
+                        }}
+                        placeholder="0.00"
+                        required
+                        className={`flex-1 ${priceValidation.isWarning ? 'border-yellow-500 focus-visible:ring-yellow-500' : ''}`}
+                        disabled={historicalPrice === null}
+                      />
+                    </div>
+                    {fetchingHistoricalPrice && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        {priceRange ? `Updating historical price for ${tradeDate}...` : `Fetching historical price for ${tradeDate}...`}
+                      </p>
+                    )}
+                    {priceRange && (
+                      <p className="text-xs text-muted-foreground">
+                        Expected range: {priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - {priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} (±5% of {priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})
+                      </p>
+                    )}
+                    {priceValidation.message && priceTab === 'historical' && (
+                      <p className={`text-xs ${priceValidation.isWarning ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'}`}>
+                        {priceValidation.message}
+                      </p>
+                    )}
+                  </TabsContent>
+                </Tabs>
               </div>
             ) : null}
 
@@ -1386,9 +1386,9 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                 <div className="h-10 px-3 py-2 bg-muted rounded-md flex items-center">
                   {quantity && ((tradeType === 'buy' && purchasePrice && parseFloat(purchasePrice) > 0) || (tradeType !== 'buy' && price && parseFloat(price) > 0)) && parseFloat(quantity) > 0
                     ? (parseFloat(quantity) * (tradeType === 'buy' ? parseFloat(purchasePrice) : parseFloat(price))).toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
                     : '0.00'}
                 </div>
               </div>
@@ -1410,7 +1410,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                     </span>
                   )}
                 </div>
-                
+
                 {cashBalance !== null && quantity && parseFloat(quantity) > 0 && (
                   <div className="space-y-2">
                     {(() => {
@@ -1435,7 +1435,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                               </AlertDescription>
                             </Alert>
                           )}
-                          
+
                           {!exceedsAvailable && withdrawAmount > 0 && cashBalance > 0 && (
                             <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
                               <CheckCircle2 className="h-3 w-3" />
@@ -1466,7 +1466,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                     </span>
                   )}
                 </div>
-                
+
                 {cashBalance !== null && purchasePrice && parseFloat(purchasePrice) > 0 && (
                   <div className="space-y-2">
                     {(() => {
@@ -1483,7 +1483,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                               You can buy up to <span className="font-semibold">{affordableQuantity.toLocaleString()}</span> shares with available cash
                             </p>
                           )}
-                          
+
                           {hasInsufficientCash && totalAmount > 0 && (
                             <Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
                               <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
@@ -1511,7 +1511,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                               </AlertDescription>
                             </Alert>
                           )}
-                          
+
                           {!hasInsufficientCash && totalAmount > 0 && cashBalance > 0 && (
                             <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
                               <CheckCircle2 className="h-3 w-3" />
@@ -1547,7 +1547,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
               </AlertDescription>
             </Alert>
           )}
-          
+
           {/* Show message if historical data is not ready */}
           {needsHistoricalData && !historicalDataReady && !initializingHistoricalData && symbol && (
             <Alert variant="destructive" className="mb-4">
