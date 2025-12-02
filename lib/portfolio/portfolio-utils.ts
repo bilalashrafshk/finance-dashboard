@@ -679,6 +679,58 @@ export async function calculateDividendsCollected(
     return []
   }
 
+  // Smart Caching for Dividends
+  // Dividends change rarely, so we can cache them for 24 hours
+  const cacheKey = 'dividends_cache_v1'
+  const CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
+  
+  try {
+    const cachedData = localStorage.getItem(cacheKey)
+    if (cachedData) {
+      const { timestamp, data } = JSON.parse(cachedData)
+      const age = Date.now() - timestamp
+      
+      // If cache is valid (less than 24 hours old)
+      if (age < CACHE_TTL) {
+        // Check if we have data for all requested symbols in the cache
+        const cachedSymbols = new Set(data.map((d: any) => d.symbol))
+        const allSymbolsPresent = pkEquityHoldings.every(h => cachedSymbols.has(h.symbol))
+        
+        if (allSymbolsPresent) {
+          // Return cached data, but filter/recalculate based on current holdings (quantity/purchase date might have changed)
+          return pkEquityHoldings.map(holding => {
+            const cachedRecord = data.find((d: any) => d.symbol === holding.symbol)
+            if (!cachedRecord) return { holdingId: holding.id, symbol: holding.symbol, dividends: [], totalCollected: 0 }
+            
+            // Recalculate based on current quantity and purchase date
+            // The cached record contains raw dividend events
+            const relevantDividends = filterDividendsByPurchaseDate(cachedRecord.rawDividends || [], holding.purchaseDate)
+              .map((d: any) => {
+                const dividendAmountRupees = convertDividendToRupees(d.dividend_amount)
+                const totalCollected = calculateTotalDividendsForHolding(dividendAmountRupees, holding.quantity)
+                return {
+                  date: d.date,
+                  dividendAmount: dividendAmountRupees,
+                  totalCollected
+                }
+              })
+              
+            const totalCollected = relevantDividends.reduce((sum: number, d: any) => sum + d.totalCollected, 0)
+            
+            return {
+              holdingId: holding.id,
+              symbol: holding.symbol,
+              dividends: relevantDividends,
+              totalCollected
+            }
+          })
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Error reading dividend cache:', e)
+  }
+
   // Use batch API for better performance
   try {
     const token = localStorage.getItem('auth_token')
@@ -687,16 +739,34 @@ export async function calculateDividendsCollected(
       purchaseDate: h.purchaseDate,
     }))
 
-    const response = await fetch(
-      `/api/user/dividends/batch?holdings=${encodeURIComponent(JSON.stringify(holdingsData))}`,
-      {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-      }
-    )
+    const response = await fetch('/api/user/dividends/batch', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ holdings: holdingsData }),
+    })
 
     if (response.ok) {
       const data = await response.json()
       const dividendsMap = data.dividends || {}
+
+      // Prepare data for cache (store raw dividends per symbol)
+      const cacheData = Object.entries(dividendsMap).map(([symbol, rawDividends]) => ({
+        symbol,
+        rawDividends
+      }))
+      
+      // Save to cache
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({
+          timestamp: Date.now(),
+          data: cacheData
+        }))
+      } catch (e) {
+        console.warn('Error writing dividend cache:', e)
+      }
 
       // Process results
       return pkEquityHoldings.map((holding) => {

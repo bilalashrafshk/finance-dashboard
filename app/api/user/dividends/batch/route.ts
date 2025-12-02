@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/middleware'
 import { cacheManager } from '@/lib/cache/cache-manager'
+import { getDividendDataBatch } from '@/lib/portfolio/db-client'
 
 /**
  * Batch Dividend API
  * 
  * GET /api/user/dividends/batch?tickers=HBL,UBL,MCB
  * 
- * Fetches dividends for multiple PK equity tickers in a single request.
- * Returns dividends for all requested tickers, filtered by purchase dates.
+ * Fetches dividends for multiple PK equity tickers in a single request from the database.
+ * Does NOT trigger scraping for missing data (to ensure speed).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -66,45 +67,18 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Fetch dividends for all tickers in parallel
-    const baseUrl = request.nextUrl.origin
-    const dividendPromises = tickers.map(async (ticker) => {
-      try {
-        const response = await fetch(`${baseUrl}/api/pk-equity/dividend?ticker=${encodeURIComponent(ticker)}`, {
-          headers: {
-            'Authorization': request.headers.get('Authorization') || '',
-          },
-        })
+    // Fetch dividends from DB in one query
+    const dividendsMap = await getDividendDataBatch('pk-equity', tickers)
 
-        if (!response.ok) {
-          return { ticker: ticker.toUpperCase(), dividends: [], error: 'Failed to fetch' }
-        }
-
-        const data = await response.json()
-        const dividends = data.dividends || []
-
-        // Filter by purchase date if provided
-        const purchaseDate = holdingsMap.get(ticker.toUpperCase())
-        let filteredDividends = dividends
+    // Filter by purchase date if provided
+    if (holdingsParam) {
+      Object.keys(dividendsMap).forEach(ticker => {
+        const purchaseDate = holdingsMap.get(ticker)
         if (purchaseDate) {
-          filteredDividends = dividends.filter((d: any) => d.date >= purchaseDate)
+          dividendsMap[ticker] = dividendsMap[ticker].filter(d => d.date >= purchaseDate)
         }
-
-        return {
-          ticker: ticker.toUpperCase(),
-          dividends: filteredDividends,
-        }
-      } catch (error: any) {
-        console.error(`Error fetching dividends for ${ticker}:`, error)
-        return { ticker: ticker.toUpperCase(), dividends: [], error: error.message }
-      }
-    })
-
-    const results = await Promise.all(dividendPromises)
-    const dividendsMap: Record<string, any> = {}
-    results.forEach(result => {
-      dividendsMap[result.ticker] = result.dividends
-    })
+      })
+    }
 
     // Cache the result for 5 minutes
     cacheManager.setWithCustomTTL(cacheKey, dividendsMap, 5 * 60 * 1000)
@@ -126,6 +100,63 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    console.error('Batch dividends API error:', error)
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch dividends' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await requireAuth(request)
+    const body = await request.json()
+    const { holdings } = body // Array of {symbol, purchaseDate}
+
+    if (!holdings || !Array.isArray(holdings)) {
+      return NextResponse.json(
+        { success: false, error: 'holdings array is required' },
+        { status: 400 }
+      )
+    }
+
+    const tickers = holdings.map((h: any) => h.symbol)
+    const holdingsMap = new Map<string, string>() // symbol -> purchaseDate
+    holdings.forEach((h: any) => {
+      holdingsMap.set(h.symbol.toUpperCase(), h.purchaseDate)
+    })
+
+    if (tickers.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'No valid tickers provided' },
+        { status: 400 }
+      )
+    }
+
+    // Check cache first
+    const cacheKey = `dividends-batch:${tickers.sort().join(',')}`
+    const cached = cacheManager.get<any>(cacheKey)
+    if (cached) {
+      return NextResponse.json({ success: true, dividends: cached })
+    }
+
+    // Fetch dividends from DB in one query
+    const dividendsMap = await getDividendDataBatch('pk-equity', tickers)
+
+    // Filter by purchase date
+    Object.keys(dividendsMap).forEach(ticker => {
+      const purchaseDate = holdingsMap.get(ticker)
+      if (purchaseDate) {
+        dividendsMap[ticker] = dividendsMap[ticker].filter(d => d.date >= purchaseDate)
+      }
+    })
+
+    // Cache the result for 5 minutes
+    cacheManager.setWithCustomTTL(cacheKey, dividendsMap, 5 * 60 * 1000)
+
+    return NextResponse.json({ success: true, dividends: dividendsMap })
+  } catch (error: any) {
     console.error('Batch dividends API error:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to fetch dividends' },

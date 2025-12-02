@@ -49,6 +49,7 @@ import { Loader2 } from "lucide-react"
 import { ASSET_TYPE_LABELS } from "@/lib/portfolio/types"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
+import { usePortfolio } from "@/hooks/use-portfolio"
 
 // Exchange rate series key for USD/PKR
 const EXCHANGE_RATE_SERIES_KEY = 'TS_GP_ER_FAERPKR_M.E00220'
@@ -64,52 +65,133 @@ const MetalsPortfolioChart = dynamic(() => import("./metals-portfolio-chart").th
 
 export function PortfolioDashboardV2() {
   const { user, loading: authLoading } = useAuth()
-  const [holdings, setHoldings] = useState<Holding[]>([])
+
+  const { 
+    holdings, 
+    netDeposits, 
+    loading: holdingsLoading, 
+    exchangeRate,
+    mutate: mutateHoldings,
+    pricesValidating
+  } = usePortfolio()
+
   const [summary, setSummary] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [exchangeRate, setExchangeRate] = useState<number | null>(null)
   const [todayChange, setTodayChange] = useState<{ value: number; percent: number } | null>(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [selectedAsset, setSelectedAsset] = useState<{ assetType: string; symbol: string; currency: string; name: string } | null>(null)
   const [includeDividends, setIncludeDividends] = useState(false)
+  const [dividendData, setDividendData] = useState<any[] | null>(null)
 
   useEffect(() => {
-    if (!authLoading && user) {
-      loadHoldings(true).then(() => {
-        setTimeout(() => {
-          handleRefreshPrices()
-        }, 1500)
-      })
-    } else if (!authLoading && !user) {
-      setLoading(false)
+    if (holdings.length === 0) {
+      setSummary(null)
+      return
     }
-  }, [authLoading, user, exchangeRate])
 
-  // Fetch exchange rate
-  useEffect(() => {
-    const fetchExchangeRate = async () => {
+    const calculateSummary = async () => {
       try {
-        const response = await fetch(`/api/sbp/economic-data?seriesKey=${encodeURIComponent(EXCHANGE_RATE_SERIES_KEY)}&startDate=${new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString().split('T')[0]}&endDate=${new Date().toISOString().split('T')[0]}`)
-        if (response.ok) {
-          const data = await response.json()
-          const exchangeData = data.data || []
-          if (exchangeData.length > 0) {
-            // Get the most recent exchange rate
-            const sorted = [...exchangeData].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
-            setExchangeRate(sorted[0].value)
+        const { 
+          calculatePortfolioSummary, 
+          calculateDividendsCollected,
+          calculateTotalRealizedPnL,
+          calculateUnifiedPortfolioSummary
+        } = await import('@/lib/portfolio/portfolio-utils')
+
+        // 1. Start fetching global data in parallel
+        // calculateTotalRealizedPnL uses a cached endpoint
+        const realizedPnLPromise = calculateTotalRealizedPnL()
+        
+        // calculateDividendsCollected uses the batch API which we just optimized to be DB-only
+        const dividendDetailsPromise = calculateDividendsCollected(holdings)
+        
+        const [realizedPnL, dividendDetails] = await Promise.all([realizedPnLPromise, dividendDetailsPromise])
+        setDividendData(dividendDetails)
+        const totalDividends = dividendDetails.reduce((sum, d) => sum + d.totalCollected, 0)
+
+        // 2. Calculate Per-Currency Summaries
+        const holdingsByCurrency = groupHoldingsByCurrency(holdings)
+        const currencies = Array.from(holdingsByCurrency.keys())
+
+        const summaries: Record<string, any> = {}
+        
+        for (const currency of currencies) {
+          const currencyHoldings = holdingsByCurrency.get(currency) || []
+          const summary = calculatePortfolioSummary(currencyHoldings)
+          
+          // Filter dividends for this currency's holdings
+          const currencyHoldingIds = new Set(currencyHoldings.map(h => h.id))
+          const currencyDividends = dividendDetails
+              .filter(d => currencyHoldingIds.has(d.holdingId))
+              .reduce((sum, d) => sum + d.totalCollected, 0)
+              
+          summary.dividendsCollected = currencyDividends
+          summary.dividendsCollectedPercent = summary.totalInvested > 0 ? (currencyDividends / summary.totalInvested) * 100 : 0
+          
+          summary.realizedPnL = realizedPnL
+          summary.totalPnL = summary.totalGainLoss + realizedPnL
+          
+          if (realizedPnL !== 0) {
+            summary.totalInvested = summary.totalInvested - realizedPnL
+            if (summary.totalInvested !== 0) {
+              summary.totalGainLossPercent = (summary.totalGainLoss / summary.totalInvested) * 100
+              summary.dividendsCollectedPercent = (currencyDividends / summary.totalInvested) * 100
+            }
+          }
+          
+          summaries[currency] = summary
+        }
+
+        // 3. Unified Summary
+        let unifiedSummary = null
+        if (exchangeRate && currencies.length > 1) {
+          const exchangeRatesMap = new Map<string, number>()
+          currencies.forEach(c => {
+            if (c === 'USD') {
+              exchangeRatesMap.set(c, 1)
+            } else if (c === 'PKR') {
+              exchangeRatesMap.set(c, exchangeRate) // 1 USD = X PKR
+            }
+          })
+
+          unifiedSummary = calculateUnifiedPortfolioSummary(holdings, exchangeRatesMap)
+          
+          // Add global realized PnL and Dividends
+          unifiedSummary.realizedPnL = realizedPnL
+          unifiedSummary.totalPnL = unifiedSummary.totalGainLoss + realizedPnL
+          
+          // Dividends
+          unifiedSummary.dividendsCollected = totalDividends
+          unifiedSummary.dividendsCollectedPercent = unifiedSummary.totalInvested > 0 ? (totalDividends / unifiedSummary.totalInvested) * 100 : 0
+             
+          if (realizedPnL !== 0) {
+            unifiedSummary.totalInvested = unifiedSummary.totalInvested - realizedPnL
+            if (unifiedSummary.totalInvested !== 0) {
+              unifiedSummary.totalGainLossPercent = (unifiedSummary.totalGainLoss / unifiedSummary.totalInvested) * 100
+            }
           }
         }
+
+        setSummary({
+          byCurrency: summaries,
+          unified: unifiedSummary,
+          currencies,
+          netDeposits, // Store netDeposits in summary
+        })
       } catch (error) {
-        console.error('Error fetching exchange rate:', error)
+        console.error('Error calculating summary:', error)
       }
     }
-    fetchExchangeRate()
-  }, [])
+
+    calculateSummary()
+  }, [holdings, exchangeRate, netDeposits])
 
   // Calculate today's change
   useEffect(() => {
-    // Reset todayChange when tab changes to prevent showing stale data
+    // Reset todayChange when tab changes to prevent showing stale data from previous tab
     setTodayChange(null)
+    
+    // Create an abort controller to cancel stale requests if tab changes quickly
+    const controller = new AbortController()
 
     const calculateTodayChange = async () => {
       if (!holdings.length || !user) {
@@ -134,17 +216,22 @@ export function PortfolioDashboardV2() {
           unified = true
         }
 
-        // Use more days to ensure we have enough data and can find a valid comparison day
+        // Use fewer days (5) for faster loading (Today, Yesterday, + buffer for weekends)
         const unifiedParam = unified ? '&unified=true' : ''
-        const response = await fetch(`/api/user/portfolio/history?days=7&currency=${currency}${unifiedParam}`, {
+        const response = await fetch(`/api/user/portfolio/history?days=5&currency=${currency}${unifiedParam}`, {
           headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+          signal: controller.signal
         })
 
         if (response.ok) {
           const data = await response.json()
           const history = data.history || []
 
-          if (history.length < 2) {
+          // If aborted, do nothing
+          if (controller.signal.aborted) return
+
+          // Need at least 1 day of history to show change (vs 0)
+          if (history.length === 0) {
             setTodayChange(null)
             return
           }
@@ -155,60 +242,42 @@ export function PortfolioDashboardV2() {
           )
 
           const today = sortedHistory[sortedHistory.length - 1]
-          const yesterday = sortedHistory[sortedHistory.length - 2]
+          // If only 1 day of history (today), assume yesterday was 0
+          const yesterday = history.length >= 2 ? sortedHistory[sortedHistory.length - 2] : { invested: 0 }
 
-          // Validate data
-          if (!today || !yesterday || !today.invested || !yesterday.invested) {
+          // Validate data (today must exist)
+          if (!today || today.invested === undefined) {
             setTodayChange(null)
             return
           }
 
-          // Exclude cash injections/withdrawals from daily returns
-          // If today has a cash flow, skip this calculation (it's not a real return)
+          // Calculate Daily P&L using standard formula:
+          // Daily P&L = (End Value - Start Value) - Net Flows
+          
           const todayCashFlow = today.cashFlow || 0
-          if (Math.abs(todayCashFlow) < 0.01) { // Use small epsilon to handle floating point
-            // No cash flow, calculate actual return
-            const change = today.invested - yesterday.invested
-            const changePercent = yesterday.invested > 0 ? (change / yesterday.invested) * 100 : 0
+          const yesterdayInvested = yesterday.invested || 0
+          
+          // Note: today.invested in API response is "Market Value + Cash".
+          const change = (today.invested - yesterdayInvested) - todayCashFlow
+          const changePercent = yesterdayInvested > 0 ? (change / yesterdayInvested) * 100 : 0
 
-            // Only set if values are valid numbers
-            if (!isNaN(change) && !isNaN(changePercent) && isFinite(change) && isFinite(changePercent)) {
-              setTodayChange({ value: change, percent: changePercent })
-            } else {
-              setTodayChange(null)
-            }
+          // Only set if values are valid numbers
+          if (!isNaN(change) && !isNaN(changePercent) && isFinite(change) && isFinite(changePercent)) {
+            setTodayChange({ value: change, percent: changePercent })
           } else {
-            // Cash flow detected, try to find a day without cash flow
-            // Look back up to 7 days to find a day without cash flow
-            let foundValidChange = false
-            for (let i = sortedHistory.length - 2; i >= Math.max(0, sortedHistory.length - 8); i--) {
-              const prevDay = sortedHistory[i]
-              if (!prevDay || !prevDay.invested) continue
-
-              const prevDayCashFlow = prevDay.cashFlow || 0
-              if (Math.abs(prevDayCashFlow) < 0.01) {
-                const change = today.invested - prevDay.invested
-                const changePercent = prevDay.invested > 0 ? (change / prevDay.invested) * 100 : 0
-
-                // Only set if values are valid numbers
-                if (!isNaN(change) && !isNaN(changePercent) && isFinite(change) && isFinite(changePercent)) {
-                  setTodayChange({ value: change, percent: changePercent })
-                  foundValidChange = true
-                  break
-                }
-              }
-            }
-            if (!foundValidChange) {
-              // Couldn't find a valid day, set to null
-              setTodayChange(null)
-            }
+            setTodayChange(null)
           }
         } else {
+          if (!controller.signal.aborted) {
+            setTodayChange(null)
+          }
+        }
+      } catch (error: any) {
+        // Ignore abort errors
+        if (error.name !== 'AbortError') {
+          console.error('Error calculating today change:', error)
           setTodayChange(null)
         }
-      } catch (error) {
-        console.error('Error calculating today change:', error)
-        setTodayChange(null)
       }
     }
 
@@ -217,88 +286,19 @@ export function PortfolioDashboardV2() {
       calculateTodayChange()
     }, 100)
 
-    return () => clearTimeout(timeoutId)
+    return () => {
+      clearTimeout(timeoutId)
+      controller.abort() // Cancel any pending request when tab changes or unmounts
+    }
   }, [holdings, user, activeTab])
 
   const loadHoldings = async (fast: boolean = false) => {
-    try {
-      // We need to fetch netDeposits from the API response
-      // loadPortfolio only returns holdings, so we need to modify it or fetch separately.
-      // Actually loadPortfolio calls this API. Let's check loadPortfolio return type.
-      // It returns Promise<Portfolio> which is { holdings: Holding[], lastUpdated: string }
-      // We need to update loadPortfolio to return netDeposits too.
-      // For now, let's just fetch it directly here since we are modifying the dashboard.
-
-      const token = localStorage.getItem('auth_token')
-      // Add timestamp to prevent caching
-      const response = await fetch(`/api/user/holdings?fast=${fast}&t=${Date.now()}`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-      })
-
-      if (!response.ok) throw new Error('Failed to load holdings')
-
-      const data = await response.json()
-      const holdingsData = data.holdings || []
-      const netDeposits = data.netDeposits || {}
-
-      console.log('Loaded holdings:', holdingsData.length, 'Net Deposits:', netDeposits)
-
-      setHoldings(holdingsData)
-
-      // Calculate summary with dividends (deferred)
-      setTimeout(async () => {
-        // Calculate summaries for each currency
-        const holdingsByCurrency = groupHoldingsByCurrency(holdingsData)
-        const currencies = Array.from(holdingsByCurrency.keys())
-
-        const summaries: Record<string, any> = {}
-        for (const currency of currencies) {
-          const currencyHoldings = holdingsByCurrency.get(currency) || []
-          summaries[currency] = await calculatePortfolioSummaryWithDividends(currencyHoldings)
-        }
-
-        // Calculate unified summary if we have exchange rate
-        let unifiedSummary = null
-        if (exchangeRate && currencies.length > 1) {
-          const exchangeRatesMap = new Map<string, number>()
-          currencies.forEach(c => {
-            if (c === 'USD') {
-              exchangeRatesMap.set(c, 1)
-            } else if (c === 'PKR') {
-              exchangeRatesMap.set(c, exchangeRate) // 1 USD = X PKR
-            }
-          })
-
-          const { calculateUnifiedPortfolioSummaryWithRealizedPnL } = await import('@/lib/portfolio/portfolio-utils')
-          unifiedSummary = await calculateUnifiedPortfolioSummaryWithRealizedPnL(holdingsData, exchangeRatesMap)
-
-          // Add dividends
-          const pkEquityHoldings = holdingsData.filter((h: any) => h.assetType === 'pk-equity')
-          if (pkEquityHoldings.length > 0) {
-            const { calculateTotalDividendsCollected } = await import('@/lib/portfolio/portfolio-utils')
-            const dividendsCollected = await calculateTotalDividendsCollected(holdingsData)
-            unifiedSummary.dividendsCollected = dividendsCollected
-            unifiedSummary.dividendsCollectedPercent = unifiedSummary.totalInvested > 0 ? (dividendsCollected / unifiedSummary.totalInvested) * 100 : 0
-          }
-        }
-
-        setSummary({
-          byCurrency: summaries,
-          unified: unifiedSummary,
-          currencies,
-          netDeposits, // Store netDeposits in summary
-        })
-        setLoading(false)
-      }, 500)
-    } catch (error) {
-      console.error('Error loading holdings:', error)
-      setHoldings([])
-      setLoading(false)
-    }
+    // Just trigger revalidation
+    await mutateHoldings()
   }
 
   const handleRefreshPrices = async () => {
-    await loadHoldings(false)
+    await mutateHoldings()
   }
 
   // Calculate insights (filtered by active tab)
@@ -341,7 +341,7 @@ export function PortfolioDashboardV2() {
   const allocation = useMemo(() => calculateAssetAllocation(holdings), [holdings])
 
   // Show loading state
-  if (authLoading || loading) {
+  if (authLoading || (holdingsLoading && holdings.length === 0)) {
     return (
       <div className="container mx-auto p-6">
         <Card>
@@ -706,7 +706,7 @@ export function PortfolioDashboardV2() {
                 holdings={holdings}
                 currency="USD"
               />
-              <DividendPayoutChart holdings={holdings} currency="USD" />
+              <DividendPayoutChart holdings={holdings} currency="USD" preCalculatedDividends={dividendData || undefined} />
             </div>
           )}
 
@@ -766,7 +766,7 @@ export function PortfolioDashboardV2() {
                     holdings={holdingsByCurrency.get('PKR') || []}
                     currency="PKR"
                   />
-                  <DividendPayoutChart holdings={holdingsByCurrency.get('PKR') || []} currency="PKR" />
+                  <DividendPayoutChart holdings={holdingsByCurrency.get('PKR') || []} currency="PKR" preCalculatedDividends={dividendData || undefined} />
                 </div>
 
                 <PortfolioHistoryChart currency="PKR" />
@@ -825,7 +825,7 @@ export function PortfolioDashboardV2() {
                     holdings={holdingsByCurrency.get('USD') || []}
                     currency="USD"
                   />
-                  <DividendPayoutChart holdings={holdingsByCurrency.get('USD') || []} currency="USD" />
+                  <DividendPayoutChart holdings={holdingsByCurrency.get('USD') || []} currency="USD" preCalculatedDividends={dividendData || undefined} />
                 </div>
 
                 <PortfolioHistoryChart

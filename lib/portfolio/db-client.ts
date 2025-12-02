@@ -697,6 +697,60 @@ export async function getDividendData(
 }
 
 /**
+ * Get dividend data for multiple assets
+ */
+export async function getDividendDataBatch(
+  assetType: string,
+  symbols: string[]
+): Promise<Record<string, DividendRecord[]>> {
+  if (!symbols || symbols.length === 0) {
+    return {}
+  }
+
+  try {
+    const client = await getPool().connect()
+
+    try {
+      const normalizedSymbols = symbols.map(s => s.toUpperCase())
+      
+      const result = await client.query(
+        `SELECT symbol, date, dividend_amount
+         FROM dividend_data
+         WHERE asset_type = $1 AND symbol = ANY($2)
+         ORDER BY date ASC`,
+        [assetType, normalizedSymbols]
+      )
+
+      const dividendsMap: Record<string, DividendRecord[]> = {}
+      
+      // Initialize arrays for all requested symbols
+      normalizedSymbols.forEach(s => {
+        dividendsMap[s] = []
+      })
+
+      result.rows.forEach(row => {
+        const symbol = row.symbol.toUpperCase()
+        if (!dividendsMap[symbol]) {
+          dividendsMap[symbol] = []
+        }
+        
+        dividendsMap[symbol].push({
+          date: row.date.toISOString().split('T')[0],
+          dividend_amount: parseFloat(row.dividend_amount)
+        })
+      })
+
+      return dividendsMap
+    } finally {
+      client.release()
+    }
+  } catch (error) {
+    console.error(`Error getting batch dividend data:`, error)
+    return {}
+  }
+}
+
+/**
  * Check if dividend data exists for an asset
  */
 export async function hasDividendData(

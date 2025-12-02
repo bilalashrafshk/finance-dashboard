@@ -24,6 +24,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
 interface DividendPayoutChartProps {
   holdings: Holding[]
   currency?: string
+  preCalculatedDividends?: HoldingDividend[] // New prop to avoid re-fetching
 }
 
 interface MonthlyDividend {
@@ -34,13 +35,21 @@ interface MonthlyDividend {
   total: number
 }
 
-export function DividendPayoutChart({ holdings, currency = 'PKR' }: DividendPayoutChartProps) {
+export function DividendPayoutChart({ holdings, currency = 'PKR', preCalculatedDividends }: DividendPayoutChartProps) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
-  const [loading, setLoading] = useState(true)
-  const [holdingDividends, setHoldingDividends] = useState<HoldingDividend[]>([])
+  const [loading, setLoading] = useState(!preCalculatedDividends)
+  const [holdingDividends, setHoldingDividends] = useState<HoldingDividend[]>(preCalculatedDividends || [])
   const [dividendsDialogOpen, setDividendsDialogOpen] = useState(false)
   const today = new Date()
+
+  // Update if preCalculatedDividends changes
+  useEffect(() => {
+    if (preCalculatedDividends) {
+      setHoldingDividends(preCalculatedDividends)
+      setLoading(false)
+    }
+  }, [preCalculatedDividends])
 
   // Define colors
   const colors = useMemo(() => ({
@@ -52,6 +61,9 @@ export function DividendPayoutChart({ holdings, currency = 'PKR' }: DividendPayo
   }), [isDark])
 
   useEffect(() => {
+    // Skip if we have pre-calculated data
+    if (preCalculatedDividends) return;
+
     const loadDividends = async () => {
       setLoading(true)
       try {
@@ -73,7 +85,7 @@ export function DividendPayoutChart({ holdings, currency = 'PKR' }: DividendPayo
     }
 
     loadDividends()
-  }, [holdings])
+  }, [holdings, preCalculatedDividends])
 
   // Group dividends by month and separate paid vs upcoming
   const monthlyDividends = useMemo(() => {

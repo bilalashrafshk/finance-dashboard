@@ -379,69 +379,66 @@ export async function POST(request: NextRequest) {
         createdAt: row.created_at.toISOString(),
       }
       
-      // Deduct cash for buy transactions
-      // Note: Since holdings are calculated from transactions, we don't strictly need to update user_holdings
-      // But we keep it for backward compatibility and other parts of the system
-      if (tradeType === 'buy' && assetType !== 'cash') {
-        const assetCurrency = currency || 'USD'
+      // Update user_holdings table to keep it in sync for fast loading
+      // This is crucial for the "fast=true" mode used by the dashboard
+      if (assetType !== 'cash') {
+        // Calculate new state for this holding
+        // We need to fetch all trades for this asset to be accurate (or do incremental)
+        // Let's do incremental for speed, but handle "not found" case
         
-        // Calculate current cash balance from transactions (including the new trade we just added)
-        const allTradesResult = await client.query(
-          `SELECT id, user_id, holding_id, trade_type, asset_type, symbol, name, quantity,
-                  price, total_amount, currency, trade_date, notes, created_at
-           FROM user_trades
-           WHERE user_id = $1
-           ORDER BY trade_date ASC, created_at ASC`,
-          [user.id]
+        const existingHoldingResult = await client.query(
+          `SELECT id, quantity, purchase_price FROM user_holdings
+           WHERE user_id = $1 AND asset_type = $2 AND symbol = $3 AND currency = $4`,
+          [user.id, assetType, symbol, currency || 'USD']
         )
         
-        const allTrades = allTradesResult.rows.map(row => ({
-          id: row.id,
-          userId: row.user_id,
-          holdingId: row.holding_id,
-          tradeType: row.trade_type,
-          assetType: row.asset_type,
-          symbol: row.symbol,
-          name: row.name,
-          quantity: parseFloat(row.quantity),
-          price: parseFloat(row.price),
-          totalAmount: parseFloat(row.total_amount),
-          currency: row.currency,
-          tradeDate: row.trade_date.toISOString().split('T')[0],
-          notes: row.notes,
-          createdAt: row.created_at.toISOString(),
-        }))
-        
-        const calculatedHoldings = calculateHoldingsFromTransactions(allTrades)
-        const cashHolding = calculatedHoldings.find(
-          h => h.assetType === 'cash' && h.symbol === 'CASH' && h.currency === assetCurrency
-        )
-        const newCashQuantity = cashHolding ? Math.max(0, cashHolding.quantity) : 0
-        
-        // Update or create cash holding in user_holdings for backward compatibility
-        const cashHoldingResult = await client.query(
-          `SELECT id FROM user_holdings
-           WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND currency = $2
-           ORDER BY quantity DESC`,
-          [user.id, assetCurrency]
-        )
-        
-        if (cashHoldingResult.rows.length > 0) {
-          // Update existing cash holding
-          await client.query(
-            `UPDATE user_holdings 
-             SET quantity = $1, updated_at = NOW()
-             WHERE id = $2`,
-            [newCashQuantity, cashHoldingResult.rows[0].id]
-          )
-        } else {
-          // Create cash holding if it doesn't exist (for backward compatibility)
-          await client.query(
-            `INSERT INTO user_holdings 
-             (user_id, asset_type, symbol, name, quantity, purchase_price, purchase_date, current_price, currency)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-            [user.id, 'cash', 'CASH', `Cash (${assetCurrency})`, newCashQuantity, 1, tradeDate, 1, assetCurrency]
-          )
+        if (tradeType === 'buy' || tradeType === 'add') {
+          const addQuantity = parseFloat(quantity)
+          const addPrice = parseFloat(price)
+          const addTotal = parseFloat(totalAmount)
+          
+          if (existingHoldingResult.rows.length > 0) {
+            const h = existingHoldingResult.rows[0]
+            const oldQuantity = parseFloat(h.quantity)
+            const oldPrice = parseFloat(h.purchase_price)
+            
+            const newQuantity = oldQuantity + addQuantity
+            // Weighted average price
+            const newPrice = newQuantity > 0 
+              ? ((oldQuantity * oldPrice) + addTotal) / newQuantity 
+              : addPrice
+              
+            await client.query(
+              `UPDATE user_holdings 
+               SET quantity = $1, purchase_price = $2, updated_at = NOW()
+               WHERE id = $3`,
+              [newQuantity, newPrice, h.id]
+            )
+          } else {
+            // Create new holding
+            await client.query(
+              `INSERT INTO user_holdings 
+               (user_id, asset_type, symbol, name, quantity, purchase_price, purchase_date, current_price, currency, notes)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+              [user.id, assetType, symbol, name, addQuantity, addPrice, tradeDate, addPrice, currency || 'USD', notes || null]
+            )
+          }
+        } else if (tradeType === 'sell' || tradeType === 'remove') {
+          if (existingHoldingResult.rows.length > 0) {
+            const h = existingHoldingResult.rows[0]
+            const oldQuantity = parseFloat(h.quantity)
+            const removeQuantity = parseFloat(quantity)
+            
+            const newQuantity = Math.max(0, oldQuantity - removeQuantity)
+            // Price doesn't change on sell (average cost basis)
+            
+            await client.query(
+              `UPDATE user_holdings 
+               SET quantity = $1, updated_at = NOW()
+               WHERE id = $2`,
+              [newQuantity, h.id]
+            )
+          }
         }
       }
       

@@ -18,7 +18,7 @@ interface PortfolioHistoryProps {
 }
 
 export function PortfolioHistoryChart({ currency = "USD", unified = false, totalChange, totalChangePercent }: PortfolioHistoryProps) {
-  const [period, setPeriod] = useState("ALL") // Default to ALL for best first impression
+  const [period, setPeriod] = useState("30") // Default to 30 days for faster loading
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -36,6 +36,9 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
     const fetchHistory = async () => {
       setLoading(true)
       setError(null)
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+
       try {
         // 1. Fetch Portfolio Holdings History
         // Get token from localStorage to ensure we are authenticated
@@ -45,6 +48,7 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
           headers: {
             'Authorization': `Bearer ${token}`,
           },
+          signal: controller.signal
         })
 
         if (historyRes.status === 401) {
@@ -94,10 +98,15 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
 
         setData(validData)
 
-      } catch (err) {
-        console.error("Error fetching history:", err)
-        setError("Failed to load portfolio history")
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+           setError("Request timed out. Please try a shorter period.")
+        } else {
+           console.error("Error fetching history:", err)
+           setError("Failed to load portfolio history")
+        }
       } finally {
+        clearTimeout(timeoutId)
         setLoading(false)
       }
     }

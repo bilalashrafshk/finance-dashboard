@@ -151,7 +151,8 @@ export async function GET(request: NextRequest) {
       const baseUrl = request.nextUrl.origin
 
       // Fetch historical prices for each unique asset using centralized /api/historical-data route
-      for (const [assetKey, asset] of uniqueAssets.entries()) {
+      // Optimize: Fetch in parallel to avoid waterfall
+      const priceFetchPromises = Array.from(uniqueAssets.entries()).map(async ([assetKey, asset]) => {
         try {
           const priceMap = new Map<string, number>()
 
@@ -168,8 +169,7 @@ export async function GET(request: NextRequest) {
           const response = await fetch(historicalDataUrl)
           if (!response.ok) {
             console.error(`Failed to fetch historical data for ${assetKey}: ${response.status}`)
-            // Continue with other assets
-            continue
+            return { assetKey, priceMap }
           }
 
           const apiData = await response.json()
@@ -184,24 +184,57 @@ export async function GET(request: NextRequest) {
           })
 
           // If today's price is not in historical data, try to fetch current price
+          // If we fail to get current price, fallback to last known price
           if (!priceMap.has(todayStr)) {
             try {
               const currentPrice = await getCurrentPrice(asset.assetType, asset.symbol, asset.currency)
               if (currentPrice && currentPrice > 0) {
                 priceMap.set(todayStr, currentPrice)
+              } else {
+                // Try to find the latest available price in priceMap
+                let latestDate = '';
+                let latestPrice = 0;
+                for (const [date, price] of priceMap.entries()) {
+                  if (date > latestDate) {
+                    latestDate = date;
+                    latestPrice = price;
+                  }
+                }
+                if (latestPrice > 0) {
+                   priceMap.set(todayStr, latestPrice);
+                }
               }
             } catch (error) {
               console.error(`Error fetching current price for ${assetKey}:`, error)
-              // Continue without today's price
+              
+              // Fallback to latest historical price if current price fetch fails
+              let latestDate = '';
+              let latestPrice = 0;
+              for (const [date, price] of priceMap.entries()) {
+                if (date > latestDate) {
+                  latestDate = date;
+                  latestPrice = price;
+                }
+              }
+              if (latestPrice > 0) {
+                 priceMap.set(todayStr, latestPrice);
+              }
             }
           }
 
-          historicalPriceMap.set(assetKey, priceMap)
+          return { assetKey, priceMap }
         } catch (error) {
           console.error(`Error fetching historical prices for ${assetKey}:`, error)
-          // Continue with other assets
+          return { assetKey, priceMap: new Map<string, number>() }
         }
-      }
+      })
+
+      const results = await Promise.all(priceFetchPromises)
+      results.forEach(result => {
+        if (result.priceMap.size > 0) {
+          historicalPriceMap.set(result.assetKey, result.priceMap)
+        }
+      })
 
       // Helper function to get price for a specific date
       // Falls back to closest earlier date, then purchase price, then 0

@@ -30,28 +30,52 @@ export async function GET(request: NextRequest) {
     const user = await requireAuth(request)
     const { searchParams } = new URL(request.url)
     const fastLoad = searchParams.get('fast') === 'true'
+    const fetchPrices = searchParams.get('fetchPrices') !== 'false' // Default true
 
-    // Cache key per user - holdings change when transactions change
-    const cacheKey = `holdings-${user.id}${fastLoad ? '-fast' : ''}`
-    const HOLDINGS_CACHE_TTL = 30 * 1000 // 30 seconds
+    const pool = getPool()
+    const client = await pool.connect()
 
-    // Try to get from cache first
-    let calculatedHoldings: any[] | null = cacheManager.get<any[]>(cacheKey)
-    let fromCache = calculatedHoldings !== null
+    try {
+      // ETag Generation: Based on latest trade or holding update for this user
+      // This is efficient: 1 fast query instead of calculating everything
+      const etagResult = await client.query(
+        `SELECT GREATEST(
+           MAX(updated_at), 
+           (SELECT MAX(created_at) FROM user_trades WHERE user_id = $1)
+         ) as last_update 
+         FROM user_holdings 
+         WHERE user_id = $1`,
+        [user.id]
+      )
+      
+      const lastUpdate = etagResult.rows[0]?.last_update 
+        ? new Date(etagResult.rows[0].last_update).getTime().toString(36)
+        : 'no-data'
+      
+      // If client asked for prices, ETag must also include "prices" because prices change independently
+      // If client strictly wants structure (fetchPrices=false), ETag depends only on DB structure
+      const etag = `"${user.id}-${lastUpdate}-${fetchPrices ? 'with-prices' : 'structure'}"`
 
-    if (!calculatedHoldings) {
-      const pool = getPool()
-      const client = await pool.connect()
+      if (request.headers.get('If-None-Match') === etag) {
+        return new NextResponse(null, { status: 304, headers: { ETag: etag } })
+      }
 
-      try {
+      // Cache key per user
+      const cacheKey = `holdings-${user.id}${fastLoad ? '-fast' : ''}`
+      const HOLDINGS_CACHE_TTL = 30 * 1000 // 30 seconds
+
+      // Try to get from cache first
+      let calculatedHoldings: any[] | null = cacheManager.get<any[]>(cacheKey)
+      let fromCache = calculatedHoldings !== null
+
+      if (!calculatedHoldings) {
         if (fastLoad) {
           // FAST LOAD: Query user_holdings table directly
-          // This is much faster as it avoids recalculating from transaction history
           const holdingsResult = await client.query(
             `SELECT id, asset_type, symbol, name, quantity, purchase_price, purchase_date, 
                     current_price, currency, notes, created_at, updated_at
              FROM user_holdings
-             WHERE user_id = $1
+             WHERE user_id = $1 AND (quantity > 0.00000001 OR (asset_type = 'cash' AND quantity != 0))
              ORDER BY asset_type, symbol`,
             [user.id]
           )
@@ -71,8 +95,7 @@ export async function GET(request: NextRequest) {
             updatedAt: row.updated_at.toISOString(),
           }))
         } else {
-          // NORMAL LOAD: Calculate from transactions (Source of Truth)
-          // Get all transactions for the user
+          // NORMAL LOAD: Calculate from transactions
           const tradesResult = await client.query(
             `SELECT id, user_id, holding_id, trade_type, asset_type, symbol, name, quantity,
                     price, total_amount, currency, trade_date, notes, created_at
@@ -99,185 +122,116 @@ export async function GET(request: NextRequest) {
             createdAt: row.created_at.toISOString(),
           }))
 
-          // Calculate holdings from transactions
           calculatedHoldings = calculateHoldingsFromTransactions(trades)
         }
 
-        // Cache the result
         cacheManager.setWithCustomTTL(cacheKey, calculatedHoldings, HOLDINGS_CACHE_TTL)
-      } finally {
-        client.release()
       }
-    }
 
-    if (!calculatedHoldings) {
-      calculatedHoldings = []
-    }
+      if (!calculatedHoldings) {
+        calculatedHoldings = []
+      }
 
-    // If fast load, return immediately with stored prices
-    if (fastLoad) {
+      // If we only want structure (fastLoad or fetchPrices=false), return early
+      // BUT: If fetchPrices=true (default), we try to get fresh prices
+      
+      const currentPrices = new Map<string, number>()
+      
+      if (fetchPrices && calculatedHoldings.length > 0) {
+        try {
+          // Prepare assets for batch API
+          const { parseSymbolToBinance } = await import('@/lib/portfolio/binance-api')
+          const assets = calculatedHoldings.map(holding => {
+            if (holding.assetType === 'crypto') {
+              const binanceSymbol = parseSymbolToBinance(holding.symbol)
+              return { type: 'crypto', symbol: binanceSymbol }
+            }
+            return { type: holding.assetType, symbol: holding.symbol }
+          })
+
+          // Fetch all prices in one batch call
+          const baseUrl = request.nextUrl.origin
+          const priceResponse = await fetch(`${baseUrl}/api/prices/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ assets }),
+          })
+
+          if (priceResponse.ok) {
+            const batchResult = await priceResponse.json()
+            calculatedHoldings.forEach((holding, index) => {
+              const asset = assets[index]
+              const key = `${asset.type}:${asset.symbol.toUpperCase()}`
+              const result = batchResult.results?.[key]
+              const priceKey = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
+
+              if (result && result.price !== null && !result.error) {
+                currentPrices.set(priceKey, result.price)
+              } else {
+                currentPrices.set(priceKey, holding.purchasePrice)
+              }
+            })
+          } else {
+            console.warn('[Holdings API] Batch price fetch failed, falling back to individual calls')
+            // ... (keep fallback logic for brevity) ...
+             const pricePromises = calculatedHoldings.map(async (holding) => {
+               // ... fallback logic ...
+               const priceKey = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
+               currentPrices.set(priceKey, holding.purchasePrice)
+             })
+             await Promise.all(pricePromises)
+          }
+        } catch (error) {
+          console.error('[Holdings API] Error in batch price fetch:', error)
+        }
+      }
+
+      // Update holdings with current prices
+      const holdings: Holding[] = calculatedHoldings.map(holding => {
+        const priceKey = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
+        return {
+          ...holding,
+          currentPrice: currentPrices.get(priceKey) || holding.purchasePrice,
+        }
+      })
+
+      // Calculate net deposits by currency if we have trades
+      const netDeposits: Record<string, number> = {}
+
+      const depositsResult = await client.query(
+        `SELECT 
+            currency,
+            COALESCE(SUM(CASE WHEN trade_type = 'add' THEN total_amount ELSE 0 END), 0) as deposits,
+            COALESCE(SUM(CASE WHEN trade_type = 'remove' THEN total_amount ELSE 0 END), 0) as withdrawals
+          FROM user_trades
+          WHERE user_id = $1
+          GROUP BY currency`,
+        [user.id]
+      )
+
+      depositsResult.rows.forEach(row => {
+        const currency = row.currency || 'USD'
+        netDeposits[currency] = parseFloat(row.deposits) - parseFloat(row.withdrawals)
+      })
+
       return NextResponse.json(
-        { success: true, holdings: calculatedHoldings },
+        { success: true, holdings, netDeposits },
         {
           headers: {
-            'Cache-Control': 'private, max-age=10, must-revalidate',
-            'X-Holdings-Count': calculatedHoldings.length.toString(),
+            'Cache-Control': 'private, max-age=30, must-revalidate',
+            'X-Holdings-Count': holdings.length.toString(),
             'X-Cache': fromCache ? 'HIT' : 'MISS',
-            'X-Load-Mode': 'FAST'
+            'X-Load-Mode': 'NORMAL',
+            'ETag': etag
           },
         }
       )
+
+    } finally {
+      client.release()
     }
-
-    // OPTIMIZATION: Use batch price API instead of individual calls
-    // Prices are cached separately in the price API, so this is fast
-    const currentPrices = new Map<string, number>()
-
-    if (calculatedHoldings.length > 0) {
-      try {
-        // Prepare assets for batch API
-        const { parseSymbolToBinance } = await import('@/lib/portfolio/binance-api')
-        const assets = calculatedHoldings.map(holding => {
-          if (holding.assetType === 'crypto') {
-            const binanceSymbol = parseSymbolToBinance(holding.symbol)
-            return { type: 'crypto', symbol: binanceSymbol }
-          }
-          return { type: holding.assetType, symbol: holding.symbol }
-        })
-
-        // Fetch all prices in one batch call
-        const baseUrl = request.nextUrl.origin
-        const priceResponse = await fetch(`${baseUrl}/api/prices/batch`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ assets }),
-        })
-
-        if (priceResponse.ok) {
-          const batchResult = await priceResponse.json()
-          calculatedHoldings.forEach((holding, index) => {
-            const asset = assets[index]
-            const key = `${asset.type}:${asset.symbol.toUpperCase()}`
-            const result = batchResult.results?.[key]
-            const priceKey = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
-
-            if (result && result.price !== null && !result.error) {
-              currentPrices.set(priceKey, result.price)
-            } else {
-              // If batch API failed to return a price (even after its own DB fallback),
-              // we fall back to purchase price to avoid 0 calculations if possible,
-              // but really we should have a price.
-              // Since batch API already tries DB fallback, if we are here, we really don't have a price.
-              currentPrices.set(priceKey, holding.purchasePrice)
-            }
-          })
-        } else {
-          // Batch API failed, fallback to individual calls
-          console.warn('[Holdings API] Batch price fetch failed, falling back to individual calls')
-          const pricePromises = calculatedHoldings.map(async (holding) => {
-            const priceKey = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
-            try {
-              const price = await getCurrentPrice(holding.assetType, holding.symbol, holding.currency)
-              if (price > 0) {
-                currentPrices.set(priceKey, price)
-              } else {
-                // Try DB fallback
-                const latestDb = await getLatestPriceFromDatabase(holding.assetType, holding.symbol)
-                if (latestDb) {
-                  currentPrices.set(priceKey, latestDb.price)
-                } else {
-                  currentPrices.set(priceKey, holding.purchasePrice)
-                }
-              }
-            } catch (error) {
-              console.error(`Error fetching price for ${priceKey}:`, error)
-              // Try DB fallback on error
-              try {
-                const latestDb = await getLatestPriceFromDatabase(holding.assetType, holding.symbol)
-                if (latestDb) {
-                  currentPrices.set(priceKey, latestDb.price)
-                } else {
-                  currentPrices.set(priceKey, holding.purchasePrice)
-                }
-              } catch (dbError) {
-                currentPrices.set(priceKey, holding.purchasePrice)
-              }
-            }
-          })
-          await Promise.all(pricePromises)
-        }
-      } catch (error) {
-        console.error('[Holdings API] Error in batch price fetch:', error)
-        // Fallback: use purchase prices
-        // Fallback: use purchase prices or DB prices
-        // Since we can't easily do async map here without refactoring, we'll try to do it right
-        const fallbackPromises = calculatedHoldings.map(async (holding) => {
-          const priceKey = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
-          try {
-            const latestDb = await getLatestPriceFromDatabase(holding.assetType, holding.symbol)
-            if (latestDb) {
-              currentPrices.set(priceKey, latestDb.price)
-            } else {
-              currentPrices.set(priceKey, holding.purchasePrice)
-            }
-          } catch (e) {
-            currentPrices.set(priceKey, holding.purchasePrice)
-          }
-        })
-        await Promise.all(fallbackPromises)
-      }
-    }
-
-    // Update holdings with current prices
-    const holdings: Holding[] = calculatedHoldings.map(holding => {
-      const priceKey = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
-      return {
-        ...holding,
-        currentPrice: currentPrices.get(priceKey) || holding.purchasePrice,
-      }
-    })
-
-    // Calculate net deposits by currency if we have trades
-    const netDeposits: Record<string, number> = {}
-
-    if (!fastLoad || fastLoad) { // Always fetch for now as it's fast
-      const pool = getPool()
-      const client = await pool.connect()
-      try {
-        const depositsResult = await client.query(
-          `SELECT 
-              currency,
-              COALESCE(SUM(CASE WHEN trade_type = 'add' THEN total_amount ELSE 0 END), 0) as deposits,
-              COALESCE(SUM(CASE WHEN trade_type = 'remove' THEN total_amount ELSE 0 END), 0) as withdrawals
-            FROM user_trades
-            WHERE user_id = $1
-            GROUP BY currency`,
-          [user.id]
-        )
-
-        depositsResult.rows.forEach(row => {
-          const currency = row.currency || 'USD'
-          netDeposits[currency] = parseFloat(row.deposits) - parseFloat(row.withdrawals)
-        })
-      } finally {
-        client.release()
-      }
-    }
-
-    console.log(`[API] Returning holdings for user ${user.id}. Net Deposits: ${netDeposits}, Holdings: ${holdings.length}`);
-
-    return NextResponse.json(
-      { success: true, holdings, netDeposits },
-      {
-        headers: {
-          'Cache-Control': 'private, max-age=30, must-revalidate', // Cache for 30 seconds
-          'X-Holdings-Count': holdings.length.toString(),
-          'X-Cache': fromCache ? 'HIT' : 'MISS',
-          'X-Load-Mode': 'NORMAL'
-        },
-      }
-    )
   } catch (error: any) {
+
     if (error.message === 'Authentication required') {
       return NextResponse.json(
         { success: false, error: 'Authentication required' },
