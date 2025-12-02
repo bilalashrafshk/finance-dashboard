@@ -325,3 +325,4 @@ export async function GET(request: NextRequest) {
 Your current approach is actually aligned with industry best practices. Focus on strengthening access controls, adding audit trails, and ensuring proper encryption at the database level rather than field-level encryption.
 
 
+

@@ -90,6 +90,14 @@ export function usePortfolio() {
         symbol = parseSymbolToBinance(h.symbol)
       }
       
+      // For commodities, always use purchase price (no unrealized P&L until sold/realized)
+      if (assetType === 'commodities') {
+        return {
+          ...h,
+          currentPrice: h.purchasePrice
+        }
+      }
+      
       // Key format from batch API: "type:SYMBOL"
       const priceKey = `${assetType}:${symbol.toUpperCase()}`
       

@@ -246,6 +246,22 @@ export async function getCurrentPrice(
         const metalsData = await fetchMetalsPrice(symbol)
         price = metalsData?.price || 0
         break
+      case 'commodities':
+        // For commodities, fetch from commodity price API
+        // Note: This is mainly for historical data; for current valuation, we use purchasePrice
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+          const today = new Date().toISOString().split('T')[0]
+          const response = await fetch(`${baseUrl}/api/commodity/price?symbol=${encodeURIComponent(symbol)}&date=${today}`)
+          if (response.ok) {
+            const data = await response.json()
+            price = data.price || 0
+          }
+        } catch (error) {
+          console.error(`Error fetching commodity price for ${symbol}:`, error)
+          price = 0
+        }
+        break
       case 'cash':
         // Cash is always 1:1
         price = 1

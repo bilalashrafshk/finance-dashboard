@@ -18,3 +18,4 @@ CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires_at ON password_rese
 -- DELETE FROM password_reset_tokens WHERE expires_at < NOW() OR used = TRUE;
 
 
+

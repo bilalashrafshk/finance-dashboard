@@ -81,6 +81,10 @@ export function calculateInvested(holding: Holding): number {
  * Calculate the current value of a holding
  */
 export function calculateCurrentValue(holding: Holding): number {
+  // For commodities, always use purchase price (no unrealized P&L until sold/realized)
+  if (holding.assetType === 'commodities') {
+    return holding.quantity * holding.purchasePrice
+  }
   return holding.quantity * holding.currentPrice
 }
 
