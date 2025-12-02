@@ -162,14 +162,10 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onNavigateToTransac
         if (priceInfo && priceInfo.price !== null && priceInfo.price !== holding.currentPrice) {
           holding.currentPrice = priceInfo.price
           // Update in storage (fire and forget)
-          import('@/lib/portfolio/portfolio-db-storage').then(({ updateHolding }) => {
-            updateHolding(holding.id, { currentPrice: priceInfo.price }).catch(err =>
-              console.error(`Failed to update holding ${holding.id}:`, err)
-            )
-          })
+          // Price is already stored in DB by the API fetch, no need to update holding record
         }
 
-        const dayPnL = historicalInfo?.dayChange !== null ? historicalInfo.dayChange * holding.quantity : null
+        const dayPnL = historicalInfo && historicalInfo.dayChange !== null ? historicalInfo.dayChange * holding.quantity : null
 
         return {
           holdingId: holding.id,
@@ -348,10 +344,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onNavigateToTransac
 
         if (newPrice !== null && priceDate) {
           // Update holding price in portfolio
-          if (newPrice !== holding.currentPrice) {
-            const { updateHolding } = await import('@/lib/portfolio/portfolio-db-storage')
-            updateHolding(holding.id, { currentPrice: newPrice })
-          }
+          // Price is already stored in DB by the API fetch, no need to update holding record
 
           const result = {
             id,
@@ -521,7 +514,7 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onNavigateToTransac
               View last updated dates and day changes for all holdings
             </CardDescription>
           </div>
-          <Button 
+          <Button
             onClick={() => onNavigateToTransactions?.()}
             variant="outline"
             size="sm"
@@ -542,123 +535,123 @@ export function PortfolioUpdateSection({ holdings, onUpdate, onNavigateToTransac
               </Button>
             </div>
           ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Asset</TableHead>
+                    <TableHead>Symbol</TableHead>
+                    <TableHead className="text-right">Quantity</TableHead>
+                    <TableHead>Current Price</TableHead>
+                    <TableHead>Last Updated</TableHead>
+                    <TableHead className="text-right">Day Change</TableHead>
+                    <TableHead className="text-right">Day Change %</TableHead>
+                    <TableHead className="text-right">Day PnL</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {combinedStatuses.length === 0 ? (
                     <TableRow>
-                      <TableHead>Asset</TableHead>
-                      <TableHead>Symbol</TableHead>
-                      <TableHead className="text-right">Quantity</TableHead>
-                      <TableHead>Current Price</TableHead>
-                      <TableHead>Last Updated</TableHead>
-                      <TableHead className="text-right">Day Change</TableHead>
-                      <TableHead className="text-right">Day Change %</TableHead>
-                      <TableHead className="text-right">Day PnL</TableHead>
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        No holdings found
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {combinedStatuses.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                          No holdings found
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      combinedStatuses.map((status) => {
-                        // Check if asset type is supported in asset screener
-                        const supportedTypes: AssetType[] = ['us-equity', 'pk-equity', 'crypto', 'metals', 'kse100', 'spx500']
-                        const isSupportedInScreener = supportedTypes.includes(status.holding.assetType)
-                        const assetSlug = isSupportedInScreener ? generateAssetSlug(status.holding.assetType, status.holding.symbol) : null
+                  ) : (
+                    combinedStatuses.map((status) => {
+                      // Check if asset type is supported in asset screener
+                      const supportedTypes: AssetType[] = ['us-equity', 'pk-equity', 'crypto', 'metals', 'kse100', 'spx500']
+                      const isSupportedInScreener = supportedTypes.includes(status.holding.assetType)
+                      const assetSlug = isSupportedInScreener ? generateAssetSlug(status.holding.assetType, status.holding.symbol) : null
 
-                        // Use a unique key based on asset type, symbol, and currency for combined holdings
-                        const uniqueKey = status.originalHoldingIds && status.originalHoldingIds.length > 1
-                          ? `${status.holding.assetType}:${status.holding.symbol.toUpperCase()}:${status.holding.currency}`
-                          : status.holding.id
+                      // Use a unique key based on asset type, symbol, and currency for combined holdings
+                      const uniqueKey = status.originalHoldingIds && status.originalHoldingIds.length > 1
+                        ? `${status.holding.assetType}:${status.holding.symbol.toUpperCase()}:${status.holding.currency}`
+                        : status.holding.id
 
-                        // Get individual holdings for this asset
-                        const getIndividualHoldings = () => {
-                          if (status.originalHoldingIds && status.originalHoldingIds.length > 1) {
-                            return holdings.filter(h => status.originalHoldingIds!.includes(h.id))
-                          }
-                          return [status.holding]
+                      // Get individual holdings for this asset
+                      const getIndividualHoldings = () => {
+                        if (status.originalHoldingIds && status.originalHoldingIds.length > 1) {
+                          return holdings.filter(h => status.originalHoldingIds!.includes(h.id))
                         }
+                        return [status.holding]
+                      }
 
-                        return (
-                          <TableRow key={uniqueKey}>
-                            <TableCell className="font-medium">
-                              <button
-                                onClick={() => {
-                                  onNavigateToTransactions?.({
-                                    assetType: status.holding.assetType,
-                                    symbol: status.holding.symbol,
-                                    currency: status.holding.currency,
-                                    name: status.holding.name || status.holding.symbol,
-                                  })
-                                }}
-                                className="hover:underline hover:text-primary transition-colors cursor-pointer text-left"
-                                title="View transaction history"
+                      return (
+                        <TableRow key={uniqueKey}>
+                          <TableCell className="font-medium">
+                            <button
+                              onClick={() => {
+                                onNavigateToTransactions?.({
+                                  assetType: status.holding.assetType,
+                                  symbol: status.holding.symbol,
+                                  currency: status.holding.currency,
+                                  name: status.holding.name || status.holding.symbol,
+                                })
+                              }}
+                              className="hover:underline hover:text-primary transition-colors cursor-pointer text-left"
+                              title="View transaction history"
+                            >
+                              {status.holding.name || status.holding.symbol}
+                            </button>
+                          </TableCell>
+                          <TableCell>
+                            {assetSlug ? (
+                              <Link
+                                href={`/asset/${assetSlug}`}
+                                className="hover:underline hover:text-primary transition-colors"
                               >
-                                {status.holding.name || status.holding.symbol}
-                              </button>
-                            </TableCell>
-                            <TableCell>
-                              {assetSlug ? (
-                                <Link
-                                  href={`/asset/${assetSlug}`}
-                                  className="hover:underline hover:text-primary transition-colors"
-                                >
-                                  <Badge variant="outline" className="cursor-pointer">{status.holding.symbol.toUpperCase()}</Badge>
-                                </Link>
-                              ) : (
-                                <Badge variant="outline">{status.holding.symbol.toUpperCase()}</Badge>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {status.holding.quantity.toLocaleString()}
-                            </TableCell>
-                            <TableCell>
-                              {formatCurrency(status.holding.currentPrice || 0, status.holding.currency)}
-                            </TableCell>
-                            <TableCell>
-                              <span className="text-sm text-muted-foreground">
-                                {formatDate(status.lastUpdatedDate)}
-                              </span>
-                            </TableCell>
-                            <TableCell className={`text-right ${getDayChangeColor(status.dayChange)}`}>
-                              {status.dayChange !== null ? (
-                                <div className="flex items-center justify-end gap-1">
-                                  {getDayChangeIcon(status.dayChange)}
-                                  {formatCurrency(Math.abs(status.dayChange), status.holding.currency)}
-                                </div>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                            <TableCell className={`text-right ${getDayChangeColor(status.dayChange)}`}>
-                              {status.dayChangePercent !== null ? (
-                                <span>{status.dayChangePercent > 0 ? '+' : ''}{status.dayChangePercent.toFixed(2)}%</span>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                            <TableCell className={`text-right font-semibold ${getDayChangeColor(status.dayPnL)}`}>
-                              {status.dayPnL !== null ? (
-                                <div className="flex items-center justify-end gap-1">
-                                  {getDayChangeIcon(status.dayPnL)}
-                                  {formatCurrency(Math.abs(status.dayPnL), status.holding.currency)}
-                                </div>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
+                                <Badge variant="outline" className="cursor-pointer">{status.holding.symbol.toUpperCase()}</Badge>
+                              </Link>
+                            ) : (
+                              <Badge variant="outline">{status.holding.symbol.toUpperCase()}</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {status.holding.quantity.toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            {formatCurrency(status.holding.currentPrice || 0, status.holding.currency)}
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">
+                              {formatDate(status.lastUpdatedDate)}
+                            </span>
+                          </TableCell>
+                          <TableCell className={`text-right ${getDayChangeColor(status.dayChange)}`}>
+                            {status.dayChange !== null ? (
+                              <div className="flex items-center justify-end gap-1">
+                                {getDayChangeIcon(status.dayChange)}
+                                {formatCurrency(Math.abs(status.dayChange), status.holding.currency)}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className={`text-right ${getDayChangeColor(status.dayChange)}`}>
+                            {status.dayChangePercent !== null ? (
+                              <span>{status.dayChangePercent > 0 ? '+' : ''}{status.dayChangePercent.toFixed(2)}%</span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className={`text-right font-semibold ${getDayChangeColor(status.dayPnL)}`}>
+                            {status.dayPnL !== null ? (
+                              <div className="flex items-center justify-end gap-1">
+                                {getDayChangeIcon(status.dayPnL)}
+                                {formatCurrency(Math.abs(status.dayPnL), status.holding.currency)}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

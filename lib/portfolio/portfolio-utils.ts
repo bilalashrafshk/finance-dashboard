@@ -14,7 +14,7 @@ import { convertDividendToRupees, filterDividendsByPurchaseDate, calculateTotalD
  */
 export function combineHoldingsByAsset(holdings: Holding[]): Holding[] {
   const groupedMap = new Map<string, Holding[]>()
-  
+
   // Group holdings by assetType + symbol + currency (case-insensitive)
   holdings.forEach(holding => {
     const key = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
@@ -23,10 +23,10 @@ export function combineHoldingsByAsset(holdings: Holding[]): Holding[] {
     }
     groupedMap.get(key)!.push(holding)
   })
-  
+
   // Combine each group into a single holding
   const combinedHoldings: Holding[] = []
-  
+
   groupedMap.forEach((groupHoldings, key) => {
     if (groupHoldings.length === 1) {
       // Single holding, no need to combine
@@ -37,12 +37,12 @@ export function combineHoldingsByAsset(holdings: Holding[]): Holding[] {
       const totalQuantity = groupHoldings.reduce((sum, h) => sum + h.quantity, 0)
       const totalInvested = groupHoldings.reduce((sum, h) => sum + (h.purchasePrice * h.quantity), 0)
       const averagePurchasePrice = totalQuantity > 0 ? totalInvested / totalQuantity : firstHolding.purchasePrice
-      
+
       // Use earliest purchase date
       const earliestPurchaseDate = groupHoldings.reduce((earliest, h) => {
         return new Date(h.purchaseDate) < new Date(earliest) ? h.purchaseDate : earliest
       }, groupHoldings[0].purchaseDate)
-      
+
       // Create combined holding
       const combinedHolding: Holding = {
         ...firstHolding,
@@ -51,11 +51,11 @@ export function combineHoldingsByAsset(holdings: Holding[]): Holding[] {
         purchasePrice: averagePurchasePrice,
         purchaseDate: earliestPurchaseDate,
       }
-      
+
       combinedHoldings.push(combinedHolding)
     }
   })
-  
+
   return combinedHoldings
 }
 
@@ -97,21 +97,21 @@ export function calculatePortfolioValueForDate(
 ): number {
   // Combine holdings by asset before calculation
   const combinedHoldings = combineHoldingsByAsset(holdings)
-  
+
   const dateStr = typeof date === 'string' ? date : date.toISOString().split('T')[0]
   const dateObj = typeof date === 'string' ? new Date(date) : date
   const today = new Date()
   const todayStr = today.toISOString().split('T')[0]
-  
+
   let totalValue = 0
-  
+
   for (const holding of combinedHoldings) {
     const purchaseDate = new Date(holding.purchaseDate)
-    
+
     // Only include holdings purchased on or before this date
     if (dateObj >= purchaseDate) {
       let price: number | null = null
-      
+
       // For today's date, always use currentPrice to match summary
       if (dateStr === todayStr) {
         price = holding.currentPrice
@@ -121,7 +121,7 @@ export function calculatePortfolioValueForDate(
         if (historicalData && historicalData.length > 0) {
           // Find exact date match or closest before
           let pricePoint = historicalData.find(d => d.date === dateStr)
-          
+
           if (!pricePoint) {
             // Find closest date before (or equal to) the target date
             const beforeDates = historicalData.filter(d => d.date <= dateStr)
@@ -130,22 +130,22 @@ export function calculatePortfolioValueForDate(
               pricePoint = beforeDates.sort((a, b) => b.date.localeCompare(a.date))[0]
             }
           }
-          
+
           if (pricePoint) {
             price = pricePoint.price
           }
         }
       }
-      
+
       // Fallback to currentPrice if no historical data found
       if (price === null) {
         price = holding.currentPrice
       }
-      
+
       totalValue += holding.quantity * price
     }
   }
-  
+
   return totalValue
 }
 
@@ -186,10 +186,10 @@ export function calculatePortfolioCAGR(holdings: Holding[], currentValue: number
   const purchaseDates = holdings.map(h => new Date(h.purchaseDate))
   const earliestDate = new Date(Math.min(...purchaseDates.map(d => d.getTime())))
   const today = new Date()
-  
+
   // Calculate years between earliest purchase and today
   const years = (today.getTime() - earliestDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000)
-  
+
   // Need at least 6 months of data for meaningful CAGR
   if (years < 0.5) {
     return undefined
@@ -208,7 +208,7 @@ export function calculatePortfolioCAGR(holdings: Holding[], currentValue: number
 export function calculatePortfolioSummary(holdings: Holding[]): PortfolioSummary {
   // Combine holdings by asset before calculation
   const combinedHoldings = combineHoldingsByAsset(holdings)
-  
+
   const totalInvested = combinedHoldings.reduce((sum, h) => sum + calculateInvested(h), 0)
   const currentValue = calculateCurrentPortfolioValue(combinedHoldings) // Use centralized function
   const totalGainLoss = currentValue - totalInvested
@@ -296,6 +296,30 @@ export function calculateInvestedPerAsset(trades: Trade[]): Map<string, number> 
   return investedMap
 }
 
+/**
+ * Calculate net deposits (Total Deposits - Total Withdrawals)
+ * This represents the actual capital injected into the portfolio
+ * @param trades - Array of all trades
+ * @returns Net deposits amount
+ */
+export function calculateNetDeposits(trades: Trade[]): number {
+  let deposits = 0
+  let withdrawals = 0
+
+  trades.forEach((trade) => {
+    // 'add' = Deposit (Cash injection)
+    if (trade.tradeType === 'add') {
+      deposits += trade.totalAmount
+    }
+    // 'remove' = Withdrawal (Cash extraction)
+    else if (trade.tradeType === 'remove') {
+      withdrawals += trade.totalAmount
+    }
+  })
+
+  return deposits - withdrawals
+}
+
 export async function calculateTotalRealizedPnL(): Promise<number> {
   // Only run in browser environment
   if (typeof window === 'undefined' || typeof fetch === 'undefined') {
@@ -340,12 +364,12 @@ export async function calculatePortfolioSummaryWithDividends(
   const summary = calculatePortfolioSummary(holdings)
   const dividendsCollected = await calculateTotalDividendsCollected(holdings)
   const realizedPnL = await calculateTotalRealizedPnL()
-  
+
   summary.dividendsCollected = dividendsCollected
   summary.dividendsCollectedPercent = summary.totalInvested > 0 ? (dividendsCollected / summary.totalInvested) * 100 : 0
   summary.realizedPnL = realizedPnL
   summary.totalPnL = summary.totalGainLoss + realizedPnL // Total = Unrealized + Realized
-  
+
   // Adjust Total Invested to be Net Deposits (Current Cost Basis - Realized Gains)
   // This ensures that if you sell and hold Cash, your "Invested" amount reflects original principal
   // Formula: Total Invested = Current Value - Total PnL (Realized + Unrealized)
@@ -375,14 +399,14 @@ export async function calculateUnifiedPortfolioSummaryWithRealizedPnL(
 ): Promise<PortfolioSummary> {
   const summary = calculateUnifiedPortfolioSummary(holdings, exchangeRates)
   const realizedPnL = await calculateTotalRealizedPnL()
-  
+
   // Note: Realized PnL is calculated from all sell transactions across all currencies
   // For a more accurate unified view, we'd need to track realized PnL per currency and convert
   // For now, we'll use the total realized PnL (which may be in different currencies)
   // This is a limitation but acceptable for most use cases
   summary.realizedPnL = realizedPnL
   summary.totalPnL = summary.totalGainLoss + realizedPnL
-  
+
   // Adjust Total Invested to be Net Deposits (see explanation above)
   if (realizedPnL !== 0) {
     summary.totalInvested = summary.totalInvested - realizedPnL
@@ -391,7 +415,7 @@ export async function calculateUnifiedPortfolioSummaryWithRealizedPnL(
       summary.totalGainLossPercent = (summary.totalGainLoss / summary.totalInvested) * 100
     }
   }
-  
+
   return summary
 }
 
@@ -410,7 +434,7 @@ export function calculateAssetAllocation(holdings: Holding[]): AssetTypeAllocati
     .map(h => `${h.assetType}:${h.symbol}:${h.currency}:${h.quantity}:${h.currentPrice}`)
     .sort()
     .join('|')
-  
+
   // Check cache
   const cached = assetAllocationCache.get(cacheKey)
   if (cached) {
@@ -418,9 +442,9 @@ export function calculateAssetAllocation(holdings: Holding[]): AssetTypeAllocati
   }
   // Combine holdings by asset before calculation
   const combinedHoldings = combineHoldingsByAsset(holdings)
-  
+
   const totalValue = combinedHoldings.reduce((sum, h) => sum + calculateCurrentValue(h), 0)
-  
+
   if (totalValue === 0) {
     return []
   }
@@ -447,7 +471,7 @@ export function calculateAssetAllocation(holdings: Holding[]): AssetTypeAllocati
 
   // Cache the result
   assetAllocationCache.set(cacheKey, result)
-  
+
   // Clean up old cache entries periodically
   if (assetAllocationCache.size > 100) {
     // Keep only the most recent 50 entries
@@ -473,20 +497,20 @@ export function calculateUnifiedAssetAllocation(
 ): AssetTypeAllocation[] {
   // Combine holdings by asset before calculation
   const combinedHoldings = combineHoldingsByAsset(holdings)
-  
+
   let totalValue = 0
   const allocationMap = new Map<AssetType, { value: number; count: number }>()
 
   combinedHoldings.forEach((holding) => {
-    const exchangeRate = holding.currency === 'USD' 
-      ? 1 
+    const exchangeRate = holding.currency === 'USD'
+      ? 1
       : (exchangeRates.get(holding.currency) || 1)
-    
+
     const value = calculateCurrentValue(holding)
     const valueInUSD = convertToUSD(value, holding.currency, exchangeRate)
-    
+
     totalValue += valueInUSD
-    
+
     const existing = allocationMap.get(holding.assetType) || { value: 0, count: 0 }
     allocationMap.set(holding.assetType, {
       value: existing.value + valueInUSD,
@@ -535,7 +559,7 @@ export function formatCurrency(value: number, currency: string = 'USD'): string 
       maximumFractionDigits: 2,
     }).format(value)}`
   }
-  
+
   try {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -561,14 +585,14 @@ export function formatPercent(value: number, decimals: number = 2): string {
   if (Math.abs(value) > 1000000) {
     return `${value >= 0 ? '+' : ''}∞%`
   }
-  
+
   // Use toLocaleString to avoid scientific notation for large numbers
   const formatted = Math.abs(value).toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
     useGrouping: false
   })
-  
+
   return `${value >= 0 ? '+' : ''}${formatted}%`
 }
 
@@ -577,13 +601,13 @@ export function formatPercent(value: number, decimals: number = 2): string {
  */
 export function groupHoldingsByCurrency(holdings: Holding[]): Map<string, Holding[]> {
   const grouped = new Map<string, Holding[]>()
-  
+
   holdings.forEach((holding) => {
     const currency = holding.currency || 'USD'
     const existing = grouped.get(currency) || []
     grouped.set(currency, [...existing, holding])
   })
-  
+
   return grouped
 }
 
@@ -611,18 +635,18 @@ export function calculateUnifiedPortfolioSummary(
 ): PortfolioSummary {
   // Combine holdings by asset before calculation
   const combinedHoldings = combineHoldingsByAsset(holdings)
-  
+
   let totalInvested = 0
   let currentValue = 0
 
   combinedHoldings.forEach((holding) => {
-    const exchangeRate = holding.currency === 'USD' 
-      ? 1 
+    const exchangeRate = holding.currency === 'USD'
+      ? 1
       : (exchangeRates.get(holding.currency) || 1)
-    
+
     const invested = calculateInvested(holding)
     const value = calculateCurrentValue(holding)
-    
+
     totalInvested += convertToUSD(invested, holding.currency, exchangeRate)
     currentValue += convertToUSD(value, holding.currency, exchangeRate)
   })
@@ -650,7 +674,7 @@ export async function calculateDividendsCollected(
   holdings: Holding[]
 ): Promise<HoldingDividend[]> {
   const pkEquityHoldings = holdings.filter(h => h.assetType === 'pk-equity')
-  
+
   if (pkEquityHoldings.length === 0) {
     return []
   }
@@ -662,7 +686,7 @@ export async function calculateDividendsCollected(
       symbol: h.symbol,
       purchaseDate: h.purchaseDate,
     }))
-    
+
     const response = await fetch(
       `/api/user/dividends/batch?holdings=${encodeURIComponent(JSON.stringify(holdingsData))}`,
       {
@@ -677,23 +701,23 @@ export async function calculateDividendsCollected(
       // Process results
       return pkEquityHoldings.map((holding) => {
         const dividendRecords = dividendsMap[holding.symbol.toUpperCase()] || []
-        
+
         // Filter dividends that occurred on or after purchase date
         const relevantDividends = filterDividendsByPurchaseDate(dividendRecords, holding.purchaseDate)
           .map((d: any) => {
             // Convert dividend_amount (percent/10) to rupees
             const dividendAmountRupees = convertDividendToRupees(d.dividend_amount)
             const totalCollected = calculateTotalDividendsForHolding(dividendAmountRupees, holding.quantity)
-            
+
             return {
               date: d.date,
               dividendAmount: dividendAmountRupees,
               totalCollected
             }
           })
-        
+
         const totalCollected = relevantDividends.reduce((sum: number, d: any) => sum + d.totalCollected, 0)
-        
+
         return {
           holdingId: holding.id,
           symbol: holding.symbol,
@@ -716,23 +740,23 @@ export async function calculateDividendsCollected(
 
       const data = await response.json()
       const dividendRecords = data.dividends || []
-      
+
       // Filter dividends that occurred on or after purchase date
       const relevantDividends = filterDividendsByPurchaseDate(dividendRecords, holding.purchaseDate)
         .map((d: any) => {
           // Convert dividend_amount (percent/10) to rupees
           const dividendAmountRupees = convertDividendToRupees(d.dividend_amount)
           const totalCollected = calculateTotalDividendsForHolding(dividendAmountRupees, holding.quantity)
-          
+
           return {
             date: d.date,
             dividendAmount: dividendAmountRupees,
             totalCollected
           }
         })
-      
+
       const totalCollected = relevantDividends.reduce((sum: number, d: any) => sum + d.totalCollected, 0)
-      
+
       return {
         holdingId: holding.id,
         symbol: holding.symbol,

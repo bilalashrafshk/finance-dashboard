@@ -3,8 +3,10 @@ import { requireAuth } from '@/lib/auth/middleware'
 import { Pool } from 'pg'
 import type { Holding } from '@/lib/portfolio/types'
 import { calculateHoldingsFromTransactions, getCurrentPrice } from '@/lib/portfolio/transaction-utils'
+import { calculateNetDeposits } from '@/lib/portfolio/portfolio-utils'
 import { revalidateTag } from 'next/cache'
 import { cacheManager } from '@/lib/cache/cache-manager'
+import { getLatestPriceFromDatabase } from '@/lib/portfolio/db-client'
 
 function getPool(): Pool {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
@@ -162,7 +164,10 @@ export async function GET(request: NextRequest) {
             if (result && result.price !== null && !result.error) {
               currentPrices.set(priceKey, result.price)
             } else {
-              // Fallback to average purchase price
+              // If batch API failed to return a price (even after its own DB fallback),
+              // we fall back to purchase price to avoid 0 calculations if possible,
+              // but really we should have a price.
+              // Since batch API already tries DB fallback, if we are here, we really don't have a price.
               currentPrices.set(priceKey, holding.purchasePrice)
             }
           })
@@ -173,10 +178,30 @@ export async function GET(request: NextRequest) {
             const priceKey = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
             try {
               const price = await getCurrentPrice(holding.assetType, holding.symbol, holding.currency)
-              currentPrices.set(priceKey, price)
+              if (price > 0) {
+                currentPrices.set(priceKey, price)
+              } else {
+                // Try DB fallback
+                const latestDb = await getLatestPriceFromDatabase(holding.assetType, holding.symbol)
+                if (latestDb) {
+                  currentPrices.set(priceKey, latestDb.price)
+                } else {
+                  currentPrices.set(priceKey, holding.purchasePrice)
+                }
+              }
             } catch (error) {
               console.error(`Error fetching price for ${priceKey}:`, error)
-              currentPrices.set(priceKey, holding.purchasePrice)
+              // Try DB fallback on error
+              try {
+                const latestDb = await getLatestPriceFromDatabase(holding.assetType, holding.symbol)
+                if (latestDb) {
+                  currentPrices.set(priceKey, latestDb.price)
+                } else {
+                  currentPrices.set(priceKey, holding.purchasePrice)
+                }
+              } catch (dbError) {
+                currentPrices.set(priceKey, holding.purchasePrice)
+              }
             }
           })
           await Promise.all(pricePromises)
@@ -184,10 +209,22 @@ export async function GET(request: NextRequest) {
       } catch (error) {
         console.error('[Holdings API] Error in batch price fetch:', error)
         // Fallback: use purchase prices
-        calculatedHoldings.forEach(holding => {
+        // Fallback: use purchase prices or DB prices
+        // Since we can't easily do async map here without refactoring, we'll try to do it right
+        const fallbackPromises = calculatedHoldings.map(async (holding) => {
           const priceKey = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
-          currentPrices.set(priceKey, holding.purchasePrice)
+          try {
+            const latestDb = await getLatestPriceFromDatabase(holding.assetType, holding.symbol)
+            if (latestDb) {
+              currentPrices.set(priceKey, latestDb.price)
+            } else {
+              currentPrices.set(priceKey, holding.purchasePrice)
+            }
+          } catch (e) {
+            currentPrices.set(priceKey, holding.purchasePrice)
+          }
         })
+        await Promise.all(fallbackPromises)
       }
     }
 
@@ -200,8 +237,37 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // Calculate net deposits by currency if we have trades
+    const netDeposits: Record<string, number> = {}
+
+    if (!fastLoad || fastLoad) { // Always fetch for now as it's fast
+      const pool = getPool()
+      const client = await pool.connect()
+      try {
+        const depositsResult = await client.query(
+          `SELECT 
+              currency,
+              COALESCE(SUM(CASE WHEN trade_type = 'add' THEN total_amount ELSE 0 END), 0) as deposits,
+              COALESCE(SUM(CASE WHEN trade_type = 'remove' THEN total_amount ELSE 0 END), 0) as withdrawals
+            FROM user_trades
+            WHERE user_id = $1
+            GROUP BY currency`,
+          [user.id]
+        )
+
+        depositsResult.rows.forEach(row => {
+          const currency = row.currency || 'USD'
+          netDeposits[currency] = parseFloat(row.deposits) - parseFloat(row.withdrawals)
+        })
+      } finally {
+        client.release()
+      }
+    }
+
+    console.log(`[API] Returning holdings for user ${user.id}. Net Deposits: ${netDeposits}, Holdings: ${holdings.length}`);
+
     return NextResponse.json(
-      { success: true, holdings },
+      { success: true, holdings, netDeposits },
       {
         headers: {
           'Cache-Control': 'private, max-age=30, must-revalidate', // Cache for 30 seconds

@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       const daysParam = url.searchParams.get('days')
       const isAllTime = daysParam === 'ALL'
       const days = daysParam && !isAllTime ? parseInt(daysParam) : 30
-      
+
       // Get exchange rate for PKR if unified mode
       let exchangeRate: number | null = null
       if (unified) {
@@ -230,7 +230,7 @@ export async function GET(request: NextRequest) {
       }
 
       const dailyHoldings: Record<string, { date: string, cash: number, invested: number, cashFlow: number }> = {}
-      
+
       // Track cash flows by date (deposits/withdrawals)
       const cashFlowsByDate = new Map<string, number>()
       for (const trade of trades) {
@@ -310,7 +310,7 @@ export async function GET(request: NextRequest) {
                 const holdingCurrency = h.currency || 'USD'
                 let shouldInclude = false
                 let valueToAdd = 0
-                
+
                 if (unified) {
                   // In unified mode, include all currencies and convert to USD
                   shouldInclude = true
@@ -321,7 +321,7 @@ export async function GET(request: NextRequest) {
                     const historicalPrice = getPriceForDate(assetKey, dateStr, h.purchasePrice || 0)
                     valueToAdd = (h.quantity || 0) * historicalPrice
                   }
-                  
+
                   // Convert to USD if not already USD
                   if (holdingCurrency !== 'USD') {
                     if (holdingCurrency === 'PKR' && exchangeRate) {
@@ -348,7 +348,7 @@ export async function GET(request: NextRequest) {
                     }
                   }
                 }
-                
+
                 if (shouldInclude) {
                   if (h.assetType === 'cash') {
                     cashBalance += valueToAdd
@@ -396,7 +396,13 @@ export async function GET(request: NextRequest) {
 
       // Cache for 1 minute (portfolio history changes frequently with transactions)
       return NextResponse.json(
-        { success: true, history: sortedHistory },
+        {
+          success: true, history: sortedHistory.map((h: any) => ({
+            ...h,
+            value: h.invested, // Map invested to value for frontend compatibility, but clarify it's Market Value
+            marketValue: h.invested // Explicit field
+          }))
+        },
         {
           headers: {
             'Cache-Control': 'private, max-age=60, must-revalidate', // 1 minute cache

@@ -13,11 +13,11 @@ let pool: Pool | null = null
 function getPool(): Pool {
   if (!pool) {
     const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
-    
+
     if (!connectionString) {
       throw new Error('DATABASE_URL or POSTGRES_URL environment variable is required')
     }
-    
+
     pool = new Pool({
       connectionString,
       ssl: connectionString.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
@@ -28,7 +28,7 @@ function getPool(): Pool {
       query_timeout: 30000, // 30 second query timeout
     })
   }
-  
+
   return pool
 }
 
@@ -65,10 +65,10 @@ export async function getHistoricalDataWithMetadata(
 ): Promise<{ data: HistoricalPriceRecord[]; latestStoredDate: string | null; earliestStoredDate: string | null }> {
   try {
     const client = await getPool().connect()
-    
+
     try {
       const normalizedSymbol = symbol.toUpperCase()
-      
+
       // Format date as YYYY-MM-DD without timezone conversion
       const formatDate = (date: Date | null | undefined): string | null => {
         if (!date) return null
@@ -82,26 +82,26 @@ export async function getHistoricalDataWithMetadata(
           return null
         }
       }
-      
+
       // OPTIMIZED: Single query that gets data + metadata in one round trip
       // This combines 3 separate queries into 1 for better performance
       // Use CTE to ensure we always get metadata even if main query returns no rows
       const baseParams: any[] = [assetType, normalizedSymbol]
       let whereClause = 'WHERE asset_type = $1 AND symbol = $2'
       let paramIndex = 3
-      
+
       if (startDate) {
         whereClause += ` AND date >= $${paramIndex}`
         baseParams.push(startDate)
         paramIndex++
       }
-      
+
       if (endDate) {
         whereClause += ` AND date <= $${paramIndex}`
         baseParams.push(endDate)
         paramIndex++
       }
-      
+
       // Build query with metadata in CTE to ensure it's always available
       let query = `
         WITH metadata AS (
@@ -121,7 +121,7 @@ export async function getHistoricalDataWithMetadata(
         FROM main_data m
         CROSS JOIN metadata md
       `
-      
+
       // Add ordering and limit
       if (limit && limit > 0) {
         query += ` ORDER BY m.date DESC LIMIT $${paramIndex}`
@@ -129,25 +129,25 @@ export async function getHistoricalDataWithMetadata(
       } else {
         query += ` ORDER BY m.date ASC`
       }
-      
+
       const result = await client.query(query, baseParams)
-      
+
       // Extract metadata from first row (all rows have same metadata values from CTE)
       // If no rows returned, we still need to get metadata - use a fallback query
       let earliestStoredDate: string | null = null
       let latestStoredDate: string | null = null
       let actualLatestDate: string | null = null
-      
+
       if (result.rows.length > 0) {
         const firstRow = result.rows[0]
         earliestStoredDate = firstRow.earliest_date
           ? formatDate(firstRow.earliest_date)
           : null
-        
+
         latestStoredDate = firstRow.latest_date
           ? formatDate(firstRow.latest_date)
           : null
-        
+
         // Use actual_latest_date (ORDER BY DESC LIMIT 1) as source of truth (more reliable than MAX)
         actualLatestDate = firstRow.actual_latest_date
           ? formatDate(firstRow.actual_latest_date)
@@ -162,7 +162,7 @@ export async function getHistoricalDataWithMetadata(
             (SELECT date FROM historical_price_data WHERE asset_type = $1 AND symbol = $2 ORDER BY date DESC LIMIT 1) as actual_latest_date`,
           [assetType, normalizedSymbol]
         )
-        
+
         if (metadataResult.rows.length > 0) {
           const metaRow = metadataResult.rows[0]
           earliestStoredDate = metaRow.earliest_date ? formatDate(metaRow.earliest_date) : null
@@ -172,10 +172,10 @@ export async function getHistoricalDataWithMetadata(
             : latestStoredDate
         }
       }
-      
+
       // If we used DESC with limit, reverse to ASC order for consistency
       const rows = limit && limit > 0 ? result.rows.reverse() : result.rows
-      
+
       const data = rows
         .map(row => {
           const formattedDate = formatDate(row.date)
@@ -194,7 +194,7 @@ export async function getHistoricalDataWithMetadata(
           }
         })
         .filter((record): record is NonNullable<typeof record> => record !== null)
-      
+
       return { data, latestStoredDate: actualLatestDate, earliestStoredDate }
     } finally {
       client.release()
@@ -215,7 +215,7 @@ export async function getTodayPriceWithTimestamp(
 ): Promise<{ price: number; updatedAt: Date } | null> {
   try {
     const client = await getPool().connect()
-    
+
     try {
       const result = await client.query(
         `SELECT close, updated_at
@@ -223,14 +223,14 @@ export async function getTodayPriceWithTimestamp(
          WHERE asset_type = $1 AND symbol = $2 AND date = $3`,
         [assetType, symbol.toUpperCase(), marketDate]
       )
-      
+
       if (result.rows.length > 0) {
         return {
           price: parseFloat(result.rows[0].close),
           updatedAt: result.rows[0].updated_at
         }
       }
-      
+
       return null
     } finally {
       client.release()
@@ -255,7 +255,7 @@ export async function getTodayPriceFromDatabase(
 ): Promise<number | null> {
   try {
     const client = await getPool().connect()
-    
+
     try {
       const result = await client.query(
         `SELECT close 
@@ -263,17 +263,62 @@ export async function getTodayPriceFromDatabase(
          WHERE asset_type = $1 AND symbol = $2 AND date = $3`,
         [assetType, symbol.toUpperCase(), marketDate]
       )
-      
+
       if (result.rows.length > 0) {
         return parseFloat(result.rows[0].close)
       }
-      
+
       return null
     } finally {
       client.release()
     }
   } catch (error) {
     console.error(`Error checking today's price for ${assetType}-${symbol}:`, error)
+    return null
+  }
+}
+
+/**
+ * Get the latest available price from database (regardless of date)
+ * Used as fallback when live fetch fails
+ */
+export async function getLatestPriceFromDatabase(
+  assetType: string,
+  symbol: string
+): Promise<{ price: number; date: string } | null> {
+  try {
+    const client = await getPool().connect()
+
+    try {
+      const result = await client.query(
+        `SELECT close, date
+         FROM historical_price_data
+         WHERE asset_type = $1 AND symbol = $2
+         ORDER BY date DESC
+         LIMIT 1`,
+        [assetType, symbol.toUpperCase()]
+      )
+
+      if (result.rows.length > 0) {
+        const row = result.rows[0]
+        // Format date as YYYY-MM-DD
+        let dateStr = row.date
+        if (row.date instanceof Date) {
+          dateStr = row.date.toISOString().split('T')[0]
+        }
+
+        return {
+          price: parseFloat(row.close),
+          date: dateStr
+        }
+      }
+
+      return null
+    } finally {
+      client.release()
+    }
+  } catch (error) {
+    console.error(`Error getting latest price for ${assetType}-${symbol}:`, error)
     return null
   }
 }
@@ -288,7 +333,7 @@ export async function getLatestStoredDate(
 ): Promise<string | null> {
   try {
     const client = await getPool().connect()
-    
+
     try {
       const result = await client.query(
         `SELECT last_stored_date 
@@ -296,7 +341,7 @@ export async function getLatestStoredDate(
          WHERE asset_type = $1 AND symbol = $2`,
         [assetType, symbol.toUpperCase()]
       )
-      
+
       return result.rows[0]?.last_stored_date || null
     } finally {
       client.release()
@@ -333,7 +378,7 @@ async function insertChunk(
 ): Promise<number> {
   const values: any[] = []
   const placeholders: string[] = []
-  
+
   chunk.forEach((record, index) => {
     const baseIndex = index * 11
     placeholders.push(
@@ -353,7 +398,7 @@ async function insertChunk(
       source,
     )
   })
-  
+
   const result = await client.query(
     `INSERT INTO historical_price_data 
      (asset_type, symbol, date, open, high, low, close, volume, adjusted_close, change_pct, source)
@@ -370,7 +415,7 @@ async function insertChunk(
        updated_at = NOW()`,
     values
   )
-  
+
   return result.rowCount || 0
 }
 
@@ -387,34 +432,34 @@ export async function insertHistoricalData(
   if (!data || data.length === 0) {
     return { inserted: 0, skipped: 0 }
   }
-  
+
   try {
     const client = await getPool().connect()
-    
+
     try {
       // Start transaction
       await client.query('BEGIN')
-      
+
       // Chunk data into batches of 1000 to avoid PostgreSQL parameter limits
       // PostgreSQL max: 65,535 parameters
       // 1000 records × 11 params = 11,000 params (safe margin)
       const CHUNK_SIZE = 1000
       let totalInserted = 0
-      
+
       for (let i = 0; i < data.length; i += CHUNK_SIZE) {
         const chunk = data.slice(i, i + CHUNK_SIZE)
         const inserted = await insertChunk(client, assetType, symbol, chunk, source)
         totalInserted += inserted
       }
-      
+
       const skipped = data.length - totalInserted
-      
+
       // Update metadata (optimized: increment total_records instead of COUNT)
       const latestDate = data
         .map(r => r.date)
         .sort()
         .reverse()[0]
-      
+
       // Get current total_records and increment by new records inserted
       const metadataResult = await client.query(
         `SELECT total_records 
@@ -422,10 +467,10 @@ export async function insertHistoricalData(
          WHERE asset_type = $1 AND symbol = $2`,
         [assetType, symbol.toUpperCase()]
       )
-      
+
       const currentTotal = metadataResult.rows[0]?.total_records || 0
       const newTotal = currentTotal + totalInserted
-      
+
       await client.query(
         `INSERT INTO historical_data_metadata 
          (asset_type, symbol, last_stored_date, total_records, source, last_updated)
@@ -438,10 +483,10 @@ export async function insertHistoricalData(
            last_updated = NOW()`,
         [assetType, symbol.toUpperCase(), latestDate, newTotal, source]
       )
-      
+
       // Commit transaction
       await client.query('COMMIT')
-      
+
       // Update market cap asynchronously (non-blocking)
       // Only update if we inserted new data and it's an equity asset
       if (totalInserted > 0 && (assetType === 'pk-equity' || assetType === 'us-equity')) {
@@ -450,7 +495,7 @@ export async function insertHistoricalData(
           console.error(`[Market Cap] Failed to update market cap for ${assetType}-${symbol}:`, err)
         })
       }
-      
+
       return { inserted: totalInserted, skipped }
     } catch (error: any) {
       await client.query('ROLLBACK')
@@ -475,7 +520,7 @@ export async function getMetadata(
 ): Promise<HistoricalDataMetadata | null> {
   try {
     const client = await getPool().connect()
-    
+
     try {
       const result = await client.query(
         `SELECT asset_type, symbol, last_stored_date, last_updated, total_records, source
@@ -483,11 +528,11 @@ export async function getMetadata(
          WHERE asset_type = $1 AND symbol = $2`,
         [assetType, symbol.toUpperCase()]
       )
-      
+
       if (result.rows.length === 0) {
         return null
       }
-      
+
       const row = result.rows[0]
       return {
         asset_type: row.asset_type,
@@ -730,7 +775,7 @@ export async function getCompanyFaceValue(
 ): Promise<number | null> {
   try {
     const client = await getPool().connect()
-    
+
     try {
       const result = await client.query(
         `SELECT face_value
@@ -738,11 +783,11 @@ export async function getCompanyFaceValue(
          WHERE symbol = $1 AND asset_type = $2`,
         [symbol.toUpperCase(), assetType]
       )
-      
+
       if (result.rows.length > 0 && result.rows[0].face_value) {
         return parseFloat(result.rows[0].face_value)
       }
-      
+
       return null
     } finally {
       client.release()
@@ -765,7 +810,7 @@ export async function getCompanyProfileName(
 ): Promise<string | null> {
   try {
     const client = await getPool().connect()
-    
+
     try {
       const result = await client.query(
         `SELECT name
@@ -774,11 +819,11 @@ export async function getCompanyProfileName(
          LIMIT 1`,
         [symbol.toUpperCase(), assetType]
       )
-      
+
       if (result.rows.length > 0 && result.rows[0].name) {
         return result.rows[0].name
       }
-      
+
       return null
     } finally {
       client.release()
@@ -805,7 +850,7 @@ export async function updateMarketCapFromPrice(
 
   try {
     const client = await getPool().connect()
-    
+
     try {
       // Get latest price
       const priceResult = await client.query(
@@ -903,7 +948,7 @@ export async function saveMarketCycle(
   cycle: MarketCycleRecord
 ): Promise<void> {
   const pool = getPool()
-  
+
   try {
     await pool.query(
       `INSERT INTO market_cycles 
@@ -946,7 +991,7 @@ export async function loadMarketCycles(
   symbol: string
 ): Promise<MarketCycleRecord[]> {
   const pool = getPool()
-  
+
   try {
     const result = await pool.query(
       `SELECT cycle_id, cycle_name, start_date, end_date, start_price, end_price, roi, duration_trading_days
@@ -955,7 +1000,7 @@ export async function loadMarketCycles(
        ORDER BY cycle_id ASC`,
       [assetType, symbol]
     )
-    
+
     return result.rows.map(row => ({
       cycleId: row.cycle_id,
       cycleName: row.cycle_name,
@@ -990,7 +1035,7 @@ export async function getLastCycleEndDate(
   symbol: string
 ): Promise<string | null> {
   const pool = getPool()
-  
+
   try {
     const result = await pool.query(
       `SELECT MAX(end_date) as last_end_date
@@ -998,7 +1043,7 @@ export async function getLastCycleEndDate(
        WHERE asset_type = $1 AND symbol = $2`,
       [assetType, symbol]
     )
-    
+
     return result.rows[0]?.last_end_date || null
   } catch (error: any) {
     console.error(`Error getting last cycle end date for ${assetType}-${symbol}:`, error.message)
@@ -1038,24 +1083,24 @@ export async function getSBPInterestRates(
 ): Promise<{ data: SBPInterestRateRecord[]; latestStoredDate: string | null; earliestStoredDate: string | null }> {
   try {
     const client = await getPool().connect()
-    
+
     try {
       const baseParams: any[] = [seriesKey]
       let whereClause = 'WHERE series_key = $1'
       let paramIndex = 2
-      
+
       if (startDate) {
         whereClause += ` AND date >= $${paramIndex}`
         baseParams.push(startDate)
         paramIndex++
       }
-      
+
       if (endDate) {
         whereClause += ` AND date <= $${paramIndex}`
         baseParams.push(endDate)
         paramIndex++
       }
-      
+
       // Get data
       const dataQuery = `
         SELECT 
@@ -1070,9 +1115,9 @@ export async function getSBPInterestRates(
         ${whereClause}
         ORDER BY date DESC
       `
-      
+
       const dataResult = await client.query(dataQuery, baseParams)
-      
+
       const data: SBPInterestRateRecord[] = dataResult.rows.map(row => ({
         date: row.date,
         value: parseFloat(row.value),
@@ -1082,7 +1127,7 @@ export async function getSBPInterestRates(
         observation_status: row.observation_status,
         status_comments: row.status_comments
       }))
-      
+
       // Get metadata separately
       const metadataQuery = `
         SELECT 
@@ -1091,11 +1136,11 @@ export async function getSBPInterestRates(
         FROM sbp_interest_rates
         WHERE series_key = $1
       `
-      
+
       const metadataResult = await client.query(metadataQuery, [seriesKey])
       const latestStoredDate = metadataResult.rows[0]?.latest_date || null
       const earliestStoredDate = metadataResult.rows[0]?.earliest_date || null
-      
+
       return { data, latestStoredDate, earliestStoredDate }
     } finally {
       client.release()
@@ -1123,16 +1168,16 @@ export async function insertSBPInterestRates(
   if (!data || data.length === 0) {
     return { inserted: 0, skipped: 0 }
   }
-  
+
   try {
     const client = await getPool().connect()
-    
+
     try {
       await client.query('BEGIN')
-      
+
       let inserted = 0
       let skipped = 0
-      
+
       for (const record of data) {
         try {
           await client.query(
@@ -1167,23 +1212,23 @@ export async function insertSBPInterestRates(
           }
         }
       }
-      
+
       // Update metadata
       const latestDate = data
         .map(r => r.date)
         .sort()
         .reverse()[0]
-      
+
       const metadataResult = await client.query(
         `SELECT total_records 
          FROM sbp_rates_metadata 
          WHERE series_key = $1`,
         [seriesKey]
       )
-      
+
       const currentTotal = metadataResult.rows[0]?.total_records || 0
       const newTotal = currentTotal + inserted
-      
+
       await client.query(
         `INSERT INTO sbp_rates_metadata 
          (series_key, last_stored_date, total_records, source, last_updated)
@@ -1195,9 +1240,9 @@ export async function insertSBPInterestRates(
            last_updated = NOW()`,
         [seriesKey, latestDate, newTotal, 'sbp-easydata']
       )
-      
+
       await client.query('COMMIT')
-      
+
       return { inserted, skipped }
     } catch (error: any) {
       await client.query('ROLLBACK')
@@ -1220,7 +1265,7 @@ export async function getSBPInterestRateMetadata(
 ): Promise<SBPInterestRateMetadata | null> {
   try {
     const client = await getPool().connect()
-    
+
     try {
       const result = await client.query(
         `SELECT 
@@ -1233,11 +1278,11 @@ export async function getSBPInterestRateMetadata(
          WHERE series_key = $1`,
         [seriesKey]
       )
-      
+
       if (result.rows.length === 0) {
         return null
       }
-      
+
       const row = result.rows[0]
       return {
         series_key: row.series_key,
@@ -1261,15 +1306,15 @@ export async function getSBPInterestRateMetadata(
 export async function shouldRefreshSBPInterestRates(seriesKey: string): Promise<boolean> {
   try {
     const metadata = await getSBPInterestRateMetadata(seriesKey)
-    
+
     if (!metadata || !metadata.last_updated) {
       return true // No data, need to fetch
     }
-    
+
     const lastUpdated = new Date(metadata.last_updated).getTime()
     const now = Date.now()
     const ageInDays = (now - lastUpdated) / (1000 * 60 * 60 * 24)
-    
+
     // Refresh if data is older than 3 days
     return ageInDays > 3
   } catch (error: any) {
@@ -1310,24 +1355,24 @@ export async function getBOPData(
 ): Promise<{ data: BOPRecord[]; latestStoredDate: string | null; earliestStoredDate: string | null }> {
   try {
     const client = await getPool().connect()
-    
+
     try {
       const baseParams: any[] = [seriesKey]
       let whereClause = 'WHERE series_key = $1'
       let paramIndex = 2
-      
+
       if (startDate) {
         whereClause += ` AND date >= $${paramIndex}`
         baseParams.push(startDate)
         paramIndex++
       }
-      
+
       if (endDate) {
         whereClause += ` AND date <= $${paramIndex}`
         baseParams.push(endDate)
         paramIndex++
       }
-      
+
       // Get data and metadata in one query
       const query = `
         WITH data AS (
@@ -1357,9 +1402,9 @@ export async function getBOPData(
         FROM data d
         CROSS JOIN metadata m
       `
-      
+
       const result = await client.query(query, baseParams)
-      
+
       const data: BOPRecord[] = result.rows.map(row => ({
         date: row.date,
         value: parseFloat(row.value),
@@ -1369,10 +1414,10 @@ export async function getBOPData(
         observation_status: row.observation_status,
         status_comments: row.status_comments
       }))
-      
+
       const latestStoredDate = result.rows[0]?.latest_date || null
       const earliestStoredDate = result.rows[0]?.earliest_date || null
-      
+
       return { data, latestStoredDate, earliestStoredDate }
     } finally {
       client.release()
@@ -1400,16 +1445,16 @@ export async function insertBOPData(
   if (!data || data.length === 0) {
     return { inserted: 0, skipped: 0 }
   }
-  
+
   try {
     const client = await getPool().connect()
-    
+
     try {
       await client.query('BEGIN')
-      
+
       let inserted = 0
       let skipped = 0
-      
+
       for (const record of data) {
         try {
           await client.query(
@@ -1444,23 +1489,23 @@ export async function insertBOPData(
           }
         }
       }
-      
+
       // Update metadata
       const latestDate = data
         .map(r => r.date)
         .sort()
         .reverse()[0]
-      
+
       const metadataResult = await client.query(
         `SELECT total_records 
          FROM bop_metadata 
          WHERE series_key = $1`,
         [seriesKey]
       )
-      
+
       const currentTotal = metadataResult.rows[0]?.total_records || 0
       const newTotal = currentTotal + inserted
-      
+
       await client.query(
         `INSERT INTO bop_metadata 
          (series_key, last_stored_date, total_records, source, last_updated)
@@ -1472,9 +1517,9 @@ export async function insertBOPData(
            last_updated = NOW()`,
         [seriesKey, latestDate, newTotal, 'sbp-easydata']
       )
-      
+
       await client.query('COMMIT')
-      
+
       return { inserted, skipped }
     } catch (error: any) {
       await client.query('ROLLBACK')
@@ -1497,7 +1542,7 @@ export async function getBOPMetadata(
 ): Promise<BOPMetadata | null> {
   try {
     const client = await getPool().connect()
-    
+
     try {
       const result = await client.query(
         `SELECT 
@@ -1510,11 +1555,11 @@ export async function getBOPMetadata(
          WHERE series_key = $1`,
         [seriesKey]
       )
-      
+
       if (result.rows.length === 0) {
         return null
       }
-      
+
       const row = result.rows[0]
       return {
         series_key: row.series_key,
@@ -1538,15 +1583,15 @@ export async function getBOPMetadata(
 export async function shouldRefreshBOPData(seriesKey: string): Promise<boolean> {
   try {
     const metadata = await getBOPMetadata(seriesKey)
-    
+
     if (!metadata || !metadata.last_updated) {
       return true // No data, need to fetch
     }
-    
+
     const lastUpdated = new Date(metadata.last_updated).getTime()
     const now = Date.now()
     const ageInDays = (now - lastUpdated) / (1000 * 60 * 60 * 24)
-    
+
     // Refresh if data is older than 3 days
     return ageInDays > 3
   } catch (error: any) {
@@ -1581,7 +1626,7 @@ export async function getSBPEconomicData(
 ): Promise<{ data: SBPEconomicRecord[]; latestStoredDate: string | null; earliestStoredDate: string | null }> {
   try {
     const client = await getPool().connect()
-    
+
     try {
       const baseParams: any[] = [seriesKey]
       let query = `
@@ -1589,30 +1634,30 @@ export async function getSBPEconomicData(
         FROM sbp_economic_data
         WHERE series_key = $1
       `
-      
+
       if (startDate) {
         query += ` AND date >= $${baseParams.length + 1}`
         baseParams.push(startDate)
       }
-      
+
       if (endDate) {
         query += ` AND date <= $${baseParams.length + 1}`
         baseParams.push(endDate)
       }
-      
+
       query += ` ORDER BY date DESC`
-      
+
       const result = await client.query(query, baseParams)
-      
+
       // Get metadata separately
       const metadataResult = await client.query(
         'SELECT last_stored_date FROM sbp_economic_metadata WHERE series_key = $1',
         [seriesKey]
       )
-      
+
       const latestStoredDate = metadataResult.rows[0]?.last_stored_date || null
       const earliestStoredDate = result.rows.length > 0 ? result.rows[result.rows.length - 1].date : null
-      
+
       const data: SBPEconomicRecord[] = result.rows.map(row => ({
         date: row.date,
         value: parseFloat(row.value),
@@ -1622,7 +1667,7 @@ export async function getSBPEconomicData(
         observation_status: row.observation_status,
         status_comments: row.status_comments,
       }))
-      
+
       return { data, latestStoredDate, earliestStoredDate }
     } finally {
       client.release()
@@ -1647,17 +1692,17 @@ export async function insertSBPEconomicData(
   if (data.length === 0) {
     return { inserted: 0, skipped: 0 }
   }
-  
+
   try {
     const client = await getPool().connect()
-    
+
     try {
       await client.query('BEGIN')
-      
+
       let inserted = 0
       let skipped = 0
       let latestDate: string | null = null
-      
+
       for (const record of data) {
         try {
           const result = await client.query(
@@ -1682,13 +1727,13 @@ export async function insertSBPEconomicData(
               'sbp-easydata'
             ]
           )
-          
+
           if (result.rowCount && result.rowCount > 0) {
             inserted++
           } else {
             skipped++
           }
-          
+
           // Track latest date
           if (!latestDate || record.date > latestDate) {
             latestDate = record.date
@@ -1699,7 +1744,7 @@ export async function insertSBPEconomicData(
           console.warn(`[DB] insertSBPEconomicData: Skipped record for ${seriesKey} on ${record.date}:`, insertError.message)
         }
       }
-      
+
       // Update metadata
       // Get total records count first
       const countResult = await client.query(
@@ -1707,7 +1752,7 @@ export async function insertSBPEconomicData(
         [seriesKey]
       )
       const totalRecords = parseInt(countResult.rows[0].count) || 0
-      
+
       await client.query(
         `INSERT INTO sbp_economic_metadata (series_key, last_stored_date, last_updated, total_records, source)
          VALUES ($1, $2, NOW(), $3, $4)
@@ -1717,9 +1762,9 @@ export async function insertSBPEconomicData(
            total_records = $3`,
         [seriesKey, latestDate, totalRecords, 'sbp-easydata']
       )
-      
+
       await client.query('COMMIT')
-      
+
       return { inserted, skipped }
     } catch (error: any) {
       await client.query('ROLLBACK')
@@ -1739,17 +1784,17 @@ export async function getSBPEconomicMetadata(
 ): Promise<SBPEconomicMetadata | null> {
   try {
     const client = await getPool().connect()
-    
+
     try {
       const result = await client.query(
         'SELECT series_key, last_stored_date, last_updated, total_records, source FROM sbp_economic_metadata WHERE series_key = $1',
         [seriesKey]
       )
-      
+
       if (result.rows.length === 0) {
         return null
       }
-      
+
       const row = result.rows[0]
       return {
         series_key: row.series_key,
@@ -1770,15 +1815,15 @@ export async function getSBPEconomicMetadata(
 export async function shouldRefreshSBPEconomicData(seriesKey: string): Promise<boolean> {
   try {
     const metadata = await getSBPEconomicMetadata(seriesKey)
-    
+
     if (!metadata || !metadata.last_updated) {
       return true // No data, need to fetch
     }
-    
+
     const lastUpdated = new Date(metadata.last_updated).getTime()
     const now = Date.now()
     const ageInDays = (now - lastUpdated) / (1000 * 60 * 60 * 24)
-    
+
     // Refresh if data is older than 3 days
     return ageInDays > 3
   } catch (error: any) {

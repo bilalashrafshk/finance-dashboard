@@ -13,9 +13,11 @@ import { useTheme } from "next-themes"
 interface PortfolioHistoryProps {
   currency?: string
   unified?: boolean
+  totalChange?: number
+  totalChangePercent?: number
 }
 
-export function PortfolioHistoryChart({ currency = "USD", unified = false }: PortfolioHistoryProps) {
+export function PortfolioHistoryChart({ currency = "USD", unified = false, totalChange, totalChangePercent }: PortfolioHistoryProps) {
   const [period, setPeriod] = useState("ALL") // Default to ALL for best first impression
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -69,19 +71,19 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false }: Por
 
         // Process the data points
         const processedData = dailyPoints.map((point: any) => {
-          // The backend now returns 'invested' which is (Cash + Asset Cost Basis).
-          // This represents the Book Value of the portfolio.
-          const invested = point.invested !== undefined ? point.invested : (point.cash || 0)
+          // Use marketValue if available (new API), otherwise fall back to invested (legacy)
+          // Both represent the Total Market Value (Cash + Assets Market Value)
+          const val = point.marketValue !== undefined ? point.marketValue : (point.invested !== undefined ? point.invested : (point.cash || 0))
           return {
             date: new Date(point.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
             fullDate: point.date,
-            value: invested,
+            value: val,
             cash: point.cash || 0
           }
         })
 
         // Filter out any invalid data points
-        const validData = processedData.filter(d => d.fullDate && !isNaN(d.value))
+        const validData = processedData.filter((d: any) => d.fullDate && !isNaN(d.value))
 
         if (validData.length === 0) {
           console.warn('No valid data points after processing')
@@ -107,7 +109,7 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false }: Por
     return (
       <Card className="col-span-4">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-base font-normal">Portfolio Book Value</CardTitle>
+          <CardTitle className="text-base font-normal">Total Portfolio Value</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="h-[300px] flex items-center justify-center text-muted-foreground">
@@ -123,7 +125,7 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false }: Por
     return (
       <Card className="col-span-4">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-base font-normal">Portfolio Book Value</CardTitle>
+          <CardTitle className="text-base font-normal">Total Portfolio Value</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="h-[300px] flex items-center justify-center text-muted-foreground">
@@ -136,8 +138,16 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false }: Por
 
   const latestValue = data.length > 0 ? data[data.length - 1].value : 0
   const startValue = data.length > 0 ? data[0].value : 0
-  const change = latestValue - startValue
-  const changePercent = startValue > 0 ? (change / startValue) * 100 : 0
+
+  // If period is ALL and we have totalChange props, use them
+  // Otherwise calculate from data
+  let change = latestValue - startValue
+  let changePercent = startValue > 0 ? (change / startValue) * 100 : 0
+
+  if (period === 'ALL' && totalChange !== undefined && totalChangePercent !== undefined) {
+    change = totalChange
+    changePercent = totalChangePercent
+  }
 
   // Normalize currency for display (PKR -> PKR, but handle Rs. formatting)
   const displayCurrency = currency === 'PKR' ? 'PKR' : currency
@@ -146,7 +156,7 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false }: Por
     <Card className="col-span-4">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <div className="space-y-1">
-          <CardTitle className="text-base font-normal">Portfolio Book Value</CardTitle>
+          <CardTitle className="text-base font-normal">Total Portfolio Value</CardTitle>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold">
               {formatCurrency(latestValue, displayCurrency)}
@@ -158,7 +168,7 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false }: Por
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            {showTotalReturn 
+            {showTotalReturn
               ? 'Includes Cash + Market Value + Dividends (Total Return)'
               : 'Includes Cash + Market Value of Assets (Realized & Unrealized P&L included)'}
           </p>
@@ -228,7 +238,7 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false }: Por
                     backgroundColor: tooltipBg,
                     color: tooltipText
                   }}
-                  formatter={(value: number) => [formatCurrency(value, displayCurrency), 'Book Value']}
+                  formatter={(value: number) => [formatCurrency(value, displayCurrency), 'Portfolio Value']}
                   labelFormatter={(label, payload) => {
                     if (payload && payload.length > 0) {
                       return payload[0].payload.fullDate

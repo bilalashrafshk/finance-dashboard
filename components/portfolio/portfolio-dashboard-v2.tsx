@@ -4,13 +4,13 @@ import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign, 
-  PieChart, 
-  Coins, 
-  Trophy, 
+import {
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  PieChart,
+  Coins,
+  Trophy,
   AlertCircle,
   ArrowUpRight,
   ArrowDownRight,
@@ -83,13 +83,13 @@ export function PortfolioDashboardV2() {
     } else if (!authLoading && !user) {
       setLoading(false)
     }
-  }, [authLoading, user])
+  }, [authLoading, user, exchangeRate])
 
   // Fetch exchange rate
   useEffect(() => {
     const fetchExchangeRate = async () => {
       try {
-        const response = await fetch(`/api/sbp/economic-data?seriesKey=${encodeURIComponent(EXCHANGE_RATE_SERIES_KEY)}&startDate=${new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0]}&endDate=${new Date().toISOString().split('T')[0]}`)
+        const response = await fetch(`/api/sbp/economic-data?seriesKey=${encodeURIComponent(EXCHANGE_RATE_SERIES_KEY)}&startDate=${new Date(new Date().setMonth(new Date().getMonth() - 6)).toISOString().split('T')[0]}&endDate=${new Date().toISOString().split('T')[0]}`)
         if (response.ok) {
           const data = await response.json()
           const exchangeData = data.data || []
@@ -110,7 +110,7 @@ export function PortfolioDashboardV2() {
   useEffect(() => {
     // Reset todayChange when tab changes to prevent showing stale data
     setTodayChange(null)
-    
+
     const calculateTodayChange = async () => {
       if (!holdings.length || !user) {
         setTodayChange(null)
@@ -119,7 +119,7 @@ export function PortfolioDashboardV2() {
 
       try {
         const token = localStorage.getItem('auth_token')
-        
+
         // Determine currency and unified mode based on active tab
         let currency = 'USD'
         let unified = true
@@ -143,26 +143,26 @@ export function PortfolioDashboardV2() {
         if (response.ok) {
           const data = await response.json()
           const history = data.history || []
-          
+
           if (history.length < 2) {
             setTodayChange(null)
             return
           }
 
           // Sort by date to ensure correct order
-          const sortedHistory = [...history].sort((a: any, b: any) => 
+          const sortedHistory = [...history].sort((a: any, b: any) =>
             new Date(a.date).getTime() - new Date(b.date).getTime()
           )
-          
+
           const today = sortedHistory[sortedHistory.length - 1]
           const yesterday = sortedHistory[sortedHistory.length - 2]
-          
+
           // Validate data
           if (!today || !yesterday || !today.invested || !yesterday.invested) {
             setTodayChange(null)
             return
           }
-          
+
           // Exclude cash injections/withdrawals from daily returns
           // If today has a cash flow, skip this calculation (it's not a real return)
           const todayCashFlow = today.cashFlow || 0
@@ -170,7 +170,7 @@ export function PortfolioDashboardV2() {
             // No cash flow, calculate actual return
             const change = today.invested - yesterday.invested
             const changePercent = yesterday.invested > 0 ? (change / yesterday.invested) * 100 : 0
-            
+
             // Only set if values are valid numbers
             if (!isNaN(change) && !isNaN(changePercent) && isFinite(change) && isFinite(changePercent)) {
               setTodayChange({ value: change, percent: changePercent })
@@ -184,12 +184,12 @@ export function PortfolioDashboardV2() {
             for (let i = sortedHistory.length - 2; i >= Math.max(0, sortedHistory.length - 8); i--) {
               const prevDay = sortedHistory[i]
               if (!prevDay || !prevDay.invested) continue
-              
+
               const prevDayCashFlow = prevDay.cashFlow || 0
               if (Math.abs(prevDayCashFlow) < 0.01) {
                 const change = today.invested - prevDay.invested
                 const changePercent = prevDay.invested > 0 ? (change / prevDay.invested) * 100 : 0
-                
+
                 // Only set if values are valid numbers
                 if (!isNaN(change) && !isNaN(changePercent) && isFinite(change) && isFinite(changePercent)) {
                   setTodayChange({ value: change, percent: changePercent })
@@ -222,15 +222,35 @@ export function PortfolioDashboardV2() {
 
   const loadHoldings = async (fast: boolean = false) => {
     try {
-      const portfolio = await loadPortfolio(fast)
-      setHoldings(portfolio.holdings)
-      
+      // We need to fetch netDeposits from the API response
+      // loadPortfolio only returns holdings, so we need to modify it or fetch separately.
+      // Actually loadPortfolio calls this API. Let's check loadPortfolio return type.
+      // It returns Promise<Portfolio> which is { holdings: Holding[], lastUpdated: string }
+      // We need to update loadPortfolio to return netDeposits too.
+      // For now, let's just fetch it directly here since we are modifying the dashboard.
+
+      const token = localStorage.getItem('auth_token')
+      // Add timestamp to prevent caching
+      const response = await fetch(`/api/user/holdings?fast=${fast}&t=${Date.now()}`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      })
+
+      if (!response.ok) throw new Error('Failed to load holdings')
+
+      const data = await response.json()
+      const holdingsData = data.holdings || []
+      const netDeposits = data.netDeposits || {}
+
+      console.log('Loaded holdings:', holdingsData.length, 'Net Deposits:', netDeposits)
+
+      setHoldings(holdingsData)
+
       // Calculate summary with dividends (deferred)
       setTimeout(async () => {
         // Calculate summaries for each currency
-        const holdingsByCurrency = groupHoldingsByCurrency(portfolio.holdings)
+        const holdingsByCurrency = groupHoldingsByCurrency(holdingsData)
         const currencies = Array.from(holdingsByCurrency.keys())
-        
+
         const summaries: Record<string, any> = {}
         for (const currency of currencies) {
           const currencyHoldings = holdingsByCurrency.get(currency) || []
@@ -248,15 +268,15 @@ export function PortfolioDashboardV2() {
               exchangeRatesMap.set(c, exchangeRate) // 1 USD = X PKR
             }
           })
-          
+
           const { calculateUnifiedPortfolioSummaryWithRealizedPnL } = await import('@/lib/portfolio/portfolio-utils')
-          unifiedSummary = await calculateUnifiedPortfolioSummaryWithRealizedPnL(portfolio.holdings, exchangeRatesMap)
-          
+          unifiedSummary = await calculateUnifiedPortfolioSummaryWithRealizedPnL(holdingsData, exchangeRatesMap)
+
           // Add dividends
-          const pkEquityHoldings = portfolio.holdings.filter(h => h.assetType === 'pk-equity')
+          const pkEquityHoldings = holdingsData.filter((h: any) => h.assetType === 'pk-equity')
           if (pkEquityHoldings.length > 0) {
             const { calculateTotalDividendsCollected } = await import('@/lib/portfolio/portfolio-utils')
-            const dividendsCollected = await calculateTotalDividendsCollected(portfolio.holdings)
+            const dividendsCollected = await calculateTotalDividendsCollected(holdingsData)
             unifiedSummary.dividendsCollected = dividendsCollected
             unifiedSummary.dividendsCollectedPercent = unifiedSummary.totalInvested > 0 ? (dividendsCollected / unifiedSummary.totalInvested) * 100 : 0
           }
@@ -266,6 +286,7 @@ export function PortfolioDashboardV2() {
           byCurrency: summaries,
           unified: unifiedSummary,
           currencies,
+          netDeposits, // Store netDeposits in summary
         })
         setLoading(false)
       }, 500)
@@ -285,20 +306,20 @@ export function PortfolioDashboardV2() {
     if (holdings.length === 0) return null
 
     // Filter holdings based on active tab
-    const filteredHoldings = activeTab === 'overview' 
-      ? holdings 
+    const filteredHoldings = activeTab === 'overview'
+      ? holdings
       : holdings.filter(h => {
-          const hCurrency = h.currency || 'USD'
-          if (activeTab === 'pkr') return hCurrency === 'PKR'
-          if (activeTab === 'usd') return hCurrency === 'USD'
-          return true
-        })
+        const hCurrency = h.currency || 'USD'
+        if (activeTab === 'pkr') return hCurrency === 'PKR'
+        if (activeTab === 'usd') return hCurrency === 'USD'
+        return true
+      })
 
     if (filteredHoldings.length === 0) return null
 
     const combinedHoldings = combineHoldingsByAsset(filteredHoldings)
     const performers = getTopPerformers(combinedHoldings, 1)
-    
+
     const bestPerformer = performers.best[0]
     if (!bestPerformer) return null
 
@@ -381,12 +402,12 @@ export function PortfolioDashboardV2() {
   const holdingsByCurrency = groupHoldingsByCurrency(holdings)
   const allCurrencies = Array.from(holdingsByCurrency.keys())
   const currencies = allCurrencies // Keep for backward compatibility with existing code
-  
+
   // Filter currencies based on active tab
   let selectedCurrencies: string[] = []
   let displayCurrency = 'USD'
   let useUnified = false
-  
+
   if (activeTab === 'overview') {
     // Overview: show both USD and PKR (unified)
     selectedCurrencies = allCurrencies
@@ -410,63 +431,100 @@ export function PortfolioDashboardV2() {
   }
 
   // Calculate total portfolio value based on selected tab
-  let totalPortfolioValue = 0
-  let totalPortfolioChange = 0
-  let totalPortfolioChangePercent = 0
-  let totalInvested = 0
+  let totalPortfolioValue = 0;
+  let totalPortfolioChange = 0;
+  let totalPortfolioChangePercent = 0;
+  let totalInvested = 0;
 
   if (useUnified && summary.unified) {
     // Use unified summary for overview
-    totalPortfolioValue = summary.unified.currentValue
-    totalPortfolioChange = summary.unified.totalGainLoss + (summary.unified.realizedPnL || 0)
-    totalInvested = summary.unified.totalInvested
-    totalPortfolioChangePercent = totalInvested > 0 
-      ? (totalPortfolioChange / totalInvested) * 100 
-      : 0
+    totalPortfolioValue = summary.unified.currentValue;
+
+    // Use Net Deposits if available for accurate total gain/loss
+    if (summary.netDeposits && Object.keys(summary.netDeposits).length > 0) {
+      // Calculate total invested by converting all net deposits to USD
+      let totalNetDepositsUSD = 0;
+
+      // USD deposits
+      totalNetDepositsUSD += (summary.netDeposits['USD'] || 0);
+
+      // PKR deposits (convert to USD)
+      if (summary.netDeposits['PKR']) {
+        const rate = exchangeRate || 1; // Fallback to 1 if no rate
+        totalNetDepositsUSD += summary.netDeposits['PKR'] / rate;
+      }
+
+      totalInvested = totalNetDepositsUSD;
+      totalPortfolioChange = totalPortfolioValue - totalInvested;
+    } else {
+      totalPortfolioChange = summary.unified.totalGainLoss + (summary.unified.realizedPnL || 0);
+      totalInvested = summary.unified.totalInvested;
+    }
+
+    totalPortfolioChangePercent = totalInvested > 0
+      ? (totalPortfolioChange / totalInvested) * 100
+      : 0;
   } else {
     // Use currency-specific summaries
     selectedCurrencies.forEach(currency => {
-      const currencySummary = summary.byCurrency[currency]
+      const currencySummary = summary.byCurrency[currency];
       if (currencySummary) {
         if (currency === 'USD') {
-          totalPortfolioValue += currencySummary.currentValue
-          totalPortfolioChange += currencySummary.totalGainLoss + (currencySummary.realizedPnL || 0)
-          totalInvested += currencySummary.totalInvested
+          totalPortfolioValue += currencySummary.currentValue;
+          totalPortfolioChange += currencySummary.totalGainLoss + (currencySummary.realizedPnL || 0);
+          totalInvested += currencySummary.totalInvested;
         } else if (currency === 'PKR') {
-          if (activeTab === 'overview' && exchangeRate) {
+          if (activeTab === 'overview') {
             // Convert PKR to USD for overview
-            totalPortfolioValue += currencySummary.currentValue / exchangeRate
-            totalPortfolioChange += (currencySummary.totalGainLoss + (currencySummary.realizedPnL || 0)) / exchangeRate
-            totalInvested += currencySummary.totalInvested / exchangeRate
+            const rate = exchangeRate || 1;
+            totalPortfolioValue += currencySummary.currentValue / rate;
+            totalPortfolioChange += (currencySummary.totalGainLoss + (currencySummary.realizedPnL || 0)) / rate;
+            totalInvested += currencySummary.totalInvested / rate;
           } else {
             // Use PKR directly for PKR tab
-            totalPortfolioValue += currencySummary.currentValue
-            totalPortfolioChange += currencySummary.totalGainLoss + (currencySummary.realizedPnL || 0)
-            totalInvested += currencySummary.totalInvested
+            totalPortfolioValue += currencySummary.currentValue;
+            totalPortfolioChange += currencySummary.totalGainLoss + (currencySummary.realizedPnL || 0);
+            totalInvested += currencySummary.totalInvested;
           }
         } else {
           // For other currencies, just add
-          totalPortfolioValue += currencySummary.currentValue
-          totalPortfolioChange += currencySummary.totalGainLoss + (currencySummary.realizedPnL || 0)
-          totalInvested += currencySummary.totalInvested
+          totalPortfolioValue += currencySummary.currentValue;
+          totalPortfolioChange += currencySummary.totalGainLoss + (currencySummary.realizedPnL || 0);
+          totalInvested += currencySummary.totalInvested;
         }
       }
-    })
-    totalPortfolioChangePercent = totalInvested > 0 ? (totalPortfolioChange / totalInvested) * 100 : 0
+    });
+
+    // If we are in Overview tab but fell through to here (e.g. useUnified is false for some reason),
+    // we should still try to use netDeposits if available and we are summing everything up.
+    if (activeTab === 'overview' && summary.netDeposits && Object.keys(summary.netDeposits).length > 0) {
+      // Recalculate based on net deposits
+      let totalNetDepositsUSD = 0;
+      totalNetDepositsUSD += (summary.netDeposits['USD'] || 0);
+      if (summary.netDeposits['PKR']) {
+        const rate = exchangeRate || 1;
+        totalNetDepositsUSD += summary.netDeposits['PKR'] / rate;
+      }
+
+      totalInvested = totalNetDepositsUSD;
+      totalPortfolioChange = totalPortfolioValue - totalInvested;
+    }
+
+    totalPortfolioChangePercent = totalInvested > 0 ? (totalPortfolioChange / totalInvested) * 100 : 0;
   }
 
-  const isPositive = totalPortfolioChange >= 0
+  const isPositive = totalPortfolioChange >= 0;
   const totalAssets = combineHoldingsByAsset(
-    activeTab === 'overview' 
-      ? holdings 
+    activeTab === 'overview'
+      ? holdings
       : holdings.filter(h => {
-          const hCurrency = h.currency || 'USD'
-          if (activeTab === 'pkr') return hCurrency === 'PKR'
-          if (activeTab === 'usd') return hCurrency === 'USD'
-          return true
-        })
+        const hCurrency = h.currency || 'USD';
+        if (activeTab === 'pkr') return hCurrency === 'PKR';
+        if (activeTab === 'usd') return hCurrency === 'USD';
+        return true;
+      })
   ).length
-  
+
   // Check if dividends exist and calculate totals (filtered by active tab)
   let totalDividends = 0
   if (useUnified && summary.unified) {
@@ -479,10 +537,10 @@ export function PortfolioDashboardV2() {
       }
     })
   }
-  
+
   const dividendsCollectedPercent = totalInvested > 0 ? (totalDividends / totalInvested) * 100 : 0
   const hasDividends = totalDividends > 0
-  
+
   // Calculate total return with dividends if enabled
   let totalReturnWithDividends = totalPortfolioChange
   let totalReturnPercentWithDividends = totalPortfolioChangePercent
@@ -490,10 +548,10 @@ export function PortfolioDashboardV2() {
     totalReturnWithDividends = totalPortfolioChange + totalDividends
     totalReturnPercentWithDividends = totalInvested > 0 ? (totalReturnWithDividends / totalInvested) * 100 : 0
   }
-  
+
   // Calculate total return (price only by default, or price + dividends if toggle is enabled)
-  const totalReturn = includeDividends && hasDividends 
-    ? totalPortfolioChange + totalDividends 
+  const totalReturn = includeDividends && hasDividends
+    ? totalPortfolioChange + totalDividends
     : totalPortfolioChange
   const totalReturnPercent = totalInvested > 0 ? (totalReturn / totalInvested) * 100 : 0
 
@@ -628,8 +686,8 @@ export function PortfolioDashboardV2() {
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-4">
-          <PortfolioUpdateSection 
-            holdings={holdings} 
+          <PortfolioUpdateSection
+            holdings={holdings}
             onUpdate={loadHoldings}
             onNavigateToTransactions={(asset) => {
               if (asset) {
@@ -640,24 +698,24 @@ export function PortfolioDashboardV2() {
               setActiveTab('transactions')
             }}
           />
-          
+
           {summary.unified && (
             <div className="grid gap-4 md:grid-cols-2">
-              <AllocationBarChart 
-                allocation={calculateUnifiedAssetAllocation(holdings, new Map(currencies.map(c => [c, c === 'PKR' ? (exchangeRate || 1) : 1])))} 
+              <AllocationBarChart
+                allocation={calculateUnifiedAssetAllocation(holdings, new Map(currencies.map(c => [c, c === 'PKR' ? (exchangeRate || 1) : 1])))}
                 holdings={holdings}
-                currency="USD" 
+                currency="USD"
               />
               <DividendPayoutChart holdings={holdings} currency="USD" />
             </div>
           )}
-          
+
           {summary.unified && (
             <PortfolioHistoryChart currency="USD" unified={true} />
           )}
-          
+
           <PerformanceMetrics currency="USD" unified={summary.unified ? true : false} />
-          
+
           <PnLBreakdown holdings={holdings} currency="USD" />
         </TabsContent>
 
@@ -703,16 +761,16 @@ export function PortfolioDashboardV2() {
                 </Card>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <AllocationBarChart 
-                    allocation={calculateAssetAllocation(holdingsByCurrency.get('PKR') || [])} 
+                  <AllocationBarChart
+                    allocation={calculateAssetAllocation(holdingsByCurrency.get('PKR') || [])}
                     holdings={holdingsByCurrency.get('PKR') || []}
-                    currency="PKR" 
+                    currency="PKR"
                   />
                   <DividendPayoutChart holdings={holdingsByCurrency.get('PKR') || []} currency="PKR" />
                 </div>
-                
+
                 <PortfolioHistoryChart currency="PKR" />
-                
+
                 <PerformanceMetrics currency="PKR" unified={false} />
 
               </>
@@ -762,16 +820,20 @@ export function PortfolioDashboardV2() {
                 </Card>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <AllocationBarChart 
-                    allocation={calculateAssetAllocation(holdingsByCurrency.get('USD') || [])} 
+                  <AllocationBarChart
+                    allocation={calculateAssetAllocation(holdingsByCurrency.get('USD') || [])}
                     holdings={holdingsByCurrency.get('USD') || []}
-                    currency="USD" 
+                    currency="USD"
                   />
                   <DividendPayoutChart holdings={holdingsByCurrency.get('USD') || []} currency="USD" />
                 </div>
-                
-                <PortfolioHistoryChart currency="USD" />
-                
+
+                <PortfolioHistoryChart
+                  currency="USD"
+                  totalChange={totalPortfolioChange}
+                  totalChangePercent={totalPortfolioChangePercent}
+                />
+
                 <PerformanceMetrics currency="USD" unified={false} />
 
 
