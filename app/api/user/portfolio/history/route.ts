@@ -285,9 +285,15 @@ export async function GET(request: NextRequest) {
 
       // Track cash flows by date (deposits/withdrawals)
       // In unified mode, convert all cash flows to USD
+      // In currency-specific mode, only include cashflows for that currency
       const cashFlowsByDate = new Map<string, number>()
       for (const trade of trades) {
         if (trade.tradeType === 'add' || trade.tradeType === 'remove') {
+          // Filter by currency when NOT in unified mode
+          if (!unified && trade.currency.toUpperCase() !== currency.toUpperCase()) {
+            continue // Skip cashflows from other currencies
+          }
+          
           const dateStr = trade.tradeDate
           const currentFlow = cashFlowsByDate.get(dateStr) || 0
           // 'add' is positive cash flow (deposit), 'remove' is negative (withdrawal)
