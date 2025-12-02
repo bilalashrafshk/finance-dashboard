@@ -284,13 +284,20 @@ export async function GET(request: NextRequest) {
       const dailyHoldings: Record<string, { date: string, cash: number, invested: number, cashFlow: number }> = {}
 
       // Track cash flows by date (deposits/withdrawals)
+      // In unified mode, convert all cash flows to USD
       const cashFlowsByDate = new Map<string, number>()
       for (const trade of trades) {
         if (trade.tradeType === 'add' || trade.tradeType === 'remove') {
           const dateStr = trade.tradeDate
           const currentFlow = cashFlowsByDate.get(dateStr) || 0
           // 'add' is positive cash flow (deposit), 'remove' is negative (withdrawal)
-          const flowAmount = trade.tradeType === 'add' ? trade.totalAmount : -trade.totalAmount
+          let flowAmount = trade.tradeType === 'add' ? trade.totalAmount : -trade.totalAmount
+          
+          // Convert to USD if unified mode and trade is in PKR
+          if (unified && trade.currency === 'PKR' && exchangeRate) {
+            flowAmount = flowAmount / exchangeRate
+          }
+          
           cashFlowsByDate.set(dateStr, currentFlow + flowAmount)
         }
       }

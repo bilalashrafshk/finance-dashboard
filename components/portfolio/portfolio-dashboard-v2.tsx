@@ -281,7 +281,7 @@ export function PortfolioDashboardV2() {
       } catch (error: any) {
         // Ignore abort errors
         if (error.name !== 'AbortError') {
-          console.error('Error calculating today change:', error)
+          console.error('[Today\'s Change] Fetch Error:', error)
           setTodayChange(null)
         }
       }
