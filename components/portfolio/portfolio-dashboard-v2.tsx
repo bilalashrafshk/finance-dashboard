@@ -38,9 +38,13 @@ import {
   formatPercent,
   calculateCurrentValue,
   calculateGainLossPercent,
+  calculateGainLoss,
+  calculateInvested,
   combineHoldingsByAsset,
   getTopPerformers,
   groupHoldingsByCurrency,
+  calculateRealizedPnLPerAsset,
+  calculateInvestedPerAsset,
 } from "@/lib/portfolio/portfolio-utils"
 import { useAuth } from "@/lib/auth/auth-context"
 import { LoginDialog } from "@/components/auth/login-dialog"
@@ -372,9 +376,38 @@ export function PortfolioDashboardV2() {
     await mutateHoldings()
   }
 
-  // Calculate insights (filtered by active tab)
+  // Fetch trades for realized P&L calculation
+  const [trades, setTrades] = useState<any[]>([])
+  useEffect(() => {
+    const fetchTrades = async () => {
+      try {
+        const token = localStorage.getItem('auth_token')
+        if (!token) return
+
+        const response = await fetch('/api/user/trades', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setTrades(data.trades || [])
+        }
+      } catch (error) {
+        console.error('Error fetching trades for best performer:', error)
+      }
+    }
+
+    if (user) {
+      fetchTrades()
+    }
+  }, [user])
+
+  // Calculate insights (filtered by active tab) - includes both unrealized and realized P&L
   const insights = useMemo(() => {
-    if (holdings.length === 0) return null
+    // Determine currency filter based on active tab
+    const targetCurrency = activeTab === 'pkr' ? 'PKR' : activeTab === 'usd' ? 'USD' : null
 
     // Filter holdings based on active tab
     const filteredHoldings = activeTab === 'overview'
@@ -386,27 +419,118 @@ export function PortfolioDashboardV2() {
         return true
       })
 
-    if (filteredHoldings.length === 0) return null
+    // Calculate realized P&L per asset
+    const allRealizedPnLMap = calculateRealizedPnLPerAsset(trades)
+    const allInvestedPerAssetMap = calculateInvestedPerAsset(trades)
 
+    // Filter realized P&L by currency if needed
+    const realizedPnLMap = new Map<string, number>()
+    const investedPerAssetMap = new Map<string, number>()
+
+    allRealizedPnLMap.forEach((pnl, assetKey) => {
+      const [, , assetCurrency] = assetKey.split(':')
+      if (!targetCurrency || assetCurrency === targetCurrency) {
+        realizedPnLMap.set(assetKey, pnl)
+      }
+    })
+
+    allInvestedPerAssetMap.forEach((invested, assetKey) => {
+      const [, , assetCurrency] = assetKey.split(':')
+      if (!targetCurrency || assetCurrency === targetCurrency) {
+        investedPerAssetMap.set(assetKey, invested)
+      }
+    })
+
+    // Get all assets (current holdings + sold assets with realized P&L)
+    const allAssets: Array<{
+      symbol: string
+      name: string
+      currency: string
+      assetType: string
+      holding: Holding | null
+      unrealizedPnL: number
+      realizedPnL: number
+      totalPnL: number
+      invested: number
+      totalPnLPercent: number
+    }> = []
+
+    // Add current holdings (unrealized P&L)
     const combinedHoldings = combineHoldingsByAsset(filteredHoldings)
-    const performers = getTopPerformers(combinedHoldings, 1)
+    combinedHoldings.forEach(holding => {
+      const assetKey = `${holding.assetType}:${holding.symbol.toUpperCase()}:${holding.currency}`
+      const unrealizedPnL = calculateGainLoss(holding)
+      const realizedPnL = realizedPnLMap.get(assetKey) || 0
+      const invested = calculateInvested(holding)
+      const totalPnL = unrealizedPnL + realizedPnL
+      const totalPnLPercent = invested > 0 ? (totalPnL / invested) * 100 : 0
 
-    const bestPerformer = performers.best[0]
-    if (!bestPerformer) return null
+      allAssets.push({
+        symbol: holding.symbol,
+        name: holding.name,
+        currency: holding.currency,
+        assetType: holding.assetType,
+        holding,
+        unrealizedPnL,
+        realizedPnL,
+        totalPnL,
+        invested,
+        totalPnLPercent,
+      })
+    })
 
-    const gainPercent = calculateGainLossPercent(bestPerformer)
-    const currentValue = calculateCurrentValue(bestPerformer)
-    const invested = bestPerformer.quantity * bestPerformer.purchasePrice
-    const gainValue = currentValue - invested
+    // Add sold assets (only realized P&L)
+    realizedPnLMap.forEach((realizedPnL: number, assetKey: string) => {
+      // Check if we already added this asset (it's a current holding)
+      const alreadyAdded = allAssets.some(a => {
+        const key = `${a.assetType}:${a.symbol.toUpperCase()}:${a.currency}`
+        return key === assetKey
+      })
+
+      if (!alreadyAdded && realizedPnL !== 0) {
+        // Extract asset info from key
+        const [assetType, symbol, assetCurrency] = assetKey.split(':')
+        // Get name from trades
+        const assetTrade = trades.find((t: any) =>
+          t.assetType === assetType &&
+          t.symbol.toUpperCase() === symbol &&
+          t.currency === assetCurrency
+        )
+        const invested = investedPerAssetMap.get(assetKey) || 0
+        const totalPnLPercent = invested > 0 ? (realizedPnL / invested) * 100 : 0
+
+        allAssets.push({
+          symbol,
+          name: assetTrade?.name || symbol,
+          currency: assetCurrency,
+          assetType,
+          holding: null,
+          unrealizedPnL: 0,
+          realizedPnL,
+          totalPnL: realizedPnL,
+          invested,
+          totalPnLPercent,
+        })
+      }
+    })
+
+    // Find best performer (highest total P&L percentage)
+    if (allAssets.length === 0) return null
+
+    const bestPerformer = allAssets.reduce((best, current) => {
+      return current.totalPnLPercent > (best?.totalPnLPercent || -Infinity) ? current : best
+    }, allAssets[0])
+
+    if (!bestPerformer || bestPerformer.totalPnLPercent <= 0) return null
 
     return {
       bestPerformer: {
         symbol: bestPerformer.symbol,
-        gainPercent,
-        gainValue,
+        gainPercent: bestPerformer.totalPnLPercent,
+        gainValue: bestPerformer.totalPnL,
       }
     }
-  }, [holdings, activeTab])
+  }, [holdings, activeTab, trades])
 
   // Calculate allocation
   const allocation = useMemo(() => calculateAssetAllocation(holdings), [holdings])
