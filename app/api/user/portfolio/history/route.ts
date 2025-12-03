@@ -47,67 +47,25 @@ export async function GET(request: NextRequest) {
       const isAllTime = daysParam === 'ALL'
       const days = daysParam && !isAllTime ? parseInt(daysParam) : 30
 
-      // Get historical exchange rates for PKR if unified mode
-      // Create a map of date -> exchange rate for historical lookups
-      const exchangeRateMap = new Map<string, number>()
+      // Get exchange rate for PKR if unified mode
+      // Use the latest available exchange rate (even if it's from a previous month)
+      let exchangeRate: number | null = null
       if (unified) {
         try {
           const { getSBPEconomicData } = await import('@/lib/portfolio/db-client')
-          // Get all available exchange rate data (no date restriction) for historical lookups
+          // Get all available exchange rate data (no date restriction) to find the latest
           const exchangeResult = await getSBPEconomicData('TS_GP_ER_FAERPKR_M.E00220')
           if (exchangeResult && exchangeResult.data && exchangeResult.data.length > 0) {
-            // Sort by date ascending for easier lookup
-            const sorted = [...exchangeResult.data].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-            
-            // Create a map of date -> exchange rate
-            // Since exchange rates are monthly, we'll store by date string for exact matches
-            sorted.forEach(item => {
-              exchangeRateMap.set(item.date, item.value)
-            })
-            
-            console.log(`[Portfolio History] Loaded ${exchangeRateMap.size} historical exchange rates for PKR/USD conversion`)
+            // Sort by date descending to get the most recent exchange rate
+            const sorted = [...exchangeResult.data].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            exchangeRate = sorted[0].value
+            console.log(`[Portfolio History] Using latest available exchange rate: ${exchangeRate} PKR/USD (Date: ${sorted[0].date})`)
           } else {
             console.warn('[Portfolio History] No exchange rate data available, PKR holdings will not be converted')
           }
         } catch (error) {
-          console.error('[Portfolio History] Error fetching exchange rate data:', error)
+          console.error('[Portfolio History] Error fetching exchange rate:', error)
         }
-      }
-
-      // Helper function to find the nearest available exchange rate for a given date
-      // Looks backwards in time to find the closest available rate (exchange rates are monthly)
-      const getExchangeRateForDate = (dateStr: string): number | null => {
-        if (exchangeRateMap.size === 0) {
-          return null
-        }
-
-        // Try exact date match first
-        if (exchangeRateMap.has(dateStr)) {
-          return exchangeRateMap.get(dateStr)!
-        }
-
-        // Find the closest date that is <= target date
-        // Exchange rates are monthly, so we need to find the most recent rate on or before the target date
-        const targetDate = new Date(dateStr)
-        const sortedDates = Array.from(exchangeRateMap.keys())
-          .map(d => new Date(d))
-          .filter(d => d <= targetDate)
-          .sort((a, b) => b.getTime() - a.getTime()) // Sort descending (most recent first)
-
-        if (sortedDates.length > 0) {
-          // Use the most recent rate on or before the target date
-          const closestDateStr = sortedDates[0].toISOString().split('T')[0]
-          return exchangeRateMap.get(closestDateStr)!
-        }
-
-        // If no rate found on or before target date, use the earliest available rate
-        // This handles edge cases where the target date is before any exchange rate data
-        const allDates = Array.from(exchangeRateMap.keys()).sort()
-        if (allDates.length > 0) {
-          return exchangeRateMap.get(allDates[0])!
-        }
-
-        return null
       }
 
       // 1. Get all trades
@@ -345,14 +303,8 @@ export async function GET(request: NextRequest) {
           let flowAmount = trade.tradeType === 'add' ? trade.totalAmount : -trade.totalAmount
           
           // Convert to USD if unified mode and trade is in PKR
-          // Use historical exchange rate for the trade date
-          if (unified && trade.currency === 'PKR') {
-            const rateForDate = getExchangeRateForDate(dateStr)
-            if (rateForDate) {
-              flowAmount = flowAmount / rateForDate
-            } else {
-              console.warn(`[Portfolio History] No exchange rate found for date ${dateStr}, skipping PKR cash flow conversion`)
-            }
+          if (unified && trade.currency === 'PKR' && exchangeRate) {
+            flowAmount = flowAmount / exchangeRate
           }
           
           cashFlowsByDate.set(dateStr, currentFlow + flowAmount)
@@ -472,19 +424,19 @@ export async function GET(request: NextRequest) {
                   }
 
                   // Convert to USD if not already USD
-                  // Use historical exchange rate for the specific date
                   if (holdingCurrency !== 'USD') {
-                    if (holdingCurrency === 'PKR') {
-                      const rateForDate = getExchangeRateForDate(dateStr)
-                      if (rateForDate) {
-                        // Exchange rate is PKR per USD (e.g., 277.78 means 1 USD = 277.78 PKR)
-                        // To convert PKR to USD: divide by exchange rate
-                        valueToAdd = valueToAdd / rateForDate
-                      } else {
-                        // If no exchange rate available in unified mode, skip to avoid confusion
-                        console.warn(`[Portfolio History] No exchange rate found for date ${dateStr}, excluding PKR holding ${h.symbol}`)
-                        shouldInclude = false
-                      }
+                    if (holdingCurrency === 'PKR' && exchangeRate) {
+                      // Exchange rate is PKR per USD (e.g., 277.78 means 1 USD = 277.78 PKR)
+                      // To convert PKR to USD: divide by exchange rate
+                      valueToAdd = valueToAdd / exchangeRate
+                    } else if (holdingCurrency === 'PKR' && !exchangeRate) {
+                      // If no exchange rate available in unified mode, log warning but still include
+                      // This allows the API to return data even if exchange rate fetch fails
+                      // The frontend can handle missing exchange rate gracefully
+                      console.warn(`[Portfolio History] No exchange rate available for PKR holding ${h.symbol} in unified mode - using PKR value as-is`)
+                      // Don't skip - include PKR value (will be in PKR, not USD, but better than empty)
+                      // Actually, if we're in unified mode and no exchange rate, we should skip to avoid confusion
+                      shouldInclude = false
                     }
                     // For other currencies, assume 1:1 if no exchange rate (shouldn't happen for PKR)
                   }
