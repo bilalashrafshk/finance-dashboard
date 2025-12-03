@@ -271,14 +271,24 @@ export async function POST(request: NextRequest) {
         const { autoDeposit } = body
         const assetCurrency = currency || 'USD'
         
-        // Calculate cash balance from transactions (same method as holdings API)
+        // Check if this is a past transaction
+        const tradeDateObj = new Date(tradeDate)
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        tradeDateObj.setHours(0, 0, 0, 0)
+        const isPastTransaction = tradeDateObj < today
+        
+        // Calculate cash balance from transactions up to the trade date
+        // For past transactions, only include trades on or before the trade date
+        // For current/future transactions, include all trades
         const existingTradesResult = await client.query(
           `SELECT id, user_id, holding_id, trade_type, asset_type, symbol, name, quantity,
                   price, total_amount, currency, trade_date, notes, created_at
            FROM user_trades
            WHERE user_id = $1
+           ${isPastTransaction ? 'AND trade_date <= $2' : ''}
            ORDER BY trade_date ASC, created_at ASC`,
-          [user.id]
+          isPastTransaction ? [user.id, tradeDate] : [user.id]
         )
         
         const existingTrades = existingTradesResult.rows.map(row => ({
@@ -298,7 +308,7 @@ export async function POST(request: NextRequest) {
           createdAt: row.created_at.toISOString(),
         }))
         
-        // Calculate holdings from transactions to get accurate cash balance
+        // Calculate holdings from transactions to get accurate cash balance as of the trade date
         const calculatedHoldings = calculateHoldingsFromTransactions(existingTrades)
         const cashHolding = calculatedHoldings.find(
           h => h.assetType === 'cash' && h.symbol === 'CASH' && h.currency === assetCurrency
@@ -309,10 +319,10 @@ export async function POST(request: NextRequest) {
         const EPSILON = 0.0001
         if (totalAmount - cashBalance > EPSILON) {
           const shortfall = totalAmount - cashBalance
-          
-          console.log(`[Trade] Insufficient cash: Required ${totalAmount}, Available ${cashBalance}, Shortfall ${shortfall}, Currency ${assetCurrency}, AutoDeposit ${autoDeposit}`)
 
-          if (!autoDeposit) {
+          // For past transactions, always auto-deposit to maintain historical accuracy
+          // For current/future transactions, check autoDeposit flag
+          if (!isPastTransaction && !autoDeposit) {
             await client.query('ROLLBACK')
             return NextResponse.json(
               { 
@@ -327,12 +337,16 @@ export async function POST(request: NextRequest) {
             )
           }
           
-          // Auto-deposit: Create cash transaction
-          // Order by quantity DESC to use the main cash account
+          // Auto-deposit: Create cash transaction on the same date as the buy
+          // For past transactions, this ensures historical accuracy
+          // The deposit will be processed before the buy (same date, but deposit created first)
+          
+          // Find or create cash holding
           const cashHoldingResult = await client.query(
             `SELECT id FROM user_holdings
              WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH' AND currency = $2
-             ORDER BY quantity DESC`,
+             ORDER BY quantity DESC
+             LIMIT 1`,
             [user.id, assetCurrency]
           )
           
@@ -348,6 +362,8 @@ export async function POST(request: NextRequest) {
             )
             cashHoldingId = newCashResult.rows[0].id
           } else {
+            // Update cash holding (for current transactions)
+            // For past transactions, the sync will handle this correctly
             await client.query(
               `UPDATE user_holdings 
                SET quantity = quantity + $1, updated_at = NOW()
@@ -356,7 +372,12 @@ export async function POST(request: NextRequest) {
             )
           }
           
-          // Record auto-deposit transaction
+          // Record auto-deposit transaction on the same date as the buy
+          // This ensures the deposit appears before the buy when sorted by date
+          const autoDepositNotes = isPastTransaction
+            ? `Auto-deposit (past transaction): Insufficient cash for ${symbol} purchase on ${tradeDate}`
+            : `Auto-deposit: Insufficient cash for ${symbol} purchase`
+          
           await client.query(
             `INSERT INTO user_trades 
              (user_id, holding_id, trade_type, asset_type, symbol, name, quantity, price, total_amount, currency, trade_date, notes)
@@ -372,8 +393,8 @@ export async function POST(request: NextRequest) {
               1,
               shortfall,
               assetCurrency,
-              tradeDate,
-              `Auto-deposit: Insufficient cash for ${symbol} purchase`
+              tradeDate, // Same date as the buy transaction
+              autoDepositNotes
             ]
           )
         }

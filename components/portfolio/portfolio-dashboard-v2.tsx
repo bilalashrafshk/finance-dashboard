@@ -167,9 +167,21 @@ export function PortfolioDashboardV2() {
           unifiedSummary.realizedPnL = realizedPnL
           unifiedSummary.totalPnL = unifiedSummary.totalGainLoss + realizedPnL
           
-          // Dividends
-          unifiedSummary.dividendsCollected = totalDividends
-          unifiedSummary.dividendsCollectedPercent = unifiedSummary.totalInvested > 0 ? (totalDividends / unifiedSummary.totalInvested) * 100 : 0
+          // Dividends - convert PKR dividends to USD
+          // Dividends from PK equity are in PKR, need to convert to USD for unified view
+          const pkEquityHoldings = holdings.filter(h => h.assetType === 'pk-equity')
+          const pkEquityHoldingIds = new Set(pkEquityHoldings.map(h => h.id))
+          const pkDividends = dividendDetails
+            .filter(d => pkEquityHoldingIds.has(d.holdingId))
+            .reduce((sum, d) => sum + d.totalCollected, 0)
+          const usdDividends = dividendDetails
+            .filter(d => !pkEquityHoldingIds.has(d.holdingId))
+            .reduce((sum, d) => sum + d.totalCollected, 0)
+          
+          // Convert PKR dividends to USD
+          const totalDividendsUSD = usdDividends + (pkDividends / exchangeRate)
+          unifiedSummary.dividendsCollected = totalDividendsUSD
+          unifiedSummary.dividendsCollectedPercent = unifiedSummary.totalInvested > 0 ? (totalDividendsUSD / unifiedSummary.totalInvested) * 100 : 0
              
           if (realizedPnL !== 0) {
             unifiedSummary.totalInvested = unifiedSummary.totalInvested - realizedPnL
@@ -354,6 +366,7 @@ export function PortfolioDashboardV2() {
   const insights = useMemo(() => {
     // Determine currency filter based on active tab
     const targetCurrency = activeTab === 'pkr' ? 'PKR' : activeTab === 'usd' ? 'USD' : null
+    const isUnified = activeTab === 'overview'
 
     // Filter holdings based on active tab
     const filteredHoldings = activeTab === 'overview'
@@ -460,6 +473,20 @@ export function PortfolioDashboardV2() {
       }
     })
 
+    // If in unified mode (overview), convert all P&L values to USD for comparison
+    if (isUnified && exchangeRate) {
+      allAssets.forEach(asset => {
+        if (asset.currency === 'PKR') {
+          // Convert PKR values to USD
+          asset.unrealizedPnL = asset.unrealizedPnL / exchangeRate
+          asset.realizedPnL = asset.realizedPnL / exchangeRate
+          asset.totalPnL = asset.totalPnL / exchangeRate
+          asset.invested = asset.invested / exchangeRate
+          // Percentage remains the same (it's a ratio)
+        }
+      })
+    }
+
     // Find best performer (highest total P&L percentage)
     if (allAssets.length === 0) return null
 
@@ -473,10 +500,10 @@ export function PortfolioDashboardV2() {
       bestPerformer: {
         symbol: bestPerformer.symbol,
         gainPercent: bestPerformer.totalPnLPercent,
-        gainValue: bestPerformer.totalPnL,
+        gainValue: bestPerformer.totalPnL, // This is now in USD if unified mode
       }
     }
-  }, [holdings, activeTab, trades])
+  }, [holdings, activeTab, trades, exchangeRate])
 
   // Calculate allocation
   const allocation = useMemo(() => calculateAssetAllocation(holdings), [holdings])
