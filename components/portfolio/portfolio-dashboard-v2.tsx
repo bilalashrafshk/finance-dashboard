@@ -146,8 +146,12 @@ export function PortfolioDashboardV2() {
         }
 
         // 3. Unified Summary
+        // Create unified summary for overview tab when exchange rate is available
+        // This allows PKR-only portfolios to work in overview mode (converts PKR to USD)
         let unifiedSummary = null
-        if (exchangeRate && currencies.length > 1) {
+        if (exchangeRate) {
+          // We have exchange rate, create unified summary (even for single currency)
+          // This ensures overview tab works for PKR-only portfolios
           const exchangeRatesMap = new Map<string, number>()
           currencies.forEach(c => {
             if (c === 'USD') {
@@ -637,9 +641,10 @@ export function PortfolioDashboardV2() {
 
   if (activeTab === 'overview') {
     // Overview: show both USD and PKR (unified)
+    // Use unified mode if exchange rate is available (allows PKR-only portfolios to work)
     selectedCurrencies = allCurrencies
     displayCurrency = 'USD'
-    useUnified = true
+    useUnified = !!exchangeRate // Use unified mode if exchange rate is available
   } else if (activeTab === 'pkr') {
     // PKR Portfolio: show only PKR
     selectedCurrencies = ['PKR']
@@ -686,6 +691,40 @@ export function PortfolioDashboardV2() {
     } else {
       totalPortfolioChange = summary.unified.totalGainLoss + (summary.unified.realizedPnL || 0);
       totalInvested = summary.unified.totalInvested;
+    }
+
+    totalPortfolioChangePercent = totalInvested > 0
+      ? (totalPortfolioChange / totalInvested) * 100
+      : 0;
+  } else if (useUnified && !summary.unified && exchangeRate) {
+    // Unified mode requested but summary.unified is null (e.g., PKR-only with exchange rate)
+    // Calculate unified values manually by converting PKR to USD
+    selectedCurrencies.forEach(currency => {
+      const currencySummary = summary.byCurrency[currency];
+      if (currencySummary) {
+        if (currency === 'USD') {
+          totalPortfolioValue += currencySummary.currentValue;
+          totalPortfolioChange += currencySummary.totalGainLoss + (currencySummary.realizedPnL || 0);
+          totalInvested += currencySummary.totalInvested;
+        } else if (currency === 'PKR') {
+          // Convert PKR to USD for unified view
+          const rate = exchangeRate;
+          totalPortfolioValue += currencySummary.currentValue / rate;
+          totalPortfolioChange += (currencySummary.totalGainLoss + (currencySummary.realizedPnL || 0)) / rate;
+          totalInvested += currencySummary.totalInvested / rate;
+        }
+      }
+    });
+
+    // Use Net Deposits if available
+    if (summary.netDeposits && Object.keys(summary.netDeposits).length > 0) {
+      let totalNetDepositsUSD = 0;
+      totalNetDepositsUSD += (summary.netDeposits['USD'] || 0);
+      if (summary.netDeposits['PKR']) {
+        totalNetDepositsUSD += summary.netDeposits['PKR'] / exchangeRate;
+      }
+      totalInvested = totalNetDepositsUSD;
+      totalPortfolioChange = totalPortfolioValue - totalInvested;
     }
 
     totalPortfolioChangePercent = totalInvested > 0
@@ -937,11 +976,11 @@ export function PortfolioDashboardV2() {
             </div>
           )}
 
-          {summary.unified && (
-            <PortfolioHistoryChart currency="USD" unified={true} />
-          )}
+          {/* Always show charts in overview tab, even if unified summary is null */}
+          {/* For PKR-only portfolios, unified mode will convert PKR to USD if exchange rate available */}
+          <PortfolioHistoryChart currency="USD" unified={true} />
 
-          <PerformanceMetrics currency="USD" unified={summary.unified ? true : false} />
+          <PerformanceMetrics currency="USD" unified={true} />
 
           <PnLBreakdown holdings={holdings} currency="USD" />
         </TabsContent>

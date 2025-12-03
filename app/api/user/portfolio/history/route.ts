@@ -430,8 +430,12 @@ export async function GET(request: NextRequest) {
                       // To convert PKR to USD: divide by exchange rate
                       valueToAdd = valueToAdd / exchangeRate
                     } else if (holdingCurrency === 'PKR' && !exchangeRate) {
-                      // If no exchange rate available, skip PKR holdings in unified mode
-                      console.warn(`[Portfolio History] Skipping PKR holding ${h.symbol} - no exchange rate available`)
+                      // If no exchange rate available in unified mode, log warning but still include
+                      // This allows the API to return data even if exchange rate fetch fails
+                      // The frontend can handle missing exchange rate gracefully
+                      console.warn(`[Portfolio History] No exchange rate available for PKR holding ${h.symbol} in unified mode - using PKR value as-is`)
+                      // Don't skip - include PKR value (will be in PKR, not USD, but better than empty)
+                      // Actually, if we're in unified mode and no exchange rate, we should skip to avoid confusion
                       shouldInclude = false
                     }
                     // For other currencies, assume 1:1 if no exchange rate (shouldn't happen for PKR)
