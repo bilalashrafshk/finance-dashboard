@@ -233,6 +233,7 @@ export function PortfolioDashboardV2() {
           currency = 'USD'
           unified = false
         } else {
+          // Overview tab - always use unified mode (converts PKR to USD)
           currency = 'USD'
           unified = true
         }

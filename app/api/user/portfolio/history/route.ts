@@ -313,7 +313,10 @@ export async function GET(request: NextRequest) {
 
       // Filter trades by currency to determine the correct start date for this specific currency view
       // This prevents the graph from showing a long flat line if the user has older trades in a different currency
-      const relevantTrades = trades.filter(t => t.currency.toUpperCase() === currency.toUpperCase())
+      // In unified mode, include all trades (don't filter by currency)
+      const relevantTrades = unified 
+        ? trades // In unified mode, use all trades
+        : trades.filter(t => t.currency.toUpperCase() === currency.toUpperCase())
 
       if (relevantTrades.length === 0) {
         return NextResponse.json(
