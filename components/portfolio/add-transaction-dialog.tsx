@@ -144,35 +144,49 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
         return
       }
 
-      const response = await fetch('/api/user/holdings', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
+      // Check if this is a past transaction
+      const tradeDateObj = new Date(tradeDate)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      tradeDateObj.setHours(0, 0, 0, 0)
+      const isPastTransaction = tradeDateObj < today
 
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success && data.holdings) {
-          const cashHolding = data.holdings.find(
-            (h: any) => h.assetType === 'cash' && h.symbol === 'CASH' && h.currency === currency
-          )
-          const balance = cashHolding ? Math.max(0, cashHolding.quantity) : 0 // Ensure non-negative
-          setCashBalance(balance)
+      if (isPastTransaction) {
+        // For past transactions, don't show cash balance
+        // Auto-deposit will always be created automatically for past transactions
+        // This ensures historical accuracy when inserting transactions into existing history
+        setCashBalance(null) // null indicates "not applicable" for past transactions
+      } else {
+        // For current/future transactions, use current holdings
+        const response = await fetch('/api/user/holdings', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success && data.holdings) {
+            const cashHolding = data.holdings.find(
+              (h: any) => h.assetType === 'cash' && h.symbol === 'CASH' && h.currency === currency
+            )
+            const balance = cashHolding ? Math.max(0, cashHolding.quantity) : 0 // Ensure non-negative
+            setCashBalance(balance)
+          } else {
+            setCashBalance(0)
+          }
         } else {
           setCashBalance(0)
         }
-      } else {
-        setCashBalance(0)
       }
     } catch (error) {
-      console.error('Error fetching cash balance:', error)
       setCashBalance(0)
     } finally {
       setLoadingCashBalance(false)
     }
-  }, [currency, assetType, tradeType, editingTrade])
+  }, [currency, assetType, tradeType, editingTrade, tradeDate])
 
-  // Fetch cash balance when dialog opens or currency/tradeType changes
+  // Fetch cash balance when dialog opens or currency/tradeType/tradeDate changes
   useEffect(() => {
     if (open && !editingTrade && (tradeType === 'buy' || tradeType === 'remove') && assetType !== 'cash') {
       fetchCashBalance()
@@ -183,7 +197,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
       setCashBalance(null)
       setAutoDeposit(false)
     }
-  }, [open, currency, assetType, tradeType, editingTrade, fetchCashBalance])
+  }, [open, currency, assetType, tradeType, editingTrade, tradeDate, fetchCashBalance])
 
   // Reset error when inputs change
   useEffect(() => {
@@ -1460,12 +1474,37 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                   </Label>
                   {loadingCashBalance ? (
                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : cashBalance === null ? (
+                    <span className="text-muted-foreground text-sm italic">Past transaction</span>
                   ) : (
-                    <span className={`font-semibold ${cashBalance !== null && cashBalance > 0 ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
-                      {cashBalance !== null ? formatCurrency(cashBalance, currency) : 'Loading...'}
+                    <span className={`font-semibold ${cashBalance > 0 ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+                      {formatCurrency(cashBalance, currency)}
                     </span>
                   )}
                 </div>
+
+                {/* Show message for past transactions */}
+                {cashBalance === null && tradeDate && (() => {
+                  const tradeDateObj = new Date(tradeDate)
+                  const today = new Date()
+                  today.setHours(0, 0, 0, 0)
+                  tradeDateObj.setHours(0, 0, 0, 0)
+                  const isPastTransaction = tradeDateObj < today
+                  
+                  if (isPastTransaction) {
+                    return (
+                      <Alert className="border-blue-500 bg-blue-50 dark:bg-blue-950">
+                        <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                        <AlertDescription className="text-blue-800 dark:text-blue-200">
+                          <p className="text-sm">
+                            This is a past transaction. An auto-deposit will be automatically created on {tradeDate} to cover this purchase, ensuring historical accuracy.
+                          </p>
+                        </AlertDescription>
+                      </Alert>
+                    )
+                  }
+                  return null
+                })()}
 
                 {cashBalance !== null && purchasePrice && parseFloat(purchasePrice) > 0 && (
                   <div className="space-y-2">
