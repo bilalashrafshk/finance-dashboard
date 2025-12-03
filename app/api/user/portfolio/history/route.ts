@@ -73,13 +73,9 @@ export async function GET(request: NextRequest) {
             
             // Store the latest rate as fallback
             latestExchangeRate = sorted[sorted.length - 1].value
-            
-            console.log(`[Portfolio History] Loaded ${exchangeRateMap.size} monthly exchange rates for PKR/USD conversion (latest: ${latestExchangeRate})`)
-          } else {
-            console.warn('[Portfolio History] No exchange rate data available, PKR holdings will not be converted')
           }
         } catch (error) {
-          console.error('[Portfolio History] Error fetching exchange rate data:', error)
+          // Error fetching exchange rate data
         }
       }
 
@@ -226,7 +222,6 @@ export async function GET(request: NextRequest) {
 
           const response = await fetch(historicalDataUrl)
           if (!response.ok) {
-            console.error(`Failed to fetch historical data for ${assetKey}: ${response.status}`)
             return { assetKey, priceMap }
           }
 
@@ -263,7 +258,7 @@ export async function GET(request: NextRequest) {
                 }
               }
             } catch (error) {
-              console.error(`Error fetching current price for ${assetKey}:`, error)
+              // Error fetching current price
               
               // Fallback to latest historical price if current price fetch fails
               let latestDate = '';
@@ -282,7 +277,6 @@ export async function GET(request: NextRequest) {
 
           return { assetKey, priceMap }
         } catch (error) {
-          console.error(`Error fetching historical prices for ${assetKey}:`, error)
           return { assetKey, priceMap: new Map<string, number>() }
         }
       })
@@ -368,8 +362,6 @@ export async function GET(request: NextRequest) {
             const rateForDate = getExchangeRateForDate(dateStr)
             if (rateForDate) {
               flowAmount = flowAmount / rateForDate
-            } else {
-              console.warn(`[Portfolio History] No exchange rate found for date ${dateStr}, skipping PKR cash flow conversion`)
             }
           }
           
@@ -498,12 +490,6 @@ export async function GET(request: NextRequest) {
                         // Exchange rate is PKR per USD (e.g., 277.78 means 1 USD = 277.78 PKR)
                         // To convert PKR to USD: divide by exchange rate
                         valueToAdd = valueToAdd / rateForDate
-                      } else {
-                        // If no exchange rate available at all, log warning but still include
-                        // This allows the API to return data even if exchange rate fetch fails
-                        console.warn(`[Portfolio History] No exchange rate found for date ${dateStr}, PKR holding ${h.symbol} will not be converted to USD`)
-                        // Don't exclude - the fallback should always provide a rate, but if it doesn't, 
-                        // we'll include the PKR value as-is rather than excluding the holding
                       }
                     }
                     // For other currencies, assume 1:1 if no exchange rate (shouldn't happen for PKR)
@@ -547,28 +533,40 @@ export async function GET(request: NextRequest) {
                   bookValue += valueToAdd
                 }
               } catch (holdingError) {
-                console.error(`Error processing holding ${h.symbol}:`, holdingError)
                 // Continue with other holdings
               }
             })
 
             const cashFlow = cashFlowsByDate.get(dateStr) || 0
+            // Get exchange rate used for this date (if unified mode and we have PKR holdings)
+            let exchangeRateUsed: number | null = null
+            if (unified && exchangeRateMap.size > 0) {
+              exchangeRateUsed = getExchangeRateForDate(dateStr)
+            }
+            
             dailyHoldings[dateStr] = {
               date: dateStr,
               cash: cashBalance,
               invested: bookValue, // Book Value = Cash + Market Value of Assets (includes unrealized P&L)
-              cashFlow: cashFlow
+              cashFlow: cashFlow,
+              exchangeRate: exchangeRateUsed // Include exchange rate used for this date
             }
           }
         } catch (dateError) {
-          console.error(`Error processing date ${dateStr}:`, dateError)
           // Set default values for this date
           const cashFlow = cashFlowsByDate.get(dateStr) || 0
+          // Get exchange rate used for this date (if unified mode and we have PKR holdings)
+          let exchangeRateUsed: number | null = null
+          if (unified && exchangeRateMap.size > 0) {
+            exchangeRateUsed = getExchangeRateForDate(dateStr)
+          }
+          
           dailyHoldings[dateStr] = {
             date: dateStr,
             cash: 0,
             invested: 0,
-            cashFlow: cashFlow
+            cashFlow: cashFlow,
+            exchangeRate: exchangeRateUsed // Include exchange rate used for this date
           }
         }
 
@@ -577,7 +575,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (iterationCount >= maxIterations) {
-        console.warn('Date loop reached max iterations, possible infinite loop prevented')
+        // Date loop reached max iterations, possible infinite loop prevented
       }
 
       // Sort by date to ensure chronological order
@@ -606,9 +604,6 @@ export async function GET(request: NextRequest) {
       client.release()
     }
   } catch (error: any) {
-    console.error('Get portfolio history error:', error)
-    console.error('Error stack:', error.stack)
-    console.error('Error message:', error.message)
     return NextResponse.json(
       {
         success: false,

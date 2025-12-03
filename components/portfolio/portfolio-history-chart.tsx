@@ -67,7 +67,6 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
         const dailyPoints = historyData.history || []
 
         if (dailyPoints.length === 0) {
-          console.warn('Portfolio history API returned empty array')
           setError('No portfolio history data available')
           setData([])
           return
@@ -82,7 +81,8 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
             date: new Date(point.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
             fullDate: point.date,
             value: val,
-            cash: point.cash || 0
+            cash: point.cash || 0,
+            exchangeRate: point.exchangeRate || null // Include exchange rate if available
           }
         })
 
@@ -90,7 +90,6 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
         const validData = processedData.filter((d: any) => d.fullDate && !isNaN(d.value))
 
         if (validData.length === 0) {
-          console.warn('No valid data points after processing')
           setError('No valid portfolio history data')
           setData([])
           return
@@ -102,7 +101,6 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
         if (err.name === 'AbortError') {
            setError("Request timed out. Please try a shorter period.")
         } else {
-           console.error("Error fetching history:", err)
            setError("Failed to load portfolio history")
         }
       } finally {
@@ -247,12 +245,36 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
                     backgroundColor: tooltipBg,
                     color: tooltipText
                   }}
-                  formatter={(value: number) => [formatCurrency(value, displayCurrency), 'Portfolio Value']}
-                  labelFormatter={(label, payload) => {
-                    if (payload && payload.length > 0) {
-                      return payload[0].payload.fullDate
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload || !payload.length) {
+                      return null
                     }
-                    return label
+                    
+                    const data = payload[0].payload
+                    const exchangeRate = data?.exchangeRate
+                    const value = payload[0].value as number
+                    
+                    return (
+                      <div style={{
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${tooltipBorder}`,
+                        backgroundColor: tooltipBg,
+                        color: tooltipText
+                      }}>
+                        <p style={{ marginBottom: '4px', fontWeight: 600 }}>
+                          {data?.fullDate || label}
+                        </p>
+                        <p style={{ marginBottom: exchangeRate && unified ? '4px' : '0' }}>
+                          Portfolio Value: {formatCurrency(value, displayCurrency)}
+                        </p>
+                        {exchangeRate && unified && (
+                          <p style={{ margin: 0, fontSize: '12px', opacity: 0.8 }}>
+                            Exchange Rate: 1 USD = {exchangeRate.toFixed(2)} PKR
+                          </p>
+                        )}
+                      </div>
+                    )
                   }}
                 />
                 <Area
