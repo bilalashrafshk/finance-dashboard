@@ -588,6 +588,13 @@ export async function insertDividendData(
     return { inserted: 0, skipped: 0 }
   }
 
+  // Deduplicate data by date to prevent "ON CONFLICT DO UPDATE command cannot affect row a second time" error
+  const uniqueDataMap = new Map<string, DividendRecord>()
+  data.forEach(record => {
+    uniqueDataMap.set(record.date, record)
+  })
+  const uniqueData = Array.from(uniqueDataMap.values())
+
   try {
     const client = await getPool().connect()
 
@@ -597,8 +604,8 @@ export async function insertDividendData(
       const CHUNK_SIZE = 1000
       let totalInserted = 0
 
-      for (let i = 0; i < data.length; i += CHUNK_SIZE) {
-        const chunk = data.slice(i, i + CHUNK_SIZE)
+      for (let i = 0; i < uniqueData.length; i += CHUNK_SIZE) {
+        const chunk = uniqueData.slice(i, i + CHUNK_SIZE)
         const values: any[] = []
         const placeholders: string[] = []
 

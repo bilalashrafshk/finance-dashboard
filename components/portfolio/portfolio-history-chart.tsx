@@ -18,8 +18,9 @@ interface PortfolioHistoryProps {
 }
 
 export function PortfolioHistoryChart({ currency = "USD", unified = false, totalChange, totalChangePercent }: PortfolioHistoryProps) {
-  const [period, setPeriod] = useState("30") // Default to 30 days for faster loading
-  const [data, setData] = useState<any[]>([])
+  const [period, setPeriod] = useState("30") // Default to 30 days
+  const [fullHistory, setFullHistory] = useState<any[]>([]) // Store complete history
+  // const [data, setData] = useState<any[]>([]) // Removed in favor of useMemo
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showTotalReturn, setShowTotalReturn] = useState(false)
@@ -32,19 +33,21 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
   const tooltipBorder = isDark ? '#374151' : '#e5e7eb'
   const tooltipText = isDark ? '#f3f4f6' : '#111827'
 
+  // Fetch full history once
   useEffect(() => {
     const fetchHistory = async () => {
       setLoading(true)
       setError(null)
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout for full history
 
       try {
         // 1. Fetch Portfolio Holdings History
         // Get token from localStorage to ensure we are authenticated
         const token = localStorage.getItem('auth_token')
         const unifiedParam = unified ? '&unified=true' : ''
-        const historyRes = await fetch(`/api/user/portfolio/history?days=${period}&currency=${currency}${unifiedParam}`, {
+        // Always fetch ALL history
+        const historyRes = await fetch(`/api/user/portfolio/history?days=ALL&currency=${currency}${unifiedParam}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -68,7 +71,7 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
 
         if (dailyPoints.length === 0) {
           setError('No portfolio history data available')
-          setData([])
+          setFullHistory([])
           return
         }
 
@@ -91,17 +94,17 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
 
         if (validData.length === 0) {
           setError('No valid portfolio history data')
-          setData([])
+          setFullHistory([])
           return
         }
 
-        setData(validData)
+        setFullHistory(validData)
 
       } catch (err: any) {
         if (err.name === 'AbortError') {
-           setError("Request timed out. Please try a shorter period.")
+          setError("Request timed out. Please try refreshing.")
         } else {
-           setError("Failed to load portfolio history")
+          setError("Failed to load portfolio history")
         }
       } finally {
         clearTimeout(timeoutId)
@@ -110,7 +113,25 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
     }
 
     fetchHistory()
-  }, [period, currency, unified, showTotalReturn])
+  }, [currency, unified]) // Remove showTotalReturn from dependency
+
+  // Filter data using useMemo for performance
+  const data = useMemo(() => {
+    if (fullHistory.length === 0) return []
+
+    if (period === 'ALL') {
+      return fullHistory
+    }
+
+    const days = parseInt(period)
+    if (isNaN(days)) {
+      return fullHistory
+    }
+
+    // Slice the last N days
+    // Assuming fullHistory is sorted by date ascending (oldest to newest)
+    return fullHistory.slice(-days)
+  }, [period, fullHistory])
 
   if (loading && data.length === 0) {
     return (
@@ -249,11 +270,11 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
                     if (!active || !payload || !payload.length) {
                       return null
                     }
-                    
+
                     const data = payload[0].payload
                     const exchangeRate = data?.exchangeRate
                     const value = payload[0].value as number
-                    
+
                     return (
                       <div style={{
                         padding: '8px 12px',
