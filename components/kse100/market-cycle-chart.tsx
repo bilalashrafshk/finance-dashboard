@@ -60,7 +60,8 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
   const [visibleCycles, setVisibleCycles] = useState<Set<string>>(new Set())
   const [isDark, setIsDark] = useState(false)
   const [currency, setCurrency] = useState<'PKR' | 'USD'>('PKR')
-  const { isVideoMode, toggleVideoMode, containerClassName, videoModeColors } = useVideoMode()
+  const { isVideoMode, toggleVideoMode, containerClassName, videoModeColors, videoModeStyle } = useVideoMode()
+  const [replayKey, setReplayKey] = useState(0)
 
   const chartContainerRef = useRef<HTMLDivElement>(null)
 
@@ -70,6 +71,14 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
     quality: 10,
     delay: 100 // 10 FPS
   })
+
+  // Handle recording start with redraw
+  const handleRecordStart = async () => {
+    // Trigger redraw
+    setReplayKey(prev => prev + 1)
+    // Wait for re-render and animation start
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
 
   // Cache for exchange rate data
   const exchangeRateCacheRef = useRef<{
@@ -536,7 +545,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
 
   return (
     <div ref={chartContainerRef}>
-      <Card className={containerClassName}>
+      <Card className={containerClassName} style={videoModeStyle}>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -550,7 +559,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
               onToggle={toggleVideoMode}
               isRecording={isRecording}
               isEncoding={isEncoding}
-              onRecordStart={startRecording}
+              onRecordStart={() => startRecording(handleRecordStart)}
               onRecordStop={stopRecording}
             />
           </div>
@@ -640,7 +649,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
             {/* Chart */}
             <div className="h-[500px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 20, right: 30, bottom: 50, left: 50 }}>
+                <LineChart key={replayKey} data={chartData} margin={{ top: 20, right: 30, bottom: 50, left: 50 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={gridColor} opacity={0.4} />
 
                   <XAxis
@@ -695,13 +704,15 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
                         key={cycle.cycleId}
                         type="monotone"
                         dataKey={cycle.cycleName}
-                        stroke={CYCLE_COLORS[idx % CYCLE_COLORS.length]}
-                        strokeWidth={2}
+                        stroke={isVideoMode && videoModeColors[`chart${(idx % 5) + 1}` as keyof typeof videoModeColors] ? videoModeColors[`chart${(idx % 5) + 1}` as keyof typeof videoModeColors] : CYCLE_COLORS[idx % CYCLE_COLORS.length]}
+                        strokeWidth={isVideoMode ? 3 : 2}
                         dot={false}
                         activeDot={{ r: 4 }}
                         name={`${cycle.cycleName} (${cycle.roi >= 0 ? '+' : ''}${cycle.roi.toFixed(1)}%)`}
                         legendType="none"
                         connectNulls
+                        isAnimationActive={!isRecording || isRecording} // Ensure animation runs during recording
+                        animationDuration={1500} // Force consistent duration
                       />
                     )
                   })}

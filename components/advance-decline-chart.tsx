@@ -102,7 +102,7 @@ export function AdvanceDeclineChart({
   const [internalStartDate, setInternalStartDate] = useState<string>(getDefaultStartDate())
   const [internalEndDate, setInternalEndDate] = useState<string>(getDefaultEndDate())
   const { theme } = useTheme()
-  const { isVideoMode, toggleVideoMode, containerClassName, videoModeColors } = useVideoMode()
+  const { isVideoMode, toggleVideoMode, containerClassName, videoModeColors, videoModeStyle } = useVideoMode()
   const colors = useMemo(() => {
     const themeColors = getThemeColors()
     if (isVideoMode) {
@@ -116,6 +116,7 @@ export function AdvanceDeclineChart({
   }, [theme, isVideoMode, videoModeColors])
 
   const chartContainerRef = useRef<HTMLDivElement>(null)
+  const [replayKey, setReplayKey] = useState(0)
 
   // Recording Hook
   const { isRecording, isEncoding, startRecording, stopRecording } = useChartRecorder(chartContainerRef as React.RefObject<HTMLElement>, {
@@ -123,6 +124,14 @@ export function AdvanceDeclineChart({
     quality: 10,
     delay: 100 // 10 FPS
   })
+
+  // Handle recording start with redraw
+  const handleRecordStart = async () => {
+    // Trigger redraw
+    setReplayKey(prev => prev + 1)
+    // Wait for re-render and animation start
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
 
   const { toast } = useToast()
 
@@ -703,7 +712,7 @@ export function AdvanceDeclineChart({
   return (
     <div className="space-y-4">
       {/* Settings Panel */}
-      <Card className={containerClassName}>
+      <Card className={containerClassName} style={videoModeStyle}>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -719,7 +728,7 @@ export function AdvanceDeclineChart({
                 onToggle={toggleVideoMode}
                 isRecording={isRecording}
                 isEncoding={isEncoding}
-                onRecordStart={startRecording}
+                onRecordStart={() => startRecording(handleRecordStart)}
                 onRecordStop={stopRecording}
               />
               <Button
@@ -800,73 +809,66 @@ export function AdvanceDeclineChart({
                 )}
               </div>
 
-              {/* Top N Slider */}
-              <div className="space-y-2">
-                <Label>Top N Stocks by Market Cap: {topN}</Label>
-                <Slider
-                  min={minSliderValue}
-                  max={maxSliderValue}
-                  step={10}
-                  value={[topN]}
-                  onValueChange={(value) => setTopN(value[0])}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>{minSliderValue}</span>
-                  <span>{maxSliderValue}</span>
+              {/* Options */}
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="show-kse100"
+                    checked={showKse100}
+                    onCheckedChange={(checked) => setShowKse100(checked as boolean)}
+                  />
+                  <Label htmlFor="show-kse100">Show KSE100 Overlay</Label>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="show-sector-index"
+                    checked={showSectorIndex}
+                    disabled={!selectedSector || selectedSector === 'all'}
+                    onCheckedChange={(checked) => setShowSectorIndex(checked as boolean)}
+                  />
+                  <div className="grid gap-1.5 leading-none">
+                    <Label htmlFor="show-sector-index" className={(!selectedSector || selectedSector === 'all') ? 'text-muted-foreground' : ''}>
+                      Show Sector Index Overlay
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Only available when a specific sector is selected
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="include-dividends"
+                    checked={includeDividends}
+                    onCheckedChange={(checked) => setIncludeDividends(checked as boolean)}
+                  />
+                  <Label htmlFor="include-dividends">Include Dividends in Sector Index (Total Return)</Label>
                 </div>
               </div>
 
-              {/* Overlays */}
-              <div className="space-y-2">
-                <Label>Overlays</Label>
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="show-kse100"
-                      checked={showKse100}
-                      onCheckedChange={(checked) => setShowKse100(checked === true)}
-                    />
-                    <label
-                      htmlFor="show-kse100"
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                    >
-                      KSE100 Index
-                    </label>
+              {/* Top N Slider */}
+              <div className="space-y-4 pt-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label>Number of Stocks</Label>
+                    <div className="text-xs text-muted-foreground">
+                      Analyzing top {topN} stocks by market cap in each period
+                    </div>
                   </div>
-                  {selectedSector && selectedSector !== 'all' && (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          id="show-sector-index"
-                          checked={showSectorIndex}
-                          onCheckedChange={(checked) => setShowSectorIndex(checked === true)}
-                        />
-                        <label
-                          htmlFor="show-sector-index"
-                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                        >
-                          {selectedSector} Sector Index (Market-Cap Weighted)
-                        </label>
-                      </div>
-                      {showSectorIndex && (
-                        <div className="flex items-center gap-2 ml-6">
-                          <Checkbox
-                            id="include-dividends"
-                            checked={includeDividends}
-                            onCheckedChange={(checked) => setIncludeDividends(checked === true)}
-                          />
-                          <label
-                            htmlFor="include-dividends"
-                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                          >
-                            Include Dividends (Total Return)
-                          </label>
-                        </div>
-                      )}
-                    </>
-                  )}
+                  <span className="w-12 rounded-md border border-transparent px-2 py-0.5 text-right text-sm text-muted-foreground hover:border-border">
+                    {topN}
+                  </span>
                 </div>
+                <Slider
+                  value={[topN]}
+                  min={minSliderValue}
+                  max={maxSliderValue}
+                  step={10}
+                  onValueChange={(value) => setTopN(value[0])}
+                  className="[&_[role=slider]]:h-4 [&_[role=slider]]:w-4"
+                  aria-label="Number of stocks"
+                />
               </div>
             </form>
           </CardContent>
@@ -874,116 +876,89 @@ export function AdvanceDeclineChart({
       </Card>
 
       {/* Chart Card */}
-      <div ref={chartContainerRef} className={containerClassName}>
-        <Card>
+      <div ref={chartContainerRef}>
+        <Card className={containerClassName} style={videoModeStyle}>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Advance-Decline Line</CardTitle>
+                <CardTitle>Advance-Decline Line - {selectedSector === 'all' ? 'All Sectors' : selectedSector}</CardTitle>
                 <CardDescription>
-                  Top {topN} stocks by market cap
-                  {selectedSector && selectedSector !== 'all' && (
-                    <span className="ml-2">• {selectedSector} sector</span>
-                  )}
-                  {data.length > 0 && (
-                    <span className="ml-2">
-                      ({new Date(data[0].date).toLocaleDateString()} - {new Date(data[data.length - 1].date).toLocaleDateString()})
-                    </span>
-                  )}
+                  Cumulative Net Advances ({internalStartDate} to {internalEndDate})
                 </CardDescription>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowExplanation(true)}
-              >
-                <Info className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-blue-500 mr-2"></div>
+                  <span>AD Line</span>
+                </div>
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-emerald-500 mr-2 opacity-50 border border-emerald-500 border-dashed"></div>
+                  <span>Net Advances</span>
+                </div>
+                {showKse100 && (
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 bg-amber-500 mr-2"></div>
+                    <span>KSE100</span>
+                  </div>
+                )}
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 ml-2">
+                      <Info className="h-4 w-4" />
+                      <span className="sr-only">About AD Line</span>
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle>About Advance-Decline Line</DialogTitle>
+                      <DialogDescription>
+                        Understanding market breadth indicators
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 text-sm">
+                      <p>
+                        The <strong>Advance-Decline Line (AD Line)</strong> is a market breadth indicator that represents the cumulative difference between the number of advancing and declining stocks.
+                      </p>
+                      <div>
+                        <h4 className="font-semibold mb-2">Formula:</h4>
+                        <p className="font-mono bg-muted p-2 rounded text-xs">
+                          AD Line = Previous AD Line + (Advancing - Declining)
+                        </p>
+                      </div>
+                      <ul className="list-disc pl-5 space-y-2">
+                        <li>
+                          <strong>Rising AD Line:</strong> Suggests broad market participation in an uptrend.
+                        </li>
+                        <li>
+                          <strong>Falling AD Line:</strong> Indicates market weakness. Divergence with index suggests a narrow rally.
+                        </li>
+                      </ul>
+                      {selectedSector && selectedSector !== 'all' && (
+                        <div>
+                          <h4 className="font-semibold mb-1">Sector Index:</h4>
+                          <p>
+                            Market-cap weighted index of all stocks in the sector (normalized to 100).
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="h-[500px] w-full">
-              <Line
-                key={`chart-${showSectorIndex}-${selectedSector}-${topN}-${includeDividends}`}
-                data={chartData}
-                options={options}
-              />
-            </div>
-            <div className="mt-4 text-sm text-muted-foreground space-y-1">
-              <p>
-                <strong>Formula:</strong> AD Line = Previous AD Line + (Advancing Stocks - Declining Stocks)
-              </p>
-              <p>
-                The Advance-Decline Line is a cumulative indicator that tracks the net difference between advancing and declining stocks over time.
-              </p>
-              <div className="flex items-center gap-4 mt-4 pt-4 border-t">
-                <p className="text-xs text-muted-foreground flex-1">
-                  💡 <strong>Tip:</strong> Click on any point in the "Net Advances" line to view the market heatmap.
-                </p>
-                <Link
-                  href={`/advance-decline/stocks?${new URLSearchParams({
-                    sector: selectedSector || 'all',
-                    limit: topN.toString(),
-                  }).toString()}`}
-                  target="_blank"
-                  className="text-xs text-primary hover:underline flex items-center gap-1"
-                >
-                  <List className="h-3 w-3" />
-                  View {topN} stocks in this filter
-                  <ExternalLink className="h-3 w-3 ml-1" />
-                </Link>
-              </div>
+            {showSectorIndex && sectorIndexData.length === 0 && selectedSector !== 'all' && (
+              <Alert className="mb-4">
+                <AlertDescription>
+                  No index data available for this sector in the selected timeframe. Try expanding the date range.
+                </AlertDescription>
+              </Alert>
+            )}
+            <div className="h-[400px] w-full">
+              <Line key={replayKey} data={chartData} options={options} />
             </div>
           </CardContent>
-          <Dialog open={showExplanation} onOpenChange={setShowExplanation}>
-            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto w-[95vw] sm:w-full">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
-                  <Info className="h-5 w-5" />
-                  Advance-Decline Line
-                </DialogTitle>
-                <DialogDescription className="text-xs sm:text-sm">
-                  Track market breadth using the cumulative Advance-Decline Line
-                </DialogDescription>
-              </DialogHeader>
-              <div className="text-sm sm:text-base space-y-4">
-                <div>
-                  <h4 className="font-semibold mb-2">What is the Advance-Decline Line?</h4>
-                  <p className="text-sm text-muted-foreground">
-                    The Advance-Decline Line (A/D Line) is a breadth indicator that measures the number of advancing stocks minus the number of declining stocks. It's calculated cumulatively, meaning each day's net advances are added to the previous day's total.
-                  </p>
-                </div>
-                <div>
-                  <h4 className="font-semibold mb-2">Formula:</h4>
-                  <p className="text-sm text-muted-foreground font-mono bg-muted p-2 rounded">
-                    AD Line = Previous AD Line + (Advancing Stocks - Declining Stocks)
-                  </p>
-                </div>
-                <div>
-                  <h4 className="font-semibold mb-2">Interpretation:</h4>
-                  <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
-                    <li><strong>Rising A/D Line:</strong> More stocks are advancing than declining, indicating broad market strength</li>
-                    <li><strong>Falling A/D Line:</strong> More stocks are declining than advancing, indicating broad market weakness</li>
-                    <li><strong>Divergence:</strong> If the market index is rising but A/D Line is falling, it suggests the rally is narrow and may not be sustainable</li>
-                  </ul>
-                </div>
-                <div>
-                  <h4 className="font-semibold mb-2">Data Source:</h4>
-                  <p className="text-sm text-muted-foreground">
-                    This chart uses the top {topN} Pakistan Stock Exchange (PSX) stocks by market capitalization. A stock is considered "advancing" if its price increased from the previous trading day, "declining" if it decreased, and "unchanged" if the price remained the same.
-                  </p>
-                </div>
-                {selectedSector && selectedSector !== 'all' && (
-                  <div>
-                    <h4 className="font-semibold mb-2">Sector Index:</h4>
-                    <p className="text-sm text-muted-foreground">
-                      When a sector is selected, you can enable the sector index overlay. This is a market-cap weighted index of ALL stocks in the sector (not just top N), normalized to start at 100 on the start date. This allows you to compare the sector's overall performance with the Advance-Decline Line.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </DialogContent>
-          </Dialog>
         </Card>
       </div>
     </div>

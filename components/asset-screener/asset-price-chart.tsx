@@ -30,7 +30,7 @@ import { useChartRecorder } from "@/hooks/use-chart-recorder"
 
 export function AssetPriceChart({ asset }: AssetPriceChartProps) {
   const { theme } = useTheme()
-  const { isVideoMode, toggleVideoMode, containerClassName, videoModeColors } = useVideoMode()
+  const { isVideoMode, toggleVideoMode, containerClassName, videoModeColors, videoModeStyle } = useVideoMode()
   const colors = useMemo(() => {
     const themeColors = getThemeColors()
     if (isVideoMode) {
@@ -44,6 +44,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
   }, [theme, isVideoMode, videoModeColors])
 
   const chartContainerRef = useRef<HTMLDivElement>(null)
+  const [replayKey, setReplayKey] = useState(0)
 
   // Recording Hook
   const { isRecording, isEncoding, startRecording, stopRecording } = useChartRecorder(chartContainerRef as React.RefObject<HTMLElement>, {
@@ -51,6 +52,14 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
     quality: 10,
     delay: 100 // 10 FPS
   })
+
+  // Handle recording start with redraw
+  const handleRecordStart = async () => {
+    // Trigger redraw
+    setReplayKey(prev => prev + 1)
+    // Wait for re-render and animation start
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
 
   const { toast } = useToast()
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('1Y')
@@ -479,7 +488,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
   }), [asset, showComparison, showTotalReturn, canShowComparison, canShowTotalReturn, theme, formatCurrency, useLogScale])
 
   return (
-    <Card className={containerClassName}>
+    <Card className={containerClassName} style={videoModeStyle}>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
@@ -518,7 +527,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
               onToggle={toggleVideoMode}
               isRecording={isRecording}
               isEncoding={isEncoding}
-              onRecordStart={startRecording}
+              onRecordStart={() => startRecording(handleRecordStart)}
               onRecordStop={stopRecording}
             />
             <Select value={chartPeriod} onValueChange={(value) => setChartPeriod(value as ChartPeriod)}>
@@ -566,7 +575,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
               </div>
             ) : chartData ? (
               <div className="h-[400px]">
-                <Line data={chartData} options={chartOptions} />
+                <Line key={replayKey} data={chartData} options={chartOptions} />
               </div>
             ) : (
               <div className="flex items-center justify-center h-[400px] text-muted-foreground">

@@ -99,9 +99,10 @@ function filterDataByRange(data: PriceDataPoint[], range: TimeRange): PriceDataP
 
 export function UnifiedPriceChart() {
     const { theme } = useTheme()
-    const { isVideoMode, toggleVideoMode, containerClassName, videoModeColors } = useVideoMode()
+    const { isVideoMode, toggleVideoMode, containerClassName, videoModeColors, videoModeStyle } = useVideoMode()
     const { toast } = useToast()
     const chartContainerRef = useRef<HTMLDivElement>(null)
+    const [replayKey, setReplayKey] = useState(0)
 
     // Recording Hook
     const { isRecording, isEncoding, startRecording, stopRecording } = useChartRecorder(chartContainerRef as React.RefObject<HTMLElement>, {
@@ -109,6 +110,14 @@ export function UnifiedPriceChart() {
         quality: 10,
         delay: 100 // 10 FPS
     })
+
+    // Handle recording start with redraw
+    const handleRecordStart = async () => {
+        // Trigger redraw
+        setReplayKey(prev => prev + 1)
+        // Wait for re-render and animation start
+        await new Promise(resolve => setTimeout(resolve, 500))
+    }
 
     const colors = useMemo(() => {
         const themeColors = getThemeColors()
@@ -783,7 +792,7 @@ export function UnifiedPriceChart() {
 
     return (
         <div className="space-y-4">
-            <Card className={containerClassName}>
+            <Card className={containerClassName} style={videoModeStyle}>
                 <CardHeader className="pb-4">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
@@ -798,7 +807,7 @@ export function UnifiedPriceChart() {
                                 onToggle={toggleVideoMode}
                                 isRecording={isRecording}
                                 isEncoding={isEncoding}
-                                onRecordStart={startRecording}
+                                onRecordStart={() => startRecording(handleRecordStart)}
                                 onRecordStop={stopRecording}
                             />
                             <Select value={assetType} onValueChange={(v) => setAssetType(v as AssetType)}>

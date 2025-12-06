@@ -27,8 +27,12 @@ export function useChartRecorder(ref: React.RefObject<HTMLElement>, options: Use
         isStopping: false
     })
 
-    const startRecording = useCallback(() => {
+    const startRecording = useCallback(async (onStart?: () => Promise<void> | void) => {
         if (!ref.current || isRecording) return
+
+        if (onStart) {
+            await onStart()
+        }
 
         setIsRecording(true)
         setProgress(0)
