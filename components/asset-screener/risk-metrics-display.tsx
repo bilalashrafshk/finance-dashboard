@@ -20,7 +20,7 @@ interface RiskMetricsDisplayProps {
     riskFreeRates: RiskFreeRates
 }
 
-type Timeframe = '1Y' | '3Y' | '5Y' | 'All'
+type Timeframe = '1M' | '3M' | '6M' | 'YTD' | '1Y' | '3Y' | '5Y' | 'All'
 
 export function RiskMetricsDisplay({
     assetType,
@@ -48,7 +48,15 @@ export function RiskMetricsDisplay({
         const now = new Date()
         let startDate: Date
 
-        if (timeframe === '1Y') {
+        if (timeframe === '1M') {
+            startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate())
+        } else if (timeframe === '3M') {
+            startDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate())
+        } else if (timeframe === '6M') {
+            startDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate())
+        } else if (timeframe === 'YTD') {
+            startDate = new Date(now.getFullYear(), 0, 1) // Jan 1st of current year
+        } else if (timeframe === '1Y') {
             startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
         } else if (timeframe === '3Y') {
             startDate = new Date(now.getFullYear() - 3, now.getMonth(), now.getDate())
@@ -101,90 +109,135 @@ export function RiskMetricsDisplay({
     const benchmarkName = assetType === 'us-equity' ? 'SPX500' : assetType === 'pk-equity' ? 'KSE100' : 'Benchmark'
 
     return (
-        <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Risk Metrics</h3>
+        <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <h3 className="text-xl font-bold tracking-tight">Risk Metrics</h3>
+                    <p className="text-sm text-muted-foreground">
+                        Analyze risk-adjusted returns and volatility against {benchmarkName}
+                    </p>
+                </div>
                 <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Timeframe:</span>
+                    <span className="text-sm font-medium text-muted-foreground hidden sm:inline-block">Timeframe:</span>
                     <Select value={timeframe} onValueChange={(value) => setTimeframe(value as Timeframe)}>
-                        <SelectTrigger className="w-[100px]">
+                        <SelectTrigger className="w-[120px] bg-background/50 backdrop-blur-sm border-muted">
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="1Y">1Y</SelectItem>
-                            <SelectItem value="3Y">3Y</SelectItem>
-                            <SelectItem value="5Y">5Y</SelectItem>
-                            <SelectItem value="All">All</SelectItem>
+                            <SelectItem value="1M">1 Month</SelectItem>
+                            <SelectItem value="3M">3 Months</SelectItem>
+                            <SelectItem value="6M">6 Months</SelectItem>
+                            <SelectItem value="YTD">YTD</SelectItem>
+                            <SelectItem value="1Y">1 Year</SelectItem>
+                            <SelectItem value="3Y">3 Years</SelectItem>
+                            <SelectItem value="5Y">5 Years</SelectItem>
+                            <SelectItem value="All">All Time</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card className="bg-gradient-to-br from-background to-muted/20 border-muted/60 shadow-sm hover:shadow-md transition-all duration-300">
                     <CardHeader className="pb-2">
-                        <CardDescription>
-                            Beta
-                            <span className="text-xs text-muted-foreground ml-2">
-                                (vs {benchmarkName})
+                        <CardDescription className="flex items-center justify-between">
+                            <span>Beta</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                                vs {benchmarkName}
                             </span>
                         </CardDescription>
-                        <CardTitle className="text-lg">
+                        <CardTitle className="text-2xl font-bold">
                             {metrics.beta !== null ? metrics.beta.toFixed(2) : 'N/A'}
                         </CardTitle>
                     </CardHeader>
+                    <div className="px-6 pb-4">
+                        <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
+                            <div
+                                className={`h-full ${metrics.beta !== null && metrics.beta > 1 ? 'bg-orange-500' : 'bg-blue-500'}`}
+                                style={{ width: metrics.beta !== null ? `${Math.min(metrics.beta * 50, 100)}%` : '0%' }}
+                            />
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">
+                            {metrics.beta !== null
+                                ? metrics.beta > 1
+                                    ? `More volatile than ${benchmarkName}`
+                                    : `Less volatile than ${benchmarkName}`
+                                : 'Insufficient data'}
+                        </p>
+                    </div>
                 </Card>
 
-                <Card>
+                <Card className="bg-gradient-to-br from-background to-muted/20 border-muted/60 shadow-sm hover:shadow-md transition-all duration-300">
                     <CardHeader className="pb-2">
-                        <CardDescription>
-                            Sharpe Ratio
-                            <span className="text-xs text-muted-foreground ml-2">
-                                (Annualized)
+                        <CardDescription className="flex items-center justify-between">
+                            <span>Sharpe Ratio</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                                Annualized
                             </span>
                         </CardDescription>
-                        <CardTitle className={`text-lg ${metrics.sharpe !== null
-                                ? metrics.sharpe >= 1 ? 'text-green-600 dark:text-green-400'
-                                    : metrics.sharpe >= 0 ? 'text-yellow-600 dark:text-yellow-400'
-                                        : 'text-red-600 dark:text-red-400'
+                        <CardTitle className={`text-2xl font-bold ${metrics.sharpe !== null
+                                ? metrics.sharpe >= 1 ? 'text-green-500'
+                                    : metrics.sharpe >= 0 ? 'text-yellow-500'
+                                        : 'text-red-500'
                                 : ''
                             }`}>
                             {metrics.sharpe !== null ? metrics.sharpe.toFixed(2) : 'N/A'}
                         </CardTitle>
                     </CardHeader>
+                    <div className="px-6 pb-4">
+                        <p className="text-xs text-muted-foreground">
+                            Risk-adjusted return relative to risk-free rate. Higher is better.
+                        </p>
+                    </div>
                 </Card>
 
-                <Card>
+                <Card className="bg-gradient-to-br from-background to-muted/20 border-muted/60 shadow-sm hover:shadow-md transition-all duration-300">
                     <CardHeader className="pb-2">
-                        <CardDescription>
-                            Sortino Ratio
-                            <span className="text-xs text-muted-foreground ml-2">
-                                (Downside Risk)
+                        <CardDescription className="flex items-center justify-between">
+                            <span>Sortino Ratio</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                                Downside Risk
                             </span>
                         </CardDescription>
-                        <CardTitle className={`text-lg ${metrics.sortino !== null
-                                ? metrics.sortino >= 1 ? 'text-green-600 dark:text-green-400'
-                                    : metrics.sortino >= 0 ? 'text-yellow-600 dark:text-yellow-400'
-                                        : 'text-red-600 dark:text-red-400'
+                        <CardTitle className={`text-2xl font-bold ${metrics.sortino !== null
+                                ? metrics.sortino >= 1 ? 'text-green-500'
+                                    : metrics.sortino >= 0 ? 'text-yellow-500'
+                                        : 'text-red-500'
                                 : ''
                             }`}>
                             {metrics.sortino !== null ? metrics.sortino.toFixed(2) : 'N/A'}
                         </CardTitle>
                     </CardHeader>
+                    <div className="px-6 pb-4">
+                        <p className="text-xs text-muted-foreground">
+                            Similar to Sharpe, but penalizes only downside volatility.
+                        </p>
+                    </div>
                 </Card>
 
-                <Card>
+                <Card className="bg-gradient-to-br from-background to-muted/20 border-muted/60 shadow-sm hover:shadow-md transition-all duration-300">
                     <CardHeader className="pb-2">
-                        <CardDescription>
-                            Max Drawdown
-                            <span className="text-xs text-muted-foreground ml-2">
-                                ({timeframe})
+                        <CardDescription className="flex items-center justify-between">
+                            <span>Max Drawdown</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                                {timeframe}
                             </span>
                         </CardDescription>
-                        <CardTitle className="text-lg text-red-600 dark:text-red-400">
+                        <CardTitle className="text-2xl font-bold text-red-500">
                             {metrics.maxDrawdown !== null ? formatPercentage(metrics.maxDrawdown) : 'N/A'}
                         </CardTitle>
                     </CardHeader>
+                    <div className="px-6 pb-4">
+                        <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-red-500"
+                                style={{ width: metrics.maxDrawdown !== null ? `${Math.min(metrics.maxDrawdown, 100)}%` : '0%' }}
+                            />
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">
+                            Maximum observed loss from peak to trough in this period.
+                        </p>
+                    </div>
                 </Card>
             </div>
         </div>

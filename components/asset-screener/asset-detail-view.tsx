@@ -466,8 +466,6 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
 
         <HistoricPEChart asset={asset} />
 
-        <HistoricPEChart asset={asset} />
-
         <RiskMetricsDisplay
           assetType={asset.assetType}
           historicalData={fullHistoricalDataForMaxDD.length > 0 ? fullHistoricalDataForMaxDD : []}

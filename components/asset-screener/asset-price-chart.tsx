@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useTheme } from "next-themes"
 import { Loader2 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -24,6 +24,10 @@ import {
 } from "chart.js"
 import type { TrackedAsset } from "./add-asset-dialog"
 import type { PriceDataPoint } from "@/lib/asset-screener/metrics-calculations"
+import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
+import Link from "next/link"
+import { useVideoMode } from "@/hooks/use-video-mode"
+import { VideoModeToggle } from "@/components/ui/video-mode-toggle"
 import { getThemeColors } from "@/lib/charts/theme-colors"
 import { createAssetPriceYAxisScaleConfig } from "@/lib/charts/portfolio-chart-utils"
 import {
@@ -53,7 +57,9 @@ interface AssetPriceChartProps {
 
 export function AssetPriceChart({ asset }: AssetPriceChartProps) {
   const { theme } = useTheme()
-  const colors = getThemeColors()
+  const { isVideoMode, toggleVideoMode, containerClassName } = useVideoMode()
+  const colors = useMemo(() => getThemeColors(), [theme])
+  const chartContainerRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('1Y')
   const [showComparison, setShowComparison] = useState(false)
@@ -467,12 +473,14 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
   }), [asset, showComparison, showTotalReturn, canShowComparison, canShowTotalReturn, theme, formatCurrency, useLogScale])
 
   return (
-    <Card>
+    <Card className={containerClassName}>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Price Chart</CardTitle>
-            <CardDescription>Historical price performance</CardDescription>
+            <CardTitle>Price Chart - {asset.symbol}</CardTitle>
+            <CardDescription>
+              {asset.name} ({asset.currency})
+            </CardDescription>
           </div>
           <div className="flex items-center gap-4">
             {canShowTotalReturn && (
@@ -499,6 +507,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
                 </Label>
               </div>
             )}
+            <VideoModeToggle isVideoMode={isVideoMode} onToggle={toggleVideoMode} />
             <Select value={chartPeriod} onValueChange={(value) => setChartPeriod(value as ChartPeriod)}>
               <SelectTrigger className="w-[120px]">
                 <SelectValue />

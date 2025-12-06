@@ -35,6 +35,8 @@ import "chartjs-adapter-date-fns"
 import { createTimeSeriesChartOptions } from "@/lib/charts/chart-config"
 import { getThemeColors } from "@/lib/charts/theme-colors"
 import { useToast } from "@/hooks/use-toast"
+import { useVideoMode } from "@/hooks/use-video-mode"
+import { VideoModeToggle } from "@/components/ui/video-mode-toggle"
 
 ChartJS.register(
   CategoryScale,
@@ -63,10 +65,10 @@ interface AdvanceDeclineChartProps {
   limit?: number
 }
 
-export function AdvanceDeclineChart({ 
-  startDate, 
-  endDate, 
-  limit = 100 
+export function AdvanceDeclineChart({
+  startDate,
+  endDate,
+  limit = 100
 }: AdvanceDeclineChartProps) {
   const [data, setData] = useState<AdvanceDeclineDataPoint[]>([])
   const [kse100Data, setKse100Data] = useState<Array<{ date: string; close: number }>>([])
@@ -82,7 +84,7 @@ export function AdvanceDeclineChart({
   const [availableSectors, setAvailableSectors] = useState<string[]>([])
   const [topN, setTopN] = useState(limit)
   const [totalStocksInSector, setTotalStocksInSector] = useState<number | null>(null)
-  
+
   // Initialize dates: use props if provided, otherwise default to 1 year ago to today
   const getDefaultStartDate = (): string => {
     if (startDate) return startDate
@@ -94,10 +96,11 @@ export function AdvanceDeclineChart({
     if (endDate) return endDate
     return new Date().toISOString().split('T')[0]
   }
-  
+
   const [internalStartDate, setInternalStartDate] = useState<string>(getDefaultStartDate())
   const [internalEndDate, setInternalEndDate] = useState<string>(getDefaultEndDate())
   const { theme } = useTheme()
+  const { isVideoMode, toggleVideoMode, containerClassName } = useVideoMode()
   const colors = getThemeColors()
   const { toast } = useToast()
 
@@ -137,7 +140,7 @@ export function AdvanceDeclineChart({
     async function fetchData() {
       setLoading(true)
       setError(null)
-      
+
       try {
         // Fetch AD Line data
         const params = new URLSearchParams()
@@ -147,15 +150,15 @@ export function AdvanceDeclineChart({
         if (selectedSector && selectedSector !== 'all') {
           params.append('sector', selectedSector)
         }
-        
+
         const response = await fetch(`/api/advance-decline?${params.toString()}`)
-        
+
         if (!response.ok) {
           throw new Error('Failed to fetch Advance-Decline data')
         }
-        
+
         const result = await response.json()
-        
+
         if (result.success) {
           setData(result.data || [])
           setTotalStocksInSector(result.totalStocksInSector || null)
@@ -171,9 +174,9 @@ export function AdvanceDeclineChart({
             sectorIndexParams.append('startDate', internalStartDate)
             if (internalEndDate) sectorIndexParams.append('endDate', internalEndDate)
             sectorIndexParams.append('includeDividends', includeDividends.toString())
-            
+
             const sectorIndexResponse = await fetch(`/api/sector-index?${sectorIndexParams.toString()}`)
-            
+
             if (sectorIndexResponse.ok) {
               const sectorIndexResult = await sectorIndexResponse.json()
               if (sectorIndexResult.success && sectorIndexResult.data && sectorIndexResult.data.length > 0) {
@@ -181,7 +184,7 @@ export function AdvanceDeclineChart({
                   date: typeof d.date === 'string' ? d.date.split('T')[0] : new Date(d.date).toISOString().split('T')[0],
                   index: parseFloat(d.index) || 0
                 })).filter((d: any) => d.index > 0)
-                
+
                 if (mappedData.length > 0) {
                   setSectorIndexData(mappedData)
                 } else {
@@ -207,9 +210,9 @@ export function AdvanceDeclineChart({
           kse100Params.append('symbol', 'KSE100')
           if (internalStartDate) kse100Params.append('startDate', internalStartDate)
           if (internalEndDate) kse100Params.append('endDate', internalEndDate)
-          
+
           const kse100Response = await fetch(`/api/historical-data?${kse100Params.toString()}`)
-          
+
           if (kse100Response.ok) {
             const kse100Result = await kse100Response.json()
             if (kse100Result.data && Array.isArray(kse100Result.data)) {
@@ -217,20 +220,20 @@ export function AdvanceDeclineChart({
               let filtered = kse100Result.data
               if (startDate || endDate) {
                 filtered = kse100Result.data.filter((record: any) => {
-                  const recordDate = typeof record.date === 'string' 
-                    ? record.date.split('T')[0] 
+                  const recordDate = typeof record.date === 'string'
+                    ? record.date.split('T')[0]
                     : new Date(record.date).toISOString().split('T')[0]
                   if (startDate && recordDate < startDate) return false
                   if (endDate && recordDate > endDate) return false
                   return true
                 })
               }
-              
+
               const formatted = filtered
                 .map((record: any) => {
                   // Normalize date to YYYY-MM-DD format
-                  const dateStr = typeof record.date === 'string' 
-                    ? record.date.split('T')[0] 
+                  const dateStr = typeof record.date === 'string'
+                    ? record.date.split('T')[0]
                     : new Date(record.date).toISOString().split('T')[0]
                   return {
                     date: dateStr,
@@ -238,7 +241,7 @@ export function AdvanceDeclineChart({
                   }
                 })
                 .filter((point: any) => !isNaN(point.close) && point.close > 0)
-              
+
               setKse100Data(formatted)
             }
           }
@@ -288,7 +291,7 @@ export function AdvanceDeclineChart({
       const dateStr = typeof d.date === 'string' ? d.date : new Date(d.date).toISOString().split('T')[0]
       sectorIndexDateMap.set(dateStr, d.index)
     })
-    
+
     const datasets = [
       {
         label: 'Advance-Decline Line',
@@ -324,21 +327,21 @@ export function AdvanceDeclineChart({
       let lastKse100Value: number | null = null
       const kse100Values = data.map(point => {
         // Normalize date to string format for matching
-        const dateStr = typeof point.date === 'string' 
-          ? point.date.split('T')[0] 
+        const dateStr = typeof point.date === 'string'
+          ? point.date.split('T')[0]
           : new Date(point.date).toISOString().split('T')[0]
         const kse100Value = kse100DateMap.get(dateStr)
-        
+
         // If we have a value, use it and update last known value
         if (kse100Value !== undefined) {
           lastKse100Value = kse100Value
           return kse100Value
         }
-        
+
         // If no value (weekend/holiday), use last known value to keep line continuous
         return lastKse100Value
       })
-      
+
       const matchedCount = kse100Values.filter(v => v !== null).length
 
       datasets.push({
@@ -360,16 +363,16 @@ export function AdvanceDeclineChart({
     if (showSectorIndex && sectorIndexData.length > 0) {
       let lastSectorIndexValue: number | null = null
       const sectorIndexValues = data.map(point => {
-        const dateStr = typeof point.date === 'string' 
-          ? point.date.split('T')[0] 
+        const dateStr = typeof point.date === 'string'
+          ? point.date.split('T')[0]
           : new Date(point.date).toISOString().split('T')[0]
         const sectorIndexValue = sectorIndexDateMap.get(dateStr)
-        
+
         if (sectorIndexValue !== undefined && sectorIndexValue !== null) {
           lastSectorIndexValue = sectorIndexValue
           return sectorIndexValue
         }
-        
+
         // Forward-fill with last known value to keep line continuous
         return lastSectorIndexValue
       })
@@ -414,11 +417,11 @@ export function AdvanceDeclineChart({
       const allValues = [...adLineValues, ...netAdvanceValues].filter(v => v !== null && v !== undefined)
       const minValue = allValues.length > 0 ? Math.min(...allValues) : 0
       const maxValue = allValues.length > 0 ? Math.max(...allValues) : 1
-      
+
       // Add padding to the range
       const range = maxValue - minValue
       const padding = range * 0.1 || 10
-      
+
       opts.scales.y = {
         type: "linear",
         position: "left",
@@ -431,7 +434,7 @@ export function AdvanceDeclineChart({
         },
         ticks: {
           color: colors.foreground,
-          callback: function(value: any) {
+          callback: function (value: any) {
             return typeof value === 'number' ? value.toLocaleString() : value
           },
         },
@@ -469,7 +472,7 @@ export function AdvanceDeclineChart({
           },
           ticks: {
             color: '#f59e0b',
-            callback: function(value: any) {
+            callback: function (value: any) {
               return typeof value === 'number' ? value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : value
             },
           },
@@ -499,7 +502,7 @@ export function AdvanceDeclineChart({
           },
           ticks: {
             color: '#8b5cf6',
-            callback: function(value: any) {
+            callback: function (value: any) {
               return typeof value === 'number' ? value.toFixed(1) : value
             },
           },
@@ -537,7 +540,7 @@ export function AdvanceDeclineChart({
               `Unchanged: ${point.unchanged}`,
               `Net Advances: ${point.netAdvances > 0 ? '+' : ''}${point.netAdvances}`,
             ]
-            
+
             // Add KSE100 value if available
             if (showKse100 && kse100Data.length > 0) {
               const kse100Value = kse100Data.find(d => d.date === point.date)?.close
@@ -553,7 +556,7 @@ export function AdvanceDeclineChart({
                 labels.push(`${selectedSector} Index: ${sectorIndexValue.toFixed(2)}`)
               }
             }
-            
+
             return labels
           }
           return []
@@ -567,36 +570,36 @@ export function AdvanceDeclineChart({
       if (!elements || elements.length === 0) {
         return
       }
-      
+
       // Find the Net Advances dataset by label
       const netAdvancesDatasetIndex = chart.data.datasets.findIndex((ds: any) => ds.label === 'Net Advances')
       if (netAdvancesDatasetIndex === -1) {
         return
       }
-      
+
       // Check ALL elements to see if any are from Net Advances dataset
       const netAdvancesElement = elements.find((el: any) => el.datasetIndex === netAdvancesDatasetIndex)
-      
+
       if (!netAdvancesElement) {
         // Click was not on Net Advances - ignore
         return
       }
-      
+
       const dataIndex = netAdvancesElement.index
-      
+
       if (dataIndex < 0 || dataIndex >= data.length) {
         return
       }
-      
+
       const point = data[dataIndex]
       // Normalize date to YYYY-MM-DD format
-      const dateStr = typeof point.date === 'string' 
-        ? point.date.split('T')[0] 
+      const dateStr = typeof point.date === 'string'
+        ? point.date.split('T')[0]
         : new Date(point.date).toISOString().split('T')[0]
-      
+
       // Link to charts page with market heatmap section
       const url = `/charts#market-heatmap`
-      
+
       try {
         const newWindow = window.open(url, '_blank')
         if (!newWindow) {
@@ -606,7 +609,7 @@ export function AdvanceDeclineChart({
         window.location.href = url
       }
     }
-    
+
     // Ensure interaction mode allows clicking on lines (not just points)
     opts.interaction = {
       ...opts.interaction,
@@ -678,7 +681,7 @@ export function AdvanceDeclineChart({
   return (
     <div className="space-y-4">
       {/* Settings Panel */}
-      <Card>
+      <Card className={containerClassName}>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -688,13 +691,16 @@ export function AdvanceDeclineChart({
               </CardTitle>
               <CardDescription>Configure date range, filters and overlays</CardDescription>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowSettings(!showSettings)}
-            >
-              {showSettings ? 'Hide' : 'Show'} Settings
-            </Button>
+            <div className="flex items-center gap-2">
+              <VideoModeToggle isVideoMode={isVideoMode} onToggle={toggleVideoMode} />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowSettings(!showSettings)}
+              >
+                {showSettings ? 'Hide' : 'Show'} Settings
+              </Button>
+            </div>
           </div>
         </CardHeader>
         {showSettings && (
@@ -865,89 +871,89 @@ export function AdvanceDeclineChart({
             </Button>
           </div>
         </CardHeader>
-      <CardContent>
-        <div className="h-[500px] w-full">
-          <Line 
-            key={`chart-${showSectorIndex}-${selectedSector}-${topN}-${includeDividends}`}
-            data={chartData} 
-            options={options} 
-          />
-        </div>
-        <div className="mt-4 text-sm text-muted-foreground space-y-1">
-          <p>
-            <strong>Formula:</strong> AD Line = Previous AD Line + (Advancing Stocks - Declining Stocks)
-          </p>
-          <p>
-            The Advance-Decline Line is a cumulative indicator that tracks the net difference between advancing and declining stocks over time.
-          </p>
-          <div className="flex items-center gap-4 mt-4 pt-4 border-t">
-            <p className="text-xs text-muted-foreground flex-1">
-              💡 <strong>Tip:</strong> Click on any point in the "Net Advances" line to view the market heatmap.
-            </p>
-            <Link
-              href={`/advance-decline/stocks?${new URLSearchParams({
-                sector: selectedSector || 'all',
-                limit: topN.toString(),
-              }).toString()}`}
-              target="_blank"
-              className="text-xs text-primary hover:underline flex items-center gap-1"
-            >
-              <List className="h-3 w-3" />
-              View {topN} stocks in this filter
-              <ExternalLink className="h-3 w-3 ml-1" />
-            </Link>
+        <CardContent>
+          <div className="h-[500px] w-full">
+            <Line
+              key={`chart-${showSectorIndex}-${selectedSector}-${topN}-${includeDividends}`}
+              data={chartData}
+              options={options}
+            />
           </div>
-        </div>
-      </CardContent>
-      <Dialog open={showExplanation} onOpenChange={setShowExplanation}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto w-[95vw] sm:w-full">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <Info className="h-5 w-5" />
-              Advance-Decline Line
-            </DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">
-              Track market breadth using the cumulative Advance-Decline Line
-            </DialogDescription>
-          </DialogHeader>
-          <div className="text-sm sm:text-base space-y-4">
-            <div>
-              <h4 className="font-semibold mb-2">What is the Advance-Decline Line?</h4>
-              <p className="text-sm text-muted-foreground">
-                The Advance-Decline Line (A/D Line) is a breadth indicator that measures the number of advancing stocks minus the number of declining stocks. It's calculated cumulatively, meaning each day's net advances are added to the previous day's total.
+          <div className="mt-4 text-sm text-muted-foreground space-y-1">
+            <p>
+              <strong>Formula:</strong> AD Line = Previous AD Line + (Advancing Stocks - Declining Stocks)
+            </p>
+            <p>
+              The Advance-Decline Line is a cumulative indicator that tracks the net difference between advancing and declining stocks over time.
+            </p>
+            <div className="flex items-center gap-4 mt-4 pt-4 border-t">
+              <p className="text-xs text-muted-foreground flex-1">
+                💡 <strong>Tip:</strong> Click on any point in the "Net Advances" line to view the market heatmap.
               </p>
+              <Link
+                href={`/advance-decline/stocks?${new URLSearchParams({
+                  sector: selectedSector || 'all',
+                  limit: topN.toString(),
+                }).toString()}`}
+                target="_blank"
+                className="text-xs text-primary hover:underline flex items-center gap-1"
+              >
+                <List className="h-3 w-3" />
+                View {topN} stocks in this filter
+                <ExternalLink className="h-3 w-3 ml-1" />
+              </Link>
             </div>
-            <div>
-              <h4 className="font-semibold mb-2">Formula:</h4>
-              <p className="text-sm text-muted-foreground font-mono bg-muted p-2 rounded">
-                AD Line = Previous AD Line + (Advancing Stocks - Declining Stocks)
-              </p>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-2">Interpretation:</h4>
-              <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
-                <li><strong>Rising A/D Line:</strong> More stocks are advancing than declining, indicating broad market strength</li>
-                <li><strong>Falling A/D Line:</strong> More stocks are declining than advancing, indicating broad market weakness</li>
-                <li><strong>Divergence:</strong> If the market index is rising but A/D Line is falling, it suggests the rally is narrow and may not be sustainable</li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-2">Data Source:</h4>
-              <p className="text-sm text-muted-foreground">
-                This chart uses the top {topN} Pakistan Stock Exchange (PSX) stocks by market capitalization. A stock is considered "advancing" if its price increased from the previous trading day, "declining" if it decreased, and "unchanged" if the price remained the same.
-              </p>
-            </div>
-            {selectedSector && selectedSector !== 'all' && (
+          </div>
+        </CardContent>
+        <Dialog open={showExplanation} onOpenChange={setShowExplanation}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto w-[95vw] sm:w-full">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <Info className="h-5 w-5" />
+                Advance-Decline Line
+              </DialogTitle>
+              <DialogDescription className="text-xs sm:text-sm">
+                Track market breadth using the cumulative Advance-Decline Line
+              </DialogDescription>
+            </DialogHeader>
+            <div className="text-sm sm:text-base space-y-4">
               <div>
-                <h4 className="font-semibold mb-2">Sector Index:</h4>
+                <h4 className="font-semibold mb-2">What is the Advance-Decline Line?</h4>
                 <p className="text-sm text-muted-foreground">
-                  When a sector is selected, you can enable the sector index overlay. This is a market-cap weighted index of ALL stocks in the sector (not just top N), normalized to start at 100 on the start date. This allows you to compare the sector's overall performance with the Advance-Decline Line.
+                  The Advance-Decline Line (A/D Line) is a breadth indicator that measures the number of advancing stocks minus the number of declining stocks. It's calculated cumulatively, meaning each day's net advances are added to the previous day's total.
                 </p>
               </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+              <div>
+                <h4 className="font-semibold mb-2">Formula:</h4>
+                <p className="text-sm text-muted-foreground font-mono bg-muted p-2 rounded">
+                  AD Line = Previous AD Line + (Advancing Stocks - Declining Stocks)
+                </p>
+              </div>
+              <div>
+                <h4 className="font-semibold mb-2">Interpretation:</h4>
+                <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
+                  <li><strong>Rising A/D Line:</strong> More stocks are advancing than declining, indicating broad market strength</li>
+                  <li><strong>Falling A/D Line:</strong> More stocks are declining than advancing, indicating broad market weakness</li>
+                  <li><strong>Divergence:</strong> If the market index is rising but A/D Line is falling, it suggests the rally is narrow and may not be sustainable</li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-semibold mb-2">Data Source:</h4>
+                <p className="text-sm text-muted-foreground">
+                  This chart uses the top {topN} Pakistan Stock Exchange (PSX) stocks by market capitalization. A stock is considered "advancing" if its price increased from the previous trading day, "declining" if it decreased, and "unchanged" if the price remained the same.
+                </p>
+              </div>
+              {selectedSector && selectedSector !== 'all' && (
+                <div>
+                  <h4 className="font-semibold mb-2">Sector Index:</h4>
+                  <p className="text-sm text-muted-foreground">
+                    When a sector is selected, you can enable the sector index overlay. This is a market-cap weighted index of ALL stocks in the sector (not just top N), normalized to start at 100 on the start date. This allows you to compare the sector's overall performance with the Advance-Decline Line.
+                  </p>
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </Card>
     </div>
   )
