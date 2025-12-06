@@ -112,7 +112,8 @@ export function useChartRecorder(ref: React.RefObject<HTMLElement>, options: Use
     }, [ref, options.delay, options.quality, options.workerScript, isRecording])
 
     const stopRecording = useCallback(() => {
-        if (!recorderRef.current.gif || !isRecording) return
+        // Rely on ref existence, not state variable (which might be stale in closure)
+        if (!recorderRef.current.gif) return
 
         recorderRef.current.isStopping = true
         if (recorderRef.current.intervalId) {
@@ -122,7 +123,7 @@ export function useChartRecorder(ref: React.RefObject<HTMLElement>, options: Use
 
         setIsEncoding(true)
         recorderRef.current.gif.render()
-    }, [isRecording])
+    }, [])
 
     return {
         isRecording,
