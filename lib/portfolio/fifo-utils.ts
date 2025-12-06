@@ -33,6 +33,13 @@ export function calculateFifoMetrics(
     // Track cash balances by currency
     const cashBalances = new Map<string, number>()
 
+    // Sort trades by date to process chronologically
+    const sortedTrades = [...trades].sort((a, b) => {
+        const dateDiff = new Date(a.tradeDate).getTime() - new Date(b.tradeDate).getTime()
+        if (dateDiff !== 0) return dateDiff
+        return a.id - b.id
+    })
+
     for (const trade of sortedTrades) {
         const key = `${trade.assetType}:${trade.symbol.toUpperCase()}:${trade.currency}`
         const cashKey = `cash:CASH:${trade.currency}`
