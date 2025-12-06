@@ -1,15 +1,15 @@
 /**
  * Batch Data Fetcher for Screener
  * 
- * Uses centralized routes to fetch all data needed for screener calculations:
- * - Latest prices (via /api/prices/batch)
- * - Company profiles and financials (via /api/financials/batch)
+ * Uses centralized SERVICES to fetch all data needed for screener calculations:
+ * - Latest prices (via fetchBatchPrices service)
+ * - Company profiles and financials (via fetchBatchFinancials service)
  * 
- * All data fetching goes through centralized routes, which handle:
- * - Database checks
- * - External API fetching if data is missing
- * - Automatic data storage
+ * DIRECT SERVICE CALLS bypass HTTP layer to avoid 401 Auth errors in cron jobs.
  */
+import { fetchBatchPrices } from '@/lib/prices/batch-price-service'
+import { fetchBatchFinancials } from '@/lib/financials/batch-financials-service'
+
 export interface ScreenerBatchData {
   price: {
     price: number
@@ -42,29 +42,21 @@ export async function fetchScreenerBatchData(
   try {
     const symbolsUpper = symbols.map(s => s.toUpperCase())
 
-    // 1. Fetch prices via centralized batch API
-    const priceResponse = await fetch(`${apiBaseUrl}/api/prices/batch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        assets: symbolsUpper.map(symbol => ({
-          type: assetType,
-          symbol: symbol
-        }))
-      })
-    })
+    // 1. Fetch prices via SERVICE (Direct Call)
+    const priceResults = await fetchBatchPrices(
+      symbolsUpper.map(symbol => ({
+        type: assetType,
+        symbol: symbol
+      })),
+      apiBaseUrl
+    )
 
-    if (!priceResponse.ok) {
-      throw new Error(`Price batch API failed: ${priceResponse.status}`)
-    }
-
-    const priceData = await priceResponse.json()
     const priceMap = new Map<string, { price: number; date: string }>()
 
     symbolsUpper.forEach(symbol => {
       const key = `${assetType}:${symbol}`
-      const result = priceData.results?.[key]
-      if (result && result.price !== null && !result.error) {
+      const result = priceResults[key]
+      if (result && result.price !== undefined && !result.error) {
         priceMap.set(symbol, {
           price: result.price,
           date: result.date || new Date().toISOString().split('T')[0]
@@ -72,21 +64,8 @@ export async function fetchScreenerBatchData(
       }
     })
 
-    // 2. Fetch financials and profiles via centralized batch API
-    const financialsResponse = await fetch(`${apiBaseUrl}/api/financials/batch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        symbols: symbolsUpper,
-        assetType: assetType
-      })
-    })
-
-    if (!financialsResponse.ok) {
-      throw new Error(`Financials batch API failed: ${financialsResponse.status}`)
-    }
-
-    const financialsData = await financialsResponse.json()
+    // 2. Fetch financials and profiles via SERVICE (Direct Call)
+    const financialsData = await fetchBatchFinancials(symbolsUpper, assetType)
     const financialsMap = financialsData.results || {}
 
     // 3. Combine all data by symbol
@@ -141,4 +120,3 @@ export async function fetchScreenerBatchData(
     throw error
   }
 }
-
