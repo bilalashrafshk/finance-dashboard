@@ -21,6 +21,7 @@ import { type InvestingHistoricalDataPoint } from "@/lib/portfolio/investing-cli
 import type { PriceDataPoint } from "@/lib/asset-screener/metrics-calculations"
 import { useVideoMode } from "@/hooks/use-video-mode"
 import { VideoModeToggle } from "@/components/ui/video-mode-toggle"
+import { useChartRecorder } from "@/hooks/use-chart-recorder"
 
 interface MarketCycleChartProps {
   // Optional: if not provided, will fetch KSE100 data
@@ -59,7 +60,16 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
   const [visibleCycles, setVisibleCycles] = useState<Set<string>>(new Set())
   const [isDark, setIsDark] = useState(false)
   const [currency, setCurrency] = useState<'PKR' | 'USD'>('PKR')
-  const { isVideoMode, toggleVideoMode, containerClassName } = useVideoMode()
+  const { isVideoMode, toggleVideoMode, containerClassName, videoModeColors } = useVideoMode()
+
+  const chartContainerRef = useRef<HTMLDivElement>(null)
+
+  // Recording Hook
+  const { isRecording, isEncoding, startRecording, stopRecording } = useChartRecorder(chartContainerRef as React.RefObject<HTMLElement>, {
+    workerScript: '/gif.worker.js',
+    quality: 10,
+    delay: 100 // 10 FPS
+  })
 
   // Cache for exchange rate data
   const exchangeRateCacheRef = useRef<{
@@ -488,9 +498,9 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
   }
 
   // Theme-aware colors
-  const gridColor = isDark ? '#374151' : '#e5e7eb'
-  const axisColor = isDark ? '#9ca3af' : '#6b7280'
-  const axisLabelColor = isDark ? '#f3f4f6' : '#1f2937'
+  const gridColor = isVideoMode ? (videoModeColors.grid || 'rgba(0,0,0,0.2)') : (isDark ? '#374151' : '#e5e7eb')
+  const axisColor = isVideoMode ? (videoModeColors.text || '#000000') : (isDark ? '#9ca3af' : '#6b7280')
+  const axisLabelColor = isVideoMode ? (videoModeColors.text || '#000000') : (isDark ? '#f3f4f6' : '#1f2937')
 
   if (loading) {
     return (
@@ -525,198 +535,207 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
   }
 
   return (
-    <Card className={containerClassName}>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>Market Cycle ROI Chart - KSE100 ({currency})</CardTitle>
-            <CardDescription>
-              Trough-to-peak cycles overlaid from 100% baseline. Click legend items to show/hide cycles.
-            </CardDescription>
+    <div ref={chartContainerRef}>
+      <Card className={containerClassName}>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Market Cycle ROI Chart - KSE100 ({currency})</CardTitle>
+              <CardDescription>
+                Trough-to-peak cycles overlaid from 100% baseline. Click legend items to show/hide cycles.
+              </CardDescription>
+            </div>
+            <VideoModeToggle
+              isVideoMode={isVideoMode}
+              onToggle={toggleVideoMode}
+              isRecording={isRecording}
+              isEncoding={isEncoding}
+              onRecordStart={startRecording}
+              onRecordStop={stopRecording}
+            />
           </div>
-          <VideoModeToggle isVideoMode={isVideoMode} onToggle={toggleVideoMode} />
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {/* Currency Selector */}
-          <div className="flex items-center gap-4 pb-4 border-b">
-            <Label htmlFor="currency-select">Currency:</Label>
-            <Select value={currency} onValueChange={(value) => setCurrency(value as 'PKR' | 'USD')}>
-              <SelectTrigger id="currency-select" className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="PKR">PKR</SelectItem>
-                <SelectItem value="USD">USD</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {/* Cycle Summary Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left p-2">Cycle</th>
-                  <th className="text-right p-2">Period</th>
-                  <th className="text-right p-2">ROI</th>
-                  <th className="text-right p-2">Duration</th>
-                  <th className="text-right p-2">Start Price</th>
-                  <th className="text-right p-2">End Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cycles.map((cycle, idx) => {
-                  const startDate = new Date(cycle.startDate).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                  })
-                  const endDate = new Date(cycle.endDate).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                  })
-                  const durationYears = (cycle.durationTradingDays / 365.25).toFixed(1)
-                  const isVisible = visibleCycles.has(cycle.cycleName)
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {/* Currency Selector */}
+            <div className="flex items-center gap-4 pb-4 border-b">
+              <Label htmlFor="currency-select">Currency:</Label>
+              <Select value={currency} onValueChange={(value) => setCurrency(value as 'PKR' | 'USD')}>
+                <SelectTrigger id="currency-select" className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PKR">PKR</SelectItem>
+                  <SelectItem value="USD">USD</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Cycle Summary Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-2">Cycle</th>
+                    <th className="text-right p-2">Period</th>
+                    <th className="text-right p-2">ROI</th>
+                    <th className="text-right p-2">Duration</th>
+                    <th className="text-right p-2">Start Price</th>
+                    <th className="text-right p-2">End Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cycles.map((cycle, idx) => {
+                    const startDate = new Date(cycle.startDate).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric'
+                    })
+                    const endDate = new Date(cycle.endDate).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric'
+                    })
+                    const durationYears = (cycle.durationTradingDays / 365.25).toFixed(1)
+                    const isVisible = visibleCycles.has(cycle.cycleName)
 
-                  return (
-                    <tr
-                      key={cycle.cycleId}
-                      className={`border-b cursor-pointer hover:bg-muted/50 ${!isVisible ? 'opacity-50' : ''}`}
-                      onClick={() => handleLegendClick(cycle.cycleName)}
-                    >
-                      <td className="p-2 font-medium">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: CYCLE_COLORS[idx % CYCLE_COLORS.length] }}
-                          />
-                          {cycle.cycleName}
-                        </div>
-                      </td>
-                      <td className="text-right p-2 text-muted-foreground">
-                        {startDate} - {endDate}
-                      </td>
-                      <td className={`text-right p-2 font-mono font-medium ${cycle.roi >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                        {cycle.roi >= 0 ? '+' : ''}{cycle.roi.toFixed(2)}%
-                      </td>
-                      <td className="text-right p-2 text-muted-foreground font-mono">
-                        {cycle.durationTradingDays} days ({durationYears} yrs)
-                      </td>
-                      <td className="text-right p-2 text-muted-foreground font-mono">
-                        {currency === 'USD' ? '$' : 'PKR '}
-                        {cycle.startPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </td>
-                      <td className="text-right p-2 text-muted-foreground font-mono">
-                        {currency === 'USD' ? '$' : 'PKR '}
-                        {cycle.endPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                    return (
+                      <tr
+                        key={cycle.cycleId}
+                        className={`border-b cursor-pointer hover:bg-muted/50 ${!isVisible ? 'opacity-50' : ''}`}
+                        onClick={() => handleLegendClick(cycle.cycleName)}
+                      >
+                        <td className="p-2 font-medium">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: CYCLE_COLORS[idx % CYCLE_COLORS.length] }}
+                            />
+                            {cycle.cycleName}
+                          </div>
+                        </td>
+                        <td className="text-right p-2 text-muted-foreground">
+                          {startDate} - {endDate}
+                        </td>
+                        <td className={`text-right p-2 font-mono font-medium ${cycle.roi >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          {cycle.roi >= 0 ? '+' : ''}{cycle.roi.toFixed(2)}%
+                        </td>
+                        <td className="text-right p-2 text-muted-foreground font-mono">
+                          {cycle.durationTradingDays} days ({durationYears} yrs)
+                        </td>
+                        <td className="text-right p-2 text-muted-foreground font-mono">
+                          {currency === 'USD' ? '$' : 'PKR '}
+                          {cycle.startPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="text-right p-2 text-muted-foreground font-mono">
+                          {currency === 'USD' ? '$' : 'PKR '}
+                          {cycle.endPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-          {/* Chart */}
-          <div className="h-[500px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 20, right: 30, bottom: 50, left: 50 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} opacity={0.4} />
+            {/* Chart */}
+            <div className="h-[500px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 20, right: 30, bottom: 50, left: 50 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridColor} opacity={0.4} />
 
-                <XAxis
-                  dataKey="tradingDay"
-                  name="Trading Days"
-                  stroke={axisColor}
-                  tick={{ fill: axisColor, fontSize: 12 }}
-                  label={{
-                    value: 'Trading Days from Cycle Start',
-                    position: 'bottom',
-                    offset: 10,
-                    fill: axisLabelColor,
-                    fontSize: 13
-                  }}
-                />
-
-                <YAxis
-                  name="Normalized Price"
-                  stroke={axisColor}
-                  tick={{ fill: axisColor, fontSize: 12 }}
-                  label={{
-                    value: `Normalized Price (%) - ${currency}`,
-                    angle: -90,
-                    position: 'insideLeft',
-                    fill: axisLabelColor,
-                    fontSize: 13
-                  }}
-                />
-
-                <Tooltip content={<CustomTooltip />} />
-
-                {/* Reference line at 100% */}
-                <Line
-                  type="monotone"
-                  dataKey="baseline"
-                  stroke={axisColor}
-                  strokeDasharray="2 2"
-                  strokeOpacity={0.5}
-                  dot={false}
-                  data={chartData.map(d => ({ ...d, baseline: 100 }))}
-                  legendType="none"
-                />
-
-                {/* Cycle lines */}
-                {cycles.map((cycle, idx) => {
-                  if (!visibleCycles.has(cycle.cycleName)) {
-                    return null
-                  }
-
-                  return (
-                    <Line
-                      key={cycle.cycleId}
-                      type="monotone"
-                      dataKey={cycle.cycleName}
-                      stroke={CYCLE_COLORS[idx % CYCLE_COLORS.length]}
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 4 }}
-                      name={`${cycle.cycleName} (${cycle.roi >= 0 ? '+' : ''}${cycle.roi.toFixed(1)}%)`}
-                      legendType="none"
-                      connectNulls
-                    />
-                  )
-                })}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Custom Legend */}
-          <div className="flex flex-wrap gap-4 justify-center pt-4 border-t">
-            {cycles.map((cycle, idx) => {
-              const isVisible = visibleCycles.has(cycle.cycleName)
-              return (
-                <div
-                  key={cycle.cycleId}
-                  onClick={() => handleLegendClick(cycle.cycleName)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-all ${isVisible
-                    ? 'bg-muted hover:bg-muted/80'
-                    : 'opacity-50 hover:opacity-70'
-                    }`}
-                >
-                  <div
-                    className="w-4 h-4 rounded-full border-2 border-background"
-                    style={{ backgroundColor: CYCLE_COLORS[idx % CYCLE_COLORS.length] }}
+                  <XAxis
+                    dataKey="tradingDay"
+                    name="Trading Days"
+                    stroke={axisColor}
+                    tick={{ fill: axisColor, fontSize: 12 }}
+                    label={{
+                      value: 'Trading Days from Cycle Start',
+                      position: 'bottom',
+                      offset: 10,
+                      fill: axisLabelColor,
+                      fontSize: 13
+                    }}
                   />
-                  <span className="text-sm font-medium">
-                    {cycle.cycleName} ({cycle.roi >= 0 ? '+' : ''}{cycle.roi.toFixed(1)}%)
-                  </span>
-                </div>
-              )
-            })}
+
+                  <YAxis
+                    name="Normalized Price"
+                    stroke={axisColor}
+                    tick={{ fill: axisColor, fontSize: 12 }}
+                    label={{
+                      value: `Normalized Price (%) - ${currency}`,
+                      angle: -90,
+                      position: 'insideLeft',
+                      fill: axisLabelColor,
+                      fontSize: 13
+                    }}
+                  />
+
+                  <Tooltip content={<CustomTooltip />} />
+
+                  {/* Reference line at 100% */}
+                  <Line
+                    type="monotone"
+                    dataKey="baseline"
+                    stroke={axisColor}
+                    strokeDasharray="2 2"
+                    strokeOpacity={0.5}
+                    dot={false}
+                    data={chartData.map(d => ({ ...d, baseline: 100 }))}
+                    legendType="none"
+                  />
+
+                  {/* Cycle lines */}
+                  {cycles.map((cycle, idx) => {
+                    if (!visibleCycles.has(cycle.cycleName)) {
+                      return null
+                    }
+
+                    return (
+                      <Line
+                        key={cycle.cycleId}
+                        type="monotone"
+                        dataKey={cycle.cycleName}
+                        stroke={CYCLE_COLORS[idx % CYCLE_COLORS.length]}
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                        name={`${cycle.cycleName} (${cycle.roi >= 0 ? '+' : ''}${cycle.roi.toFixed(1)}%)`}
+                        legendType="none"
+                        connectNulls
+                      />
+                    )
+                  })}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Custom Legend */}
+            <div className="flex flex-wrap gap-4 justify-center pt-4 border-t">
+              {cycles.map((cycle, idx) => {
+                const isVisible = visibleCycles.has(cycle.cycleName)
+                return (
+                  <div
+                    key={cycle.cycleId}
+                    onClick={() => handleLegendClick(cycle.cycleName)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-all ${isVisible
+                      ? 'bg-muted hover:bg-muted/80'
+                      : 'opacity-50 hover:opacity-70'
+                      }`}
+                  >
+                    <div
+                      className="w-4 h-4 rounded-full border-2 border-background"
+                      style={{ backgroundColor: CYCLE_COLORS[idx % CYCLE_COLORS.length] }}
+                    />
+                    <span className="text-sm font-medium">
+                      {cycle.cycleName} ({cycle.roi >= 0 ? '+' : ''}{cycle.roi.toFixed(1)}%)
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   )
 }

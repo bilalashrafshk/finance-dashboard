@@ -37,6 +37,8 @@ import { getThemeColors } from "@/lib/charts/theme-colors"
 import { useToast } from "@/hooks/use-toast"
 import { useVideoMode } from "@/hooks/use-video-mode"
 import { VideoModeToggle } from "@/components/ui/video-mode-toggle"
+import { useChartRecorder } from "@/hooks/use-chart-recorder"
+import { useRef } from "react"
 
 ChartJS.register(
   CategoryScale,
@@ -100,8 +102,28 @@ export function AdvanceDeclineChart({
   const [internalStartDate, setInternalStartDate] = useState<string>(getDefaultStartDate())
   const [internalEndDate, setInternalEndDate] = useState<string>(getDefaultEndDate())
   const { theme } = useTheme()
-  const { isVideoMode, toggleVideoMode, containerClassName } = useVideoMode()
-  const colors = getThemeColors()
+  const { isVideoMode, toggleVideoMode, containerClassName, videoModeColors } = useVideoMode()
+  const colors = useMemo(() => {
+    const themeColors = getThemeColors()
+    if (isVideoMode) {
+      return {
+        ...themeColors,
+        ...videoModeColors,
+        price: videoModeColors.stroke!,
+      }
+    }
+    return themeColors
+  }, [theme, isVideoMode, videoModeColors])
+
+  const chartContainerRef = useRef<HTMLDivElement>(null)
+
+  // Recording Hook
+  const { isRecording, isEncoding, startRecording, stopRecording } = useChartRecorder(chartContainerRef as React.RefObject<HTMLElement>, {
+    workerScript: '/gif.worker.js',
+    quality: 10,
+    delay: 100 // 10 FPS
+  })
+
   const { toast } = useToast()
 
   // Update internal dates when props change
@@ -430,10 +452,10 @@ export function AdvanceDeclineChart({
         title: {
           display: true,
           text: "AD Line Value",
-          color: colors.foreground,
+          color: isVideoMode ? videoModeColors.text : colors.foreground,
         },
         ticks: {
-          color: colors.foreground,
+          color: isVideoMode ? videoModeColors.text : colors.foreground,
           callback: function (value: any) {
             return typeof value === 'number' ? value.toLocaleString() : value
           },
@@ -442,9 +464,9 @@ export function AdvanceDeclineChart({
           color: (context: any) => {
             // Highlight zero line
             if (context.tick.value === 0) {
-              return colors.gridStrong
+              return isVideoMode ? videoModeColors.grid : colors.gridStrong
             }
-            return colors.grid
+            return isVideoMode ? videoModeColors.grid : colors.grid
           },
           lineWidth: (context: any) => {
             return context.tick.value === 0 ? 2 : 1
@@ -692,7 +714,14 @@ export function AdvanceDeclineChart({
               <CardDescription>Configure date range, filters and overlays</CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <VideoModeToggle isVideoMode={isVideoMode} onToggle={toggleVideoMode} />
+              <VideoModeToggle
+                isVideoMode={isVideoMode}
+                onToggle={toggleVideoMode}
+                isRecording={isRecording}
+                isEncoding={isEncoding}
+                onRecordStart={startRecording}
+                onRecordStop={stopRecording}
+              />
               <Button
                 variant="ghost"
                 size="sm"
@@ -845,116 +874,118 @@ export function AdvanceDeclineChart({
       </Card>
 
       {/* Chart Card */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Advance-Decline Line</CardTitle>
-              <CardDescription>
-                Top {topN} stocks by market cap
-                {selectedSector && selectedSector !== 'all' && (
-                  <span className="ml-2">• {selectedSector} sector</span>
-                )}
-                {data.length > 0 && (
-                  <span className="ml-2">
-                    ({new Date(data[0].date).toLocaleDateString()} - {new Date(data[data.length - 1].date).toLocaleDateString()})
-                  </span>
-                )}
-              </CardDescription>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowExplanation(true)}
-            >
-              <Info className="h-4 w-4" />
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[500px] w-full">
-            <Line
-              key={`chart-${showSectorIndex}-${selectedSector}-${topN}-${includeDividends}`}
-              data={chartData}
-              options={options}
-            />
-          </div>
-          <div className="mt-4 text-sm text-muted-foreground space-y-1">
-            <p>
-              <strong>Formula:</strong> AD Line = Previous AD Line + (Advancing Stocks - Declining Stocks)
-            </p>
-            <p>
-              The Advance-Decline Line is a cumulative indicator that tracks the net difference between advancing and declining stocks over time.
-            </p>
-            <div className="flex items-center gap-4 mt-4 pt-4 border-t">
-              <p className="text-xs text-muted-foreground flex-1">
-                💡 <strong>Tip:</strong> Click on any point in the "Net Advances" line to view the market heatmap.
-              </p>
-              <Link
-                href={`/advance-decline/stocks?${new URLSearchParams({
-                  sector: selectedSector || 'all',
-                  limit: topN.toString(),
-                }).toString()}`}
-                target="_blank"
-                className="text-xs text-primary hover:underline flex items-center gap-1"
+      <div ref={chartContainerRef} className={containerClassName}>
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Advance-Decline Line</CardTitle>
+                <CardDescription>
+                  Top {topN} stocks by market cap
+                  {selectedSector && selectedSector !== 'all' && (
+                    <span className="ml-2">• {selectedSector} sector</span>
+                  )}
+                  {data.length > 0 && (
+                    <span className="ml-2">
+                      ({new Date(data[0].date).toLocaleDateString()} - {new Date(data[data.length - 1].date).toLocaleDateString()})
+                    </span>
+                  )}
+                </CardDescription>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowExplanation(true)}
               >
-                <List className="h-3 w-3" />
-                View {topN} stocks in this filter
-                <ExternalLink className="h-3 w-3 ml-1" />
-              </Link>
+                <Info className="h-4 w-4" />
+              </Button>
             </div>
-          </div>
-        </CardContent>
-        <Dialog open={showExplanation} onOpenChange={setShowExplanation}>
-          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto w-[95vw] sm:w-full">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
-                <Info className="h-5 w-5" />
-                Advance-Decline Line
-              </DialogTitle>
-              <DialogDescription className="text-xs sm:text-sm">
-                Track market breadth using the cumulative Advance-Decline Line
-              </DialogDescription>
-            </DialogHeader>
-            <div className="text-sm sm:text-base space-y-4">
-              <div>
-                <h4 className="font-semibold mb-2">What is the Advance-Decline Line?</h4>
-                <p className="text-sm text-muted-foreground">
-                  The Advance-Decline Line (A/D Line) is a breadth indicator that measures the number of advancing stocks minus the number of declining stocks. It's calculated cumulatively, meaning each day's net advances are added to the previous day's total.
+          </CardHeader>
+          <CardContent>
+            <div className="h-[500px] w-full">
+              <Line
+                key={`chart-${showSectorIndex}-${selectedSector}-${topN}-${includeDividends}`}
+                data={chartData}
+                options={options}
+              />
+            </div>
+            <div className="mt-4 text-sm text-muted-foreground space-y-1">
+              <p>
+                <strong>Formula:</strong> AD Line = Previous AD Line + (Advancing Stocks - Declining Stocks)
+              </p>
+              <p>
+                The Advance-Decline Line is a cumulative indicator that tracks the net difference between advancing and declining stocks over time.
+              </p>
+              <div className="flex items-center gap-4 mt-4 pt-4 border-t">
+                <p className="text-xs text-muted-foreground flex-1">
+                  💡 <strong>Tip:</strong> Click on any point in the "Net Advances" line to view the market heatmap.
                 </p>
+                <Link
+                  href={`/advance-decline/stocks?${new URLSearchParams({
+                    sector: selectedSector || 'all',
+                    limit: topN.toString(),
+                  }).toString()}`}
+                  target="_blank"
+                  className="text-xs text-primary hover:underline flex items-center gap-1"
+                >
+                  <List className="h-3 w-3" />
+                  View {topN} stocks in this filter
+                  <ExternalLink className="h-3 w-3 ml-1" />
+                </Link>
               </div>
-              <div>
-                <h4 className="font-semibold mb-2">Formula:</h4>
-                <p className="text-sm text-muted-foreground font-mono bg-muted p-2 rounded">
-                  AD Line = Previous AD Line + (Advancing Stocks - Declining Stocks)
-                </p>
-              </div>
-              <div>
-                <h4 className="font-semibold mb-2">Interpretation:</h4>
-                <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
-                  <li><strong>Rising A/D Line:</strong> More stocks are advancing than declining, indicating broad market strength</li>
-                  <li><strong>Falling A/D Line:</strong> More stocks are declining than advancing, indicating broad market weakness</li>
-                  <li><strong>Divergence:</strong> If the market index is rising but A/D Line is falling, it suggests the rally is narrow and may not be sustainable</li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-semibold mb-2">Data Source:</h4>
-                <p className="text-sm text-muted-foreground">
-                  This chart uses the top {topN} Pakistan Stock Exchange (PSX) stocks by market capitalization. A stock is considered "advancing" if its price increased from the previous trading day, "declining" if it decreased, and "unchanged" if the price remained the same.
-                </p>
-              </div>
-              {selectedSector && selectedSector !== 'all' && (
+            </div>
+          </CardContent>
+          <Dialog open={showExplanation} onOpenChange={setShowExplanation}>
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto w-[95vw] sm:w-full">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <Info className="h-5 w-5" />
+                  Advance-Decline Line
+                </DialogTitle>
+                <DialogDescription className="text-xs sm:text-sm">
+                  Track market breadth using the cumulative Advance-Decline Line
+                </DialogDescription>
+              </DialogHeader>
+              <div className="text-sm sm:text-base space-y-4">
                 <div>
-                  <h4 className="font-semibold mb-2">Sector Index:</h4>
+                  <h4 className="font-semibold mb-2">What is the Advance-Decline Line?</h4>
                   <p className="text-sm text-muted-foreground">
-                    When a sector is selected, you can enable the sector index overlay. This is a market-cap weighted index of ALL stocks in the sector (not just top N), normalized to start at 100 on the start date. This allows you to compare the sector's overall performance with the Advance-Decline Line.
+                    The Advance-Decline Line (A/D Line) is a breadth indicator that measures the number of advancing stocks minus the number of declining stocks. It's calculated cumulatively, meaning each day's net advances are added to the previous day's total.
                   </p>
                 </div>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
-      </Card>
+                <div>
+                  <h4 className="font-semibold mb-2">Formula:</h4>
+                  <p className="text-sm text-muted-foreground font-mono bg-muted p-2 rounded">
+                    AD Line = Previous AD Line + (Advancing Stocks - Declining Stocks)
+                  </p>
+                </div>
+                <div>
+                  <h4 className="font-semibold mb-2">Interpretation:</h4>
+                  <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
+                    <li><strong>Rising A/D Line:</strong> More stocks are advancing than declining, indicating broad market strength</li>
+                    <li><strong>Falling A/D Line:</strong> More stocks are declining than advancing, indicating broad market weakness</li>
+                    <li><strong>Divergence:</strong> If the market index is rising but A/D Line is falling, it suggests the rally is narrow and may not be sustainable</li>
+                  </ul>
+                </div>
+                <div>
+                  <h4 className="font-semibold mb-2">Data Source:</h4>
+                  <p className="text-sm text-muted-foreground">
+                    This chart uses the top {topN} Pakistan Stock Exchange (PSX) stocks by market capitalization. A stock is considered "advancing" if its price increased from the previous trading day, "declining" if it decreased, and "unchanged" if the price remained the same.
+                  </p>
+                </div>
+                {selectedSector && selectedSector !== 'all' && (
+                  <div>
+                    <h4 className="font-semibold mb-2">Sector Index:</h4>
+                    <p className="text-sm text-muted-foreground">
+                      When a sector is selected, you can enable the sector index overlay. This is a market-cap weighted index of ALL stocks in the sector (not just top N), normalized to start at 100 on the start date. This allows you to compare the sector's overall performance with the Advance-Decline Line.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        </Card>
+      </div>
     </div>
   )
 }
