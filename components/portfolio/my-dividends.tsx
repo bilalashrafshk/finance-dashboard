@@ -23,10 +23,10 @@ export function MyDividends({ holdings, currency = 'PKR', hideCard = false }: My
     const loadDividends = async () => {
       setLoading(true)
       setError(null)
-      
+
       try {
         const pkEquityHoldings = holdings.filter(h => h.assetType === 'pk-equity')
-        
+
         if (pkEquityHoldings.length === 0) {
           setHoldingDividends([])
           setLoading(false)
@@ -113,8 +113,14 @@ export function MyDividends({ holdings, currency = 'PKR', hideCard = false }: My
       return holding?.quantity || 0
     }
 
+    // Get holding currency by symbol
+    const getHoldingCurrency = (symbol: string) => {
+      const holding = holdings.find(h => h.symbol === symbol)
+      return holding?.currency || currency
+    }
+
     // Sort by date descending (most recent first)
-    const allDividends = holdingDividends.flatMap(hd => 
+    const allDividends = holdingDividends.flatMap(hd =>
       hd.dividends.map(d => ({
         ...d,
         symbol: hd.symbol,
@@ -138,81 +144,81 @@ export function MyDividends({ holdings, currency = 'PKR', hideCard = false }: My
           </CardHeader>
         )}
         <CardContent>
-        {totalDividends === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            No dividends collected yet
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {/* Summary by Holding */}
-            <div>
-              <h3 className="text-sm font-semibold mb-3">By Holding</h3>
-              <div className="border rounded-lg overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Symbol</TableHead>
-                      <TableHead>Holding Name</TableHead>
-                      <TableHead className="text-right">Shares</TableHead>
-                      <TableHead className="text-right">Dividend Payments</TableHead>
-                      <TableHead className="text-right">Total Collected</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {holdingDividends
-                      .filter(hd => hd.totalCollected > 0)
-                      .sort((a, b) => b.totalCollected - a.totalCollected)
-                      .map((hd) => (
-                        <TableRow key={hd.holdingId}>
-                          <TableCell className="font-medium">{hd.symbol}</TableCell>
-                          <TableCell>{getHoldingName(hd.symbol)}</TableCell>
-                          <TableCell className="text-right">{getHoldingQuantity(hd.symbol).toLocaleString()}</TableCell>
-                          <TableCell className="text-right">{hd.dividends.length}</TableCell>
+          {totalDividends === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No dividends collected yet
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Summary by Holding */}
+              <div>
+                <h3 className="text-sm font-semibold mb-3">By Holding</h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Symbol</TableHead>
+                        <TableHead>Holding Name</TableHead>
+                        <TableHead className="text-right">Shares</TableHead>
+                        <TableHead className="text-right">Dividend Payments</TableHead>
+                        <TableHead className="text-right">Total Collected</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {holdingDividends
+                        .filter(hd => hd.totalCollected > 0)
+                        .sort((a, b) => b.totalCollected - a.totalCollected)
+                        .map((hd) => (
+                          <TableRow key={hd.holdingId}>
+                            <TableCell className="font-medium">{hd.symbol}</TableCell>
+                            <TableCell>{getHoldingName(hd.symbol)}</TableCell>
+                            <TableCell className="text-right">{getHoldingQuantity(hd.symbol).toLocaleString()}</TableCell>
+                            <TableCell className="text-right">{hd.dividends.length}</TableCell>
+                            <TableCell className="text-right font-semibold">
+                              {formatCurrency(hd.totalCollected, getHoldingCurrency(hd.symbol))}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              {/* All Dividends List */}
+              <div>
+                <h3 className="text-sm font-semibold mb-3">All Dividend Payments</h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Symbol</TableHead>
+                        <TableHead>Holding Name</TableHead>
+                        <TableHead className="text-right">Dividend per Share</TableHead>
+                        <TableHead className="text-right">Total Collected</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {allDividends.map((dividend, index) => (
+                        <TableRow key={`${dividend.holdingId}-${dividend.date}-${index}`}>
+                          <TableCell className="font-medium">{formatDate(dividend.date)}</TableCell>
+                          <TableCell>{dividend.symbol}</TableCell>
+                          <TableCell>{getHoldingName(dividend.symbol)}</TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(dividend.dividendAmount, getHoldingCurrency(dividend.symbol))}
+                          </TableCell>
                           <TableCell className="text-right font-semibold">
-                            {formatCurrency(hd.totalCollected, currency)}
+                            {formatCurrency(dividend.totalCollected, getHoldingCurrency(dividend.symbol))}
                           </TableCell>
                         </TableRow>
                       ))}
-                  </TableBody>
-                </Table>
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             </div>
-
-            {/* All Dividends List */}
-            <div>
-              <h3 className="text-sm font-semibold mb-3">All Dividend Payments</h3>
-              <div className="border rounded-lg overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Symbol</TableHead>
-                      <TableHead>Holding Name</TableHead>
-                      <TableHead className="text-right">Dividend per Share</TableHead>
-                      <TableHead className="text-right">Total Collected</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {allDividends.map((dividend, index) => (
-                      <TableRow key={`${dividend.holdingId}-${dividend.date}-${index}`}>
-                        <TableCell className="font-medium">{formatDate(dividend.date)}</TableCell>
-                        <TableCell>{dividend.symbol}</TableCell>
-                        <TableCell>{getHoldingName(dividend.symbol)}</TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(dividend.dividendAmount, currency)}
-                        </TableCell>
-                        <TableCell className="text-right font-semibold">
-                          {formatCurrency(dividend.totalCollected, currency)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          </div>
-        )}
-      </CardContent>
+          )}
+        </CardContent>
       </>
     )
   })()
