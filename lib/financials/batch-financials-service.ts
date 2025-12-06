@@ -106,14 +106,23 @@ export async function fetchBatchFinancials(
         // We'll fetch in parallel but limit concurrency to avoid overwhelming the system
         const symbolsToFetch = Array.from(new Set([...missingProfiles, ...missingFinancials]))
 
-        // Limit concurrent fetches to 5 at a time
-        const BATCH_SIZE = 5
+        // Limit concurrent fetches to 10 at a time (increased from 5)
+        const BATCH_SIZE = 10
         for (let i = 0; i < symbolsToFetch.length; i += BATCH_SIZE) {
             const batch = symbolsToFetch.slice(i, i + BATCH_SIZE)
             await Promise.all(batch.map(async (symbol) => {
                 try {
-                    // Direct service call instead of fetch
-                    const result = await updateFinancials(symbol)
+                    // Direct service call instead of fetch, wrapped in a timeout
+                    // Create a promise that rejects after 20 seconds
+                    const timeoutPromise = new Promise<any>((_, reject) => {
+                        setTimeout(() => reject(new Error('Timeout')), 20000)
+                    })
+
+                    // Race the update against the timeout
+                    const result = await Promise.race([
+                        updateFinancials(symbol),
+                        timeoutPromise
+                    ])
 
                     if (result.success) {
                         // Re-fetch from DB after update

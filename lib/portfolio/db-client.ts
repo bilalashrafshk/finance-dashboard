@@ -823,6 +823,66 @@ export async function getLatestDividendDate(
 }
 
 /**
+ * Get the last updated timestamp for dividend data
+ */
+export async function getLatestDividendUpdate(
+  assetType: string,
+  symbol: string
+): Promise<string | null> {
+  try {
+    const client = await getPool().connect()
+
+    try {
+      const result = await client.query(
+        `SELECT updated_at
+         FROM dividend_data
+         WHERE asset_type = $1 AND symbol = $2
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+        [assetType, symbol.toUpperCase()]
+      )
+
+      if (result.rows.length > 0) {
+        return result.rows[0].updated_at.toISOString()
+      }
+
+      return null
+    } finally {
+      client.release()
+    }
+  } catch (error) {
+    console.error(`Error getting latest dividend update for ${assetType}-${symbol}:`, error)
+    return null
+  }
+}
+
+/**
+ * Check if dividend data needs refresh (5-day cache)
+ */
+export async function shouldRefreshDividends(
+  assetType: string,
+  symbol: string
+): Promise<boolean> {
+  try {
+    const lastUpdated = await getLatestDividendUpdate(assetType, symbol)
+
+    if (!lastUpdated) {
+      return true // No data, need to fetch
+    }
+
+    const lastUpdatedTime = new Date(lastUpdated).getTime()
+    const now = Date.now()
+    const ageInDays = (now - lastUpdatedTime) / (1000 * 60 * 60 * 24)
+
+    // Refresh if data is older than 5 days
+    return ageInDays > 5
+  } catch (error: any) {
+    console.error(`[DB] Error checking if dividends need refresh for ${assetType}-${symbol}:`, error.message)
+    return true // On error, refresh to be safe
+  }
+}
+
+/**
  * Get face value for a company from the profile
  * @param symbol - Asset symbol
  * @returns Face value (number) or null if not found/not set

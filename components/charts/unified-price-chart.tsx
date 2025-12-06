@@ -28,6 +28,8 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Check } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useVideoMode } from "@/hooks/use-video-mode"
+import { VideoModeToggle } from "@/components/ui/video-mode-toggle"
 
 interface MovingAverageConfig {
     id: string
@@ -96,6 +98,7 @@ function filterDataByRange(data: PriceDataPoint[], range: TimeRange): PriceDataP
 
 export function UnifiedPriceChart() {
     const { theme } = useTheme()
+    const { isVideoMode, toggleVideoMode, containerClassName } = useVideoMode()
     const colors = useMemo(() => getThemeColors(), [theme])
     const { toast } = useToast()
     const chartContainerRef = useRef<HTMLDivElement>(null)
@@ -759,7 +762,7 @@ export function UnifiedPriceChart() {
 
     return (
         <div className="space-y-4">
-            <Card>
+            <Card className={containerClassName}>
                 <CardHeader className="pb-4">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
@@ -769,6 +772,7 @@ export function UnifiedPriceChart() {
 
                         {/* Compact Asset Selector */}
                         <div className="flex items-center gap-2 w-full md:w-auto">
+                            <VideoModeToggle isVideoMode={isVideoMode} onToggle={toggleVideoMode} />
                             <Select value={assetType} onValueChange={(v) => setAssetType(v as AssetType)}>
                                 <SelectTrigger className="w-[130px]">
                                     <SelectValue />

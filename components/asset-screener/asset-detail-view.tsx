@@ -20,6 +20,7 @@ import { AssetPriceChart } from "./asset-price-chart"
 import { DividendTable } from "./dividend-table"
 import { AssetFinancialsView } from "./asset-financials-view"
 import { HistoricPEChart } from "./historic-pe-chart"
+import { RiskMetricsDisplay } from "./risk-metrics-display"
 
 interface AssetDetailViewProps {
   asset: TrackedAsset
@@ -40,6 +41,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
   const [activeTab, setActiveTab] = useState<string>('analytics')
   const [maxDrawdownTimeframe, setMaxDrawdownTimeframe] = useState<MaxDrawdownTimeframe>('3Y')
   const [fullHistoricalDataForMaxDD, setFullHistoricalDataForMaxDD] = useState<PriceDataPoint[]>([])
+  const [fullBenchmarkData, setFullBenchmarkData] = useState<PriceDataPoint[]>([])
   const [maxDrawdown, setMaxDrawdown] = useState<number | null>(null)
 
   // Use provided risk-free rates or load from localStorage
@@ -105,14 +107,14 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
           historicalDataUrl = `/api/historical-data?assetType=${apiAssetType}&symbol=${encodeURIComponent(asset.symbol)}&limit=${dataLimitForCAGR}`
         }
 
-        // Determine benchmark for Beta calculation (use 1 year for consistency with summary)
+        // Determine benchmark for Beta calculation (fetch full history for dynamic timeframes)
         let benchmarkDataUrl = ''
         if (asset.assetType === 'us-equity') {
           // Use SPX500 as benchmark for US equities
-          benchmarkDataUrl = `/api/historical-data?assetType=spx500&symbol=SPX500&limit=${dataLimitForBetaSharpe}`
+          benchmarkDataUrl = `/api/historical-data?assetType=spx500&symbol=SPX500`
         } else if (asset.assetType === 'pk-equity') {
           // Use KSE100 as benchmark for PK equities
-          benchmarkDataUrl = `/api/historical-data?assetType=kse100&symbol=KSE100&limit=${dataLimitForBetaSharpe}`
+          benchmarkDataUrl = `/api/historical-data?assetType=kse100&symbol=KSE100`
         }
 
         // Fetch historical data and benchmark data in parallel
@@ -153,6 +155,8 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
               date: record.date,
               close: parseFloat(record.close)
             })).filter((point: PriceDataPoint) => !isNaN(point.close))
+
+            setFullBenchmarkData(benchmarkData)
           }
         }
 
@@ -462,89 +466,14 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
 
         <HistoricPEChart asset={asset} />
 
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Risk Metrics</h3>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Max Drawdown Period:</span>
-            <Select value={maxDrawdownTimeframe} onValueChange={(value) => setMaxDrawdownTimeframe(value as MaxDrawdownTimeframe)}>
-              <SelectTrigger className="w-[100px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1Y">1Y</SelectItem>
-                <SelectItem value="3Y">3Y</SelectItem>
-                <SelectItem value="5Y">5Y</SelectItem>
-                <SelectItem value="All">All</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        <HistoricPEChart asset={asset} />
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {metrics?.beta1Year !== undefined && metrics.beta1Year !== null && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>
-                  1-Year Beta
-                  <span className="text-xs text-muted-foreground ml-2">
-                    ({asset.assetType === 'us-equity' ? 'vs SPX500' : 'vs KSE100'})
-                  </span>
-                </CardDescription>
-                <CardTitle className="text-lg">
-                  {metrics.beta1Year.toFixed(2)}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-          )}
-
-          {metrics?.sharpeRatio1Year !== undefined && metrics.sharpeRatio1Year !== null && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>
-                  1-Year Sharpe Ratio
-                  <span className="text-xs text-muted-foreground ml-2">
-                    (Annualized)
-                  </span>
-                </CardDescription>
-                <CardTitle className={`text-lg ${metrics.sharpeRatio1Year >= 1 ? 'text-green-600 dark:text-green-400' : metrics.sharpeRatio1Year >= 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {metrics.sharpeRatio1Year.toFixed(2)}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-          )}
-
-          {metrics?.sortinoRatio1Year !== undefined && metrics.sortinoRatio1Year !== null && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>
-                  1-Year Sortino Ratio
-                  <span className="text-xs text-muted-foreground ml-2">
-                    (Annualized, Downside Risk)
-                  </span>
-                </CardDescription>
-                <CardTitle className={`text-lg ${metrics.sortinoRatio1Year >= 1 ? 'text-green-600 dark:text-green-400' : metrics.sortinoRatio1Year >= 0 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {metrics.sortinoRatio1Year.toFixed(2)}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-          )}
-
-          {maxDrawdown !== null && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>
-                  Max Drawdown
-                  <span className="text-xs text-muted-foreground ml-2">
-                    ({maxDrawdownTimeframe === 'All' ? 'All Time' : maxDrawdownTimeframe})
-                  </span>
-                </CardDescription>
-                <CardTitle className="text-lg text-red-600 dark:text-red-400">
-                  {formatPercentage(maxDrawdown)}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-          )}
-        </div>
+        <RiskMetricsDisplay
+          assetType={asset.assetType}
+          historicalData={fullHistoricalDataForMaxDD.length > 0 ? fullHistoricalDataForMaxDD : []}
+          benchmarkData={fullBenchmarkData}
+          riskFreeRates={effectiveRiskFreeRates}
+        />
       </TabsContent>
 
       <TabsContent value="seasonality" className="space-y-4">

@@ -45,6 +45,7 @@ export async function GET(request: Request) {
 
   try {
     console.log('[Screener Update] Starting daily update...')
+    const startTime = Date.now()
 
     // 1. Get all PK Equity symbols
     const { rows: priceSymbols } = await client.query(`
@@ -84,7 +85,7 @@ export async function GET(request: Request) {
     }
 
     // 3. Process Symbols in Batches (Sequential Execution)
-    const BATCH_SIZE = 10 // Smaller batch size due to heavy calculations
+    const BATCH_SIZE = 25 // Increased to 25 for better throughput
     let processedCount = 0
     let skippedCount = 0
 
@@ -95,13 +96,20 @@ export async function GET(request: Request) {
       // Fetch Basic Data (Price, Profile, Financials)
       const batchData = await fetchScreenerBatchData(batchSymbols, 'pk-equity', baseUrl)
 
-      // Process each symbol in the batch
-      for (const symbol of batchSymbols) {
+      // Process each symbol in the batch concurrently
+      await Promise.all(batchSymbols.map(async (symbol) => {
+        // Global Timeout Check (stop if > 250s)
+        if (Date.now() - startTime > 250000) {
+          console.log(`[Screener Update] Global timeout approaching. Skipping ${symbol}`)
+          skippedCount++
+          return
+        }
+
         try {
           const data = batchData[symbol]
           if (!data || !data.price) {
             console.log(`[Screener Update] Skipping ${symbol}: No price data`)
-            continue
+            return
           }
 
           const { price, profile, financials } = data
@@ -117,14 +125,37 @@ export async function GET(request: Request) {
             console.error(`[Screener Update] Failed to fetch history for ${symbol}`)
           }
 
-          // Fetch Dividend Data
+          // Fetch Dividend Data (Limit to 10 records for speed)
           let dividendYield = 0
           let dividendPayoutRatio = null
           let lastDividendDate = null
           let exDividendDate = null
 
           try {
-            const dividends = await fetchDividendData(symbol, 20) // Fetch last 20 records
+            // Check cache first (5 days)
+            const { shouldRefreshDividends, getDividendData, insertDividendData } = await import('@/lib/portfolio/db-client')
+            const needsRefresh = await shouldRefreshDividends('pk-equity', symbol)
+
+            let dividends: any[] = []
+
+            if (!needsRefresh) {
+              // Use cached data
+              dividends = await getDividendData('pk-equity', symbol)
+              // Limit to last 10 for consistency with API fetch
+              dividends = dividends.slice(-10)
+            } else {
+              // Fetch from API
+              const apiDividends = await fetchDividendData(symbol, 10) // Fetch last 10 records (optimized)
+
+              if (apiDividends) {
+                dividends = apiDividends
+                // Store in DB for caching
+                if (dividends.length > 0) {
+                  await insertDividendData('pk-equity', symbol, dividends)
+                }
+              }
+            }
+
             if (dividends && dividends.length > 0) {
               // Sort descending by date
               dividends.sort((a, b) => b.date.localeCompare(a.date))
@@ -136,20 +167,12 @@ export async function GET(request: Request) {
               oneYearAgoDate.setFullYear(oneYearAgoDate.getFullYear() - 1)
               const oneYearAgoStr = oneYearAgoDate.toISOString().split('T')[0]
 
-              const lastYearDividends = dividends.filter(d => d.date >= oneYearAgoStr)
-              const totalDividend = lastYearDividends.reduce((sum, d) => sum + d.dividend_amount, 0)
+              const lastYearDividends = dividends.filter((d: any) => d.date >= oneYearAgoStr)
+              const totalDividend = lastYearDividends.reduce((sum: number, d: any) => sum + d.dividend_amount, 0)
 
               if (price.price > 0) {
                 dividendYield = (totalDividend / price.price) * 100
               }
-
-              // Handle 0-dividend years logic (Requested by user)
-              // If yield is 0, we check if it's a consistent 0 or just this year.
-              // For screener, "Yield" usually means TTM Yield. If TTM is 0, it shows 0.
-              // User asked: "make sure dividend yield accounts for 0 dividends in yrs where div is 0"
-              // This implies if we average over multiple years, we include 0s. 
-              // But standard screener yield is TTM. Let's stick to TTM for "Yield" column, 
-              // but maybe add a "3Y Avg Yield" if needed later. For now, TTM is standard.
             }
           } catch (e) {
             console.error(`[Screener Update] Failed to fetch dividends for ${symbol}`)
@@ -176,18 +199,9 @@ export async function GET(request: Request) {
 
             // Payout Ratio
             if (ttmEps > 0 && dividendYield > 0) {
-              // Yield = Div/Price, PE = Price/EPS => Div/EPS = Yield * PE
-              // Payout = (Div / EPS) * 100
-              // Payout = (Yield% / 100 * Price) / EPS * 100
               const ttmDividend = (dividendYield / 100) * price.price
               dividendPayoutRatio = (ttmDividend / ttmEps) * 100
             }
-
-            // Other metrics would require Balance Sheet / Income Statement fields 
-            // which might not be in the 'financials' object returned by batch fetcher yet.
-            // The batch fetcher currently only returns EPS.
-            // TODO: Update batch fetcher to return full financials if needed.
-            // For now, we calculate what we can or leave null.
           }
 
           // Calculate Technical Metrics (3-Year)
@@ -202,33 +216,6 @@ export async function GET(request: Request) {
             // 3-Year Data Subset
             const hist3y = historicalData.filter(d => d.date >= startDate)
 
-            const metrics = calculateAllMetrics(
-              price.price,
-              historicalData, // Full history
-              'pk-equity',
-              benchmarkData,
-              { us: 2.5, pk: 15.0 }, // Approx risk free rates
-              undefined, // 1y not needed
-              undefined, // seasonality not needed
-            )
-
-            // We need to manually call the 3y specific logic if calculateAllMetrics doesn't fully cover it 
-            // or if we want to be explicit. calculateAllMetrics was updated to support 3y.
-
-            // Re-call with 3y data passed explicitly if needed, but the function handles it internally 
-            // if we pass the right args. Let's use the updated function signature.
-            const metrics3y = calculateAllMetrics(
-              price.price,
-              historicalData,
-              'pk-equity',
-              benchmarkData,
-              { us: 2.5, pk: 15.0 },
-              undefined, // 1y
-              hist3y // 3y data passed as 'historicalDataForSeasonality' param? No, need to update call.
-            )
-            // Actually, I updated the signature to:
-            // (currentPrice, historicalData, assetType, benchmarkData, riskFreeRates, historicalData1Year, historicalData3Year)
-            // Let's call it correctly:
             const metricsFull = calculateAllMetrics(
               price.price,
               historicalData,
@@ -293,7 +280,7 @@ export async function GET(request: Request) {
           console.error(`[Screener Update] Error processing ${symbol}:`, err.message)
           skippedCount++
         }
-      }
+      }))
     }
 
     // 4. Update Macros (Every 2 Days)

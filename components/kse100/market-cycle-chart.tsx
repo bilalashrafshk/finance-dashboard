@@ -19,6 +19,8 @@ import {
 import { normalizeCyclesForChart, detectMarketCycles, type MarketCycle } from "@/lib/algorithms/market-cycle-detection"
 import { type InvestingHistoricalDataPoint } from "@/lib/portfolio/investing-client-api"
 import type { PriceDataPoint } from "@/lib/asset-screener/metrics-calculations"
+import { useVideoMode } from "@/hooks/use-video-mode"
+import { VideoModeToggle } from "@/components/ui/video-mode-toggle"
 
 interface MarketCycleChartProps {
   // Optional: if not provided, will fetch KSE100 data
@@ -57,6 +59,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
   const [visibleCycles, setVisibleCycles] = useState<Set<string>>(new Set())
   const [isDark, setIsDark] = useState(false)
   const [currency, setCurrency] = useState<'PKR' | 'USD'>('PKR')
+  const { isVideoMode, toggleVideoMode, containerClassName } = useVideoMode()
 
   // Cache for exchange rate data
   const exchangeRateCacheRef = useRef<{
@@ -522,12 +525,17 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
   }
 
   return (
-    <Card>
+    <Card className={containerClassName}>
       <CardHeader>
-        <CardTitle>Market Cycle ROI Chart - KSE100 ({currency})</CardTitle>
-        <CardDescription>
-          Trough-to-peak cycles overlaid from 100% baseline. Click legend items to show/hide cycles.
-        </CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Market Cycle ROI Chart - KSE100 ({currency})</CardTitle>
+            <CardDescription>
+              Trough-to-peak cycles overlaid from 100% baseline. Click legend items to show/hide cycles.
+            </CardDescription>
+          </div>
+          <VideoModeToggle isVideoMode={isVideoMode} onToggle={toggleVideoMode} />
+        </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
