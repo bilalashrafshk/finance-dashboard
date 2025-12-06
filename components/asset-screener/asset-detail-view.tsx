@@ -38,7 +38,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<string>('analytics')
-  const [maxDrawdownTimeframe, setMaxDrawdownTimeframe] = useState<MaxDrawdownTimeframe>('5Y')
+  const [maxDrawdownTimeframe, setMaxDrawdownTimeframe] = useState<MaxDrawdownTimeframe>('3Y')
   const [fullHistoricalDataForMaxDD, setFullHistoricalDataForMaxDD] = useState<PriceDataPoint[]>([])
   const [maxDrawdown, setMaxDrawdown] = useState<number | null>(null)
 
