@@ -816,6 +816,69 @@ export function calculateAllMetrics(
     metrics.cagr5Year = cagr5Year
   }
 
+  // Calculate Risk Metrics (Beta, Sharpe, Sortino)
+  // We use specific subsets if provided, otherwise we might derive them (but explicit subsets are better)
+
+  const riskFreeRate = (assetType === 'pk-equity' || assetType === 'kse100')
+    ? (riskFreeRates?.pk || 15.0)
+    : (riskFreeRates?.us || 2.5)
+
+  // 1-Year Metrics
+  if (historicalData1Year && historicalData1Year.length > 0) {
+    // Beta 1Y
+    if (benchmarkData && benchmarkData.length > 0) {
+      // For Beta, we need to align 1Y asset data with benchmark data
+      // We'll pass the full benchmark data and let calculateBeta handle alignment/slicing
+      // or ideally we should pass 1Y benchmark data too. 
+      // calculateBeta aligns by date, so passing full benchmark is fine as long as dates overlap.
+      const beta1Y = calculateBeta(historicalData1Year, benchmarkData)
+      if (beta1Y !== null) {
+        metrics.beta1Year = beta1Y
+      }
+    }
+
+    // Sharpe 1Y
+    const sharpe1Y = calculateSharpeRatio(historicalData1Year, riskFreeRate / 100)
+    if (sharpe1Y !== null) {
+      metrics.sharpeRatio1Year = sharpe1Y
+    }
+
+    // Sortino 1Y
+    const sortino1Y = calculateSortinoRatio(historicalData1Year, riskFreeRate / 100)
+    if (sortino1Y !== null) {
+      metrics.sortinoRatio1Year = sortino1Y
+    }
+  }
+
+  // 3-Year Metrics
+  if (historicalData3Year && historicalData3Year.length > 0) {
+    // Beta 3Y
+    if (benchmarkData && benchmarkData.length > 0) {
+      const beta3Y = calculateBeta(historicalData3Year, benchmarkData)
+      if (beta3Y !== null) {
+        metrics.beta3Year = beta3Y
+      }
+    }
+
+    // Sharpe 3Y
+    const sharpe3Y = calculateSharpeRatio(historicalData3Year, riskFreeRate / 100)
+    if (sharpe3Y !== null) {
+      metrics.sharpeRatio3Year = sharpe3Y
+    }
+
+    // Sortino 3Y
+    const sortino3Y = calculateSortinoRatio(historicalData3Year, riskFreeRate / 100)
+    if (sortino3Y !== null) {
+      metrics.sortinoRatio3Year = sortino3Y
+    }
+
+    // Max Drawdown 3Y
+    const maxDD3Y = calculateMaxDrawdown(historicalData3Year)
+    if (maxDD3Y !== null) {
+      metrics.maxDrawdown3Year = maxDD3Y
+    }
+  }
+
 
   // Calculate Max Drawdown for all asset types (using full historical data)
   // Max Drawdown shows the worst peak-to-trough decline, so we want the full history

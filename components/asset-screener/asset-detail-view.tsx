@@ -6,12 +6,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { TrackedAsset } from "./add-asset-dialog"
-import { 
-  calculateAllMetrics, 
-  formatPercentage, 
+import {
+  calculateAllMetrics,
+  formatPercentage,
   formatCurrency,
   type CalculatedMetrics,
-  type PriceDataPoint 
+  type PriceDataPoint
 } from "@/lib/asset-screener/metrics-calculations"
 import type { RiskFreeRates } from "./risk-free-rate-settings"
 import { loadRiskFreeRates } from "./risk-free-rate-settings"
@@ -41,7 +41,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
   const [maxDrawdownTimeframe, setMaxDrawdownTimeframe] = useState<MaxDrawdownTimeframe>('5Y')
   const [fullHistoricalDataForMaxDD, setFullHistoricalDataForMaxDD] = useState<PriceDataPoint[]>([])
   const [maxDrawdown, setMaxDrawdown] = useState<number | null>(null)
-  
+
   // Use provided risk-free rates or load from localStorage
   const effectiveRiskFreeRates = riskFreeRates || loadRiskFreeRates()
 
@@ -49,19 +49,19 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
     const fetchMetrics = async () => {
       setLoading(true)
       setError(null)
-      
+
       try {
         // Fetch current price using unified API
         const market = asset.assetType === 'pk-equity' ? 'PSX' : asset.assetType === 'us-equity' ? 'US' : null
         let historicalDataUrl = ''
-        
+
         // For detailed view, fetch enough data for 5-year CAGR (approx 1260 trading days)
         // But we'll use only the most recent 1 year (252 days) for Beta, Sharpe Ratio, and Sortino Ratio calculations
         // This ensures consistency: summary uses 1 year, detailed uses 1 year for 1-year metrics
         // But detailed can still calculate 3-year and 5-year CAGR
         const dataLimitForCAGR = 1260 // ~5 years of trading days
         const dataLimitForBetaSharpe = 252 // 1 year for consistency with summary
-        
+
         // Fetch current price using unified price API (handles client-side fetch for indices)
         let currentPrice: number | undefined
         if (asset.assetType === 'crypto') {
@@ -104,7 +104,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
           const apiAssetType = asset.assetType === 'kse100' ? 'kse100' : 'spx500'
           historicalDataUrl = `/api/historical-data?assetType=${apiAssetType}&symbol=${encodeURIComponent(asset.symbol)}&limit=${dataLimitForCAGR}`
         }
-        
+
         // Determine benchmark for Beta calculation (use 1 year for consistency with summary)
         let benchmarkDataUrl = ''
         if (asset.assetType === 'us-equity') {
@@ -114,18 +114,18 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
           // Use KSE100 as benchmark for PK equities
           benchmarkDataUrl = `/api/historical-data?assetType=kse100&symbol=KSE100&limit=${dataLimitForBetaSharpe}`
         }
-        
+
         // Fetch historical data and benchmark data in parallel
         const fetchPromises = [
           historicalDataUrl ? fetch(historicalDataUrl) : Promise.resolve(null),
           benchmarkDataUrl ? fetch(benchmarkDataUrl) : Promise.resolve(null)
         ]
-        
+
         const [historicalResponse, benchmarkResponse] = await Promise.all(fetchPromises)
-        
+
         let historicalData: PriceDataPoint[] = []
         let benchmarkData: PriceDataPoint[] = []
-        
+
         if (historicalResponse && historicalResponse.ok) {
           const historicalDataResponse = await historicalResponse.json()
           if (historicalDataResponse.data && Array.isArray(historicalDataResponse.data)) {
@@ -135,7 +135,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
               close: parseFloat(record.close)
             })).filter((point: PriceDataPoint) => !isNaN(point.close))
               .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
-            
+
             // Fallback: Use latest historical price if current price is not available
             if (currentPrice === undefined && historicalData.length > 0) {
               const latestDataPoint = historicalData[historicalData.length - 1]
@@ -144,7 +144,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
             }
           }
         }
-        
+
         if (benchmarkResponse && benchmarkResponse.ok) {
           const benchmarkDataResponse = await benchmarkResponse.json()
           if (benchmarkDataResponse.data && Array.isArray(benchmarkDataResponse.data)) {
@@ -155,7 +155,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
             })).filter((point: PriceDataPoint) => !isNaN(point.close))
           }
         }
-        
+
         // For seasonality, we need ALL historical data, not just 5 years
         // Fetch all available data for seasonality calculations
         let fullHistoricalDataUrl = ''
@@ -188,7 +188,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
                 }))
                 .filter((point: PriceDataPoint) => !isNaN(point.close))
                 .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
-              
+
               // Store full historical data for max drawdown calculations
               setFullHistoricalDataForMaxDD(fullHistoricalData)
             }
@@ -204,28 +204,29 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
           // So slice(-252) gives us the most recent 252 records
           const historicalDataForBetaSharpe = historicalData.slice(-dataLimitForBetaSharpe)
           // Benchmark data is already fetched with limit=252, so it's already the most recent year
-          
+
           // Use full historical data for seasonality, but limited data for other metrics
           const dataForSeasonality = fullHistoricalData.length > 0 ? fullHistoricalData : historicalData
-          
+
           // Calculate metrics with full data for CAGR, but use 1-year subset for Beta/Sharpe/Sortino
           // Use full historical data for seasonality calculations
           // Note: We'll calculate max drawdown separately based on selected timeframe
           const calculatedMetrics = calculateAllMetrics(
-            currentPrice, 
+            currentPrice,
             historicalData, // Full data for CAGR calculations (limited to 5 years)
             asset.assetType,
             benchmarkData.length > 0 ? benchmarkData : undefined,
             effectiveRiskFreeRates,
             historicalDataForBetaSharpe, // 1-year subset for Beta and Sharpe
+            undefined, // 3-year subset (not used here, we calculate max drawdown separately)
             dataForSeasonality // Full historical data for seasonality
           )
-          
+
           // Calculate max drawdown based on selected timeframe
           const { calculateMaxDrawdown } = await import('@/lib/asset-screener/metrics-calculations')
           const dataForMaxDD = fullHistoricalData.length > 0 ? fullHistoricalData : historicalData
           let maxDD: number | null = null
-          
+
           if (dataForMaxDD.length > 0) {
             // Filter data based on selected timeframe
             let filteredData = dataForMaxDD
@@ -241,33 +242,33 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
               filteredData = dataForMaxDD.filter(point => new Date(point.date) >= fiveYearsAgo)
             }
             // 'All' uses all data, no filtering needed
-            
+
             if (filteredData.length > 0) {
               maxDD = calculateMaxDrawdown(filteredData)
             }
           }
-          
+
           // Calculate P/E Ratio for PK Equities
           let peRatio: number | undefined
           if (asset.assetType === 'pk-equity' && currentPrice) {
-              try {
-                  const financialsRes = await fetch(`/api/financials?symbol=${asset.symbol}&period=quarterly`)
-                  if (financialsRes.ok) {
-                      const data = await financialsRes.json()
-                      const financials = data.financials
-                      // Sum EPS of last 4 quarters for TTM EPS
-                      if (financials && financials.length >= 4) {
-                          const ttmEps = financials.slice(0, 4).reduce((sum: number, f: any) => sum + (parseFloat(f.eps_diluted) || 0), 0)
-                          // Calculate PE ratio even if EPS is negative (negative PE is valid for loss-making companies)
-                          // Only skip if EPS is exactly 0 to avoid division by zero
-                          if (ttmEps !== 0) {
-                              peRatio = currentPrice / ttmEps
-                          }
-                      }
+            try {
+              const financialsRes = await fetch(`/api/financials?symbol=${asset.symbol}&period=quarterly`)
+              if (financialsRes.ok) {
+                const data = await financialsRes.json()
+                const financials = data.financials
+                // Sum EPS of last 4 quarters for TTM EPS
+                if (financials && financials.length >= 4) {
+                  const ttmEps = financials.slice(0, 4).reduce((sum: number, f: any) => sum + (parseFloat(f.eps_diluted) || 0), 0)
+                  // Calculate PE ratio even if EPS is negative (negative PE is valid for loss-making companies)
+                  // Only skip if EPS is exactly 0 to avoid division by zero
+                  if (ttmEps !== 0) {
+                    peRatio = currentPrice / ttmEps
                   }
-              } catch (e) {
-                  console.error('Error fetching financials for P/E:', e)
+                }
               }
+            } catch (e) {
+              console.error('Error fetching financials for P/E:', e)
+            }
           }
 
           setMaxDrawdown(maxDD)
@@ -293,13 +294,13 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
 
     fetchMetrics()
   }, [asset, effectiveRiskFreeRates])
-  
+
   // Recalculate max drawdown when timeframe changes
   useEffect(() => {
     const recalculateMaxDrawdown = async () => {
       if (fullHistoricalDataForMaxDD.length > 0) {
         const { calculateMaxDrawdown } = await import('@/lib/asset-screener/metrics-calculations')
-        
+
         let filteredData = fullHistoricalDataForMaxDD
         const now = new Date()
         if (maxDrawdownTimeframe === '1Y') {
@@ -313,7 +314,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
           filteredData = fullHistoricalDataForMaxDD.filter(point => new Date(point.date) >= fiveYearsAgo)
         }
         // 'All' uses all data, no filtering needed
-        
+
         if (filteredData.length > 0) {
           const maxDD = calculateMaxDrawdown(filteredData)
           setMaxDrawdown(maxDD)
@@ -329,7 +330,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
         }
       }
     }
-    
+
     recalculateMaxDrawdown()
   }, [maxDrawdownTimeframe, fullHistoricalDataForMaxDD])
 
@@ -375,7 +376,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
               </CardHeader>
             </Card>
           )}
-          
+
           {metrics?.peRatio !== undefined && (
             <Card>
               <CardHeader className="pb-2">
@@ -386,7 +387,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
               </CardHeader>
             </Card>
           )}
-          
+
           {metrics?.ytdReturnPercent !== undefined && metrics.ytdReturnPercent !== null && (
             <Card>
               <CardHeader className="pb-2">
@@ -397,7 +398,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
               </CardHeader>
             </Card>
           )}
-          
+
           {metrics?.cagr1Year !== undefined && metrics.cagr1Year !== null && (
             <Card>
               <CardHeader className="pb-2">
@@ -408,7 +409,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
               </CardHeader>
             </Card>
           )}
-          
+
           {metrics?.cagr3Year !== undefined && metrics.cagr3Year !== null && (
             <Card>
               <CardHeader className="pb-2">
@@ -419,7 +420,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
               </CardHeader>
             </Card>
           )}
-          
+
           {metrics?.cagr5Year !== undefined && metrics.cagr5Year !== null && (
             <Card>
               <CardHeader className="pb-2">
@@ -458,9 +459,9 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
 
       <TabsContent value="prices" className="space-y-4">
         <AssetPriceChart asset={asset} />
-        
+
         <HistoricPEChart asset={asset} />
-        
+
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Risk Metrics</h3>
           <div className="flex items-center gap-2">
@@ -478,7 +479,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
             </Select>
           </div>
         </div>
-        
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {metrics?.beta1Year !== undefined && metrics.beta1Year !== null && (
             <Card>
@@ -495,7 +496,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
               </CardHeader>
             </Card>
           )}
-          
+
           {metrics?.sharpeRatio1Year !== undefined && metrics.sharpeRatio1Year !== null && (
             <Card>
               <CardHeader className="pb-2">
@@ -511,7 +512,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
               </CardHeader>
             </Card>
           )}
-          
+
           {metrics?.sortinoRatio1Year !== undefined && metrics.sortinoRatio1Year !== null && (
             <Card>
               <CardHeader className="pb-2">
@@ -527,7 +528,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
               </CardHeader>
             </Card>
           )}
-          
+
           {maxDrawdown !== null && (
             <Card>
               <CardHeader className="pb-2">
