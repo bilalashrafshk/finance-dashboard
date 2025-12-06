@@ -27,6 +27,7 @@ export function useChartRecorder(ref: React.RefObject<HTMLElement>, options: Use
         isStopping: false
     })
 
+
     const startRecording = useCallback(async (onStart?: () => Promise<void> | void) => {
         if (!ref.current || isRecording) return
 
@@ -83,11 +84,55 @@ export function useChartRecorder(ref: React.RefObject<HTMLElement>, options: Use
                     gif.addFrame(canvasElement, { copy: true, delay: options.delay || 100 })
                 } else {
                     // HTML/SVG capture using html2canvas
-                    // Note: backgroundColor null ensures transparency (or inherits container)
                     const canvas = await html2canvas(ref.current, {
                         useCORS: true,
-                        scale: 1, // Usually 1 is enough for screen recording, preventing too large images
-                        backgroundColor: null
+                        scale: 1,
+                        backgroundColor: null,
+                        logging: false,
+                        onclone: (clonedDoc) => {
+                            // NUCLEAR FIX: Injected style to forcibly override ALL variables to Hex
+                            // This prevents html2canvas from ever parsing 'oklch'/'lab' values
+                            const style = clonedDoc.createElement('style');
+                            style.innerHTML = `
+                                *, *:before, *:after {
+                                    --background: #00b140 !important;
+                                    --foreground: #000000 !important;
+                                    --card: #00b140 !important;
+                                    --card-foreground: #000000 !important;
+                                    --popover: #00b140 !important;
+                                    --popover-foreground: #000000 !important;
+                                    --primary: #000000 !important;
+                                    --primary-foreground: #ffffff !important;
+                                    --secondary: #ffffff !important;
+                                    --secondary-foreground: #000000 !important;
+                                    --muted: #e5e5e5 !important;
+                                    --muted-foreground: #000000 !important;
+                                    --accent: #ffffff !important;
+                                    --accent-foreground: #000000 !important;
+                                    --destructive: #ff0000 !important;
+                                    --destructive-foreground: #ffffff !important;
+                                    --border: #000000 !important;
+                                    --input: #000000 !important;
+                                    --ring: #000000 !important;
+                                    --radius: 0px !important;
+                                    --chart-1: #000000 !important;
+                                    --chart-2: #0000FF !important;
+                                    --chart-3: #FF0000 !important;
+                                    --chart-4: #008000 !important;
+                                    --chart-5: #FFA500 !important;
+                                    --sidebar: #00b140 !important;
+                                    --sidebar-foreground: #000000 !important;
+                                    --sidebar-primary: #000000 !important;
+                                    --sidebar-primary-foreground: #ffffff !important;
+                                    --sidebar-accent: #ffffff !important;
+                                    --sidebar-accent-foreground: #000000 !important;
+                                    --sidebar-border: #000000 !important;
+                                    --sidebar-ring: #000000 !important;
+                                    box-shadow: none !important;
+                                }
+                            `;
+                            clonedDoc.body.appendChild(style);
+                        }
                     })
 
                     if (!recorderRef.current.isStopping) {
@@ -100,8 +145,12 @@ export function useChartRecorder(ref: React.RefObject<HTMLElement>, options: Use
         }
 
         // Start capture loop
-        // Default 100ms = 10 FPS
         recorderRef.current.intervalId = setInterval(captureFrame, options.delay || 100)
+
+        // Auto-stop after 4 seconds (captures 40 frames at 100ms)
+        setTimeout(() => {
+            stopRecording()
+        }, 4000)
 
     }, [ref, options.delay, options.quality, options.workerScript, isRecording])
 

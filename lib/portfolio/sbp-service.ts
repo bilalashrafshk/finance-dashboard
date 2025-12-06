@@ -33,6 +33,23 @@ export const MACRO_KEYS = [
     'TS_GP_IR_SIRPR_AH.SBPOL0030', // Target Rate
     'TS_GP_IR_SIRPR_AH.SBPOL0010', // Reverse Repo
     'TS_GP_IR_SIRPR_AH.SBPOL0020', // Repo
+
+    // SCRA Keys
+    'TS_GP_BOP_SCRA_W.P00010', // Opening Balance SCRA
+    'TS_GP_BOP_SCRA_W.P00020', // Inflow: Inward Remittances
+    'TS_GP_BOP_SCRA_W.P00030', // Sale of Securities
+    'TS_GP_BOP_SCRA_W.P00040', // Dividend and Coupon Payment
+    'TS_GP_BOP_SCRA_W.P00050', // Outflow: Outward Remittances
+    'TS_GP_BOP_SCRA_W.P00060', // Purchase of Securities
+    'TS_GP_BOP_SCRA_W.P00070', // Tax Paid through SCRA
+    'TS_GP_BOP_SCRA_W.P00080', // Closing Balance SCRA
+    'TS_GP_BOP_SCRA_W.P00090', // Purchase/Sale of Securities (Net)
+    'TS_GP_BOP_SCRA_W.P00100', // Opening Market Value of Equity
+    'TS_GP_BOP_SCRA_W.P00130', // Closing Market Value of Equity
+    'TS_GP_BOP_SCRA_W.P00110', // Opening Market Value of TBills
+    'TS_GP_BOP_SCRA_W.P00140', // Closing Market Value of TBills
+    'TS_GP_BOP_SCRA_W.P00120', // Opening Market Value of PIBs
+    'TS_GP_BOP_SCRA_W.P00150', // Closing Market Value of PIBs
 ]
 
 async function fetchSBPEconomicDataFromAPI(
