@@ -32,6 +32,7 @@ export function calculateFifoMetrics(
     const realizedPnLMap = new Map<string, number>()
     // Track cash balances by currency
     const cashBalances = new Map<string, number>()
+    const buyLotsMap = new Map<string, BuyLot[]>()
 
     // Sort trades by date to process chronologically
     const sortedTrades = [...trades].sort((a, b) => {
