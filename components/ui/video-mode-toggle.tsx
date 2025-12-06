@@ -26,23 +26,23 @@ export function VideoModeToggle({
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <Button
-                                variant={isRecording ? "destructive" : "secondary"}
+                                variant={isRecording ? "secondary" : "secondary"}
                                 size="icon"
-                                onClick={isRecording ? onRecordStop : onRecordStart}
-                                disabled={isEncoding}
-                                className={isRecording ? "animate-pulse" : ""}
+                                onClick={isRecording ? undefined : onRecordStart}
+                                disabled={isRecording || isEncoding}
+                                className={isRecording ? "animate-pulse cursor-wait" : "hover:bg-red-100"}
                             >
                                 {isEncoding ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                 ) : isRecording ? (
-                                    <Square className="h-4 w-4 fill-current" />
+                                    <CircleDot className="h-4 w-4 text-red-500 animate-ping" />
                                 ) : (
                                     <CircleDot className="h-4 w-4 text-red-500" />
                                 )}
                             </Button>
                         </TooltipTrigger>
                         <TooltipContent>
-                            <p>{isEncoding ? "Encoding GIF..." : isRecording ? "Stop Recording" : "Record High-Quality GIF"}</p>
+                            <p>{isEncoding ? "Encoding GIF..." : isRecording ? "Recording in progress..." : "Record High-Quality GIF"}</p>
                         </TooltipContent>
                     </Tooltip>
                 </TooltipProvider>
