@@ -1,7 +1,8 @@
 import { getTodayPriceWithTimestamp, getLatestPriceFromDatabase } from '@/lib/portfolio/db-client'
 import { getTodayInMarketTimezone } from '@/lib/portfolio/market-hours'
 import { fetchMultipleBinancePrices, parseSymbolToBinance } from '@/lib/portfolio/binance-api'
-import { fetchPKEquityPrice, fetchUSEquityPrice, fetchMetalsPrice, fetchIndicesPrice } from '@/lib/portfolio/unified-price-api'
+import { fetchUSEquityPrice, fetchMetalsPrice, fetchIndicesPrice } from '@/lib/portfolio/unified-price-api'
+import { fetchPKEquityPriceService } from '@/lib/prices/pk-equity-service'
 
 export interface BatchPriceResult {
     price?: number
@@ -18,7 +19,6 @@ export async function fetchBatchPrices(
     const assetsToFetch: typeof assets = []
 
     // 1. Check DB for all assets
-    // We do this in parallel for speed
     await Promise.all(assets.map(async (asset) => {
         const { type, symbol } = asset
         const symbolUpper = symbol.toUpperCase()
@@ -64,10 +64,8 @@ export async function fetchBatchPrices(
         if (cryptoAssets.length > 0) {
             const symbols = cryptoAssets.map((a: any) => parseSymbolToBinance(a.symbol))
             try {
-                // For true bulk efficiency, we get all prices from Binance in 1 go
                 const prices = await fetchMultipleBinancePrices(symbols)
 
-                // Now we update DB for each found price
                 await Promise.all(cryptoAssets.map(async (asset: any) => {
                     const binanceSymbol = parseSymbolToBinance(asset.symbol)
                     const price = prices[binanceSymbol]
@@ -80,14 +78,7 @@ export async function fetchBatchPrices(
                             source: 'api'
                         }
 
-                        // We need to update the DB so next time it's cached
-                        // We return the live values to the user NOW (fast).
-                        // We trigger the DB updates in the background (fire and forget).
-                        // Note: In a service context, we might want to await this if reliability is crucial,
-                        // but for speed we keep it async/background if possible.
-                        // However, since we can't easily do "fire and forget" without the request context ending,
-                        // we'll just import and call.
-
+                        // Background update
                         import('@/lib/portfolio/unified-price-api').then(({ fetchCryptoPrice }) => {
                             fetchCryptoPrice(binanceSymbol, true, baseUrl).catch(err => console.error('Bg update failed', err))
                         })
@@ -108,7 +99,11 @@ export async function fetchBatchPrices(
 
             try {
                 if (asset.type === 'pk-equity') {
-                    data = await fetchPKEquityPrice(asset.symbol, false, baseUrl)
+                    // Use SERVICE directly (No HTTP)
+                    const result = await fetchPKEquityPriceService(asset.symbol, false)
+                    if (result) {
+                        data = { price: result.price, date: result.date }
+                    }
                 } else if (asset.type === 'us-equity') {
                     data = await fetchUSEquityPrice(asset.symbol, false, baseUrl)
                 } else if (asset.type === 'metals') {
@@ -138,7 +133,6 @@ export async function fetchBatchPrices(
                 }
             } catch (e) {
                 console.error(`Fetch failed for ${asset.symbol}`, e)
-                // Try fallback to latest DB price on error too
                 try {
                     const latestDb = await getLatestPriceFromDatabase(asset.type, asset.symbol)
                     if (latestDb) {
