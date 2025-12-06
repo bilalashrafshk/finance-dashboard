@@ -30,17 +30,12 @@ export function calculateFifoMetrics(
 ): FifoResult {
     const holdingsMap = new Map<string, Holding>()
     const realizedPnLMap = new Map<string, number>()
-    const buyLotsMap = new Map<string, BuyLot[]>()
-
-    // Sort trades by date to process chronologically
-    const sortedTrades = [...trades].sort((a, b) => {
-        const dateDiff = new Date(a.tradeDate).getTime() - new Date(b.tradeDate).getTime()
-        if (dateDiff !== 0) return dateDiff
-        return a.id - b.id
-    })
+    // Track cash balances by currency
+    const cashBalances = new Map<string, number>()
 
     for (const trade of sortedTrades) {
         const key = `${trade.assetType}:${trade.symbol.toUpperCase()}:${trade.currency}`
+        const cashKey = `cash:CASH:${trade.currency}`
 
         // Initialize structures if needed
         if (!buyLotsMap.has(key)) {
@@ -52,49 +47,97 @@ export function calculateFifoMetrics(
             realizedPnLMap.set(key, 0)
         }
 
-        if (trade.tradeType === 'buy' || trade.tradeType === 'add') {
-            // Add new lot
-            buyLots.push({
-                date: trade.tradeDate,
-                quantity: trade.quantity,
-                price: trade.price,
-                remaining: trade.quantity
-            })
+        // Initialize cash balance if needed
+        if (!cashBalances.has(cashKey)) {
+            cashBalances.set(cashKey, 0)
+        }
 
-            // Handle Cash deduction for non-cash buys (optional, for cash tracking)
-            if (trade.assetType !== 'cash') {
-                const cashKey = `cash:CASH:${trade.currency}`
-                // We don't strictly track cash lots for P&L, just balance
-                // Implementation omitted for brevity as focus is on Asset P&L
+        if (trade.assetType === 'cash') {
+            // Direct Cash Transactions (Deposit/Withdrawal)
+            const currentCash = cashBalances.get(cashKey)!
+            if (trade.tradeType === 'add' || trade.tradeType === 'buy') {
+                cashBalances.set(cashKey, currentCash + trade.quantity)
+            } else if (trade.tradeType === 'remove' || trade.tradeType === 'sell') {
+                cashBalances.set(cashKey, currentCash - trade.quantity)
             }
+        } else {
+            // Asset Transactions - Impact on Cash
+            const currentCash = cashBalances.get(cashKey)!
 
-        } else if (trade.tradeType === 'sell' || trade.tradeType === 'remove') {
-            let qtyToSell = trade.quantity
-            let tradePnL = 0
+            if (trade.tradeType === 'buy') {
+                // Buy Asset -> Deduct Cash
+                cashBalances.set(cashKey, currentCash - trade.totalAmount)
 
-            // Consume lots FIFO
-            while (qtyToSell > 0 && buyLots.length > 0) {
-                const lot = buyLots[0] // Oldest lot
+                // Add new lot
+                buyLots.push({
+                    date: trade.tradeDate,
+                    quantity: trade.quantity,
+                    price: trade.price,
+                    remaining: trade.quantity
+                })
 
-                const qtyFromLot = Math.min(qtyToSell, lot.remaining)
+            } else if (trade.tradeType === 'add') {
+                // Add Asset (e.g. Gift/Transfer) -> No Cash Impact (usually)
+                // If totalAmount > 0, we could deduct cash, but 'add' usually implies external inflow without cash spend from portfolio
+                // For now, assuming 'add' does NOT cost cash unless specified. 
+                // However, looking at user's "ADD Cash", 'add' is used for deposits.
+                // For assets, 'add' might be stock dividend or transfer.
+                // Let's assume NO cash impact for 'add' of non-cash assets for now.
 
-                // Calculate P&L for this chunk
-                const chunkPnL = (trade.price - lot.price) * qtyFromLot
-                tradePnL += chunkPnL
+                buyLots.push({
+                    date: trade.tradeDate,
+                    quantity: trade.quantity,
+                    price: trade.price,
+                    remaining: trade.quantity
+                })
 
-                // Update lot and sell qty
-                lot.remaining -= qtyFromLot
-                qtyToSell -= qtyFromLot
+            } else if (trade.tradeType === 'sell') {
+                // Sell Asset -> Add Cash
+                cashBalances.set(cashKey, currentCash + trade.totalAmount)
 
-                // Remove empty lot
-                if (lot.remaining <= 0.000001) { // Epsilon for float precision
-                    buyLots.shift()
+                let qtyToSell = trade.quantity
+                let tradePnL = 0
+
+                // Consume lots FIFO
+                while (qtyToSell > 0 && buyLots.length > 0) {
+                    const lot = buyLots[0] // Oldest lot
+                    const qtyFromLot = Math.min(qtyToSell, lot.remaining)
+
+                    // Calculate P&L for this chunk
+                    const chunkPnL = (trade.price - lot.price) * qtyFromLot
+                    tradePnL += chunkPnL
+
+                    // Update lot and sell qty
+                    lot.remaining -= qtyFromLot
+                    qtyToSell -= qtyFromLot
+
+                    // Remove empty lot
+                    if (lot.remaining <= 0.000001) {
+                        buyLots.shift()
+                    }
+                }
+
+                // Update Total Realized P&L for this asset
+                const currentPnL = realizedPnLMap.get(key) || 0
+                realizedPnLMap.set(key, currentPnL + tradePnL)
+
+            } else if (trade.tradeType === 'remove') {
+                // Remove Asset -> No Cash Impact (usually)
+                // Just reduce holdings
+                let qtyToRemove = trade.quantity
+
+                while (qtyToRemove > 0 && buyLots.length > 0) {
+                    const lot = buyLots[0]
+                    const qtyFromLot = Math.min(qtyToRemove, lot.remaining)
+
+                    lot.remaining -= qtyFromLot
+                    qtyToRemove -= qtyFromLot
+
+                    if (lot.remaining <= 0.000001) {
+                        buyLots.shift()
+                    }
                 }
             }
-
-            // Update Total Realized P&L for this asset
-            const currentPnL = realizedPnLMap.get(key) || 0
-            realizedPnLMap.set(key, currentPnL + tradePnL)
         }
     }
 
@@ -130,6 +173,28 @@ export function calculateFifoMetrics(
                 notes: `FIFO Calculated. ${lots.length} lots.`
             }
 
+            holdingsMap.set(key, holding)
+        }
+    })
+
+    // Add Cash Holdings
+    cashBalances.forEach((balance, key) => {
+        if (Math.abs(balance) > 0.01) { // Filter out near-zero balances
+            const [assetType, symbol, currency] = key.split(':')
+            const holding: Holding = {
+                id: key,
+                assetType: 'cash',
+                symbol: 'CASH',
+                name: 'Cash',
+                currency,
+                quantity: balance,
+                purchasePrice: 1,
+                purchaseDate: new Date().toISOString(),
+                currentPrice: 1,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                notes: 'Calculated from transactions'
+            }
             holdingsMap.set(key, holding)
         }
     })
