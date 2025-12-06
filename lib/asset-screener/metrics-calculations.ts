@@ -46,9 +46,13 @@ export interface CalculatedMetrics {
   cagr3Year?: number | null
   cagr5Year?: number | null
   beta1Year?: number | null
+  beta3Year?: number | null
   sharpeRatio1Year?: number | null
+  sharpeRatio3Year?: number | null
   sortinoRatio1Year?: number | null
+  sortinoRatio3Year?: number | null
   maxDrawdown?: number | null
+  maxDrawdown3Year?: number | null
   monthlySeasonality?: MonthlySeasonality[]
 }
 
@@ -76,10 +80,10 @@ export function calculateYTDReturn(
   // Find price at start of year
   // Sort data by date (ascending) to find the first record on or after Jan 1
   const sortedData = [...historicalData].sort((a, b) => a.date.localeCompare(b.date))
-  
+
   // Find the first record on or after Jan 1 of current year
   let yearStartPrice: number | null = null
-  
+
   // First, try to find exact match for Jan 1
   const exactMatch = sortedData.find(d => d.date === yearStartDate)
   if (exactMatch) {
@@ -185,17 +189,17 @@ export function calculateCAGR(
  */
 function calculateDailyReturns(priceData: PriceDataPoint[]): number[] {
   const returns: number[] = []
-  
+
   for (let i = 1; i < priceData.length; i++) {
     const prevPrice = priceData[i - 1].close
     const currentPrice = priceData[i].close
-    
+
     if (prevPrice > 0) {
       const dailyReturn = ((currentPrice - prevPrice) / prevPrice) * 100
       returns.push(dailyReturn)
     }
   }
-  
+
   return returns
 }
 
@@ -215,12 +219,12 @@ function alignPriceData(
   assetData.forEach(point => {
     assetMap.set(point.date, point.close)
   })
-  
+
   const benchmarkMap = new Map<string, number>()
   benchmarkData.forEach(point => {
     benchmarkMap.set(point.date, point.close)
   })
-  
+
   // Find common dates
   const commonDates = new Set<string>()
   assetMap.forEach((_, date) => {
@@ -228,24 +232,24 @@ function alignPriceData(
       commonDates.add(date)
     }
   })
-  
+
   // Sort dates
   const sortedDates = Array.from(commonDates).sort()
-  
+
   // Build aligned arrays
   const alignedAsset: PriceDataPoint[] = []
   const alignedBenchmark: PriceDataPoint[] = []
-  
+
   sortedDates.forEach(date => {
     const assetPrice = assetMap.get(date)
     const benchmarkPrice = benchmarkMap.get(date)
-    
+
     if (assetPrice !== undefined && benchmarkPrice !== undefined) {
       alignedAsset.push({ date, close: assetPrice })
       alignedBenchmark.push({ date, close: benchmarkPrice })
     }
   })
-  
+
   return { asset: alignedAsset, benchmark: alignedBenchmark }
 }
 
@@ -280,15 +284,15 @@ function standardDeviation(values: number[]): number {
  */
 function covariance(x: number[], y: number[]): number {
   if (x.length !== y.length || x.length === 0) return 0
-  
+
   const xMean = mean(x)
   const yMean = mean(y)
-  
+
   let sum = 0
   for (let i = 0; i < x.length; i++) {
     sum += (x[i] - xMean) * (y[i] - yMean)
   }
-  
+
   return sum / x.length
 }
 
@@ -308,41 +312,41 @@ export function calculateBeta(
   if (!assetData || assetData.length === 0 || !benchmarkData || benchmarkData.length === 0) {
     return null
   }
-  
+
   // Align data by date
   const { asset: alignedAsset, benchmark: alignedBenchmark } = alignPriceData(assetData, benchmarkData)
-  
+
   // Need at least 30 trading days (about 6 weeks) for meaningful Beta
   if (alignedAsset.length < 30) {
     return null
   }
-  
+
   // Calculate daily returns for both
   const assetReturns = calculateDailyReturns(alignedAsset)
   const benchmarkReturns = calculateDailyReturns(alignedBenchmark)
-  
+
   // Ensure both arrays have same length (should be same after alignment)
   const minLength = Math.min(assetReturns.length, benchmarkReturns.length)
   if (minLength < 30) {
     return null
   }
-  
+
   const assetReturnsTrimmed = assetReturns.slice(0, minLength)
   const benchmarkReturnsTrimmed = benchmarkReturns.slice(0, minLength)
-  
+
   // Calculate variance of benchmark returns
   const benchmarkVariance = variance(benchmarkReturnsTrimmed)
-  
+
   if (benchmarkVariance === 0) {
     return null // Cannot divide by zero
   }
-  
+
   // Calculate covariance
   const cov = covariance(assetReturnsTrimmed, benchmarkReturnsTrimmed)
-  
+
   // Calculate Beta
   const beta = cov / benchmarkVariance
-  
+
   return beta
 }
 
@@ -366,39 +370,39 @@ export function calculateSharpeRatio(
   if (!historicalData || historicalData.length < 30) {
     return null // Need at least 30 trading days
   }
-  
+
   // Calculate daily returns
   const dailyReturns = calculateDailyReturns(historicalData)
-  
+
   if (dailyReturns.length < 30) {
     return null
   }
-  
+
   // Calculate mean daily return (as percentage)
   const meanDailyReturn = mean(dailyReturns)
-  
+
   // Calculate standard deviation of daily returns (as percentage)
   const stdDevDailyReturn = standardDeviation(dailyReturns)
-  
+
   if (stdDevDailyReturn === 0) {
     return null // Cannot divide by zero
   }
-  
+
   // Annualize the returns and standard deviation
   // Mean annual return = Mean daily return * 252 (trading days)
   const annualizedReturn = meanDailyReturn * 252
-  
+
   // Annualized standard deviation = Daily std dev * sqrt(252)
   const annualizedStdDev = stdDevDailyReturn * Math.sqrt(252)
-  
+
   if (annualizedStdDev === 0) {
     return null
   }
-  
+
   // Calculate Sharpe Ratio
   // Sharpe Ratio = (Annualized Return - Risk-Free Rate) / Annualized Std Dev
   const sharpeRatio = (annualizedReturn - (riskFreeRate * 100)) / annualizedStdDev
-  
+
   return sharpeRatio
 }
 
@@ -423,49 +427,49 @@ export function calculateSortinoRatio(
   if (!historicalData || historicalData.length < 30) {
     return null // Need at least 30 trading days
   }
-  
+
   // Calculate daily returns
   const dailyReturns = calculateDailyReturns(historicalData)
-  
+
   if (dailyReturns.length < 30) {
     return null
   }
-  
+
   // Calculate mean daily return (as percentage)
   const meanDailyReturn = mean(dailyReturns)
-  
+
   // Calculate downside deviation: only consider negative returns (returns below 0)
   const negativeReturns = dailyReturns.filter(ret => ret < 0)
-  
+
   if (negativeReturns.length === 0) {
     // If there are no negative returns, downside deviation is 0
     // In this case, Sortino Ratio would be infinite, so we return null
     // Alternatively, we could return a very high number, but null is safer
     return null
   }
-  
+
   // Calculate standard deviation of negative returns only
   const downsideStdDev = standardDeviation(negativeReturns)
-  
+
   if (downsideStdDev === 0) {
     return null // Cannot divide by zero
   }
-  
+
   // Annualize the returns and downside standard deviation
   // Mean annual return = Mean daily return * 252 (trading days)
   const annualizedReturn = meanDailyReturn * 252
-  
+
   // Annualized downside standard deviation = Downside std dev * sqrt(252)
   const annualizedDownsideStdDev = downsideStdDev * Math.sqrt(252)
-  
+
   if (annualizedDownsideStdDev === 0) {
     return null
   }
-  
+
   // Calculate Sortino Ratio
   // Sortino Ratio = (Annualized Return - Risk-Free Rate) / Annualized Downside Std Dev
   const sortinoRatio = (annualizedReturn - (riskFreeRate * 100)) / annualizedDownsideStdDev
-  
+
   return sortinoRatio
 }
 
@@ -486,33 +490,33 @@ export function calculateMaxDrawdown(
   if (!historicalData || historicalData.length < 2) {
     return null // Need at least 2 data points
   }
-  
+
   // Sort data by date (ascending) to ensure chronological order
   const sortedData = [...historicalData].sort((a, b) => a.date.localeCompare(b.date))
-  
+
   let maxDrawdown = 0
   let peak = sortedData[0].close
-  
+
   // Iterate through prices to find the maximum drawdown
   for (let i = 1; i < sortedData.length; i++) {
     const currentPrice = sortedData[i].close
-    
+
     // Update peak if we see a new high
     if (currentPrice > peak) {
       peak = currentPrice
     }
-    
+
     // Calculate drawdown from current peak
     if (peak > 0) {
       const drawdown = ((peak - currentPrice) / peak) * 100
-      
+
       // Update max drawdown if this is larger
       if (drawdown > maxDrawdown) {
         maxDrawdown = drawdown
       }
     }
   }
-  
+
   return maxDrawdown
 }
 
@@ -531,19 +535,19 @@ export function calculateDrawdownDuration(
   if (!historicalData || historicalData.length < 2) {
     return null
   }
-  
+
   // Sort data by date (ascending)
   const sortedData = [...historicalData].sort((a, b) => a.date.localeCompare(b.date))
-  
+
   const drawdownPeriods: DrawdownPeriod[] = []
   let currentPeak: { date: string, price: number } | null = null
   let currentTrough: { date: string, price: number } | null = null
   let inDrawdown = false
-  
+
   for (let i = 0; i < sortedData.length; i++) {
     const currentDate = sortedData[i].date
     const currentPrice = sortedData[i].close
-    
+
     if (!currentPeak || currentPrice > currentPeak.price) {
       // New peak - check if we were in a drawdown and recovered
       if (inDrawdown && currentPeak && currentTrough) {
@@ -552,7 +556,7 @@ export function calculateDrawdownDuration(
         const recoveryDate = new Date(currentDate)
         const duration = Math.floor((recoveryDate.getTime() - peakDate.getTime()) / (1000 * 60 * 60 * 24))
         const drawdown = ((currentPeak.price - currentTrough.price) / currentPeak.price) * 100
-        
+
         drawdownPeriods.push({
           peakDate: currentPeak.date,
           troughDate: currentTrough.date,
@@ -562,11 +566,11 @@ export function calculateDrawdownDuration(
           drawdown,
           duration
         })
-        
+
         inDrawdown = false
         currentTrough = null
       }
-      
+
       // Update peak
       currentPeak = { date: currentDate, price: currentPrice }
     } else if (currentPeak && currentPrice < currentPeak.price) {
@@ -582,14 +586,14 @@ export function calculateDrawdownDuration(
       }
     }
   }
-  
+
   // Handle any ongoing drawdown (not yet recovered)
   if (inDrawdown && currentPeak && currentTrough) {
     const peakDate = new Date(currentPeak.date)
     const lastDate = new Date(sortedData[sortedData.length - 1].date)
     const duration = Math.floor((lastDate.getTime() - peakDate.getTime()) / (1000 * 60 * 60 * 24))
     const drawdown = ((currentPeak.price - currentTrough.price) / currentPeak.price) * 100
-    
+
     drawdownPeriods.push({
       peakDate: currentPeak.date,
       troughDate: currentTrough.date,
@@ -600,16 +604,16 @@ export function calculateDrawdownDuration(
       duration
     })
   }
-  
+
   if (drawdownPeriods.length === 0) {
     return null
   }
-  
+
   // Calculate max and average duration (only for recovered drawdowns)
   const recoveredDurations = drawdownPeriods
     .filter(p => p.recoveryDate !== null)
     .map(p => p.duration)
-  
+
   if (recoveredDurations.length === 0) {
     return {
       maxDuration: null,
@@ -617,10 +621,10 @@ export function calculateDrawdownDuration(
       drawdownPeriods
     }
   }
-  
+
   const maxDuration = Math.max(...recoveredDurations)
   const avgDuration = mean(recoveredDurations)
-  
+
   return {
     maxDuration,
     avgDuration,
@@ -644,77 +648,77 @@ export function calculateMonthlySeasonality(
   if (!historicalData || historicalData.length < 2) {
     return null
   }
-  
+
   // Sort data by date (ascending)
   const sortedData = [...historicalData].sort((a, b) => a.date.localeCompare(b.date))
-  
+
   // Group data points by year-month
   const dataByYearMonth: Map<string, PriceDataPoint[]> = new Map()
-  
+
   sortedData.forEach(point => {
     const date = new Date(point.date)
     const year = date.getFullYear()
     const month = date.getMonth() // 0-11
     const key = `${year}-${month}`
-    
+
     if (!dataByYearMonth.has(key)) {
       dataByYearMonth.set(key, [])
     }
     dataByYearMonth.get(key)!.push(point)
   })
-  
+
   // For each month (0-11), collect monthly returns and detailed observations across all years
   const monthlyReturnsByMonth: Map<number, number[]> = new Map()
   const monthlyObservationsByMonth: Map<number, MonthlyObservation[]> = new Map()
-  
+
   dataByYearMonth.forEach((points, key) => {
     if (points.length === 0) return
-    
+
     // Sort points by date within the month
     const sortedPoints = [...points].sort((a, b) => a.date.localeCompare(b.date))
-    
+
     // Extract year and month from key (format: "YYYY-M")
     const [yearStr, monthStr] = key.split('-')
     const year = parseInt(yearStr)
     const month = parseInt(monthStr)
-    
+
     // Get the first and last day of the month
     const firstDayOfMonth = new Date(year, month, 1)
     const lastDayOfMonth = new Date(year, month + 1, 0) // Last day of the month
-    
+
     // Check if we have data in the first week (days 1-7)
     const firstWeekEnd = new Date(year, month, 7)
     const hasFirstWeekData = sortedPoints.some(point => {
       const pointDate = new Date(point.date)
       return pointDate >= firstDayOfMonth && pointDate <= firstWeekEnd
     })
-    
+
     // Check if we have data in the last week (last 7 days of the month)
     const lastWeekStart = new Date(year, month + 1, -7) // 7 days before end of month
     const hasLastWeekData = sortedPoints.some(point => {
       const pointDate = new Date(point.date)
       return pointDate >= lastWeekStart && pointDate <= lastDayOfMonth
     })
-    
+
     // Only calculate monthly return if we have data in both first and last week
     if (!hasFirstWeekData || !hasLastWeekData) {
       return // Skip this month-year combination
     }
-    
+
     // Get first and last day prices for this month
     const firstDayPrice = sortedPoints[0].close
     const lastDayPrice = sortedPoints[sortedPoints.length - 1].close
-    
+
     if (firstDayPrice > 0) {
       // Calculate monthly return: (Last day - First day) / First day * 100
       const monthlyReturn = ((lastDayPrice - firstDayPrice) / firstDayPrice) * 100
-      
+
       if (!monthlyReturnsByMonth.has(month)) {
         monthlyReturnsByMonth.set(month, [])
         monthlyObservationsByMonth.set(month, [])
       }
       monthlyReturnsByMonth.get(month)!.push(monthlyReturn)
-      
+
       // Store detailed observation
       monthlyObservationsByMonth.get(month)!.push({
         year,
@@ -726,21 +730,21 @@ export function calculateMonthlySeasonality(
       })
     }
   })
-  
+
   // Calculate average for each month across all years
-  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                      'July', 'August', 'September', 'October', 'November', 'December']
-  
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December']
+
   const seasonality: MonthlySeasonality[] = []
-  
+
   for (let month = 0; month < 12; month++) {
     const returns = monthlyReturnsByMonth.get(month) || []
     const observations = monthlyObservationsByMonth.get(month) || []
     const avgReturn = returns.length > 0 ? mean(returns) : 0
-    
+
     // Sort observations by year (descending - most recent first)
     const sortedObservations = [...observations].sort((a, b) => b.year - a.year)
-    
+
     seasonality.push({
       month,
       monthName: monthNames[month],
@@ -749,7 +753,7 @@ export function calculateMonthlySeasonality(
       observations: sortedObservations
     })
   }
-  
+
   return seasonality
 }
 
@@ -784,6 +788,7 @@ export function calculateAllMetrics(
   benchmarkData?: PriceDataPoint[],
   riskFreeRates?: RiskFreeRates,
   historicalData1Year?: PriceDataPoint[],
+  historicalData3Year?: PriceDataPoint[],
   historicalDataForSeasonality?: PriceDataPoint[]
 ): CalculatedMetrics {
   const metrics: CalculatedMetrics = {}
@@ -811,43 +816,6 @@ export function calculateAllMetrics(
     metrics.cagr5Year = cagr5Year
   }
 
-  // Calculate Beta for US and PK equities
-  // Use 1-year subset if provided (for consistency with summary), otherwise use full data
-  if ((assetType === 'us-equity' || assetType === 'pk-equity') && benchmarkData && benchmarkData.length > 0) {
-    const dataForBeta = historicalData1Year && historicalData1Year.length > 0 ? historicalData1Year : historicalData
-    const beta = calculateBeta(dataForBeta, benchmarkData)
-    if (beta !== null) {
-      metrics.beta1Year = beta
-    }
-  }
-
-  // Calculate Sharpe Ratio for US and PK equities
-  // Use 1-year subset if provided (for consistency with summary), otherwise use full data
-  if (assetType === 'us-equity' || assetType === 'pk-equity') {
-    // Use provided risk-free rates or defaults
-    let riskFreeRate: number
-    if (riskFreeRates) {
-      riskFreeRate = assetType === 'us-equity' 
-        ? riskFreeRates.us / 100  // Convert percentage to decimal
-        : riskFreeRates.pk / 100
-    } else {
-      // Default to 2.5% for US and 3.5% for PK
-      riskFreeRate = assetType === 'us-equity' ? 0.025 : 0.035
-    }
-    
-    const dataForSharpe = historicalData1Year && historicalData1Year.length > 0 ? historicalData1Year : historicalData
-    const sharpeRatio = calculateSharpeRatio(dataForSharpe, riskFreeRate)
-    if (sharpeRatio !== null) {
-      metrics.sharpeRatio1Year = sharpeRatio
-    }
-    
-    // Calculate Sortino Ratio for US and PK equities
-    // Use same data and risk-free rate as Sharpe Ratio
-    const sortinoRatio = calculateSortinoRatio(dataForSharpe, riskFreeRate)
-    if (sortinoRatio !== null) {
-      metrics.sortinoRatio1Year = sortinoRatio
-    }
-  }
 
   // Calculate Max Drawdown for all asset types (using full historical data)
   // Max Drawdown shows the worst peak-to-trough decline, so we want the full history
@@ -858,8 +826,8 @@ export function calculateAllMetrics(
 
   // Calculate Seasonality for all asset types (using full historical data - all years)
   // Use historicalDataForSeasonality if provided (all years), otherwise use historicalData
-  const dataForSeasonality = historicalDataForSeasonality && historicalDataForSeasonality.length > 0 
-    ? historicalDataForSeasonality 
+  const dataForSeasonality = historicalDataForSeasonality && historicalDataForSeasonality.length > 0
+    ? historicalDataForSeasonality
     : historicalData
   const monthlySeasonality = calculateMonthlySeasonality(dataForSeasonality)
   if (monthlySeasonality !== null) {

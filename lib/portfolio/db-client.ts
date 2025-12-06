@@ -32,6 +32,10 @@ function getPool(): Pool {
   return pool
 }
 
+export async function getPostgresClient() {
+  return await getPool().connect()
+}
+
 export interface HistoricalPriceRecord {
   date: string // YYYY-MM-DD
   open: number | null
@@ -374,7 +378,7 @@ async function insertChunk(
   assetType: string,
   symbol: string,
   chunk: HistoricalPriceRecord[],
-  source: 'stockanalysis' | 'binance' | 'investing' | 'manual'
+  source: 'stockanalysis' | 'binance' | 'investing' | 'manual' | 'scstrade'
 ): Promise<number> {
   const values: any[] = []
   const placeholders: string[] = []
@@ -712,7 +716,7 @@ export async function getDividendDataBatch(
 
     try {
       const normalizedSymbols = symbols.map(s => s.toUpperCase())
-      
+
       const result = await client.query(
         `SELECT symbol, date, dividend_amount
          FROM dividend_data
@@ -722,7 +726,7 @@ export async function getDividendDataBatch(
       )
 
       const dividendsMap: Record<string, DividendRecord[]> = {}
-      
+
       // Initialize arrays for all requested symbols
       normalizedSymbols.forEach(s => {
         dividendsMap[s] = []
@@ -733,7 +737,7 @@ export async function getDividendDataBatch(
         if (!dividendsMap[symbol]) {
           dividendsMap[symbol] = []
         }
-        
+
         dividendsMap[symbol].push({
           date: row.date.toISOString().split('T')[0],
           dividend_amount: parseFloat(row.dividend_amount)

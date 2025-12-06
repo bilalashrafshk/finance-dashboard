@@ -37,12 +37,37 @@ import {
 import { AssetTableRow } from "./asset-table-row"
 
 // Interface for the metrics we want to display and sort by
-interface AssetMetrics {
+export interface AssetMetrics {
     price: number | null
     ytdReturn: number | null
     beta: number | null
     sharpeRatio: number | null
+    sortinoRatio: number | null
     maxDrawdown: number | null
+    rsi: number | null
+
+    // Valuation
+    peRatio: number | null
+    pbRatio: number | null
+    psRatio: number | null
+    pegRatio: number | null
+
+    // Dividends
+    dividendYield: number | null
+    payoutRatio: number | null
+
+    // Profitability
+    roe: number | null
+    netMargin: number | null
+
+    // Health
+    debtToEquity: number | null
+    currentRatio: number | null
+
+    // Growth
+    revenueGrowth: number | null
+    netIncomeGrowth: number | null
+
     loading: boolean
 }
 
@@ -52,7 +77,7 @@ interface AssetTableProps {
     loading?: boolean
 }
 
-type SortKey = 'symbol' | 'name' | 'price' | 'ytdReturn' | 'beta' | 'sharpeRatio' | 'maxDrawdown'
+type SortKey = 'symbol' | 'name' | 'price' | 'ytdReturn' | 'beta' | 'sharpeRatio' | 'maxDrawdown' | 'peRatio' | 'dividendYield' | 'roe'
 type SortOrder = 'asc' | 'desc'
 
 export function AssetTable({ assets, onDelete, loading }: AssetTableProps) {
@@ -79,7 +104,21 @@ export function AssetTable({ assets, onDelete, loading }: AssetTableProps) {
                             ytdReturn: null,
                             beta: null,
                             sharpeRatio: null,
+                            sortinoRatio: null,
                             maxDrawdown: null,
+                            rsi: null,
+                            peRatio: null,
+                            pbRatio: null,
+                            psRatio: null,
+                            pegRatio: null,
+                            dividendYield: null,
+                            payoutRatio: null,
+                            roe: null,
+                            netMargin: null,
+                            debtToEquity: null,
+                            currentRatio: null,
+                            revenueGrowth: null,
+                            netIncomeGrowth: null,
                             loading: true
                         }
                     }
@@ -259,11 +298,11 @@ export function AssetTable({ assets, onDelete, loading }: AssetTableProps) {
                 </DropdownMenu>
             </div>
 
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto">
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead className="w-[200px]">
+                            <TableHead className="w-[180px]">
                                 <Button variant="ghost" onClick={() => handleSort('symbol')} className="-ml-4 h-8">
                                     Asset
                                     <ArrowUpDown className="ml-2 h-4 w-4" />
@@ -282,20 +321,32 @@ export function AssetTable({ assets, onDelete, loading }: AssetTableProps) {
                                 </Button>
                             </TableHead>
                             <TableHead className="hidden md:table-cell">
-                                <Button variant="ghost" onClick={() => handleSort('beta')} className="-ml-4 h-8">
-                                    Beta
+                                <Button variant="ghost" onClick={() => handleSort('peRatio')} className="-ml-4 h-8">
+                                    P/E
                                     <ArrowUpDown className="ml-2 h-4 w-4" />
                                 </Button>
                             </TableHead>
                             <TableHead className="hidden md:table-cell">
+                                <Button variant="ghost" onClick={() => handleSort('dividendYield')} className="-ml-4 h-8">
+                                    Yield
+                                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                                </Button>
+                            </TableHead>
+                            <TableHead className="hidden lg:table-cell">
+                                <Button variant="ghost" onClick={() => handleSort('beta')} className="-ml-4 h-8">
+                                    Beta (3Y)
+                                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                                </Button>
+                            </TableHead>
+                            <TableHead className="hidden lg:table-cell">
                                 <Button variant="ghost" onClick={() => handleSort('sharpeRatio')} className="-ml-4 h-8">
                                     Sharpe
                                     <ArrowUpDown className="ml-2 h-4 w-4" />
                                 </Button>
                             </TableHead>
-                            <TableHead className="hidden lg:table-cell">
+                            <TableHead className="hidden xl:table-cell">
                                 <Button variant="ghost" onClick={() => handleSort('maxDrawdown')} className="-ml-4 h-8">
-                                    Max DD (1Y)
+                                    Max DD
                                     <ArrowUpDown className="ml-2 h-4 w-4" />
                                 </Button>
                             </TableHead>
@@ -305,11 +356,6 @@ export function AssetTable({ assets, onDelete, loading }: AssetTableProps) {
                     <TableBody>
                         {filteredAndSortedAssets.map((asset) => {
                             const m = metrics[asset.id]
-
-                            // We need to actually fetch the data. 
-                            // For now, we will render a Row component that handles its own fetching if metrics are missing
-                            // But to support sorting, we really need that data lifted up.
-                            // For this step, I will implement a "Smart Row" that updates the parent state when it loads data.
 
                             return (
                                 <AssetTableRow

@@ -1,4 +1,9 @@
 {
-  "installCommand": "npm install --legacy-peer-deps"
+  "installCommand": "npm install --legacy-peer-deps",
+  "crons": [
+    {
+      "path": "/api/screener/update",
+      "schedule": "0 0 * * *"
+    }
+  ]
 }
-

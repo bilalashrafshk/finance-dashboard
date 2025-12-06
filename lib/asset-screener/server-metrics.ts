@@ -1,103 +1,86 @@
 import { unstable_cache } from 'next/cache'
 import { TrackedAsset } from '@/components/asset-screener/add-asset-dialog'
-import { calculateAllMetrics, PriceDataPoint } from '@/lib/asset-screener/metrics-calculations'
-import { fetchHistoricalData } from '@/lib/portfolio/unified-price-api'
+import { getPostgresClient } from '@/lib/portfolio/db-client'
 
 export async function getAssetMetrics(asset: TrackedAsset, baseUrl?: string) {
+    const client = await getPostgresClient()
+
     try {
-        // Determine asset type for unified API
-        let apiAssetType: 'crypto' | 'pk-equity' | 'us-equity' | 'metals' | 'indices' = 'us-equity'
-        let symbol = asset.symbol
+        // Map frontend asset type to DB asset type
+        let dbAssetType = 'us-equity'
+        if (asset.assetType === 'pk-equity') dbAssetType = 'pk-equity'
+        else if (asset.assetType === 'crypto') dbAssetType = 'crypto'
+        else if (asset.assetType === 'metals') dbAssetType = 'metals'
+        else if (asset.assetType === 'kse100' || asset.assetType === 'spx500') dbAssetType = 'indices'
 
-        // We don't need market variable for fetchHistoricalData, but we use assetType to determine apiAssetType
-        if (asset.assetType === 'crypto') {
-            apiAssetType = 'crypto'
-            if (symbol.includes('-')) symbol = symbol.replace('-', '')
-        } else if (asset.assetType === 'pk-equity') {
-            apiAssetType = 'pk-equity'
-        } else if (asset.assetType === 'us-equity') {
-            apiAssetType = 'us-equity'
-        } else if (asset.assetType === 'metals') {
-            apiAssetType = 'metals'
-        } else if (asset.assetType === 'kse100' || asset.assetType === 'spx500') {
-            apiAssetType = 'indices'
-        }
+        // Query the pre-calculated metrics from the database
+        const query = `
+            SELECT 
+                price, 
+                ytd_return, 
+                beta_3y, 
+                sharpe_3y, 
+                sortino_3y, 
+                max_drawdown_3y,
+                rsi_14,
+                pe_ratio,
+                pb_ratio,
+                ps_ratio,
+                peg_ratio,
+                dividend_yield,
+                dividend_payout_ratio,
+                roe,
+                net_margin,
+                debt_to_equity,
+                current_ratio,
+                revenue_growth,
+                net_income_growth
+            FROM screener_metrics 
+            WHERE symbol = $1 AND asset_type = $2
+        `
 
-        // Calculate dates for fetching history
-        // We fetch 1 year of data for all metrics including Max Drawdown
-        const endDate = new Date().toISOString().split('T')[0]
-        const startDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        const result = await client.query(query, [asset.symbol, dbAssetType])
 
-        // Fetch data in parallel using direct function calls
-        const promises = [
-            fetchHistoricalData(apiAssetType, symbol, startDate, endDate, baseUrl).catch(e => {
-                console.error(`Error fetching historical data for ${asset.symbol}:`, e)
-                return null
-            }),
-            // Benchmark data
-            (asset.assetType === 'pk-equity' || asset.assetType === 'kse100')
-                ? fetchHistoricalData('indices', 'KSE100', startDate, endDate, baseUrl).catch(e => {
-                    console.error(`Error fetching KSE100 benchmark data:`, e)
-                    return null
-                })
-                : (asset.assetType === 'us-equity' || asset.assetType === 'spx500')
-                    ? fetchHistoricalData('indices', 'SPX500', startDate, endDate, baseUrl).catch(e => {
-                        console.error(`Error fetching SPX500 benchmark data:`, e)
-                        return null
-                    })
-                    : Promise.resolve(null)
-        ]
-
-        const [histDataResponse, benchDataResponse] = await Promise.all(promises)
-
-        let historicalData: PriceDataPoint[] = []
-        let benchmarkData: PriceDataPoint[] = []
-        let currentPrice: number | null = null
-
-        if (histDataResponse && histDataResponse.data) {
-            historicalData = histDataResponse.data
-                .map((r: any) => ({ date: r.date, close: parseFloat(r.close) }))
-                .filter((p: any) => !isNaN(p.close))
-                .sort((a: any, b: any) => a.date.localeCompare(b.date))
-
-            if (historicalData.length > 0) {
-                currentPrice = historicalData[historicalData.length - 1].close
-            }
-        }
-
-        if (benchDataResponse && benchDataResponse.data) {
-            benchmarkData = benchDataResponse.data
-                .map((r: any) => ({ date: r.date, close: parseFloat(r.close) }))
-                .filter((p: any) => !isNaN(p.close))
-                .sort((a: any, b: any) => a.date.localeCompare(b.date))
-        }
-
-        // Calculate metrics
-        if (currentPrice !== null && historicalData.length > 0) {
-            // We use the last 252 points for 1-year metrics
-            const oneYearData = historicalData.slice(-252)
-
-            const metrics = calculateAllMetrics(
-                currentPrice,
-                historicalData, // Pass full history for CAGR/MaxDD
-                asset.assetType,
-                benchmarkData.length > 0 ? benchmarkData : undefined,
-                undefined, // riskFreeRates
-                oneYearData // 1-year data for Beta/Sharpe
-            )
-
+        if (result.rows.length > 0) {
+            const row = result.rows[0]
             return {
-                price: currentPrice,
-                ytdReturn: metrics.ytdReturnPercent ?? null,
-                beta: metrics.beta1Year ?? null,
-                sharpeRatio: metrics.sharpeRatio1Year ?? null,
-                maxDrawdown: metrics.maxDrawdown ?? null, // calculateAllMetrics calculates MaxDD from full history
+                price: row.price,
+                ytdReturn: row.ytd_return,
+                beta: row.beta_3y,
+                sharpeRatio: row.sharpe_3y,
+                sortinoRatio: row.sortino_3y,
+                maxDrawdown: row.max_drawdown_3y,
+                rsi: row.rsi_14,
+
+                // Valuation
+                peRatio: row.pe_ratio,
+                pbRatio: row.pb_ratio,
+                psRatio: row.ps_ratio,
+                pegRatio: row.peg_ratio,
+
+                // Dividends
+                dividendYield: row.dividend_yield,
+                payoutRatio: row.dividend_payout_ratio,
+
+                // Profitability
+                roe: row.roe,
+                netMargin: row.net_margin,
+
+                // Health
+                debtToEquity: row.debt_to_equity,
+                currentRatio: row.current_ratio,
+
+                // Growth
+                revenueGrowth: row.revenue_growth,
+                netIncomeGrowth: row.net_income_growth,
+
                 loading: false
             }
-        } else {
-            console.log(`[Server Metrics] Missing data for ${asset.symbol}: Price=${currentPrice}, HistData=${historicalData.length}`)
         }
 
+        // Fallback: If not in DB, return nulls (or we could trigger a calc, but for now keep it simple)
+        // The cron job should populate this.
+        console.log(`[Server Metrics] No pre-calculated metrics found for ${asset.symbol}`)
         return {
             price: null,
             ytdReturn: null,
@@ -108,7 +91,7 @@ export async function getAssetMetrics(asset: TrackedAsset, baseUrl?: string) {
         }
 
     } catch (error) {
-        console.error(`Error calculating metrics for ${asset.symbol}:`, error)
+        console.error(`Error fetching metrics for ${asset.symbol}:`, error)
         return {
             price: null,
             ytdReturn: null,
@@ -117,6 +100,8 @@ export async function getAssetMetrics(asset: TrackedAsset, baseUrl?: string) {
             maxDrawdown: null,
             loading: false
         }
+    } finally {
+        client.release()
     }
 }
 
@@ -125,9 +110,7 @@ export async function getAssetMetrics(asset: TrackedAsset, baseUrl?: string) {
 // or just revalidate every 60 seconds
 export const getCachedAssetMetrics = unstable_cache(
     async (asset: TrackedAsset, baseUrl?: string) => getAssetMetrics(asset, baseUrl),
-    ['asset-metrics'],
+    ['asset-metrics-db-v1'], // Bump version to invalidate old cache
     { revalidate: 60, tags: ['asset-metrics'] }
 )
 
-// Temporary bypass for debugging
-// export const getCachedAssetMetrics = async (asset: TrackedAsset, baseUrl?: string) => getAssetMetrics(asset, baseUrl)

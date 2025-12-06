@@ -9,15 +9,7 @@ import { ASSET_TYPE_LABELS, ASSET_TYPE_COLORS } from "@/lib/portfolio/types"
 import type { TrackedAsset } from "./add-asset-dialog"
 import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
 import { formatPercentage, formatCurrency } from "@/lib/asset-screener/metrics-calculations"
-
-interface AssetMetrics {
-    price: number | null
-    ytdReturn: number | null
-    beta: number | null
-    sharpeRatio: number | null
-    maxDrawdown: number | null
-    loading: boolean
-}
+import type { AssetMetrics } from "./asset-table"
 
 interface AssetTableRowProps {
     asset: TrackedAsset
@@ -75,11 +67,29 @@ export function AssetTableRow({ asset, metrics, onDelete }: AssetTableRowProps) 
                     <div className="h-4 w-10 bg-muted animate-pulse rounded" />
                 ) : (
                     <span className="font-mono">
-                        {metrics?.beta !== null ? metrics.beta.toFixed(2) : '-'}
+                        {metrics?.peRatio !== null && metrics?.peRatio !== undefined ? metrics.peRatio.toFixed(1) + 'x' : '-'}
                     </span>
                 )}
             </TableCell>
             <TableCell className="hidden md:table-cell">
+                {isLoading ? (
+                    <div className="h-4 w-10 bg-muted animate-pulse rounded" />
+                ) : (
+                    <span className="font-mono text-green-600 dark:text-green-400">
+                        {metrics?.dividendYield !== null && metrics?.dividendYield !== undefined ? metrics.dividendYield.toFixed(2) + '%' : '-'}
+                    </span>
+                )}
+            </TableCell>
+            <TableCell className="hidden lg:table-cell">
+                {isLoading ? (
+                    <div className="h-4 w-10 bg-muted animate-pulse rounded" />
+                ) : (
+                    <span className="font-mono">
+                        {metrics?.beta !== null ? metrics.beta.toFixed(2) : '-'}
+                    </span>
+                )}
+            </TableCell>
+            <TableCell className="hidden lg:table-cell">
                 {isLoading ? (
                     <div className="h-4 w-10 bg-muted animate-pulse rounded" />
                 ) : (
@@ -91,7 +101,7 @@ export function AssetTableRow({ asset, metrics, onDelete }: AssetTableRowProps) 
                     </span>
                 )}
             </TableCell>
-            <TableCell className="hidden lg:table-cell">
+            <TableCell className="hidden xl:table-cell">
                 {isLoading ? (
                     <div className="h-4 w-12 bg-muted animate-pulse rounded" />
                 ) : (
