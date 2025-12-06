@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       // Also store the latest rate as a fallback
       const exchangeRateMap = new Map<string, number>() // YYYY-MM -> rate
       let latestExchangeRate: number | null = null
-      
+
       if (unified) {
         try {
           const { getSBPEconomicData } = await import('@/lib/portfolio/db-client')
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
           if (exchangeResult && exchangeResult.data && exchangeResult.data.length > 0) {
             // Sort by date ascending
             const sorted = [...exchangeResult.data].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-            
+
             // Create a month-based map (YYYY-MM -> rate)
             // Store the latest rate for each month (in case there are multiple entries per month)
             for (const item of sorted) {
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
               // Always use the latest value for each month (overwrite if multiple entries exist)
               exchangeRateMap.set(monthKey, item.value)
             }
-            
+
             // Store the latest rate as fallback
             latestExchangeRate = sorted[sorted.length - 1].value
           }
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
         // Convert date to month key (YYYY-MM)
         const date = new Date(dateStr)
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-        
+
         // Try exact month match first
         if (exchangeRateMap.has(monthKey)) {
           return exchangeRateMap.get(monthKey)!
@@ -207,44 +207,60 @@ export async function GET(request: NextRequest) {
       const priceFetchPromises = Array.from(uniqueAssets.entries())
         .filter(([assetKey, asset]) => asset.assetType !== 'commodities')
         .map(async ([assetKey, asset]) => {
-        try {
-          const priceMap = new Map<string, number>()
+          try {
+            const priceMap = new Map<string, number>()
 
-          // Convert crypto symbols to Binance format (e.g., ETH -> ETHUSDT)
-          let symbolToFetch = asset.symbol
-          if (asset.assetType === 'crypto') {
-            symbolToFetch = parseSymbolToBinance(asset.symbol)
-          }
-
-          // Use centralized historical data route (same as crypto portfolio chart)
-          // Note: We could add date range for optimization, but keeping it simple like crypto chart
-          const historicalDataUrl = `${baseUrl}/api/historical-data?assetType=${asset.assetType}&symbol=${encodeURIComponent(symbolToFetch)}`
-
-          const response = await fetch(historicalDataUrl)
-          if (!response.ok) {
-            return { assetKey, priceMap }
-          }
-
-          const apiData = await response.json()
-          const dbRecords = apiData.data || []
-
-          // Build a map of date -> price
-          dbRecords.forEach((record: any) => {
-            const price = record.adjusted_close || record.close
-            if (price && price > 0) {
-              priceMap.set(record.date, price)
+            // Convert crypto symbols to Binance format (e.g., ETH -> ETHUSDT)
+            let symbolToFetch = asset.symbol
+            if (asset.assetType === 'crypto') {
+              symbolToFetch = parseSymbolToBinance(asset.symbol)
             }
-          })
 
-          // If today's price is not in historical data, try to fetch current price
-          // If we fail to get current price, fallback to last known price
-          if (!priceMap.has(todayStr)) {
-            try {
-              const currentPrice = await getCurrentPrice(asset.assetType, asset.symbol, asset.currency)
-              if (currentPrice && currentPrice > 0) {
-                priceMap.set(todayStr, currentPrice)
-              } else {
-                // Try to find the latest available price in priceMap
+            // Use centralized historical data route (same as crypto portfolio chart)
+            // Note: We could add date range for optimization, but keeping it simple like crypto chart
+            const historicalDataUrl = `${baseUrl}/api/historical-data?assetType=${asset.assetType}&symbol=${encodeURIComponent(symbolToFetch)}`
+
+            const response = await fetch(historicalDataUrl)
+            if (!response.ok) {
+              return { assetKey, priceMap }
+            }
+
+            const apiData = await response.json()
+            const dbRecords = apiData.data || []
+
+            // Build a map of date -> price
+            dbRecords.forEach((record: any) => {
+              const price = record.adjusted_close || record.close
+              if (price && price > 0) {
+                priceMap.set(record.date, price)
+              }
+            })
+
+            // If today's price is not in historical data, try to fetch current price
+            // If we fail to get current price, fallback to last known price
+            if (!priceMap.has(todayStr)) {
+              try {
+                const currentPrice = await getCurrentPrice(asset.assetType, asset.symbol, asset.currency)
+                if (currentPrice && currentPrice > 0) {
+                  priceMap.set(todayStr, currentPrice)
+                } else {
+                  // Try to find the latest available price in priceMap
+                  let latestDate = '';
+                  let latestPrice = 0;
+                  for (const [date, price] of priceMap.entries()) {
+                    if (date > latestDate) {
+                      latestDate = date;
+                      latestPrice = price;
+                    }
+                  }
+                  if (latestPrice > 0) {
+                    priceMap.set(todayStr, latestPrice);
+                  }
+                }
+              } catch (error) {
+                // Error fetching current price
+
+                // Fallback to latest historical price if current price fetch fails
                 let latestDate = '';
                 let latestPrice = 0;
                 for (const [date, price] of priceMap.entries()) {
@@ -254,32 +270,16 @@ export async function GET(request: NextRequest) {
                   }
                 }
                 if (latestPrice > 0) {
-                   priceMap.set(todayStr, latestPrice);
+                  priceMap.set(todayStr, latestPrice);
                 }
-              }
-            } catch (error) {
-              // Error fetching current price
-              
-              // Fallback to latest historical price if current price fetch fails
-              let latestDate = '';
-              let latestPrice = 0;
-              for (const [date, price] of priceMap.entries()) {
-                if (date > latestDate) {
-                  latestDate = date;
-                  latestPrice = price;
-                }
-              }
-              if (latestPrice > 0) {
-                 priceMap.set(todayStr, latestPrice);
               }
             }
-          }
 
-          return { assetKey, priceMap }
-        } catch (error) {
-          return { assetKey, priceMap: new Map<string, number>() }
-        }
-      })
+            return { assetKey, priceMap }
+          } catch (error) {
+            return { assetKey, priceMap: new Map<string, number>() }
+          }
+        })
 
       const results = await Promise.all(priceFetchPromises)
       results.forEach(result => {
@@ -338,7 +338,14 @@ export async function GET(request: NextRequest) {
         return fallbackPrice
       }
 
-      const dailyHoldings: Record<string, { date: string, cash: number, invested: number, cashFlow: number }> = {}
+      const dailyHoldings: Record<string, {
+        date: string,
+        cash: number,
+        invested: number,
+        cashFlow: number,
+        exchangeRate?: number | null,
+        marketValue: number
+      }> = {}
 
       // Track cash flows by date (deposits/withdrawals)
       // In unified mode, convert all cash flows to USD
@@ -350,12 +357,12 @@ export async function GET(request: NextRequest) {
           if (!unified && trade.currency.toUpperCase() !== currency.toUpperCase()) {
             continue // Skip cashflows from other currencies
           }
-          
+
           const dateStr = trade.tradeDate
           const currentFlow = cashFlowsByDate.get(dateStr) || 0
           // 'add' is positive cash flow (deposit), 'remove' is negative (withdrawal)
           let flowAmount = trade.tradeType === 'add' ? trade.totalAmount : -trade.totalAmount
-          
+
           // Convert to USD if unified mode and trade is in PKR
           // Use historical exchange rate for the trade date
           if (unified && trade.currency === 'PKR') {
@@ -364,7 +371,7 @@ export async function GET(request: NextRequest) {
               flowAmount = flowAmount / rateForDate
             }
           }
-          
+
           cashFlowsByDate.set(dateStr, currentFlow + flowAmount)
         }
       }
@@ -372,7 +379,7 @@ export async function GET(request: NextRequest) {
       // Filter trades by currency to determine the correct start date for this specific currency view
       // This prevents the graph from showing a long flat line if the user has older trades in a different currency
       // In unified mode, include all trades (don't filter by currency)
-      const relevantTrades = unified 
+      const relevantTrades = unified
         ? trades // In unified mode, use all trades
         : trades.filter(t => t.currency.toUpperCase() === currency.toUpperCase())
 
@@ -404,170 +411,218 @@ export async function GET(request: NextRequest) {
       today.setHours(23, 59, 59, 999)
       const finalEndDate = endDate > today ? today : endDate
 
-      // Generate date range safely
+      // OPTIMIZED ALGORITHM: Incremental Updates
+      // Instead of recalculating holdings from scratch for every day (O(D*T)),
+      // we maintain the current state and apply trades incrementally as we move forward in time (O(D+T)).
+
+      // 1. Sort trades by date for efficient processing
+      // already sorted by query, but ensure it
+      const sortedTrades = [...trades].sort((a, b) => new Date(a.tradeDate).getTime() - new Date(b.tradeDate).getTime())
+
+      // 2. State variables for the incremental loop
+      // Map of "assetType:symbol:currency" -> Token quantity
+      const currentHoldingsQuantities = new Map<string, number>()
+      // Map of "assetType:symbol:currency" -> Total Invested Amount (Cost Basis)
+      const currentHoldingsInvested = new Map<string, number>()
+      // Map of "assetType:symbol:currency" -> Average Buy Price (for commodities)
+      const currentHoldingsAvgPrice = new Map<string, number>()
+      // Map of "currency" -> Cash Balance
+      const currentCashBalances = new Map<string, number>()
+
+      let currentTotalInvested = 0 // Total cost basis of current holdings
+
+      // 3. Initialize loop variables
       let currentDate = new Date(actualStartDate)
       currentDate.setHours(0, 0, 0, 0)
 
-      const maxIterations = 1000 // Safety limit to prevent infinite loops
+      const maxIterations = 20000 // increased limit to support ~54 years of data
       let iterationCount = 0
+      let tradeIndex = 0
 
+      // Advance tradeIndex to the start date
+      // We need to apply all trades BEFORE actualStartDate to establish the initial state
+      const startDateStr = actualStartDate.toISOString().split('T')[0]
+
+      // Process trades strictly BEFORE the start date to build initial state
+      while (tradeIndex < sortedTrades.length) {
+        const trade = sortedTrades[tradeIndex]
+        if (trade.tradeDate >= startDateStr) break;
+
+        // Apply trade to state
+        processTrade(trade, currentHoldingsQuantities, currentHoldingsInvested, currentHoldingsAvgPrice, currentCashBalances)
+        tradeIndex++
+      }
+
+      // Helper function to process a single trade and update state
+      function processTrade(
+        trade: Trade,
+        quantities: Map<string, number>,
+        invested: Map<string, number>,
+        avgPrices: Map<string, number>,
+        cashBalances: Map<string, number>
+      ) {
+        // Handle Cash
+        if (trade.assetType === 'cash') {
+          const currency = trade.currency || 'USD'
+          const currentCash = cashBalances.get(currency) || 0
+          if (trade.tradeType === 'add') {
+            cashBalances.set(currency, currentCash + trade.totalAmount)
+          } else {
+            cashBalances.set(currency, currentCash - trade.totalAmount)
+          }
+          return
+        }
+
+        const assetKey = `${trade.assetType}:${trade.symbol.toUpperCase()}:${trade.currency || 'USD'}`
+        const currentQty = quantities.get(assetKey) || 0
+        const currentInvested = invested.get(assetKey) || 0
+
+        const tradeCurrency = trade.currency || 'USD'
+        const currentCash = cashBalances.get(tradeCurrency) || 0
+
+        if (trade.tradeType === 'buy') {
+          // Update Quantity
+          const newQty = currentQty + trade.quantity
+          quantities.set(assetKey, newQty)
+
+          // Update Invested Amount
+          const newInvested = currentInvested + trade.totalAmount
+          invested.set(assetKey, newInvested)
+
+          // Update Average Price (Cost Basis per unit)
+          if (newQty > 0) {
+            avgPrices.set(assetKey, newInvested / newQty)
+          }
+
+          // Deduct Cash (Buying reduces cash in that currency)
+          cashBalances.set(tradeCurrency, currentCash - trade.totalAmount)
+
+        } else if (trade.tradeType === 'sell') {
+          // Update Quantity
+          const newQty = Math.max(0, currentQty - trade.quantity)
+          quantities.set(assetKey, newQty)
+
+          // Update Invested Amount (Proportional reduction)
+          // If we sell 50% of holdings, we reduce invested amount by 50%
+          let costBasisRemoved = 0
+          if (currentQty > 0) {
+            const ratio = trade.quantity / currentQty
+            costBasisRemoved = currentInvested * ratio
+          }
+          const newInvested = Math.max(0, currentInvested - costBasisRemoved)
+          invested.set(assetKey, newInvested)
+
+          // Add Cash (Selling increases cash in that currency)
+          // totalAmount is the PROCEEDS from sale
+          cashBalances.set(tradeCurrency, currentCash + trade.totalAmount)
+        }
+      }
+
+      // 4. Main Loop: Iterate day by day
       while (currentDate <= finalEndDate && iterationCount < maxIterations) {
         iterationCount++
         const dateStr = currentDate.toISOString().split('T')[0]
 
-        try {
-          // Filter trades up to this date (inclusive)
-          const tradesUntilDate = trades.filter(t => t.tradeDate <= dateStr)
+        // 4a. Apply all trades that happened ON this date
+        while (tradeIndex < sortedTrades.length) {
+          const trade = sortedTrades[tradeIndex]
+          if (trade.tradeDate > dateStr) break; // Future trade
 
-          if (tradesUntilDate.length === 0) {
-            // No trades yet, set to zero
-            dailyHoldings[dateStr] = {
-              date: dateStr,
-              cash: 0,
-              invested: 0,
-              cashFlow: 0
-            }
+          if (trade.tradeDate === dateStr) {
+            processTrade(trade, currentHoldingsQuantities, currentHoldingsInvested, currentHoldingsAvgPrice, currentCashBalances)
+          }
+          tradeIndex++
+        }
+
+        // 4b. Calculate Total Portfolio Value for this date
+        let dailyMarketValue = 0 // Value of assets (current Holdings * Price on this date)
+        let processedInvested = 0 // Total cost basis of current holdings
+
+        // Iterate through all currently held assets
+        for (const [assetKey, qty] of currentHoldingsQuantities.entries()) {
+          if (qty <= 0.000001) continue; // Skip empty holdings
+
+          const investedAmount = currentHoldingsInvested.get(assetKey) || 0
+          processedInvested += investedAmount
+
+          const [type, symbol, currencyCode] = assetKey.split(':')
+
+          // Determine Price for this date
+          let assetValue = 0
+
+          // Commodities case: always use purchase price/avg price (no market data)
+          if (type === 'commodities') {
+            const avgPrice = currentHoldingsAvgPrice.get(assetKey) || 0
+            assetValue = qty * avgPrice
           } else {
-            // Calculate holdings for this date
-            const holdings = calculateHoldingsFromTransactions(tradesUntilDate)
-
-            let cashBalance = 0
-            let bookValue = 0 // Book Value = Cash + Current Market Value (includes unrealized P&L)
-
-            // Get today's date string for comparison
-            const todayStr = new Date().toISOString().split('T')[0]
-            const yesterdayStr = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-
-            holdings.forEach(h => {
-              try {
-                const holdingCurrency = h.currency || 'USD'
-                let shouldInclude = false
-                let valueToAdd = 0
-
-                // Check if this asset should be excluded from calculation
-                // If purchased today or yesterday and no price data available for the current date, exclude it
-                const isToday = dateStr === todayStr
-                const isYesterday = dateStr === yesterdayStr
-                const purchaseDateStr = h.purchaseDate ? new Date(h.purchaseDate).toISOString().split('T')[0] : null
-                const wasPurchasedToday = purchaseDateStr === todayStr
-                const wasPurchasedYesterday = purchaseDateStr === yesterdayStr
-
-                if (unified) {
-                  // In unified mode, include all currencies and convert to USD
-                  shouldInclude = true
-                  if (h.assetType === 'cash') {
-                    valueToAdd = h.quantity || 0
-                  } else if (h.assetType === 'commodities') {
-                    // Commodities don't have market prices - always use purchase price (no unrealized P&L)
-                    // e.g., "cloth lawn" is just what you paid, not a market price
-                    valueToAdd = (h.quantity || 0) * (h.purchasePrice || 0)
-                  } else {
-                    const assetKey = `${h.assetType}:${h.symbol.toUpperCase()}:${holdingCurrency}`
-                    
-                    // Exclude assets purchased today/yesterday if they don't have price data for the current date
-                    if ((isToday && wasPurchasedToday) || (isToday && wasPurchasedYesterday) || 
-                        (isYesterday && wasPurchasedYesterday)) {
-                      if (!hasValidPriceForDate(assetKey, dateStr)) {
-                        // Purchased recently and no price data for this date - exclude from calculation
-                        shouldInclude = false
-                      } else {
-                        const historicalPrice = getPriceForDate(assetKey, dateStr, h.purchasePrice || 0)
-                        valueToAdd = (h.quantity || 0) * historicalPrice
-                      }
-                    } else {
-                      // For past dates or assets purchased earlier, use normal logic
-                      const historicalPrice = getPriceForDate(assetKey, dateStr, h.purchasePrice || 0)
-                      valueToAdd = (h.quantity || 0) * historicalPrice
-                    }
-                  }
-
-                  // Convert to USD if not already USD
-                  // Use historical exchange rate for the specific date
-                  if (holdingCurrency !== 'USD') {
-                    if (holdingCurrency === 'PKR') {
-                      const rateForDate = getExchangeRateForDate(dateStr)
-                      if (rateForDate) {
-                        // Exchange rate is PKR per USD (e.g., 277.78 means 1 USD = 277.78 PKR)
-                        // To convert PKR to USD: divide by exchange rate
-                        valueToAdd = valueToAdd / rateForDate
-                      }
-                    }
-                    // For other currencies, assume 1:1 if no exchange rate (shouldn't happen for PKR)
-                  }
-                } else {
-                  // In currency-specific mode, only include matching currency
-                  if (holdingCurrency.toUpperCase() === currency.toUpperCase()) {
-                    shouldInclude = true
-                    if (h.assetType === 'cash') {
-                      valueToAdd = h.quantity || 0
-                    } else if (h.assetType === 'commodities') {
-                      // Commodities don't have market prices - always use purchase price (no unrealized P&L)
-                      // e.g., "cloth lawn" is just what you paid, not a market price
-                      valueToAdd = (h.quantity || 0) * (h.purchasePrice || 0)
-                    } else {
-                      const assetKey = `${h.assetType}:${h.symbol.toUpperCase()}:${holdingCurrency}`
-                      
-                      // Exclude assets purchased today/yesterday if they don't have price data for the current date
-                      if ((isToday && wasPurchasedToday) || (isToday && wasPurchasedYesterday) || 
-                          (isYesterday && wasPurchasedYesterday)) {
-                        if (!hasValidPriceForDate(assetKey, dateStr)) {
-                          // Purchased recently and no price data for this date - exclude from calculation
-                          shouldInclude = false
-                        } else {
-                          const historicalPrice = getPriceForDate(assetKey, dateStr, h.purchasePrice || 0)
-                          valueToAdd = (h.quantity || 0) * historicalPrice
-                        }
-                      } else {
-                        // For past dates or assets purchased earlier, use normal logic
-                        const historicalPrice = getPriceForDate(assetKey, dateStr, h.purchasePrice || 0)
-                        valueToAdd = (h.quantity || 0) * historicalPrice
-                      }
-                    }
-                  }
-                }
-
-                if (shouldInclude) {
-                  if (h.assetType === 'cash') {
-                    cashBalance += valueToAdd
-                  }
-                  bookValue += valueToAdd
-                }
-              } catch (holdingError) {
-                // Continue with other holdings
+            // Market assets: use historical price
+            if (hasValidPriceForDate(assetKey, dateStr)) {
+              const price = getPriceForDate(assetKey, dateStr, 0)
+              if (price > 0) {
+                assetValue = qty * price
+              } else {
+                // Fallback to cost basis if price is missing but valid date
+                assetValue = investedAmount
               }
-            })
+            } else {
+              // Check if purchased recently (today/yesterday)
+              // If so, use cost basis. If old holding with no price, might be 0 or cost basis.
+              // To avoid drops, fallback to cost basis if no price found
+              assetValue = investedAmount
+            }
+          }
 
-            const cashFlow = cashFlowsByDate.get(dateStr) || 0
-            // Get exchange rate used for this date (if unified mode and we have PKR holdings)
-            let exchangeRateUsed: number | null = null
-            if (unified && exchangeRateMap.size > 0) {
-              exchangeRateUsed = getExchangeRateForDate(dateStr)
+          // Handle Currency Conversion for Unified Mode
+          if (unified && currencyCode !== 'USD') {
+            if (currencyCode === 'PKR') {
+              const rateForDate = getExchangeRateForDate(dateStr)
+              if (rateForDate) {
+                assetValue = assetValue / rateForDate
+                // Note: investedAmount is in original currency, so if we wanted totalInvested in USD we'd convert it too
+                // But for now we just track market value
+              }
             }
-            
-            dailyHoldings[dateStr] = {
-              date: dateStr,
-              cash: cashBalance,
-              invested: bookValue, // Book Value = Cash + Market Value of Assets (includes unrealized P&L)
-              cashFlow: cashFlow,
-              exchangeRate: exchangeRateUsed // Include exchange rate used for this date
+          } else if (!unified && currencyCode.toUpperCase() !== currency.toUpperCase()) {
+            // In currency specific mode, skip assets of other currencies
+            continue;
+          }
+
+          dailyMarketValue += assetValue
+        }
+
+        // Calculate Cash Value
+        let dailyCashValue = 0
+        if (unified) {
+          // Sum all cash balances converted to USD
+          for (const [cashCurrency, amount] of currentCashBalances.entries()) {
+            let amountInUSD = amount
+            if (cashCurrency === 'PKR') {
+              const rateForDate = getExchangeRateForDate(dateStr)
+              if (rateForDate) {
+                amountInUSD = amount / rateForDate
+              }
             }
+            dailyCashValue += amountInUSD
           }
-        } catch (dateError) {
-          // Set default values for this date
-          const cashFlow = cashFlowsByDate.get(dateStr) || 0
-          // Get exchange rate used for this date (if unified mode and we have PKR holdings)
-          let exchangeRateUsed: number | null = null
-          if (unified && exchangeRateMap.size > 0) {
-            exchangeRateUsed = getExchangeRateForDate(dateStr)
-          }
-          
-          dailyHoldings[dateStr] = {
-            date: dateStr,
-            cash: 0,
-            invested: 0,
-            cashFlow: cashFlow,
-            exchangeRate: exchangeRateUsed // Include exchange rate used for this date
-          }
+        } else {
+          // Only include cash for the strict currency requested
+          dailyCashValue = currentCashBalances.get(currency) || 0
+        }
+
+        const cashFlow = cashFlowsByDate.get(dateStr) || 0
+
+        let exchangeRateUsed: number | null = null
+        if (unified && exchangeRateMap.size > 0) {
+          exchangeRateUsed = getExchangeRateForDate(dateStr)
+        }
+
+        dailyHoldings[dateStr] = {
+          date: dateStr,
+          cash: dailyCashValue,
+          invested: dailyMarketValue + dailyCashValue, // Keeping 'invested' as Total Value for backward compat
+          cashFlow: cashFlow,
+          exchangeRate: exchangeRateUsed,
+          marketValue: dailyMarketValue + dailyCashValue // Explicit field
         }
 
         // Move to next day
@@ -588,8 +643,7 @@ export async function GET(request: NextRequest) {
         {
           success: true, history: sortedHistory.map((h: any) => ({
             ...h,
-            value: h.invested, // Map invested to value for frontend compatibility, but clarify it's Market Value
-            marketValue: h.invested // Explicit field
+            value: h.marketValue, // Map marketValue to value for frontend
           }))
         },
         {
