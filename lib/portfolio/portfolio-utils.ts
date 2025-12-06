@@ -257,26 +257,18 @@ export interface Trade {
  * @param trades - Array of all trades
  * @returns Map of asset key to realized PnL amount
  */
+/**
+ * Calculate realized PnL per asset from trades using FIFO logic
+ * Groups by asset key (assetType:symbol:currency) and sums realized PnL from sell transactions
+ * @param trades - Array of all trades
+ * @returns Map of asset key to realized PnL amount
+ */
 export function calculateRealizedPnLPerAsset(trades: Trade[]): Map<string, number> {
-  const realizedPnLMap = new Map<string, number>()
-
-  trades.forEach((trade) => {
-    if (trade.tradeType === 'sell' && trade.notes) {
-      // Extract realized PnL from notes: "Realized P&L: 123.45 USD"
-      const match = trade.notes.match(/Realized P&L: ([\d.-]+)/)
-      if (match) {
-        const pnl = parseFloat(match[1])
-        if (!isNaN(pnl)) {
-          // Group by asset key (assetType:symbol:currency)
-          const assetKey = `${trade.assetType}:${trade.symbol.toUpperCase()}:${trade.currency}`
-          const currentPnL = realizedPnLMap.get(assetKey) || 0
-          realizedPnLMap.set(assetKey, currentPnL + pnl)
-        }
-      }
-    }
-  })
-
-  return realizedPnLMap
+  // Use the centralized FIFO calculation
+  // We don't need current prices for realized P&L, so pass empty map
+  const { calculateFifoMetrics } = require('./fifo-utils')
+  const { realizedPnL } = calculateFifoMetrics(trades)
+  return realizedPnL
 }
 
 /**
@@ -687,25 +679,25 @@ export async function calculateDividendsCollected(
   // Dividends change rarely, so we can cache them for 24 hours
   const cacheKey = 'dividends_cache_v1'
   const CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
-  
+
   try {
     const cachedData = localStorage.getItem(cacheKey)
     if (cachedData) {
       const { timestamp, data } = JSON.parse(cachedData)
       const age = Date.now() - timestamp
-      
+
       // If cache is valid (less than 24 hours old)
       if (age < CACHE_TTL) {
         // Check if we have data for all requested symbols in the cache
         const cachedSymbols = new Set(data.map((d: any) => d.symbol))
         const allSymbolsPresent = pkEquityHoldings.every(h => cachedSymbols.has(h.symbol))
-        
+
         if (allSymbolsPresent) {
           // Return cached data, but filter/recalculate based on current holdings (quantity/purchase date might have changed)
           return pkEquityHoldings.map(holding => {
             const cachedRecord = data.find((d: any) => d.symbol === holding.symbol)
             if (!cachedRecord) return { holdingId: holding.id, symbol: holding.symbol, dividends: [], totalCollected: 0 }
-            
+
             // Recalculate based on current quantity and purchase date
             // The cached record contains raw dividend events
             const relevantDividends = filterDividendsByPurchaseDate(cachedRecord.rawDividends || [], holding.purchaseDate)
@@ -718,9 +710,9 @@ export async function calculateDividendsCollected(
                   totalCollected
                 }
               })
-              
+
             const totalCollected = relevantDividends.reduce((sum: number, d: any) => sum + d.totalCollected, 0)
-            
+
             return {
               holdingId: holding.id,
               symbol: holding.symbol,
@@ -761,7 +753,7 @@ export async function calculateDividendsCollected(
         symbol,
         rawDividends
       }))
-      
+
       // Save to cache
       try {
         localStorage.setItem(cacheKey, JSON.stringify({
@@ -902,7 +894,7 @@ export function calculateAdjustedPortfolioHistory(
   }
 
   // Sort by date to ensure chronological order
-  const sortedHistory = [...history].sort((a, b) => 
+  const sortedHistory = [...history].sort((a, b) =>
     new Date(a.date).getTime() - new Date(b.date).getTime()
   )
 
@@ -912,7 +904,7 @@ export function calculateAdjustedPortfolioHistory(
   for (const entry of sortedHistory) {
     const cashFlow = entry.cashFlow || 0
     cumulativeCashFlows += cashFlow
-    
+
     adjustedHistory.push({
       date: entry.date,
       rawValue: entry.invested || 0,
@@ -951,16 +943,16 @@ export function calculateAdjustedDailyReturns(
   for (let i = 1; i < adjustedHistory.length; i++) {
     const prev = adjustedHistory[i - 1]
     const curr = adjustedHistory[i]
-    
+
     // Get raw entry to check for cash flows
     const rawEntry = rawHistoryMap.get(curr.date)
     const cashFlow = rawEntry?.cashFlow || 0
-    
+
     // Skip days with cash flows (deposits/withdrawals) to avoid showing them as returns
     // Use small epsilon to handle floating point precision
     if (prev.adjustedValue > 0 && Math.abs(cashFlow) < 0.01) {
       const dailyReturn = ((curr.adjustedValue - prev.adjustedValue) / prev.adjustedValue) * 100
-      
+
       dailyReturns.push({
         date: curr.date,
         return: dailyReturn,
