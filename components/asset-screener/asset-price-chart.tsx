@@ -26,40 +26,32 @@ import type { TrackedAsset } from "./add-asset-dialog"
 import type { PriceDataPoint } from "@/lib/asset-screener/metrics-calculations"
 import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
 import Link from "next/link"
-import { useVideoMode } from "@/hooks/use-video-mode"
-import { VideoModeToggle } from "@/components/ui/video-mode-toggle"
-import { getThemeColors } from "@/lib/charts/theme-colors"
-import { createAssetPriceYAxisScaleConfig } from "@/lib/charts/portfolio-chart-utils"
-import {
-  calculateDividendAdjustedPrices,
-  normalizeToPercentage,
-  normalizeOriginalPricesToPercentage,
-  type DividendRecord
-} from "@/lib/asset-screener/dividend-adjusted-prices"
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  LogarithmicScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-)
-
-type ChartPeriod = '1M' | '3M' | '6M' | '1Y' | '2Y' | '5Y' | 'ALL'
-
-interface AssetPriceChartProps {
-  asset: TrackedAsset
-}
+import { useChartRecorder } from "@/hooks/use-chart-recorder"
 
 export function AssetPriceChart({ asset }: AssetPriceChartProps) {
   const { theme } = useTheme()
-  const { isVideoMode, toggleVideoMode, containerClassName } = useVideoMode()
-  const colors = useMemo(() => getThemeColors(), [theme])
+  const { isVideoMode, toggleVideoMode, containerClassName, videoModeColors } = useVideoMode()
+  const colors = useMemo(() => {
+    const themeColors = getThemeColors()
+    if (isVideoMode) {
+      return {
+        ...themeColors,
+        ...videoModeColors,
+        price: videoModeColors.stroke!,
+      }
+    }
+    return themeColors
+  }, [theme, isVideoMode, videoModeColors])
+
   const chartContainerRef = useRef<HTMLDivElement>(null)
+
+  // Recording Hook
+  const { isRecording, isEncoding, startRecording, stopRecording } = useChartRecorder(chartContainerRef as React.RefObject<HTMLElement>, {
+    workerScript: '/gif.worker.js',
+    quality: 10,
+    delay: 100 // 10 FPS
+  })
+
   const { toast } = useToast()
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('1Y')
   const [showComparison, setShowComparison] = useState(false)
@@ -435,6 +427,9 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
       legend: {
         display: true,
         position: 'top' as const,
+        labels: {
+          color: isVideoMode ? videoModeColors.text : undefined
+        }
       },
       tooltip: {
         mode: 'index' as const,
@@ -453,18 +448,29 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
     scales: {
       x: {
         display: true,
+        ticks: {
+          color: isVideoMode ? videoModeColors.text : undefined
+        },
         grid: {
           display: false,
         },
       },
-      y: createAssetPriceYAxisScaleConfig({
-        useLogScale,
-        isPercentage: (showTotalReturn && canShowTotalReturn) || (showComparison && canShowComparison),
-        currency: asset.currency,
-        assetType: asset.assetType,
-        formatCurrency,
-        theme,
-      }),
+      y: {
+        ...createAssetPriceYAxisScaleConfig({
+          useLogScale,
+          isPercentage: (showTotalReturn && canShowTotalReturn) || (showComparison && canShowComparison),
+          currency: asset.currency,
+          assetType: asset.assetType,
+          formatCurrency,
+          theme,
+        }),
+        ticks: {
+          color: isVideoMode ? videoModeColors.text : undefined
+        },
+        grid: {
+          color: isVideoMode ? videoModeColors.grid : undefined
+        }
+      }
     },
     interaction: {
       mode: 'index' as const,
@@ -507,7 +513,14 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
                 </Label>
               </div>
             )}
-            <VideoModeToggle isVideoMode={isVideoMode} onToggle={toggleVideoMode} />
+            <VideoModeToggle
+              isVideoMode={isVideoMode}
+              onToggle={toggleVideoMode}
+              isRecording={isRecording}
+              isEncoding={isEncoding}
+              onRecordStart={startRecording}
+              onRecordStop={stopRecording}
+            />
             <Select value={chartPeriod} onValueChange={(value) => setChartPeriod(value as ChartPeriod)}>
               <SelectTrigger className="w-[120px]">
                 <SelectValue />

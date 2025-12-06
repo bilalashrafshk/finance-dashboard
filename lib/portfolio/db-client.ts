@@ -1440,8 +1440,8 @@ export async function shouldRefreshSBPInterestRates(seriesKey: string): Promise<
     const now = Date.now()
     const ageInDays = (now - lastUpdated) / (1000 * 60 * 60 * 24)
 
-    // Refresh if data is older than 3 days
-    return ageInDays > 3
+    // Refresh if data is older than 10 days
+    return ageInDays > 10
   } catch (error: any) {
     console.error(`[DB] Error checking if SBP interest rates need refresh for ${seriesKey}:`, error.message)
     return true // On error, refresh to be safe
@@ -1717,8 +1717,8 @@ export async function shouldRefreshBOPData(seriesKey: string): Promise<boolean> 
     const now = Date.now()
     const ageInDays = (now - lastUpdated) / (1000 * 60 * 60 * 24)
 
-    // Refresh if data is older than 3 days
-    return ageInDays > 3
+    // Refresh if data is older than 10 days
+    return ageInDays > 10
   } catch (error: any) {
     console.error(`[DB] Error checking if BOP data needs refresh for ${seriesKey}:`, error.message)
     return true // On error, refresh to be safe
@@ -1949,8 +1949,8 @@ export async function shouldRefreshSBPEconomicData(seriesKey: string): Promise<b
     const now = Date.now()
     const ageInDays = (now - lastUpdated) / (1000 * 60 * 60 * 24)
 
-    // Refresh if data is older than 3 days
-    return ageInDays > 3
+    // Refresh if data is older than 10 days
+    return ageInDays > 10
   } catch (error: any) {
     console.error(`[DB] Error checking if SBP economic data needs refresh for ${seriesKey}:`, error.message)
     return true // On error, refresh to be safe

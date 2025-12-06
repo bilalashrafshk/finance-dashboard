@@ -30,6 +30,7 @@ import { Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useVideoMode } from "@/hooks/use-video-mode"
 import { VideoModeToggle } from "@/components/ui/video-mode-toggle"
+import { useChartRecorder } from "@/hooks/use-chart-recorder"
 
 interface MovingAverageConfig {
     id: string
@@ -98,10 +99,30 @@ function filterDataByRange(data: PriceDataPoint[], range: TimeRange): PriceDataP
 
 export function UnifiedPriceChart() {
     const { theme } = useTheme()
-    const { isVideoMode, toggleVideoMode, containerClassName } = useVideoMode()
-    const colors = useMemo(() => getThemeColors(), [theme])
+    const { isVideoMode, toggleVideoMode, containerClassName, videoModeColors } = useVideoMode()
     const { toast } = useToast()
     const chartContainerRef = useRef<HTMLDivElement>(null)
+
+    // Recording Hook
+    const { isRecording, isEncoding, startRecording, stopRecording } = useChartRecorder(chartContainerRef as React.RefObject<HTMLElement>, {
+        workerScript: '/gif.worker.js',
+        quality: 10,
+        delay: 100 // 10 FPS
+    })
+
+    const colors = useMemo(() => {
+        const themeColors = getThemeColors()
+        if (isVideoMode) {
+            return {
+                ...themeColors,
+                ...videoModeColors,
+                foreground: videoModeColors.text!,
+                grid: videoModeColors.grid!,
+                border: videoModeColors.stroke!,
+            }
+        }
+        return themeColors
+    }, [theme, isVideoMode, videoModeColors])
     const chartRef = useRef<IChartApi | null>(null)
     const priceSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
     const comparisonSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
@@ -772,7 +793,14 @@ export function UnifiedPriceChart() {
 
                         {/* Compact Asset Selector */}
                         <div className="flex items-center gap-2 w-full md:w-auto">
-                            <VideoModeToggle isVideoMode={isVideoMode} onToggle={toggleVideoMode} />
+                            <VideoModeToggle
+                                isVideoMode={isVideoMode}
+                                onToggle={toggleVideoMode}
+                                isRecording={isRecording}
+                                isEncoding={isEncoding}
+                                onRecordStart={startRecording}
+                                onRecordStop={stopRecording}
+                            />
                             <Select value={assetType} onValueChange={(v) => setAssetType(v as AssetType)}>
                                 <SelectTrigger className="w-[130px]">
                                     <SelectValue />

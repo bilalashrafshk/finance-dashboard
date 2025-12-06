@@ -284,12 +284,24 @@ export async function GET(request: Request) {
     }
 
     // 4. Update Macros (Every 2 Days)
-    // Check if we need to run macro update
-    // For now, we'll just trigger the macro API endpoint internally or assume it's handled by its own cron
-    // User asked to "Update macros every 2 days". 
-    // We can check a "last_run" timestamp in a settings table, or just run it and let the macro API handle caching.
-    // The macro API `app/api/sbp/economic-data/route.ts` already has caching logic (3 days).
-    // So we can just call it here to ensure it's fresh.
+    // 4. Update Macros (Every 2 Days)
+    console.log('[Screener Update] Checking macro indicators...')
+
+    try {
+      const { ensureSBPEconomicData, MACRO_KEYS } = await import('@/lib/portfolio/sbp-service')
+
+      await Promise.all(MACRO_KEYS.map(async (key) => {
+        try {
+          await ensureSBPEconomicData(key)
+        } catch (e) {
+          console.error(`[Screener Update] Failed to update macro ${key}:`, e)
+        }
+      }))
+
+      console.log('[Screener Update] Macro indicators updated (Checked ' + MACRO_KEYS.length + ' indicators).')
+    } catch (e) {
+      console.error('[Screener Update] Failed to import sbp-service:', e)
+    }
 
     console.log(`[Screener Update] Successfully updated metrics for ${processedCount} companies. ${skippedCount} failed.`)
     return NextResponse.json({
