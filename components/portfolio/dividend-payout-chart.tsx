@@ -14,10 +14,17 @@ import {
 } from "chart.js"
 import type { Holding } from "@/lib/portfolio/types"
 import { calculateDividendsCollected, formatCurrency, type HoldingDividend } from "@/lib/portfolio/portfolio-utils"
-import { Info, Loader2 } from "lucide-react"
+import { Info, Loader2, Filter } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { MyDividendsDialog } from "./my-dividends-dialog"
-import { format, parseISO, startOfMonth, endOfMonth, isAfter, isBefore } from "date-fns"
+import { format, parseISO, startOfMonth, endOfMonth, isAfter, isBefore, getYear } from "date-fns"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
 
@@ -28,11 +35,12 @@ interface DividendPayoutChartProps {
 }
 
 interface MonthlyDividend {
-  month: string // "May", "June", etc.
+  month: string // "May 2024"
   monthKey: string // "2024-05" for sorting
   paid: number
   upcoming: number
   total: number
+  year: number
 }
 
 export function DividendPayoutChart({ holdings, currency = 'PKR', preCalculatedDividends }: DividendPayoutChartProps) {
@@ -41,6 +49,8 @@ export function DividendPayoutChart({ holdings, currency = 'PKR', preCalculatedD
   const [loading, setLoading] = useState(!preCalculatedDividends)
   const [holdingDividends, setHoldingDividends] = useState<HoldingDividend[]>(preCalculatedDividends || [])
   const [dividendsDialogOpen, setDividendsDialogOpen] = useState(false)
+  const [selectedYear, setSelectedYear] = useState<string>("all")
+  const [sortOrder, setSortOrder] = useState<string>("date-desc") // date-desc, date-asc, amount-desc
   const today = new Date()
 
   // Update if preCalculatedDividends changes
@@ -68,7 +78,7 @@ export function DividendPayoutChart({ holdings, currency = 'PKR', preCalculatedD
       setLoading(true)
       try {
         const pkEquityHoldings = holdings.filter(h => h.assetType === 'pk-equity')
-        
+
         if (pkEquityHoldings.length === 0) {
           setHoldingDividends([])
           setLoading(false)
@@ -87,9 +97,33 @@ export function DividendPayoutChart({ holdings, currency = 'PKR', preCalculatedD
     loadDividends()
   }, [holdings, preCalculatedDividends])
 
+  // Get available years from data
+  const availableYears = useMemo(() => {
+    const years = new Set<number>()
+    holdingDividends.forEach(hd => {
+      hd.dividends.forEach(d => {
+        try {
+          years.add(getYear(parseISO(d.date)))
+        } catch (e) { }
+      })
+    })
+    return Array.from(years).sort((a, b) => b - a) // Descending
+  }, [holdingDividends])
+
+  // Set default year to current year if available, otherwise all
+  useEffect(() => {
+    if (availableYears.length > 0 && selectedYear === "all") {
+      // Default to current year if it exists in data, else "all"
+      const currentYear = new Date().getFullYear()
+      if (availableYears.includes(currentYear)) {
+        setSelectedYear(currentYear.toString())
+      }
+    }
+  }, [availableYears])
+
   // Group dividends by month and separate paid vs upcoming
   const monthlyDividends = useMemo(() => {
-    const allDividends = holdingDividends.flatMap(hd => 
+    const allDividends = holdingDividends.flatMap(hd =>
       hd.dividends.map(d => ({
         ...d,
         symbol: hd.symbol,
@@ -103,9 +137,16 @@ export function DividendPayoutChart({ holdings, currency = 'PKR', preCalculatedD
     allDividends.forEach(dividend => {
       try {
         const dividendDate = parseISO(dividend.date)
+        const year = getYear(dividendDate)
+
+        // Filter by year if selected
+        if (selectedYear !== "all" && year.toString() !== selectedYear) {
+          return
+        }
+
         const monthKey = format(dividendDate, 'yyyy-MM')
-        const monthName = format(dividendDate, 'MMMM')
-        
+        const monthName = format(dividendDate, 'MMM yyyy')
+
         // Determine if dividend is paid (past or today) or upcoming (future)
         const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
         const dividendDateStart = new Date(dividendDate.getFullYear(), dividendDate.getMonth(), dividendDate.getDate())
@@ -119,6 +160,7 @@ export function DividendPayoutChart({ holdings, currency = 'PKR', preCalculatedD
             paid: 0,
             upcoming: 0,
             total: 0,
+            year
           })
         }
 
@@ -134,14 +176,35 @@ export function DividendPayoutChart({ holdings, currency = 'PKR', preCalculatedD
       }
     })
 
-    // Convert to array and sort by month key (most recent first, but show last 6 months)
-    const sorted = Array.from(monthMap.values())
-      .sort((a, b) => b.monthKey.localeCompare(a.monthKey))
-      .slice(0, 6) // Show last 6 months
-      .reverse() // Reverse to show oldest to newest
+    // Convert to array and sort
+    let sorted = Array.from(monthMap.values())
+
+    if (sortOrder === 'date-desc') {
+      sorted.sort((a, b) => b.monthKey.localeCompare(a.monthKey))
+    } else if (sortOrder === 'date-asc') {
+      sorted.sort((a, b) => a.monthKey.localeCompare(b.monthKey))
+    } else if (sortOrder === 'amount-desc') {
+      sorted.sort((a, b) => b.total - a.total)
+    }
+
+    // If showing "all" years, maybe limit to recent? 
+    // But user might want to see history. Let's keep all for now if "all" is selected, 
+    // or maybe limit to 12 months if "all" is selected to avoid clutter?
+    // For now, let's show all matching the filter.
+
+    // If "all" is selected and no sort, default to last 12 months
+    if (selectedYear === "all" && sortOrder === 'date-desc') {
+      return sorted.slice(0, 12).reverse() // Show last 12 months chronologically
+    }
+
+    // If specific year, show chronological usually
+    if (selectedYear !== "all" && sortOrder === 'date-desc') {
+      // For a specific year, usually we want Jan -> Dec
+      return sorted.sort((a, b) => a.monthKey.localeCompare(b.monthKey))
+    }
 
     return sorted
-  }, [holdingDividends, today])
+  }, [holdingDividends, today, selectedYear, sortOrder])
 
   const chartData = useMemo(() => {
     if (monthlyDividends.length === 0) {
@@ -207,6 +270,8 @@ export function DividendPayoutChart({ holdings, currency = 'PKR', preCalculatedD
       x: {
         ticks: {
           color: colors.foreground,
+          maxRotation: 45,
+          minRotation: 45,
         },
         grid: {
           display: false,
@@ -216,7 +281,7 @@ export function DividendPayoutChart({ holdings, currency = 'PKR', preCalculatedD
         beginAtZero: true,
         ticks: {
           color: colors.foreground,
-          callback: function(value: any) {
+          callback: function (value: any) {
             return formatCurrency(value, currency)
           },
         },
@@ -240,15 +305,6 @@ export function DividendPayoutChart({ holdings, currency = 'PKR', preCalculatedD
               <div className="flex items-center gap-2">
                 <CardTitle>Dividend Payouts</CardTitle>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => setDividendsDialogOpen(true)}
-                title="View detailed dividend information"
-              >
-                <Info className="h-4 w-4 text-muted-foreground" />
-              </Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -257,7 +313,7 @@ export function DividendPayoutChart({ holdings, currency = 'PKR', preCalculatedD
             </div>
           </CardContent>
         </Card>
-        
+
         <MyDividendsDialog
           open={dividendsDialogOpen}
           onOpenChange={setDividendsDialogOpen}
@@ -269,7 +325,7 @@ export function DividendPayoutChart({ holdings, currency = 'PKR', preCalculatedD
   }
 
   const pkEquityHoldings = holdings.filter(h => h.assetType === 'pk-equity')
-  if (pkEquityHoldings.length === 0 || monthlyDividends.length === 0) {
+  if (pkEquityHoldings.length === 0 || (monthlyDividends.length === 0 && selectedYear === "all")) {
     return (
       <>
         <Card>
@@ -291,13 +347,13 @@ export function DividendPayoutChart({ holdings, currency = 'PKR', preCalculatedD
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-              {pkEquityHoldings.length === 0 
+              {pkEquityHoldings.length === 0
                 ? 'No PK equity holdings to calculate dividends'
                 : 'No dividend data available'}
             </div>
           </CardContent>
         </Card>
-        
+
         <MyDividendsDialog
           open={dividendsDialogOpen}
           onOpenChange={setDividendsDialogOpen}
@@ -311,48 +367,72 @@ export function DividendPayoutChart({ holdings, currency = 'PKR', preCalculatedD
   return (
     <>
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <CardTitle>Dividend Payouts</CardTitle>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={() => setDividendsDialogOpen(true)}
-              title="View detailed dividend information"
-            >
-              <Info className="h-4 w-4 text-muted-foreground" />
-            </Button>
+            <div className="flex items-center gap-2">
+              {/* Year Filter */}
+              {availableYears.length > 0 && (
+                <Select value={selectedYear} onValueChange={setSelectedYear}>
+                  <SelectTrigger className="h-8 w-[100px]">
+                    <SelectValue placeholder="Year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Time</SelectItem>
+                    {availableYears.map(year => (
+                      <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => setDividendsDialogOpen(true)}
+                title="View detailed dividend information"
+              >
+                <Info className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </div>
           </div>
           <CardDescription className="text-xs mt-1">
             Dividends from basic portfolio are not included in the calculation.
           </CardDescription>
         </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Bar Chart */}
-        <div className="h-[200px]">
-          <Bar data={chartData} options={chartOptions} />
-        </div>
-
-        {/* Total Payout */}
-        <div className="pt-2 border-t">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Total payout</span>
-            <span className="text-lg font-bold">{formatCurrency(totalPayout, currency)}</span>
+        <CardContent className="space-y-4">
+          {/* Bar Chart */}
+          <div className="h-[200px]">
+            {monthlyDividends.length > 0 ? (
+              <Bar data={chartData} options={chartOptions} />
+            ) : (
+              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                No dividends found for {selectedYear}
+              </div>
+            )}
           </div>
-        </div>
-      </CardContent>
-    </Card>
-    
-    <MyDividendsDialog
-      open={dividendsDialogOpen}
-      onOpenChange={setDividendsDialogOpen}
-      holdings={holdings}
-      currency={currency}
-    />
-  </>
+
+          {/* Total Payout */}
+          <div className="pt-2 border-t">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">
+                Total payout {selectedYear !== 'all' ? `(${selectedYear})` : ''}
+              </span>
+              <span className="text-lg font-bold">{formatCurrency(totalPayout, currency)}</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <MyDividendsDialog
+        open={dividendsDialogOpen}
+        onOpenChange={setDividendsDialogOpen}
+        holdings={holdings}
+        currency={currency}
+      />
+    </>
   )
 }
 

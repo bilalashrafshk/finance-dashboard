@@ -70,10 +70,10 @@ const MetalsPortfolioChart = dynamic(() => import("./metals-portfolio-chart").th
 export function PortfolioDashboardV2() {
   const { user, loading: authLoading } = useAuth()
 
-  const { 
-    holdings, 
-    netDeposits, 
-    loading: holdingsLoading, 
+  const {
+    holdings,
+    netDeposits,
+    loading: holdingsLoading,
     exchangeRate,
     mutate: mutateHoldings,
     pricesValidating
@@ -94,8 +94,8 @@ export function PortfolioDashboardV2() {
 
     const calculateSummary = async () => {
       try {
-        const { 
-          calculatePortfolioSummary, 
+        const {
+          calculatePortfolioSummary,
           calculateDividendsCollected,
           calculateTotalRealizedPnL,
           calculateUnifiedPortfolioSummary
@@ -104,10 +104,10 @@ export function PortfolioDashboardV2() {
         // 1. Start fetching global data in parallel
         // calculateTotalRealizedPnL uses a cached endpoint
         const realizedPnLPromise = calculateTotalRealizedPnL()
-        
+
         // calculateDividendsCollected uses the batch API which we just optimized to be DB-only
         const dividendDetailsPromise = calculateDividendsCollected(holdings)
-        
+
         const [realizedPnL, dividendDetails] = await Promise.all([realizedPnLPromise, dividendDetailsPromise])
         setDividendData(dividendDetails)
         const totalDividends = dividendDetails.reduce((sum, d) => sum + d.totalCollected, 0)
@@ -117,23 +117,23 @@ export function PortfolioDashboardV2() {
         const currencies = Array.from(holdingsByCurrency.keys())
 
         const summaries: Record<string, any> = {}
-        
+
         for (const currency of currencies) {
           const currencyHoldings = holdingsByCurrency.get(currency) || []
           const summary = calculatePortfolioSummary(currencyHoldings)
-          
+
           // Filter dividends for this currency's holdings
           const currencyHoldingIds = new Set(currencyHoldings.map(h => h.id))
           const currencyDividends = dividendDetails
-              .filter(d => currencyHoldingIds.has(d.holdingId))
-              .reduce((sum, d) => sum + d.totalCollected, 0)
-              
+            .filter(d => currencyHoldingIds.has(d.holdingId))
+            .reduce((sum, d) => sum + d.totalCollected, 0)
+
           summary.dividendsCollected = currencyDividends
           summary.dividendsCollectedPercent = summary.totalInvested > 0 ? (currencyDividends / summary.totalInvested) * 100 : 0
-          
+
           summary.realizedPnL = realizedPnL
           summary.totalPnL = summary.totalGainLoss + realizedPnL
-          
+
           if (realizedPnL !== 0) {
             summary.totalInvested = summary.totalInvested - realizedPnL
             if (summary.totalInvested !== 0) {
@@ -141,7 +141,7 @@ export function PortfolioDashboardV2() {
               summary.dividendsCollectedPercent = (currencyDividends / summary.totalInvested) * 100
             }
           }
-          
+
           summaries[currency] = summary
         }
 
@@ -162,11 +162,11 @@ export function PortfolioDashboardV2() {
           })
 
           unifiedSummary = calculateUnifiedPortfolioSummary(holdings, exchangeRatesMap)
-          
+
           // Add global realized PnL and Dividends
           unifiedSummary.realizedPnL = realizedPnL
           unifiedSummary.totalPnL = unifiedSummary.totalGainLoss + realizedPnL
-          
+
           // Dividends - convert PKR dividends to USD
           // Dividends from PK equity are in PKR, need to convert to USD for unified view
           const pkEquityHoldings = holdings.filter(h => h.assetType === 'pk-equity')
@@ -177,12 +177,12 @@ export function PortfolioDashboardV2() {
           const usdDividends = dividendDetails
             .filter(d => !pkEquityHoldingIds.has(d.holdingId))
             .reduce((sum, d) => sum + d.totalCollected, 0)
-          
+
           // Convert PKR dividends to USD
           const totalDividendsUSD = usdDividends + (pkDividends / exchangeRate)
           unifiedSummary.dividendsCollected = totalDividendsUSD
           unifiedSummary.dividendsCollectedPercent = unifiedSummary.totalInvested > 0 ? (totalDividendsUSD / unifiedSummary.totalInvested) * 100 : 0
-             
+
           if (realizedPnL !== 0) {
             unifiedSummary.totalInvested = unifiedSummary.totalInvested - realizedPnL
             if (unifiedSummary.totalInvested !== 0) {
@@ -209,7 +209,7 @@ export function PortfolioDashboardV2() {
   useEffect(() => {
     // Reset todayChange when tab changes to prevent showing stale data from previous tab
     setTodayChange(null)
-    
+
     // Create an abort controller to cancel stale requests if tab changes quickly
     const controller = new AbortController()
     let responseReceived = false
@@ -285,10 +285,10 @@ export function PortfolioDashboardV2() {
 
           // Calculate Daily P&L using standard formula:
           // Daily P&L = (End Value - Start Value) - Net Flows
-          
+
           const latestCashFlow = latest.cashFlow || 0
           const previousInvested = previous.invested || 0
-          
+
           // Note: latest.invested in API response is "Market Value + Cash".
           const change = (latest.invested - previousInvested) - latestCashFlow
           const changePercent = previousInvested > 0 ? (change / previousInvested) * 100 : 0
@@ -564,8 +564,8 @@ export function PortfolioDashboardV2() {
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-4">
-            <PortfolioUpdateSection 
-              holdings={holdings} 
+            <PortfolioUpdateSection
+              holdings={holdings}
               onUpdate={loadHoldings}
               onNavigateToTransactions={() => {
                 setSelectedAsset(null)
@@ -940,7 +940,19 @@ export function PortfolioDashboardV2() {
                 holdings={holdings}
                 currency="USD"
               />
-              <DividendPayoutChart holdings={holdings} currency="USD" preCalculatedDividends={dividendData || undefined} />
+              <DividendPayoutChart
+                holdings={holdings}
+                currency="USD"
+                preCalculatedDividends={dividendData ? dividendData.map(d => ({
+                  ...d,
+                  dividends: d.dividends.map((div: any) => ({
+                    ...div,
+                    dividendAmount: div.dividendAmount / (exchangeRate || 1),
+                    totalCollected: div.totalCollected / (exchangeRate || 1)
+                  })),
+                  totalCollected: d.totalCollected / (exchangeRate || 1)
+                })) : undefined}
+              />
             </div>
           )}
 
