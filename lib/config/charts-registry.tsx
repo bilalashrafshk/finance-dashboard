@@ -1,5 +1,6 @@
+
 import dynamic from "next/dynamic"
-import { BarChart3, TrendingUp, Activity, Globe, LayoutGrid, Loader2, ScatterChart, PieChart, Calendar, LineChart, DollarSign, Table2 } from "lucide-react"
+import { BarChart3, TrendingUp, Activity, Globe, LayoutGrid, Loader2, ScatterChart, PieChart, Calendar, LineChart, DollarSign, Table2, Map } from "lucide-react"
 import React from "react"
 
 // Loading component
@@ -99,9 +100,12 @@ const PKEquityUSDSection = dynamic(() => import("@/components/charts/pk-equity-u
 const UnifiedPriceChart = dynamic(() => import("@/components/charts/unified-price-chart").then(mod => mod.UnifiedPriceChart), {
     loading: () => <ChartLoader />,
 })
+const LiquidityMapSection = dynamic(() => import("@/components/charts/liquidity-map-section").then(mod => mod.LiquidityMapSection), {
+    loading: () => <ChartLoader />,
+})
 
 // Types
-export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments" | "interest-rate-equities" | "cpi" | "gdp" | "exchange-rate" | "remittances" | "kibor" | "sbp-reserves" | "fdi" | "m2" | "deposits" | "vehicle-sales" | "cement-sales" | "electricity-generation" | "pol-sales" | "scra" | "sector-quarterly-performance" | "pk-equity-usd" | "pk-equity-ma"
+export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments" | "interest-rate-equities" | "cpi" | "gdp" | "exchange-rate" | "remittances" | "kibor" | "sbp-reserves" | "fdi" | "m2" | "deposits" | "vehicle-sales" | "cement-sales" | "electricity-generation" | "pol-sales" | "scra" | "sector-quarterly-performance" | "pk-equity-usd" | "pk-equity-ma" | "liquidity-map"
 
 export interface ChartDefinition {
     id: ChartId
@@ -243,6 +247,13 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
         title: "Macros",
         icon: DollarSign,
         charts: [
+            {
+                id: "liquidity-map",
+                title: "Liquidity Map (Lipi)",
+                icon: Map,
+                component: <LiquidityMapSection />,
+                keywords: ["liquidity", "map", "lipi", "nccpl", "scstrade", "foreign", "buying", "selling", "fipi", "invsetment", "sector"],
+            },
             {
                 id: "interest-rates",
                 title: "SBP Interest Rates",
