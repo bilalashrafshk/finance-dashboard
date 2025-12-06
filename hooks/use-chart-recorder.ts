@@ -85,6 +85,7 @@ export function useChartRecorder(ref: React.RefObject<HTMLElement>, options: Use
                     const canvas = await toCanvas(ref.current, {
                         backgroundColor: undefined,
                         skipAutoScale: true,
+                        pixelRatio: 1, // Force 1x scale to match GIF dimensions and prevent cropping on Retina screens
                         // Manually filter out problematic elements if needed
                         filter: (node) => {
                             return true
