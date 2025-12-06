@@ -55,6 +55,7 @@
     "embla-carousel-react": "8.5.1",
     "geist": "latest",
     "gif.js": "^0.2.0",
+    "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",
     "input-otp": "1.4.1",
     "jsonwebtoken": "^9.0.2",

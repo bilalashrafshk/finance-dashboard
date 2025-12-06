@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
-import html2canvas from 'html2canvas'
+import { toCanvas } from 'html-to-image'
 import GIF from 'gif.js'
 
 interface UseChartRecorderOptions {
@@ -18,15 +18,12 @@ export function useChartRecorder(ref: React.RefObject<HTMLElement>, options: Use
     const recorderRef = useRef<{
         gif: GIF | null
         intervalId: NodeJS.Timeout | null
-        canvas: HTMLCanvasElement | null
         isStopping: boolean
     }>({
         gif: null,
         intervalId: null,
-        canvas: null,
         isStopping: false
     })
-
 
     const startRecording = useCallback(async (onStart?: () => Promise<void> | void) => {
         if (!ref.current || isRecording) return
@@ -83,55 +80,14 @@ export function useChartRecorder(ref: React.RefObject<HTMLElement>, options: Use
                     // Canvas capture is synchronous and fast
                     gif.addFrame(canvasElement, { copy: true, delay: options.delay || 100 })
                 } else {
-                    // HTML/SVG capture using html2canvas
-                    const canvas = await html2canvas(ref.current, {
-                        useCORS: true,
-                        scale: 1,
-                        backgroundColor: null,
-                        logging: false,
-                        onclone: (clonedDoc) => {
-                            // NUCLEAR FIX: Injected style to forcibly override ALL variables to Hex
-                            // This prevents html2canvas from ever parsing 'oklch'/'lab' values
-                            const style = clonedDoc.createElement('style');
-                            style.innerHTML = `
-                                *, *:before, *:after {
-                                    --background: #00b140 !important;
-                                    --foreground: #000000 !important;
-                                    --card: #00b140 !important;
-                                    --card-foreground: #000000 !important;
-                                    --popover: #00b140 !important;
-                                    --popover-foreground: #000000 !important;
-                                    --primary: #000000 !important;
-                                    --primary-foreground: #ffffff !important;
-                                    --secondary: #ffffff !important;
-                                    --secondary-foreground: #000000 !important;
-                                    --muted: #e5e5e5 !important;
-                                    --muted-foreground: #000000 !important;
-                                    --accent: #ffffff !important;
-                                    --accent-foreground: #000000 !important;
-                                    --destructive: #ff0000 !important;
-                                    --destructive-foreground: #ffffff !important;
-                                    --border: #000000 !important;
-                                    --input: #000000 !important;
-                                    --ring: #000000 !important;
-                                    --radius: 0px !important;
-                                    --chart-1: #000000 !important;
-                                    --chart-2: #0000FF !important;
-                                    --chart-3: #FF0000 !important;
-                                    --chart-4: #008000 !important;
-                                    --chart-5: #FFA500 !important;
-                                    --sidebar: #00b140 !important;
-                                    --sidebar-foreground: #000000 !important;
-                                    --sidebar-primary: #000000 !important;
-                                    --sidebar-primary-foreground: #ffffff !important;
-                                    --sidebar-accent: #ffffff !important;
-                                    --sidebar-accent-foreground: #000000 !important;
-                                    --sidebar-border: #000000 !important;
-                                    --sidebar-ring: #000000 !important;
-                                    box-shadow: none !important;
-                                }
-                            `;
-                            clonedDoc.body.appendChild(style);
+                    // HTML/SVG capture using html-to-image (Supports modern CSS/oklch better than html2canvas)
+                    // Skip fonts to speed up and avoid CORS issues, as we use system fonts mostly
+                    const canvas = await toCanvas(ref.current, {
+                        backgroundColor: undefined,
+                        skipAutoScale: true,
+                        // Manually filter out problematic elements if needed
+                        filter: (node) => {
+                            return true
                         }
                     })
 
@@ -146,6 +102,7 @@ export function useChartRecorder(ref: React.RefObject<HTMLElement>, options: Use
 
         // Start capture loop
         recorderRef.current.intervalId = setInterval(captureFrame, options.delay || 100)
+
 
         // Auto-stop after 4 seconds (captures 40 frames at 100ms)
         setTimeout(() => {
