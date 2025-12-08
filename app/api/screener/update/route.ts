@@ -32,7 +32,7 @@ export async function GET(request: Request) {
 
   const client = await pool.connect()
   const startTime = Date.now()
-  const TIME_LIMIT_MS = 50000 // 50 seconds safety limit
+  const TIME_LIMIT_MS = 25000 // 25 seconds safety limit
 
   try {
     console.log('[Screener Update] Starting optimized update...')
@@ -92,30 +92,38 @@ export async function GET(request: Request) {
     }
 
     // 3. Process Symbols in Batches
-    const BATCH_SIZE = 25
+    // Reduced BATCH_SIZE to 5 to prevent timeouts if external fetches are slow
+    const BATCH_SIZE = 5
     let processedCount = 0
     let skippedCount = 0
 
     for (let i = 0; i < allSymbols.length; i += BATCH_SIZE) {
       // TIME CHECK: Stop if we are running out of time
-      if (Date.now() - startTime > TIME_LIMIT_MS) {
-        console.log(`[Screener Update] Time limit reached (${Date.now() - startTime}ms). Stopping early.`)
+      const elapsedTime = Date.now() - startTime
+      if (elapsedTime > TIME_LIMIT_MS) {
+        console.log(`[Screener Update] Time limit reached (${elapsedTime}ms). Stopping early.`)
         break
       }
 
       const batchSymbols = allSymbols.slice(i, i + BATCH_SIZE)
-      console.log(`[Screener Update] Batch ${i / BATCH_SIZE + 1}: ${batchSymbols.length} symbols`)
+      console.log(`[Screener Update] Batch ${i / BATCH_SIZE + 1}: ${batchSymbols.length} symbols. (Elapsed: ${elapsedTime}ms)`)
+      const batchStart = Date.now()
 
       try {
-        // A. Batch Fetch Basic Data (Price, Profile, Financials) -> Already optimized to use Service direct calls
-        //    NOTE: distinct 'fetchScreenerBatchData' implementation usually calls batch-price-service which uses DB or API
+        // A. Batch Fetch Basic Data (Price, Profile, Financials)
+        console.time(`Batch ${i} Basic Data`)
         const batchDataPromise = fetchScreenerBatchData(batchSymbols, 'pk-equity', baseUrl)
+          .then(res => { console.timeEnd(`Batch ${i} Basic Data`); return res; })
 
         // B. Batch Fetch Historical Price (3 Years) -> DIRECT DB QUERY
+        console.time(`Batch ${i} History`)
         const historyPromise = getHistoricalDataBatch('pk-equity', batchSymbols, startDate, endDate)
+          .then(res => { console.timeEnd(`Batch ${i} History`); return res; })
 
         // C. Batch Fetch Dividend History -> DIRECT DB QUERY
+        console.time(`Batch ${i} Dividends`)
         const dividendPromise = getDividendDataBatch('pk-equity', batchSymbols)
+          .then(res => { console.timeEnd(`Batch ${i} Dividends`); return res; })
 
         // Execute all fetches in parallel
         const [batchBasicData, batchHistory, batchDividends] = await Promise.all([
@@ -123,6 +131,7 @@ export async function GET(request: Request) {
           historyPromise,
           dividendPromise
         ])
+        console.log(`[Screener Update] Batch ${i} Fetch Complete in ${Date.now() - batchStart}ms`)
 
         // Process each symbol in memory (CPU bound, fast)
         const updatePromises = batchSymbols.map(async (symbol) => {
