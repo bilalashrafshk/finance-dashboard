@@ -209,6 +209,100 @@ export async function getHistoricalDataWithMetadata(
   }
 }
 
+
+/**
+ * Get historical data for multiple assets in a single query (optimized)
+ * Returns a map of symbol -> data array
+ */
+export async function getHistoricalDataBatch(
+  assetType: string,
+  symbols: string[],
+  startDate?: string,
+  endDate?: string
+): Promise<Record<string, HistoricalPriceRecord[]>> {
+  if (!symbols || symbols.length === 0) {
+    return {}
+  }
+
+  try {
+    const client = await getPool().connect()
+
+    try {
+      const normalizedSymbols = symbols.map(s => s.toUpperCase())
+      const baseParams: any[] = [assetType, normalizedSymbols]
+      let whereClause = 'WHERE asset_type = $1 AND symbol = ANY($2)'
+      let paramIndex = 3
+
+      if (startDate) {
+        whereClause += ` AND date >= $${paramIndex}`
+        baseParams.push(startDate)
+        paramIndex++
+      }
+
+      if (endDate) {
+        whereClause += ` AND date <= $${paramIndex}`
+        baseParams.push(endDate)
+        paramIndex++
+      }
+
+      const query = `
+        SELECT symbol, date, open, high, low, close, volume, adjusted_close, change_pct
+        FROM historical_price_data
+        ${whereClause}
+        ORDER BY symbol, date ASC
+      `
+
+      const result = await client.query(query, baseParams)
+
+      const results: Record<string, HistoricalPriceRecord[]> = {}
+
+      // Initialize arrays for all requested symbols
+      normalizedSymbols.forEach(s => {
+        results[s] = []
+      })
+
+      // Format date as YYYY-MM-DD
+      const formatDate = (date: Date): string => {
+        try {
+          const year = date.getFullYear()
+          const month = String(date.getMonth() + 1).padStart(2, '0')
+          const day = String(date.getDate()).padStart(2, '0')
+          return `${year}-${month}-${day}`
+        } catch (error) {
+          return ''
+        }
+      }
+
+      result.rows.forEach(row => {
+        const symbol = row.symbol.toUpperCase()
+        if (!results[symbol]) {
+          results[symbol] = []
+        }
+
+        const formattedDate = row.date instanceof Date ? formatDate(row.date) : row.date
+
+        results[symbol].push({
+          date: formattedDate,
+          open: row.open ? parseFloat(row.open) : null,
+          high: row.high ? parseFloat(row.high) : null,
+          low: row.low ? parseFloat(row.low) : null,
+          close: parseFloat(row.close),
+          volume: row.volume ? parseFloat(row.volume) : null,
+          adjusted_close: row.adjusted_close ? parseFloat(row.adjusted_close) : null,
+          change_pct: row.change_pct ? parseFloat(row.change_pct) : null,
+        })
+      })
+
+      return results
+    } finally {
+      client.release()
+    }
+  } catch (error) {
+    console.error(`Error getting batch historical data for ${assetType}:`, error)
+    return {}
+  }
+}
+
 /**
  * Get current price and its timestamp from database
  */
