@@ -43,12 +43,13 @@ export async function GET(request: Request) {
     const limit = limitParams ? parseInt(limitParams) : 50 // Default 50 symbols per run
 
     // 1. Get Stale Symbols (Prioritize oldest updated)
-    //    LEFT JOIN to find symbols not in metrics yet, or order by updated_at ASC
+    //    Use GROUP BY instead of DISTINCT to allow ordering by joined column
     const staleQuery = `
-      SELECT DISTINCT h.symbol
+      SELECT h.symbol
       FROM historical_price_data h
       LEFT JOIN screener_metrics s ON h.symbol = s.symbol AND s.asset_type = 'pk-equity'
       WHERE h.asset_type = 'pk-equity'
+      GROUP BY h.symbol, s.updated_at
       ORDER BY s.updated_at ASC NULLS FIRST, h.symbol ASC
       LIMIT $1
     `
