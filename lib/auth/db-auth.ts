@@ -252,3 +252,79 @@ export async function createUser(input: RegisterInput): Promise<User> {
   const { user } = await registerUser(input)
   return user
 }
+
+/**
+ * Update user details (Admin function)
+ */
+export async function updateUser(userId: number, updates: { name?: string; role?: string }): Promise<User> {
+  const pool = getPool()
+  const client = await pool.connect()
+
+  try {
+    // Build query dynamically based on provided updates
+    const sets: string[] = []
+    const values: any[] = [userId]
+    let paramIndex = 2
+
+    if (updates.name !== undefined) {
+      sets.push(`name = $${paramIndex++}`)
+      values.push(updates.name)
+    }
+
+    if (updates.role !== undefined) {
+      sets.push(`role = $${paramIndex++}`)
+      values.push(updates.role)
+    }
+
+    sets.push(`updated_at = NOW()`)
+
+    if (sets.length === 1) { // Only updated_at
+      throw new Error('No updates provided')
+    }
+
+    const result = await client.query(
+      `UPDATE users 
+       SET ${sets.join(', ')} 
+       WHERE id = $1 
+       RETURNING id, email, name, role, created_at, updated_at`,
+      values
+    )
+
+    if (result.rows.length === 0) {
+      throw new Error('User not found')
+    }
+
+    const row = result.rows[0]
+    return {
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      role: row.role,
+      createdAt: row.created_at.toISOString(),
+      updatedAt: row.updated_at.toISOString(),
+    }
+  } finally {
+    client.release()
+  }
+}
+
+/**
+ * Delete user (Admin function)
+ */
+export async function deleteUser(userId: number): Promise<void> {
+  const pool = getPool()
+  const client = await pool.connect()
+
+  try {
+    const result = await client.query(
+      'DELETE FROM users WHERE id = $1 RETURNING id',
+      [userId]
+    )
+
+    if (result.rows.length === 0) {
+      throw new Error('User not found')
+    }
+  } finally {
+    client.release()
+  }
+}

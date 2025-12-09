@@ -85,7 +85,7 @@ export default function AdminUsersPage() {
                 </div>
             </div>
             <Separator />
-            <UserList users={users} loading={loadingUsers} />
+            <UserList users={users} loading={loadingUsers} onUserUpdated={fetchUsers} />
         </div>
     )
 }
