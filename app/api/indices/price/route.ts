@@ -174,9 +174,21 @@ export async function GET(request: NextRequest) {
       const data = result.data
 
       if (data.length > 0) {
+        let change = 0
+        if (data.length > 1) {
+          // Ensure we have at least 2 data points for change calculation
+          // data[0] is latest, data[1] is previous
+          const current = data[0].close
+          const prev = data[1].close
+          if (prev > 0) {
+            change = ((current - prev) / prev) * 100
+          }
+        }
+
         const response = {
           symbol: symbolUpper,
           price: data[0].close,
+          change: change, // Added change field
           date: data[0].date,
           source: 'database', // It's now in DB (fetched server-side)
         }

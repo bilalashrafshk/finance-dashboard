@@ -23,8 +23,9 @@ export function useMarketOverview() {
     }
 }
 
+// Fetches history. Defaults to PKR for now as per dashboard context.
 export function usePortfolioStats() {
-    const { data, error } = useSWR('/api/user/portfolio/history', fetcher);
+    const { data, error } = useSWR('/api/user/portfolio/history?currency=PKR', fetcher);
 
     const portfolio = (data && data.history && data.history.length > 0) ? (() => {
         const history = data.history;
@@ -56,8 +57,13 @@ export function useOpenPositions() {
     const { data, error } = useSWR('/api/user/holdings', fetcher);
     // data should be { success: true, holdings: [...] }
 
+    // Filter out 'cash' and zero quantity positions
+    const activePositions = data?.holdings
+        ? data.holdings.filter((h: any) => h.assetType !== 'cash' && h.quantity > 0)
+        : [];
+
     return {
-        count: data?.holdings ? data.holdings.length : 0,
+        count: activePositions.length,
         isLoading: !data && !error
     }
 }

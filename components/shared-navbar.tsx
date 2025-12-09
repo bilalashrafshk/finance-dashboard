@@ -120,6 +120,7 @@ export function SharedNavbar() {
             </div>
 
             <div className="hidden md:flex items-center gap-4">
+              {user && <GlobalSearch />}
               <ThemeToggle />
               {user ? (
                 <DropdownMenu>
