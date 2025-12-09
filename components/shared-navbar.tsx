@@ -114,6 +114,20 @@ export function SharedNavbar() {
                       <span>Screener</span>
                     </div>
                   </Link>
+                  {user.role === 'admin' && (
+                    <Link
+                      href="/admin/users"
+                      className={`px-4 py-2 rounded-lg transition-colors ${isActive('/admin/users')
+                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
+                        : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
+                        }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4" />
+                        <span>Admin</span>
+                      </div>
+                    </Link>
+                  )}
                 </>
               )}
             </div>
@@ -242,6 +256,20 @@ export function SharedNavbar() {
                       <span>Screener</span>
                     </div>
                   </Link>
+                  {user.role === 'admin' && (
+                    <Link
+                      href="/admin/users"
+                      className={`block px-4 py-2 rounded-lg transition-colors ${isActive('/admin/users')
+                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
+                        : 'text-foreground hover:bg-muted'
+                        }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4" />
+                        <span>Admin</span>
+                      </div>
+                    </Link>
+                  )}
                 </div>
               )}
               <div className="pt-4 border-t border-border space-y-3">
@@ -324,4 +352,3 @@ export function SharedNavbar() {
     </>
   )
 }
-

@@ -219,3 +219,36 @@ export async function getUserByEmail(email: string): Promise<User | null> {
     client.release()
   }
 }
+
+/**
+ * Get all users
+ */
+export async function getAllUsers(): Promise<User[]> {
+  const pool = getPool()
+  const client = await pool.connect()
+
+  try {
+    const result = await client.query(
+      'SELECT id, email, name, role, created_at, updated_at FROM users ORDER BY created_at DESC'
+    )
+
+    return result.rows.map(row => ({
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      role: row.role,
+      createdAt: row.created_at.toISOString(),
+      updatedAt: row.updated_at.toISOString(),
+    }))
+  } finally {
+    client.release()
+  }
+}
+
+/**
+ * Create a new user (Admin function to allow setting role)
+ */
+export async function createUser(input: RegisterInput): Promise<User> {
+  const { user } = await registerUser(input)
+  return user
+}
