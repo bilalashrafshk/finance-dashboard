@@ -159,6 +159,14 @@ export function SharedNavbar() {
                       <Crown className="mr-2 h-4 w-4 text-yellow-500" />
                       <span>Subscription & Tiers</span>
                     </DropdownMenuItem>
+                    {user.role === 'admin' && (
+                      <DropdownMenuItem className="cursor-pointer" asChild>
+                        <Link href="/admin/users" className="flex items-center">
+                          <User className="mr-2 h-4 w-4" />
+                          <span>Admin Dashboard</span>
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem
                       className="cursor-pointer"
                       onClick={() => setSettingsDialogOpen(true)}
