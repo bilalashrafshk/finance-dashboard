@@ -66,9 +66,15 @@ export function GlobalSearch() {
 
     // Simple client-side filtering
     const filteredData = React.useMemo(() => {
-        if (!query) return data.slice(0, 20)
+        const indices = [
+            { symbol: 'KSE100', full_name: 'KSE 100 Index', sector: 'Index', asset_type: 'index' }
+        ];
+
+        let mixedData = [...indices, ...data];
+
+        if (!query) return mixedData.slice(0, 20)
         const lower = query.toLowerCase()
-        return data.filter(item =>
+        return mixedData.filter(item =>
             item.symbol.toLowerCase().includes(lower) ||
             item.full_name?.toLowerCase().includes(lower)
         ).slice(0, 20)
@@ -103,12 +109,17 @@ export function GlobalSearch() {
                                 key={`${item.asset_type}-${item.symbol}`}
                                 value={`${item.symbol} ${item.full_name}`}
                                 onSelect={() => {
-                                    runCommand(() => router.push(`/asset/${item.asset_type === 'pk-equity' ? 'pk-equity' : 'crypto'}/${item.symbol}`))
+                                    if (item.asset_type === 'index') {
+                                        runCommand(() => router.push(`/charts`))
+                                    } else {
+                                        runCommand(() => router.push(`/asset/psx-${item.symbol}`))
+                                    }
                                 }}
                             >
                                 <div className="flex items-center gap-2">
                                     <span className="font-bold w-16">{item.symbol}</span>
                                     <span className="text-slate-500 truncate">{item.full_name}</span>
+                                    {item.asset_type === 'index' && <span className="text-xs bg-slate-800 px-1 rounded text-slate-400">Index</span>}
                                 </div>
                             </CommandItem>
                         ))}

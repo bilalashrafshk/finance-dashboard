@@ -17,7 +17,7 @@ import {
     Bell
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/auth-context';
-import { useMarketOverview, usePortfolioStats, useTopMovers } from '@/hooks/use-dashboard-data';
+import { useMarketOverview, usePortfolioStats, useTopMovers, useOpenPositions } from '@/hooks/use-dashboard-data';
 import Link from 'next/link';
 
 const DashboardHeader = () => {
@@ -64,7 +64,7 @@ const WidgetCard = ({ title, children, icon: Icon, action, actionLink }: { title
     </div>
 );
 
-const StatCard = ({ name, value, change, isUp, loading }: { name: string, value: string, change: string | null, isUp?: boolean, loading?: boolean }) => (
+const StatCard = ({ name, value, change, isUp, loading }: { name: string, value: string | number, change: string | null, isUp?: boolean, loading?: boolean }) => (
     <div className="bg-gradient-to-br from-slate-900 to-slate-900/50 border border-white/5 p-6 rounded-2xl relative overflow-hidden group">
         <div className="absolute right-0 top-0 w-32 h-32 bg-blue-500/5 rounded-full blur-2xl -mr-10 -mt-10 transition-opacity group-hover:opacity-100 opacity-50"></div>
         <div className="relative z-10">
@@ -91,7 +91,8 @@ const StatCard = ({ name, value, change, isUp, loading }: { name: string, value:
 export const DashboardView = () => {
     const { kse100, isLoading: kseLoading } = useMarketOverview();
     const { portfolio, isLoading: portfolioLoading } = usePortfolioStats();
-    const { movers, isLoading: moversLoading } = useTopMovers();
+    // const { movers, isLoading: moversLoading } = useTopMovers(); // Removed as requested
+    const { count: openPositionsCount, isLoading: positionsLoading } = useOpenPositions();
 
     return (
         <div className="transition-all duration-300 bg-slate-950 min-h-screen">
@@ -118,15 +119,15 @@ export const DashboardView = () => {
                         />
                         <StatCard
                             name="Open Positions"
-                            value="8"
+                            value={openPositionsCount}
                             change={null}
-                            loading={false}
+                            loading={positionsLoading}
                         />
                     </div>
                 </div>
 
                 {/* Main Widgets Area */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6"> {/* Changed grid to 2 cols since we removed one widget */}
 
                     {/* Risk Widget - Static for now as requested */}
                     <WidgetCard title="ETH Risk Meter" icon={Activity} action="Details">
@@ -183,39 +184,6 @@ export const DashboardView = () => {
                                     </div>
                                 ))}
                             </div>
-                        </div>
-                    </WidgetCard>
-
-                    {/* Screener / Watchlist */}
-                    <WidgetCard title="Top Movers" icon={TrendingUp} action="Full Screener" actionLink="/screener">
-                        <div className="space-y-1 -mx-2 overflow-y-auto max-h-[250px]">
-                            {moversLoading ? (
-                                <div className="space-y-2 p-2">
-                                    {[1, 2, 3].map(i => <div key={i} className="h-12 bg-slate-800/50 animate-pulse rounded"></div>)}
-                                </div>
-                            ) : movers && movers.length > 0 ? (
-                                movers.map((stock: any) => (
-                                    <div key={stock.sym} className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer group/item">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-300 group-hover/item:text-white group-hover/item:bg-blue-600 transition-colors">
-                                                {stock.sym.substring(0, 1)}
-                                            </div>
-                                            <div>
-                                                <div className="text-sm font-bold text-white">{stock.sym}</div>
-                                                <div className="text-xs text-slate-500">Vol: {stock.vol || 'Avg'}</div>
-                                            </div>
-                                        </div>
-                                        <div className="text-right">
-                                            <div className="text-sm font-mono text-white">{stock.price}</div>
-                                            <div className={`text-xs font-medium ${stock.isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                                {stock.change}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="text-center text-slate-500 py-8 text-sm">No recent movers data available</div>
-                            )}
                         </div>
                     </WidgetCard>
 
