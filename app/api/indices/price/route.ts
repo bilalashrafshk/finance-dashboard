@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTodayPriceFromDatabase, getHistoricalDataWithMetadata } from '@/lib/portfolio/db-client'
+import { ensureHistoricalData } from '@/lib/portfolio/historical-data-service'
 import { isMarketClosed, getTodayInMarketTimezone } from '@/lib/portfolio/market-hours'
 import { KSE100_INSTRUMENT_ID, SPX500_INSTRUMENT_ID } from '@/lib/portfolio/investing-client-api'
 import { cacheManager } from '@/lib/cache/cache-manager'
@@ -167,9 +168,10 @@ export async function GET(request: NextRequest) {
     // For KSE100, we now support server-side fetching via historical-data route
     // So we can try to fetch it now
     if (assetType === 'kse100') {
-      // This will trigger the background fetch in historical-data route logic if needed
-      // We can just return the result of getHistoricalDataWithMetadata which now handles fetching
-      const { data } = await getHistoricalDataWithMetadata(assetType, symbolUpper, today, today)
+      // This will trigger the background fetch in historical-data-service if needed
+      // ensuring we get fresh data from SCSTrade if DB is stale
+      const result = await ensureHistoricalData(assetType, symbolUpper)
+      const data = result.data
 
       if (data.length > 0) {
         const response = {
