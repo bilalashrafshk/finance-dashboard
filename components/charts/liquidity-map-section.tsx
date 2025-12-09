@@ -65,15 +65,20 @@ export function LiquidityMapSection() {
 
     // Process data for Summary View (Net by Client)
     const summaryData = useMemo(() => {
-        const clientTotals: Record<string, number> = {}
+        const clientTotals: Record<string, { net: number, buy: number, sell: number }> = {}
         data.forEach(r => {
-            if (r.sector_name.toLowerCase().includes('all other')) return // Optional: skip 'all other' if useless
-            clientTotals[r.client_type] = (clientTotals[r.client_type] || 0) + r.net_value
+            // Removed filter for 'all other' to correct totals
+            if (!clientTotals[r.client_type]) {
+                clientTotals[r.client_type] = { net: 0, buy: 0, sell: 0 }
+            }
+            clientTotals[r.client_type].net += r.net_value
+            clientTotals[r.client_type].buy += r.buy_value
+            clientTotals[r.client_type].sell += r.sell_value
         })
 
         return Object.entries(clientTotals)
-            .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value)
+            .map(([name, stats]) => ({ name, ...stats }))
+            .sort((a, b) => b.net - a.net)
     }, [data])
 
     // Process data for Heatmap View
@@ -159,32 +164,53 @@ export function LiquidityMapSection() {
             </CardHeader>
             <CardContent>
                 {viewMode === "summary" ? (
-                    <div className="h-[500px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart
-                                data={summaryData}
-                                layout="vertical"
-                                margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
-                            >
-                                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                                <XAxis type="number" />
-                                <YAxis
-                                    type="category"
-                                    dataKey="name"
-                                    width={150}
-                                    tick={{ fontSize: 12 }}
-                                />
-                                <Tooltip
-                                    formatter={(value: number) => [`${value.toFixed(2)} M`, "Net Value"]}
-                                    cursor={{ fill: 'transparent' }}
-                                />
-                                <Bar dataKey="value">
-                                    {summaryData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.value > 0 ? "#22c55e" : "#ef4444"} />
+                    <div className="w-full">
+                        <div className="rounded-md border">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b bg-muted/50 transition-colors hover:bg-muted/50">
+                                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[200px]">Investor Type</th>
+                                        <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Gross Buy ($ mn)</th>
+                                        <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Gross Sell ($ mn)</th>
+                                        <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Net USD ($ mn)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {summaryData.map((row) => (
+                                        <tr key={row.name} className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                                            <td className="p-4 align-middle font-medium">{row.name}</td>
+                                            <td className="p-4 align-middle text-right text-green-600 dark:text-green-400">
+                                                {row.buy.toFixed(2)}
+                                            </td>
+                                            <td className="p-4 align-middle text-right text-red-600 dark:text-red-400">
+                                                {Math.abs(row.sell).toFixed(2)}
+                                            </td>
+                                            <td className={cn(
+                                                "p-4 align-middle text-right font-bold",
+                                                row.net > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                                            )}>
+                                                {row.net.toFixed(2)}
+                                            </td>
+                                        </tr>
                                     ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
+                                    <tr className="bg-muted/20 font-bold">
+                                        <td className="p-4 align-middle">TOTAL</td>
+                                        <td className="p-4 align-middle text-right text-green-600 dark:text-green-400">
+                                            {summaryData.reduce((acc, curr) => acc + curr.buy, 0).toFixed(2)}
+                                        </td>
+                                        <td className="p-4 align-middle text-right text-red-600 dark:text-red-400">
+                                            {summaryData.reduce((acc, curr) => acc + Math.abs(curr.sell), 0).toFixed(2)}
+                                        </td>
+                                        <td className={cn(
+                                            "p-4 align-middle text-right",
+                                            summaryData.reduce((acc, curr) => acc + curr.net, 0) > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                                        )}>
+                                            {summaryData.reduce((acc, curr) => acc + curr.net, 0).toFixed(2)}
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
