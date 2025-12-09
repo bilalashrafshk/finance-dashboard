@@ -55,6 +55,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               localStorage.removeItem(USER_KEY)
               setToken(null)
               setUser(null)
+            } else {
+              // Update user data from server to ensure fresh role/data
+              const data = await response.json()
+              if (data.success) {
+                setUser(data.user)
+                localStorage.setItem(USER_KEY, JSON.stringify(data.user))
+              }
             }
           } catch (err) {
             console.error('Error verifying token on init:', err)
