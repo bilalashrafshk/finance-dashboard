@@ -3,24 +3,7 @@
  * This is the core function that makes transactions the source of truth
  */
 
-import type { Holding } from './types'
-
-export interface Trade {
-  id: number
-  userId: number
-  holdingId: number | null
-  tradeType: 'buy' | 'sell' | 'add' | 'remove'
-  assetType: string
-  symbol: string
-  name: string
-  quantity: number
-  price: number
-  totalAmount: number
-  currency: string
-  tradeDate: string
-  notes: string | null
-  createdAt: string
-}
+import type { Holding, Trade } from './types'
 
 interface CalculatedHolding {
   assetType: string

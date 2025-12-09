@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/middleware'
 import { Pool } from 'pg'
-import type { Trade } from '../route'
+import type { Trade } from '@/lib/portfolio/types'
 import { cacheManager } from '@/lib/cache/cache-manager'
 import { revalidateTag } from 'next/cache'
 import { calculateHoldingsFromTransactions } from '@/lib/portfolio/transaction-utils'

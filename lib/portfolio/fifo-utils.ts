@@ -1,5 +1,5 @@
 
-import type { Trade } from './transaction-utils'
+import type { Trade } from './types'
 import type { Holding } from './types'
 
 interface BuyLot {
@@ -168,7 +168,7 @@ export function calculateFifoMetrics(
 
             const holding: Holding = {
                 id: key,
-                assetType,
+                assetType: assetType as any,
                 symbol,
                 name: symbol, // Name might need to be fetched/stored elsewhere
                 currency,

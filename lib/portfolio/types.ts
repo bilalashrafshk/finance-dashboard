@@ -6,6 +6,23 @@
 
 export type AssetType = 'us-equity' | 'pk-equity' | 'crypto' | 'fd' | 'cash' | 'metals' | 'commodities' | 'kse100' | 'spx500'
 
+export interface Trade {
+  id: number
+  userId: number
+  holdingId: number | null
+  tradeType: 'buy' | 'sell' | 'add' | 'remove'
+  assetType: string
+  symbol: string
+  name: string
+  quantity: number
+  price: number
+  totalAmount: number
+  currency: string
+  tradeDate: string
+  notes: string | null
+  createdAt: string
+}
+
 export interface Holding {
   id: string
   assetType: AssetType
