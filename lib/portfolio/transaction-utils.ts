@@ -47,11 +47,12 @@ interface CalculatedHolding {
  * Calculates weighted average purchase price based on remaining FIFO lots
  * Returns holdings with current price (needs to be fetched separately)
  */
+import { calculateFifoMetrics } from './fifo-utils'
+
 export function calculateHoldingsFromTransactions(
   trades: Trade[],
   currentPrices: Map<string, number> = new Map()
 ): Holding[] {
-  const { calculateFifoMetrics } = require('./fifo-utils')
   const { holdings } = calculateFifoMetrics(trades, currentPrices)
 
   // Convert Map to Array

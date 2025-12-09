@@ -269,7 +269,9 @@ export async function PUT(
       return NextResponse.json({ success: true, trade })
     } catch (error: any) {
       await client.query('ROLLBACK')
-      throw error
+      console.error('Detailed Update Error:', error)
+      // Return more specific error for debugging
+      throw new Error(`Update failed at step: ${error.message}`)
     } finally {
       client.release()
     }
@@ -281,9 +283,14 @@ export async function PUT(
       )
     }
 
-    console.error('Update trade error:', error)
+    console.error('Update trade error (Outer):', error)
     return NextResponse.json(
-      { success: false, error: 'Failed to update trade' },
+      {
+        success: false,
+        error: 'Failed to update trade',
+        details: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      },
       { status: 500 }
     )
   }
