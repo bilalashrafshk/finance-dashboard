@@ -114,20 +114,6 @@ export function SharedNavbar() {
                       <span>Screener</span>
                     </div>
                   </Link>
-                  {user.role === 'admin' && (
-                    <Link
-                      href="/admin/users"
-                      className={`px-4 py-2 rounded-lg transition-colors ${isActive('/admin/users')
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
-                        : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
-                        }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4" />
-                        <span>Admin</span>
-                      </div>
-                    </Link>
-                  )}
                 </>
               )}
             </div>
@@ -160,6 +146,7 @@ export function SharedNavbar() {
                       <span>Subscription & Tiers</span>
                     </DropdownMenuItem>
                     {user.role === 'admin' && (
+                      // Added to mobile dropdown since we removed it from the main list
                       <DropdownMenuItem className="cursor-pointer" asChild>
                         <Link href="/admin/users" className="flex items-center">
                           <User className="mr-2 h-4 w-4" />
@@ -167,6 +154,7 @@ export function SharedNavbar() {
                         </Link>
                       </DropdownMenuItem>
                     )}
+
                     <DropdownMenuItem
                       className="cursor-pointer"
                       onClick={() => setSettingsDialogOpen(true)}
@@ -264,20 +252,6 @@ export function SharedNavbar() {
                       <span>Screener</span>
                     </div>
                   </Link>
-                  {user.role === 'admin' && (
-                    <Link
-                      href="/admin/users"
-                      className={`block px-4 py-2 rounded-lg transition-colors ${isActive('/admin/users')
-                        ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
-                        : 'text-foreground hover:bg-muted'
-                        }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4" />
-                        <span>Admin</span>
-                      </div>
-                    </Link>
-                  )}
                 </div>
               )}
               <div className="pt-4 border-t border-border space-y-3">
@@ -308,6 +282,14 @@ export function SharedNavbar() {
                           <Crown className="mr-2 h-4 w-4 text-yellow-500" />
                           <span>Subscription & Tiers</span>
                         </DropdownMenuItem>
+                        {user.role === 'admin' && (
+                          <DropdownMenuItem className="cursor-pointer" asChild>
+                            <Link href="/admin/users" className="flex items-center">
+                              <User className="mr-2 h-4 w-4" />
+                              <span>Admin Dashboard</span>
+                            </Link>
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           className="cursor-pointer"
                           onClick={() => setSettingsDialogOpen(true)}
@@ -345,8 +327,8 @@ export function SharedNavbar() {
               </div>
             </div>
           )}
-        </div>
-      </nav>
+        </div >
+      </nav >
 
       <LoginModal
         isOpen={loginModalOpen}
