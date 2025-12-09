@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { SettingsDialog } from '@/components/auth/settings-dialog'
+import { GlobalSearch } from '@/components/global-search'
 
 export function SharedNavbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -66,6 +67,7 @@ export function SharedNavbar() {
             <div className="hidden md:flex items-center gap-6">
               {user && (
                 <>
+                  <GlobalSearch />
                   <Link
                     href="/charts"
                     className={`px-4 py-2 rounded-lg transition-colors ${isActive('/charts')

@@ -17,54 +17,28 @@ import {
     Bell
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/auth-context';
-
-// --- Mock Data ---
-const PORTFOLIO_DATA = [
-    { name: 'KSE-100', value: '41,240', change: '+1.2%', isUp: true },
-    { name: 'Portfolio', value: '₨ 2.4M', change: '+3.5%', isUp: true },
-    { name: 'Open Pos', value: '8', change: '-1', isUp: false },
-];
-
-const WATCHLIST = [
-    { sym: 'OGDC', price: '118.50', change: '+2.4%', vol: 'High' },
-    { sym: 'TRG', price: '94.20', change: '-1.1%', vol: 'Med' },
-    { sym: 'LUCK', price: '640.00', change: '+0.5%', vol: 'Low' },
-    { sym: 'SYS', price: '420.15', change: '+1.8%', vol: 'High' },
-];
+import { useMarketOverview, usePortfolioStats, useTopMovers } from '@/hooks/use-dashboard-data';
+import Link from 'next/link';
 
 const DashboardHeader = () => {
-    const { user } = useAuth();
-
     return (
         <header className="h-20 bg-slate-950/80 backdrop-blur-sm border-b border-white/5 flex items-center justify-between px-8 sticky top-0 z-40">
             <div className="flex items-center gap-4 text-slate-400">
-                <span className="text-sm">Last Updated: <span className="text-white font-mono">14:32 PKT</span></span>
+                <span className="text-sm">Last Updated: <span className="text-white font-mono">{new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })} PKT</span></span>
             </div>
 
             <div className="flex items-center gap-6">
-                <div className="relative hidden md:block">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-                    <input
-                        type="text"
-                        placeholder="Search ticker, company..."
-                        className="bg-slate-900 border border-white/10 rounded-full pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 w-64 transition-all"
-                    />
-                </div>
                 <button className="relative text-slate-400 hover:text-white transition-colors">
                     <Bell size={20} />
-                    <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
+                    {/* Badge could be dynamic later */}
                 </button>
-                <div className="h-8 w-px bg-white/10 mx-2"></div>
-                {/* User profile is handled by SharedNavbar, but we can keep a minimal indicator or remove it if redundant. 
-          The user wanted to keep the existing navbar, so this header acts as a sub-header/toolbar.
-       */}
             </div>
         </header>
     )
 };
 
-const WidgetCard = ({ title, children, icon: Icon, action }: { title: string, children: React.ReactNode, icon: any, action?: string }) => (
-    <div className="bg-slate-900/40 border border-white/5 rounded-2xl p-6 hover:border-white/10 transition-colors group">
+const WidgetCard = ({ title, children, icon: Icon, action, actionLink }: { title: string, children: React.ReactNode, icon: any, action?: string, actionLink?: string }) => (
+    <div className="bg-slate-900/40 border border-white/5 rounded-2xl p-6 hover:border-white/10 transition-colors group h-full flex flex-col">
         <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400 group-hover:text-white group-hover:bg-blue-600 transition-all duration-300">
@@ -73,47 +47,88 @@ const WidgetCard = ({ title, children, icon: Icon, action }: { title: string, ch
                 <h3 className="font-semibold text-white">{title}</h3>
             </div>
             {action && (
-                <button className="text-xs font-medium text-blue-400 hover:text-blue-300 flex items-center gap-1">
-                    {action} <ChevronRight size={14} />
-                </button>
+                actionLink ? (
+                    <Link href={actionLink} className="text-xs font-medium text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                        {action} <ChevronRight size={14} />
+                    </Link>
+                ) : (
+                    <button className="text-xs font-medium text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                        {action} <ChevronRight size={14} />
+                    </button>
+                )
             )}
         </div>
-        {children}
+        <div className="flex-1">
+            {children}
+        </div>
     </div>
 );
 
+const StatCard = ({ name, value, change, isUp, loading }: { name: string, value: string, change: string | null, isUp?: boolean, loading?: boolean }) => (
+    <div className="bg-gradient-to-br from-slate-900 to-slate-900/50 border border-white/5 p-6 rounded-2xl relative overflow-hidden group">
+        <div className="absolute right-0 top-0 w-32 h-32 bg-blue-500/5 rounded-full blur-2xl -mr-10 -mt-10 transition-opacity group-hover:opacity-100 opacity-50"></div>
+        <div className="relative z-10">
+            <div className="text-slate-400 text-sm font-medium mb-1 line-clamp-1">{name}</div>
+            <div className="flex items-end gap-3 min-h-[50px]">
+                {loading ? (
+                    <div className="h-8 w-32 bg-slate-800 animate-pulse rounded"></div>
+                ) : (
+                    <>
+                        <div className="text-3xl font-bold text-white tracking-tight">{value || '--'}</div>
+                        {change && (
+                            <div className={`flex items-center text-sm font-semibold mb-1 ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {isUp ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
+                                {change}
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+        </div>
+    </div>
+)
+
 export const DashboardView = () => {
+    const { kse100, isLoading: kseLoading } = useMarketOverview();
+    const { portfolio, isLoading: portfolioLoading } = usePortfolioStats();
+    const { movers, isLoading: moversLoading } = useTopMovers();
+
     return (
         <div className="transition-all duration-300 bg-slate-950 min-h-screen">
             <DashboardHeader />
 
-            <main className="p-8 max-w-[1600px] mx-auto space-y-8">
+            <main className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-8">
                 {/* Welcome & Stats Row */}
                 <div>
                     <h2 className="text-2xl font-bold text-white mb-6">Market Overview</h2>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {PORTFOLIO_DATA.map((stat, i) => (
-                            <div key={i} className="bg-gradient-to-br from-slate-900 to-slate-900/50 border border-white/5 p-6 rounded-2xl relative overflow-hidden group">
-                                <div className="absolute right-0 top-0 w-32 h-32 bg-blue-500/5 rounded-full blur-2xl -mr-10 -mt-10 transition-opacity group-hover:opacity-100 opacity-50"></div>
-                                <div className="relative z-10">
-                                    <div className="text-slate-400 text-sm font-medium mb-1">{stat.name}</div>
-                                    <div className="flex items-end gap-3">
-                                        <div className="text-3xl font-bold text-white tracking-tight">{stat.value}</div>
-                                        <div className={`flex items-center text-sm font-semibold mb-1 ${stat.isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                            {stat.isUp ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
-                                            {stat.change}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
+                        <StatCard
+                            name="KSE-100"
+                            value={kse100?.value || ''}
+                            change={kse100?.change || null}
+                            isUp={kse100?.isUp}
+                            loading={kseLoading}
+                        />
+                        <StatCard
+                            name="Portfolio Value"
+                            value={portfolio?.value || ''}
+                            change={portfolio?.change || null}
+                            isUp={portfolio?.isUp}
+                            loading={portfolioLoading}
+                        />
+                        <StatCard
+                            name="Open Positions"
+                            value="8"
+                            change={null}
+                            loading={false}
+                        />
                     </div>
                 </div>
 
                 {/* Main Widgets Area */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-                    {/* Risk Widget */}
+                    {/* Risk Widget - Static for now as requested */}
                     <WidgetCard title="ETH Risk Meter" icon={Activity} action="Details">
                         <div className="space-y-4">
                             <div className="relative h-32 flex flex-col items-center justify-center">
@@ -143,10 +158,10 @@ export const DashboardView = () => {
                     </WidgetCard>
 
                     {/* Portfolio Summary */}
-                    <WidgetCard title="Portfolio Allocation" icon={PieChart} action="Manage">
+                    <WidgetCard title="Portfolio Allocation" icon={PieChart} action="Manage" actionLink="/portfolio">
                         <div className="flex items-center gap-6 h-full pb-2">
-                            <div className="relative w-32 h-32 rounded-full border-[6px] border-slate-800 flex items-center justify-center">
-                                {/* CSS Conic Gradient for Donut Chart */}
+                            <div className="relative w-32 h-32 rounded-full border-[6px] border-slate-800 flex items-center justify-center shrink-0">
+                                {/* CSS Conic Gradient for Donut Chart - simplified static for now */}
                                 <div className="absolute inset-0 rounded-full" style={{ background: 'conic-gradient(#3b82f6 0% 45%, #10b981 45% 75%, #f43f5e 75% 100%)', maskImage: 'radial-gradient(transparent 55%, black 56%)', WebkitMaskImage: 'radial-gradient(transparent 55%, black 56%)' }}></div>
                                 <div className="text-center z-10">
                                     <div className="text-xs text-slate-500">Total</div>
@@ -172,27 +187,35 @@ export const DashboardView = () => {
                     </WidgetCard>
 
                     {/* Screener / Watchlist */}
-                    <WidgetCard title="Top Movers" icon={TrendingUp} action="Full Screener">
-                        <div className="space-y-1 -mx-2">
-                            {WATCHLIST.map((stock) => (
-                                <div key={stock.sym} className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer group/item">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-300 group-hover/item:text-white group-hover/item:bg-blue-600 transition-colors">
-                                            {stock.sym.substring(0, 1)}
-                                        </div>
-                                        <div>
-                                            <div className="text-sm font-bold text-white">{stock.sym}</div>
-                                            <div className="text-xs text-slate-500">Vol: {stock.vol}</div>
-                                        </div>
-                                    </div>
-                                    <div className="text-right">
-                                        <div className="text-sm font-mono text-white">{stock.price}</div>
-                                        <div className={`text-xs font-medium ${stock.change.startsWith('+') ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                            {stock.change}
-                                        </div>
-                                    </div>
+                    <WidgetCard title="Top Movers" icon={TrendingUp} action="Full Screener" actionLink="/screener">
+                        <div className="space-y-1 -mx-2 overflow-y-auto max-h-[250px]">
+                            {moversLoading ? (
+                                <div className="space-y-2 p-2">
+                                    {[1, 2, 3].map(i => <div key={i} className="h-12 bg-slate-800/50 animate-pulse rounded"></div>)}
                                 </div>
-                            ))}
+                            ) : movers && movers.length > 0 ? (
+                                movers.map((stock: any) => (
+                                    <div key={stock.sym} className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer group/item">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-300 group-hover/item:text-white group-hover/item:bg-blue-600 transition-colors">
+                                                {stock.sym.substring(0, 1)}
+                                            </div>
+                                            <div>
+                                                <div className="text-sm font-bold text-white">{stock.sym}</div>
+                                                <div className="text-xs text-slate-500">Vol: {stock.vol || 'Avg'}</div>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-sm font-mono text-white">{stock.price}</div>
+                                            <div className={`text-xs font-medium ${stock.isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                {stock.change}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="text-center text-slate-500 py-8 text-sm">No recent movers data available</div>
+                            )}
                         </div>
                     </WidgetCard>
 
@@ -204,9 +227,9 @@ export const DashboardView = () => {
                         <h3 className="text-lg font-bold text-white flex items-center gap-2">
                             <BarChart3 size={18} className="text-slate-400" /> Market Intelligence Hub
                         </h3>
-                        <button className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1">
+                        <Link href="/charts" className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1">
                             View All Analytics <ChevronRight size={14} />
-                        </button>
+                        </Link>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
