@@ -117,8 +117,9 @@ async function syncHoldingsFromTrades(client: any, userId: number) {
 // PUT - Update a trade
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params
   try {
     const user = await requireAuth(request)
     const tradeId = parseInt(params.id)
@@ -320,8 +321,9 @@ export async function PUT(
 // DELETE - Delete a trade
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params
   try {
     const user = await requireAuth(request)
     const tradeId = parseInt(params.id)
