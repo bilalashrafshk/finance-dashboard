@@ -16,8 +16,9 @@ async function verifyAdmin(request: NextRequest) {
 
 export async function PATCH(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    props: { params: Promise<{ id: string }> }
 ) {
+    const params = await props.params;
     try {
         const admin = await verifyAdmin(request)
         if (!admin) {
@@ -60,8 +61,9 @@ export async function PATCH(
 
 export async function DELETE(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    props: { params: Promise<{ id: string }> }
 ) {
+    const params = await props.params;
     try {
         const admin = await verifyAdmin(request)
         if (!admin) {
