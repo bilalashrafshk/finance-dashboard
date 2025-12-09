@@ -6,6 +6,7 @@ interface User {
   id: number
   email: string
   name: string | null
+  role: string
 }
 
 interface AuthContextType {
@@ -185,4 +186,3 @@ export function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null
   return localStorage.getItem(TOKEN_KEY)
 }
-

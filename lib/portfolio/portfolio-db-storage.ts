@@ -275,8 +275,11 @@ export async function addTransaction(trade: Omit<Trade, 'id'>): Promise<Trade> {
 
     if (!response.ok) {
       const error = await response.json()
-      // Preserve error details for cash checking
-      const errorObj: any = new Error(error.error || 'Failed to add transaction')
+      // Preserve error details
+      const errorMsg = error.details
+        ? `${error.error}: ${error.details}`
+        : (error.error || 'Failed to add transaction')
+      const errorObj: any = new Error(errorMsg)
       errorObj.details = error
       throw errorObj
     }
@@ -314,7 +317,11 @@ export async function updateTransaction(id: number, trade: Partial<Omit<Trade, '
 
     if (!response.ok) {
       const error = await response.json()
-      throw new Error(error.error || 'Failed to update transaction')
+      // Preserve error details
+      const errorMsg = error.details
+        ? `${error.error}: ${error.details}`
+        : (error.error || 'Failed to update transaction')
+      throw new Error(errorMsg)
     }
 
     const data = await response.json()
