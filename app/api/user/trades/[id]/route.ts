@@ -34,7 +34,7 @@ async function syncHoldingsFromTrades(client: any, userId: number) {
     [userId]
   )
 
-  const trades = tradesResult.rows.map(row => ({
+  const trades = tradesResult.rows.map((row: any) => ({
     id: row.id,
     userId: row.user_id,
     holdingId: row.holding_id,
@@ -61,7 +61,7 @@ async function syncHoldingsFromTrades(client: any, userId: number) {
   )
 
   const existingMap = new Map<string, string>() // key -> id
-  existingHoldingsResult.rows.forEach(row => {
+  existingHoldingsResult.rows.forEach((row: any) => {
     const key = `${row.asset_type}:${row.symbol}:${row.currency}`
     existingMap.set(key, row.id)
   })
@@ -122,11 +122,26 @@ export async function PUT(
   try {
     const user = await requireAuth(request)
     const tradeId = parseInt(params.id)
+    if (isNaN(tradeId)) {
+      return NextResponse.json({ success: false, error: 'Invalid trade ID' }, { status: 400 })
+    }
+
     const body = await request.json()
+    const { tradeType, assetType, symbol, name, currency, tradeDate, notes } = body
 
-    const { tradeType, assetType, symbol, name, quantity, price, totalAmount, currency, tradeDate, notes } = body
+    // Explicit parsing and validation
+    let quantity = parseFloat(body.quantity)
+    let price = parseFloat(body.price)
+    let totalAmount = parseFloat(body.totalAmount)
 
-    if (!tradeType || !assetType || !symbol || !name || quantity === undefined || !price || totalAmount === undefined || !tradeDate) {
+    if (isNaN(quantity) || isNaN(price) || isNaN(totalAmount)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid numeric values for quantity, price or totalAmount' },
+        { status: 400 }
+      )
+    }
+
+    if (!tradeType || !assetType || !symbol || !name || !tradeDate) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
         { status: 400 }
@@ -194,6 +209,11 @@ export async function PUT(
           const newTotal = totalAmount
           const delta = newTotal - oldTotal
 
+          if (isNaN(delta)) {
+            console.error('[Trade Update] Delta calculation resulted in NaN', { oldTotal, newTotal })
+            throw new Error('Failed to calculate cash adjustment (NaN)')
+          }
+
           // If cost increased (delta > 0), we need to inject more cash (Adjustment Deposit)
           if (delta > 0.0001) {
             console.log(`[Trade Update] Cost increased by ${delta}. Injecting cash adjustment.`)
@@ -218,9 +238,10 @@ export async function PUT(
                 [user.id, 'cash', 'CASH', `Cash (${currency || 'USD'})`, delta, 1, tradeDate, 1, currency || 'USD']
               )
               cashHoldingId = newCashResult.rows[0].id
-            } else {
-              // We don't strictly need to update holding quantity here because syncHoldingsFromTrades will do it
-              // based on the new trade we are about to insert.
+            }
+
+            if (!cashHoldingId || isNaN(cashHoldingId)) {
+              throw new Error(`Invalid Cash Holding ID: ${cashHoldingId}`)
             }
 
             // Insert "Adjustment" Cash Transaction
