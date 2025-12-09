@@ -185,7 +185,7 @@ export async function PUT(
         createdAt: row.created_at.toISOString(),
       }
 
-      // --- CASH SYNC LOGIC ---
+      // --- CASH SYNC LOGIC (Gap Filler) ---
       // If this was a BUY/ADD transaction for a non-cash asset
       if (oldTrade.trade_type === 'buy' || oldTrade.trade_type === 'add') {
         if (oldTrade.asset_type !== 'cash') {
@@ -194,71 +194,59 @@ export async function PUT(
           const newTotal = totalAmount
           const delta = newTotal - oldTotal
 
-          // Only proceed if there is a change
-          if (Math.abs(delta) > 0.0001 || oldTrade.trade_date.toISOString().split('T')[0] !== tradeDate) {
+          // If cost increased (delta > 0), we need to inject more cash (Adjustment Deposit)
+          if (delta > 0.0001) {
+            console.log(`[Trade Update] Cost increased by ${delta}. Injecting cash adjustment.`)
 
-            // Try to find the associated auto-deposit cash transaction
-            // Heuristic: Same Date + Notes match
-            const oldDateStr = oldTrade.trade_date.toISOString().split('T')[0]
-
-            // Note: The auto-deposit note set in POST is: `Auto-deposit: Insufficient cash for ${symbol} purchase`
-            // or `Auto-deposit (past transaction): Required for ${symbol} purchase on ${tradeDate}`
-
-            // We search for a cash ADD transaction on the OLD date
-            const cashTxResult = await client.query(
-              `SELECT id, quantity, total_amount, notes 
-               FROM user_trades 
-               WHERE user_id = $1 
-               AND asset_type = 'cash' 
-               AND trade_type = 'add'
-               AND trade_date = $2
-               AND (notes LIKE $3 OR notes LIKE $4)`,
-              [
-                user.id,
-                oldDateStr,
-                `%Auto-deposit%${oldTrade.symbol}%`, // Pattern 1
-                `%Auto-deposit%${symbol}%`           // Pattern 2 (in case symbol didn't change but we want to be sure)
-              ]
+            // Find or create cash holding (reuse logic or just insert trade if holding exists)
+            const cashHoldingResult = await client.query(
+              `SELECT id FROM user_holdings
+               WHERE user_id = $1 AND asset_type = 'cash' AND symbol = 'CASH'
+               ORDER BY quantity DESC LIMIT 1`,
+              [user.id]
             )
 
-            if (cashTxResult.rows.length > 0) {
-              // Found a candidate. Update it.
-              // Logic: If we bought MORE (positive delta), we need to ADD more cash to the deposit.
-              // If we bought LESS (negative delta), we need to REDUCE the deposit.
+            let cashHoldingId = cashHoldingResult.rows[0]?.id
 
-              const cashTx = cashTxResult.rows[0]
-              const currentCash = parseFloat(cashTx.quantity)
-              const newCash = currentCash + delta
-
-              if (newCash > 0) {
-                let newNote = cashTx.notes
-
-                // If symbol changed, update note
-                if (oldTrade.symbol !== symbol) {
-                  newNote = newNote.replace(oldTrade.symbol, symbol)
-                }
-
-                // If date changed, update note if it contains the date
-                if (oldDateStr !== tradeDate) {
-                  newNote = newNote.replace(oldDateStr, tradeDate)
-                }
-
-                await client.query(
-                  `UPDATE user_trades
-                   SET quantity = $1, total_amount = $1, trade_date = $2, notes = $3
-                   WHERE id = $4`,
-                  [newCash, tradeDate, newNote, cashTx.id]
-                )
-                console.log(`[Trade Update] Synced cash transaction ${cashTx.id}. Delta: ${delta}`)
-
-                // Also update the underlying cash HOLDING quantity if needed?
-                // Actually, syncHoldingsFromTrades below will handle the holding quantity recalculation from scratch!
-                // So we just need to update the trade record.
-              } else {
-                console.log(`[Trade Update] Cash sync skipped: New cash amount would be negative/zero (${newCash})`)
-              }
+            // If no cash holding exists, create one
+            if (!cashHoldingId) {
+              const newCashResult = await client.query(
+                `INSERT INTO user_holdings 
+                 (user_id, asset_type, symbol, name, quantity, purchase_price, purchase_date, current_price, currency)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                 RETURNING id`,
+                [user.id, 'cash', 'CASH', `Cash (${currency || 'USD'})`, delta, 1, tradeDate, 1, currency || 'USD']
+              )
+              cashHoldingId = newCashResult.rows[0].id
+            } else {
+              // We don't strictly need to update holding quantity here because syncHoldingsFromTrades will do it
+              // based on the new trade we are about to insert.
             }
+
+            // Insert "Adjustment" Cash Transaction
+            await client.query(
+              `INSERT INTO user_trades 
+               (user_id, holding_id, trade_type, asset_type, symbol, name, quantity, price, total_amount, currency, trade_date, notes)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+              [
+                user.id,
+                cashHoldingId,
+                'add',
+                'cash',
+                'CASH',
+                `Cash (${currency || 'USD'})`,
+                delta,
+                1,
+                delta,
+                currency || 'USD',
+                tradeDate,
+                `Adjustment: Trade cost increased for ${symbol}`
+              ]
+            )
           }
+          // If cost decreased (delta < 0) or didn't change:
+          // We do NOTHING. The original cash outflow stands. The fact that the trade now costs LESS
+          // means when we recalculate holdings, the 'cash remaining' will mathematically increase.
         }
       }
       // -----------------------
