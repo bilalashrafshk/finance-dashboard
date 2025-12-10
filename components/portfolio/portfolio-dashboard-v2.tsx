@@ -79,6 +79,12 @@ export function PortfolioDashboardV2() {
     pricesValidating
   } = usePortfolio()
 
+  const [todayChange, setTodayChange] = useState<{ value: number; percent: number } | null>(null)
+  const [activeTab, setActiveTab] = useState('overview')
+  const [selectedAsset, setSelectedAsset] = useState<{ assetType: string; symbol: string; currency: string; name: string } | null>(null)
+  const [includeDividends, setIncludeDividends] = useState(false)
+  const [dividendData, setDividendData] = useState<any[] | null>(null)
+
   // State for async data
   const [realizedPnL, setRealizedPnL] = useState<number>(0)
   const [dividendDetails, setDividendDetails] = useState<any[]>([])
@@ -128,45 +134,11 @@ export function PortfolioDashboardV2() {
 
       for (const currency of currencies) {
         const currencyHoldings = holdingsByCurrency.get(currency) || []
-        // Synchronous calculation
-        const currencySummary = calculatePortfolioSummaryWithDividends(currencyHoldings).then ?
-          // Wait, calculatePortfolioSummaryWithDividends is ASYNC in the imported file?
-          // I need to check if I can use a synchronous version or if I need to rely on the async one.
-          // The previous code imported `calculatePortfolioSummary` inside the effect. 
-          // Let's assume I can use the synchronous helpers imported at the top level 
-          // OR I need to check portfolio-utils.ts content.
-          // Checking imports: 
-          // import { calculatePortfolioSummaryWithDividends ... } from "@/lib/portfolio/portfolio-utils"
-          // In the viewed file, line 33 imports it.
-          // BUT in the original effect (line 97), it dynamically imports `calculatePortfolioSummary`.
-          // I should verify if `calculatePortfolioSummary` is sync or async.
-          // The viewed_files info said `calculatePortfolioSummaryWithDividends` uses useEffect/async.
-          // Let's use the individual sync helpers if possible.
-          //
-          // Actually, `calculatePortfolioSummary` (without dividends) is usually sync.
-          // Let's use `calculateUnifiedPortfolioSummary` logic which I can see in line 35.
-          // 
-          // I'll stick to reproducing the logic synchronously using the data I have.
-          {
-            currentValue: calculateCurrentValue(currencyHoldings),
-            totalInvested: calculateInvested(currencyHoldings),
-            totalGainLoss: calculateGainLoss(currencyHoldings),
-            dayChange: 0, // Calculated separately
-            dayChangePercent: 0,
-            holdingsCount: currencyHoldings.length,
-            dividendsCollected: 0,
-            realizedPnL: 0,
-            totalPnL: 0,
-            totalGainLossPercent: 0,
-            dividendsCollectedPercent: 0,
-          }
-          : null
 
-        // Re-implementing the logic from the previous effect synchronously
         const currSummary = {
-          currentValue: calculateCurrentValue(currencyHoldings),
-          totalInvested: calculateInvested(currencyHoldings),
-          totalGainLoss: calculateGainLoss(currencyHoldings),
+          currentValue: currencyHoldings.reduce((sum, h) => sum + calculateCurrentValue(h), 0),
+          totalInvested: currencyHoldings.reduce((sum, h) => sum + calculateInvested(h), 0),
+          totalGainLoss: currencyHoldings.reduce((sum, h) => sum + calculateGainLoss(h), 0),
           dayChange: 0,
           dayChangePercent: 0,
           holdingsCount: currencyHoldings.length,
@@ -683,7 +655,7 @@ export function PortfolioDashboardV2() {
     // Default to all currencies
     selectedCurrencies = allCurrencies
     displayCurrency = 'USD'
-    useUnified = summary.unified || false
+    useUnified = !!summary.unified
   }
 
   // Calculate total portfolio value based on selected tab
