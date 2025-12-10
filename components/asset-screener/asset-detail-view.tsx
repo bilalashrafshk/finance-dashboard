@@ -386,7 +386,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
               <CardHeader className="pb-2">
                 <CardDescription>P/E Ratio (TTM)</CardDescription>
                 <CardTitle className="text-lg">
-                  {metrics.peRatio.toFixed(2)}
+                  {Number(metrics.peRatio).toFixed(2)}
                 </CardTitle>
               </CardHeader>
             </Card>
