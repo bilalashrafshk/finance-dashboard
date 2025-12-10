@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/auth/middleware'
 import { getAllUsers, createUser, getUserById } from '@/lib/auth/db-auth'
+import { registerSchema } from '@/validations/auth'
+import { z } from 'zod'
 
 // Helper to check admin status
 async function verifyAdmin(request: NextRequest) {
@@ -18,14 +20,32 @@ export async function GET(request: NextRequest) {
     try {
         const admin = await verifyAdmin(request)
         if (!admin) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+            return NextResponse.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, { status: 401 })
         }
 
-        const users = await getAllUsers()
-        return NextResponse.json({ users })
+        const { searchParams } = new URL(request.url)
+        const page = parseInt(searchParams.get('page') || '1')
+        const limit = parseInt(searchParams.get('limit') || '20')
+        const offset = (page - 1) * limit
+
+        // Max limit to prevent DB overload
+        const safeLimit = Math.min(limit, 100)
+
+        const { users, total } = await getAllUsers(safeLimit, offset)
+
+        return NextResponse.json({
+            success: true,
+            users,
+            pagination: {
+                page,
+                limit: safeLimit,
+                total,
+                totalPages: Math.ceil(total / safeLimit)
+            }
+        })
     } catch (error) {
         console.error('Error fetching users:', error)
-        return NextResponse.json({ error: 'Failed to fetch users' }, { status: 500 })
+        return NextResponse.json({ error: 'Failed to fetch users', code: 'INTERNAL_SERVER_ERROR' }, { status: 500 })
     }
 }
 
@@ -33,37 +53,42 @@ export async function POST(request: NextRequest) {
     try {
         const admin = await verifyAdmin(request)
         if (!admin) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+            return NextResponse.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, { status: 401 })
         }
 
         const body = await request.json()
-        const { email, password, name, role } = body
 
-        if (!email || !password) {
+        // Use z.object to pick fields from registerSchema and add role/status
+        // Or just validate manually since it's admin route but better to be safe
+        const adminCreateUserSchema = registerSchema.extend({
+            role: z.enum(['admin', 'staff', 'tier_1_customer', 'tier_2_customer', 'tier_3_customer']).optional(),
+            subscriptionTier: z.enum(['free', 'pro', 'enterprise']).optional(),
+            accountStatus: z.enum(['active', 'banned', 'suspended']).optional(),
+        })
+
+        const validated = adminCreateUserSchema.parse(body)
+
+        const newUser = await createUser({
+            email: validated.email,
+            password: validated.password,
+            name: validated.name,
+            role: validated.role,
+            subscriptionTier: validated.subscriptionTier,
+            accountStatus: validated.accountStatus
+        })
+
+        return NextResponse.json({ success: true, user: newUser }, { status: 201 })
+    } catch (error: any) {
+        if (error instanceof z.ZodError) {
             return NextResponse.json(
-                { error: 'Email and password are required' },
+                { success: false, error: error.errors[0].message, code: 'VALIDATION_ERROR' },
                 { status: 400 }
             )
         }
 
-        // Role validation
-        const allowedRoles = ['admin', 'staff', 'tier_1_customer', 'tier_2_customer', 'tier_3_customer']
-        if (role && !allowedRoles.includes(role)) {
-            return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
-        }
-
-        const newUser = await createUser({
-            email,
-            password,
-            name,
-            role
-        })
-
-        return NextResponse.json({ user: newUser }, { status: 201 })
-    } catch (error: any) {
         console.error('Error creating user:', error)
         return NextResponse.json(
-            { error: error.message || 'Failed to create user' },
+            { error: error.message || 'Failed to create user', code: 'INTERNAL_SERVER_ERROR' },
             { status: 500 }
         )
     }

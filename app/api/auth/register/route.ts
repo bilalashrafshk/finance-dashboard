@@ -1,27 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { registerUser } from '@/lib/auth/db-auth'
+import { registerSchema } from '@/validations/auth'
+import { rateLimit } from '@/lib/rate-limit'
 import { z } from 'zod'
 
-const registerSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-  name: z.string().optional(),
-})
 
 export async function POST(request: NextRequest) {
   try {
+    const ip = request.headers.get('x-forwarded-for') || 'unknown'
+
+    // 1. Rate Limiting (5 requests per minute)
+    const limitResult = await rateLimit(ip, 5, 60 * 1000)
+    if (!limitResult.success) {
+      return NextResponse.json(
+        { success: false, error: 'Too many registration attempts. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': Math.ceil((limitResult.reset - Date.now()) / 1000).toString() } }
+      )
+    }
+
     const body = await request.json()
-    
-    // Validate input
+
+    // 2. Validate input
     const validated = registerSchema.parse(body)
-    
-    // Register user
+
+    // 3. Register user (includes default subscription_tier='free', account_status='active')
     const { user, token } = await registerUser({
       email: validated.email,
       password: validated.password,
       name: validated.name,
     })
-    
+
     return NextResponse.json(
       {
         success: true,
@@ -29,6 +37,9 @@ export async function POST(request: NextRequest) {
           id: user.id,
           email: user.email,
           name: user.name,
+          role: user.role,
+          subscriptionTier: user.subscriptionTier,
+          accountStatus: user.accountStatus
         },
         token,
       },
@@ -37,30 +48,22 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { success: false, error: error.errors[0].message },
+        { success: false, error: error.errors[0].message, code: 'VALIDATION_ERROR' },
         { status: 400 }
       )
     }
-    
+
     if (error.message === 'User with this email already exists') {
       return NextResponse.json(
-        { success: false, error: 'User with this email already exists' },
+        { success: false, error: 'User with this email already exists', code: 'USER_EXISTS' },
         { status: 409 }
       )
     }
-    
-    // Log the full error for debugging
+
     console.error('Registration error:', error)
-    console.error('Error stack:', error.stack)
-    console.error('Error message:', error.message)
-    
-    // Return more detailed error in development
-    const errorMessage = process.env.NODE_ENV === 'development' 
-      ? error.message || 'Registration failed'
-      : 'Registration failed'
-    
+
     return NextResponse.json(
-      { success: false, error: errorMessage },
+      { success: false, error: 'Registration failed', code: 'REGISTRATION_FAILED' },
       { status: 500 }
     )
   }

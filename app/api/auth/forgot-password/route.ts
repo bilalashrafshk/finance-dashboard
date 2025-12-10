@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createPasswordResetToken, getUserByEmail } from '@/lib/auth/password-reset-utils'
 import { sendPasswordResetEmail } from '@/lib/auth/email-service'
+import { forgotPasswordSchema } from '@/validations/auth'
+import { rateLimit } from '@/lib/rate-limit'
+import { z } from 'zod'
+
 
 /**
  * POST /api/auth/forgot-password
@@ -8,23 +12,23 @@ import { sendPasswordResetEmail } from '@/lib/auth/email-service'
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { email } = body
-
-    if (!email || typeof email !== 'string') {
+    const ip = request.headers.get('x-forwarded-for') || 'unknown'
+    const limitResult = await rateLimit(ip, 5, 60 * 1000)
+    if (!limitResult.success) {
       return NextResponse.json(
-        { success: false, error: 'Email is required' },
-        { status: 400 }
+        { success: false, error: 'Too many requests. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': Math.ceil((limitResult.reset - Date.now()) / 1000).toString() } }
       )
     }
 
+    const body = await request.json()
+    const validated = forgotPasswordSchema.parse(body)
+
     // Find user by email
-    const user = await getUserByEmail(email)
+    const user = await getUserByEmail(validated.email)
 
     // Always return success (don't reveal if email exists)
-    // This prevents email enumeration attacks
     if (!user) {
-      // Still return success to prevent user enumeration
       return NextResponse.json({
         success: true,
         message: 'If an account with that email exists, a password reset link has been sent.',
@@ -38,13 +42,9 @@ export async function POST(request: NextRequest) {
     try {
       await sendPasswordResetEmail(user.email, resetToken)
     } catch (emailError: any) {
-      // Log error for debugging but still return success to prevent revealing email service issues
-      // In production, you might want to log this to a monitoring service
       if (process.env.NODE_ENV === 'development') {
-        // In development, we can be more helpful
-        // The error is already handled in email-service.ts
+        console.error('Failed to send reset email:', emailError)
       }
-      // Still return success to prevent user enumeration
     }
 
     return NextResponse.json({
@@ -52,10 +52,17 @@ export async function POST(request: NextRequest) {
       message: 'If an account with that email exists, a password reset link has been sent.',
     })
   } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { success: false, error: error.errors[0].message, code: 'VALIDATION_ERROR' },
+        { status: 400 }
+      )
+    }
+
+    console.error('Forgot password error:', error)
     return NextResponse.json(
-      { success: false, error: 'Failed to process password reset request' },
+      { success: false, error: 'Failed to process password reset request', code: 'INTERNAL_SERVER_ERROR' },
       { status: 500 }
     )
   }
 }
-

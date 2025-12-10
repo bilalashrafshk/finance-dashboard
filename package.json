@@ -60,6 +60,7 @@
     "input-otp": "1.4.1",
     "jsonwebtoken": "^9.0.2",
     "lightweight-charts": "^5.0.9",
+    "lru-cache": "^11.2.4",
     "lucide-react": "^0.454.0",
     "next": "^16.0.7",
     "next-themes": "latest",

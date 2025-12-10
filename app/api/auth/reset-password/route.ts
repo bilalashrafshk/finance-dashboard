@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyResetToken, markTokenAsUsed } from '@/lib/auth/password-reset-utils'
 import { hashPassword } from '@/lib/auth/auth-utils'
+import { resetPasswordSchema } from '@/validations/auth'
+import { rateLimit } from '@/lib/rate-limit'
+import { z } from 'zod'
 import { Pool } from 'pg'
+
 
 function getPool(): Pool {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
@@ -25,35 +29,30 @@ function getPool(): Pool {
  */
 export async function POST(request: NextRequest) {
   try {
+    const ip = request.headers.get('x-forwarded-for') || 'unknown'
+    const limitResult = await rateLimit(ip, 5, 60 * 1000)
+    if (!limitResult.success) {
+      return NextResponse.json(
+        { success: false, error: 'Too many requests. Please try again later.' },
+        { status: 429, headers: { 'Retry-After': Math.ceil((limitResult.reset - Date.now()) / 1000).toString() } }
+      )
+    }
+
     const body = await request.json()
-    const { token, password } = body
-
-    if (!token || typeof token !== 'string') {
-      return NextResponse.json(
-        { success: false, error: 'Reset token is required' },
-        { status: 400 }
-      )
-    }
-
-    if (!password || typeof password !== 'string' || password.length < 6) {
-      return NextResponse.json(
-        { success: false, error: 'Password must be at least 6 characters long' },
-        { status: 400 }
-      )
-    }
+    const validated = resetPasswordSchema.parse(body)
 
     // Verify token
-    const userId = await verifyResetToken(token)
+    const userId = await verifyResetToken(validated.token)
 
     if (!userId) {
       return NextResponse.json(
-        { success: false, error: 'Invalid or expired reset token' },
+        { success: false, error: 'Invalid or expired reset token', code: 'INVALID_TOKEN' },
         { status: 400 }
       )
     }
 
     // Hash new password
-    const passwordHash = await hashPassword(password)
+    const passwordHash = await hashPassword(validated.password)
 
     // Update user password
     const pool = getPool()
@@ -66,7 +65,7 @@ export async function POST(request: NextRequest) {
       )
 
       // Mark token as used
-      await markTokenAsUsed(token)
+      await markTokenAsUsed(validated.token)
     } finally {
       client.release()
     }
@@ -76,8 +75,16 @@ export async function POST(request: NextRequest) {
       message: 'Password has been reset successfully',
     })
   } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { success: false, error: error.errors[0].message, code: 'VALIDATION_ERROR' },
+        { status: 400 }
+      )
+    }
+
+    console.error('Reset password error:', error)
     return NextResponse.json(
-      { success: false, error: 'Failed to reset password' },
+      { success: false, error: 'Failed to reset password', code: 'INTERNAL_SERVER_ERROR' },
       { status: 500 }
     )
   }

@@ -5,7 +5,7 @@
  */
 
 import { Pool } from 'pg'
-import { hashPassword, verifyPassword, generateToken } from './auth-utils'
+import { hashPassword, verifyPassword, generateToken, UserPayload } from './auth-utils'
 
 function getPool(): Pool {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
@@ -28,7 +28,9 @@ export interface User {
   id: number
   email: string
   name: string | null
-  role: string
+  role: string // 'admin' | 'staff' | 'tier_1_customer', etc.
+  subscriptionTier: string // 'free' | 'pro' | 'enterprise'
+  accountStatus: string // 'active' | 'banned' | 'suspended'
   createdAt: string
   updatedAt: string
 }
@@ -38,6 +40,8 @@ export interface RegisterInput {
   password: string
   name?: string
   role?: string
+  subscriptionTier?: string
+  accountStatus?: string
 }
 
 export interface LoginInput {
@@ -70,11 +74,19 @@ export async function registerUser(input: RegisterInput): Promise<{ user: User; 
     const passwordHash = await hashPassword(input.password)
 
     // Insert user
+    // Defaults: role='tier_1_customer', subscription_tier='free', account_status='active'
     const result = await client.query(
-      `INSERT INTO users (email, password_hash, name, role)
-       VALUES ($1, $2, $3, COALESCE($4, 'tier_1_customer'))
-       RETURNING id, email, name, role, created_at, updated_at`,
-      [input.email.toLowerCase(), passwordHash, input.name || null, input.role || null]
+      `INSERT INTO users (email, password_hash, name, role, subscription_tier, account_status)
+       VALUES ($1, $2, $3, COALESCE($4, 'tier_1_customer'), COALESCE($5, 'free'), COALESCE($6, 'active'))
+       RETURNING id, email, name, role, subscription_tier, account_status, created_at, updated_at`,
+      [
+        input.email.toLowerCase(),
+        passwordHash,
+        input.name || null,
+        input.role || null,
+        input.subscriptionTier || null,
+        input.accountStatus || null
+      ]
     )
 
     if (!result.rows || result.rows.length === 0) {
@@ -87,16 +99,23 @@ export async function registerUser(input: RegisterInput): Promise<{ user: User; 
       email: userRow.email,
       name: userRow.name,
       role: userRow.role,
+      subscriptionTier: userRow.subscription_tier,
+      accountStatus: userRow.account_status,
       createdAt: userRow.created_at.toISOString(),
       updatedAt: userRow.updated_at.toISOString(),
     }
 
     // Generate token
-    const token = generateToken({ userId: user.id, email: user.email })
+    const token = generateToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      subscriptionTier: user.subscriptionTier,
+      accountStatus: user.accountStatus
+    })
 
     return { user, token }
   } catch (error: any) {
-    // Re-throw with more context
     if (error.code === '42P01') {
       throw new Error('Database table "users" does not exist. Please run the database schema migration.')
     }
@@ -124,7 +143,8 @@ export async function loginUser(input: LoginInput): Promise<{ user: User; token:
   try {
     // Find user by email
     const result = await client.query(
-      'SELECT id, email, password_hash, name, role, created_at, updated_at FROM users WHERE email = $1',
+      `SELECT id, email, password_hash, name, role, subscription_tier, account_status, created_at, updated_at 
+       FROM users WHERE email = $1`,
       [input.email.toLowerCase()]
     )
 
@@ -133,6 +153,11 @@ export async function loginUser(input: LoginInput): Promise<{ user: User; token:
     }
 
     const userRow = result.rows[0]
+
+    // Check account status
+    if (userRow.account_status === 'banned' || userRow.account_status === 'suspended') {
+      throw new Error(`Your account is ${userRow.account_status}. Please contact support.`)
+    }
 
     // Verify password
     const isValid = await verifyPassword(input.password, userRow.password_hash)
@@ -145,12 +170,20 @@ export async function loginUser(input: LoginInput): Promise<{ user: User; token:
       email: userRow.email,
       name: userRow.name,
       role: userRow.role,
+      subscriptionTier: userRow.subscription_tier,
+      accountStatus: userRow.account_status,
       createdAt: userRow.created_at.toISOString(),
       updatedAt: userRow.updated_at.toISOString(),
     }
 
-    // Generate token
-    const token = generateToken({ userId: user.id, email: user.email })
+    // Generate token with extended payload
+    const token = generateToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      subscriptionTier: user.subscriptionTier,
+      accountStatus: user.accountStatus
+    })
 
     return { user, token }
   } finally {
@@ -167,7 +200,8 @@ export async function getUserById(userId: number): Promise<User | null> {
 
   try {
     const result = await client.query(
-      'SELECT id, email, name, role, created_at, updated_at FROM users WHERE id = $1',
+      `SELECT id, email, name, role, subscription_tier, account_status, created_at, updated_at 
+       FROM users WHERE id = $1`,
       [userId]
     )
 
@@ -181,6 +215,8 @@ export async function getUserById(userId: number): Promise<User | null> {
       email: userRow.email,
       name: userRow.name,
       role: userRow.role,
+      subscriptionTier: userRow.subscription_tier,
+      accountStatus: userRow.account_status,
       createdAt: userRow.created_at.toISOString(),
       updatedAt: userRow.updated_at.toISOString(),
     }
@@ -198,7 +234,8 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 
   try {
     const result = await client.query(
-      'SELECT id, email, name, role, created_at, updated_at FROM users WHERE email = $1',
+      `SELECT id, email, name, role, subscription_tier, account_status, created_at, updated_at 
+       FROM users WHERE email = $1`,
       [email.toLowerCase()]
     )
 
@@ -212,6 +249,8 @@ export async function getUserByEmail(email: string): Promise<User | null> {
       email: userRow.email,
       name: userRow.name,
       role: userRow.role,
+      subscriptionTier: userRow.subscription_tier,
+      accountStatus: userRow.account_status,
       createdAt: userRow.created_at.toISOString(),
       updatedAt: userRow.updated_at.toISOString(),
     }
@@ -221,25 +260,37 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 }
 
 /**
- * Get all users
+ * Get all users (with pagination)
  */
-export async function getAllUsers(): Promise<User[]> {
+export async function getAllUsers(limit: number = 20, offset: number = 0): Promise<{ users: User[], total: number }> {
   const pool = getPool()
   const client = await pool.connect()
 
   try {
+    // Get total count
+    const countResult = await client.query('SELECT COUNT(*) FROM users')
+    const total = parseInt(countResult.rows[0].count)
+
     const result = await client.query(
-      'SELECT id, email, name, role, created_at, updated_at FROM users ORDER BY created_at DESC'
+      `SELECT id, email, name, role, subscription_tier, account_status, created_at, updated_at 
+         FROM users 
+         ORDER BY created_at DESC 
+         LIMIT $1 OFFSET $2`,
+      [limit, offset]
     )
 
-    return result.rows.map(row => ({
+    const users = result.rows.map(row => ({
       id: row.id,
       email: row.email,
       name: row.name,
       role: row.role,
+      subscriptionTier: row.subscription_tier,
+      accountStatus: row.account_status,
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     }))
+
+    return { users, total }
   } finally {
     client.release()
   }
@@ -256,7 +307,12 @@ export async function createUser(input: RegisterInput): Promise<User> {
 /**
  * Update user details (Admin function)
  */
-export async function updateUser(userId: number, updates: { name?: string; role?: string }): Promise<User> {
+export async function updateUser(userId: number, updates: {
+  name?: string;
+  role?: string;
+  subscriptionTier?: string;
+  accountStatus?: string
+}): Promise<User> {
   const pool = getPool()
   const client = await pool.connect()
 
@@ -276,6 +332,16 @@ export async function updateUser(userId: number, updates: { name?: string; role?
       values.push(updates.role)
     }
 
+    if (updates.subscriptionTier !== undefined) {
+      sets.push(`subscription_tier = $${paramIndex++}`)
+      values.push(updates.subscriptionTier)
+    }
+
+    if (updates.accountStatus !== undefined) {
+      sets.push(`account_status = $${paramIndex++}`)
+      values.push(updates.accountStatus)
+    }
+
     sets.push(`updated_at = NOW()`)
 
     if (sets.length === 1) { // Only updated_at
@@ -286,7 +352,7 @@ export async function updateUser(userId: number, updates: { name?: string; role?
       `UPDATE users 
        SET ${sets.join(', ')} 
        WHERE id = $1 
-       RETURNING id, email, name, role, created_at, updated_at`,
+       RETURNING id, email, name, role, subscription_tier, account_status, created_at, updated_at`,
       values
     )
 
@@ -300,6 +366,8 @@ export async function updateUser(userId: number, updates: { name?: string; role?
       email: row.email,
       name: row.name,
       role: row.role,
+      subscriptionTier: row.subscription_tier,
+      accountStatus: row.account_status,
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     }
@@ -328,3 +396,4 @@ export async function deleteUser(userId: number): Promise<void> {
     client.release()
   }
 }
+

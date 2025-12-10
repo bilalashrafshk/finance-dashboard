@@ -1,7 +1,8 @@
-
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/auth/middleware'
 import { getUserById, updateUser, deleteUser } from '@/lib/auth/db-auth'
+import { userUpdateSchema } from '@/validations/auth'
+import { z } from 'zod'
 
 // Helper to verify admin access
 async function verifyAdmin(request: NextRequest) {
@@ -22,38 +23,54 @@ export async function PATCH(
     try {
         const admin = await verifyAdmin(request)
         if (!admin) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+            return NextResponse.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, { status: 401 })
         }
 
         const userId = parseInt(params.id)
         if (isNaN(userId)) {
-            return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 })
+            return NextResponse.json({ error: 'Invalid user ID', code: 'INVALID_ID' }, { status: 400 })
         }
 
         const body = await request.json()
-        const { name, role } = body
 
-        // Prevent admin from removing their own admin status (optional safety check)
-        if (userId === admin.id && role && role !== 'admin') {
+        // Validate input
+        const validated = userUpdateSchema.parse(body)
+
+        // Prevent admin from removing their own admin status (safety check)
+        if (userId === admin.id && validated.role && validated.role !== 'admin') {
             return NextResponse.json(
-                { error: 'Cannot remove your own admin status' },
+                { error: 'Cannot remove your own admin status', code: 'OPERATION_NOT_ALLOWED' },
                 { status: 400 }
             )
         }
 
-        // Role validation
-        const allowedRoles = ['admin', 'staff', 'tier_1_customer', 'tier_2_customer', 'tier_3_customer']
-        if (role && !allowedRoles.includes(role)) {
-            return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
+        // Prevent admin from banning themselves
+        if (userId === admin.id && validated.accountStatus && validated.accountStatus !== 'active') {
+            return NextResponse.json(
+                { error: 'Cannot ban/suspend your own account', code: 'OPERATION_NOT_ALLOWED' },
+                { status: 400 }
+            )
         }
 
-        const updatedUser = await updateUser(userId, { name, role })
+        const updatedUser = await updateUser(userId, {
+            name: validated.name,
+            role: validated.role,
+            subscriptionTier: validated.subscriptionTier,
+            accountStatus: validated.accountStatus
+        })
 
-        return NextResponse.json({ user: updatedUser })
+        return NextResponse.json({ success: true, user: updatedUser })
     } catch (error: any) {
+        if (error instanceof z.ZodError) {
+            return NextResponse.json(
+                { success: false, error: error.errors[0].message, code: 'VALIDATION_ERROR' },
+                { status: 400 }
+            )
+        }
+
         console.error('Error updating user:', error)
         return NextResponse.json(
-            { error: error.message || 'Failed to update user' },
+            { error: error.message || 'Failed to update user', code: 'INTERNAL_SERVER_ERROR' },
             { status: 500 }
         )
     }
