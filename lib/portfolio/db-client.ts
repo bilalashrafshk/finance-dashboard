@@ -499,8 +499,8 @@ async function insertChunk(
 
   const result = await client.query(
     `INSERT INTO historical_price_data 
-     (asset_type, symbol, date, open, high, low, close, volume, adjusted_close, change_pct, source)
-     VALUES ${placeholders.join(', ')}
+     (asset_type, symbol, date, open, high, low, close, volume, adjusted_close, change_pct, source, updated_at)
+     VALUES ${placeholders.map(p => p.slice(0, -1) + ', NOW())').join(', ')}
      ON CONFLICT (asset_type, symbol, date) 
      DO UPDATE SET 
        open = EXCLUDED.open,

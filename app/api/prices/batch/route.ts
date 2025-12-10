@@ -1,30 +1,102 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchBatchPrices } from '@/lib/prices/batch-price-service'
+import { batchPriceSchema, AssetCategory } from '@/validations/market-data'
+import { MarketDataService } from '@/lib/services/market-data'
+import { fetchBinancePrice, parseSymbolToBinance } from '@/lib/portfolio/binance-api'
+import { fetchPKEquityPriceService } from '@/lib/prices/pk-equity-service'
+import { fetchUSEquityPrice, fetchMetalsPrice, fetchIndicesPrice } from '@/lib/portfolio/unified-price-api'
 
-/**
- * Batch Price API
- * 
- * POST /api/prices/batch
- * Body: { assets: [{ type: 'crypto', symbol: 'BTC' }, { type: 'pk-equity', symbol: 'LUCK' }] }
- * 
- * Delegates to fetchBatchPrices service.
- */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { assets } = body
 
-    if (!assets || !Array.isArray(assets)) {
-      return NextResponse.json({ error: 'Invalid assets array' }, { status: 400 })
+    // Map 'assets' to 'tokens' (legacy compatibility)
+    // The previous implementation used 'assets', new schema uses 'tokens'
+    // We should support 'assets' to avoid breaking frontend if it hasn't changed
+    const payload = { tokens: body.tokens || body.assets }
+
+    // 1. Validation
+    const validation = batchPriceSchema.safeParse(payload)
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Invalid input', details: validation.error.format() }, { status: 400 })
     }
 
-    // Determine base URL for internal API calls (passed to service)
-    const url = new URL(request.url)
-    const baseUrl = url.origin ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+    const { tokens } = validation.data
+    const service = MarketDataService.getInstance()
 
-    const results = await fetchBatchPrices(assets, baseUrl)
+    // Determining Base URL for relative fetchers (if needed)
+    // Most fetchers here are internal services or direct API calls, but some might need it
+    const url = new URL(request.url)
+    const baseUrl = url.origin || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+    // 2. Map tokens to Batch Items for Service
+    const batchItems = tokens.map(token => {
+      const { symbol, type } = token
+      const symbolUpper = symbol.toUpperCase()
+
+      let fetcher: () => Promise<{ price: number, date: string } | null>
+
+      if (type === 'crypto') {
+        fetcher = async () => {
+          const binanceSymbol = parseSymbolToBinance(symbolUpper)
+          const price = await fetchBinancePrice(binanceSymbol)
+          return price !== null ? { price, date: new Date().toISOString() } : null
+        }
+      } else if (type === 'pk-equity') {
+        fetcher = async () => {
+          const res = await fetchPKEquityPriceService(symbolUpper)
+          return res ? { price: res.price, date: res.date } : null
+        }
+      } else if (type === 'us-equity' || type === 'equity') {
+        // Default generic 'equity' to US for now, or assume US fetcher handles it
+        fetcher = async () => {
+          const res = await fetchUSEquityPrice(symbolUpper, false, baseUrl)
+          return res ? { price: res.price, date: res.date } : null
+        }
+      } else if (type === 'metals') {
+        fetcher = async () => {
+          const res = await fetchMetalsPrice(symbolUpper, false, 0, baseUrl)
+          return res ? { price: res.price, date: res.date } : null
+        }
+      } else if (type === 'index' || type === 'spx500') {
+        fetcher = async () => {
+          const res = await fetchIndicesPrice(symbolUpper, false, 0, baseUrl)
+          return res ? { price: res.price, date: res.date } : null
+        }
+      } else {
+        // Fallback for unknown types
+        fetcher = async () => null
+      }
+
+      // Map legacy type to Service AssetCategory if needed
+      // 'pk-equity', etc are now in AssetCategory enum, so we pass it directly
+      return {
+        category: type as AssetCategory,
+        symbol: symbolUpper,
+        fetcher
+      }
+    })
+
+    // 3. Execute Batch
+    const batchResults = await service.ensureBatchData<{ price: number; date: string } | null>(batchItems)
+
+    // 4. Format Output (Match legacy format: Key = "TYPE:SYMBOL")
+    const results: Record<string, any> = {}
+
+    batchItems.forEach(item => {
+      const key = `${item.category}:${item.symbol}`
+      const data = batchResults[item.symbol]
+
+      if (data) {
+        results[key] = {
+          price: data.price,
+          date: data.date,
+          source: 'market-data-service'
+        }
+      } else {
+        // Returning null/error object mimics legacy behavior
+        results[key] = { error: 'Price not found' }
+      }
+    })
 
     return NextResponse.json({ results })
 

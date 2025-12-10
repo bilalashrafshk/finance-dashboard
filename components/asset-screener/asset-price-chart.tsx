@@ -27,6 +27,23 @@ import type { PriceDataPoint } from "@/lib/asset-screener/metrics-calculations"
 import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
 import Link from "next/link"
 import { useChartRecorder } from "@/hooks/use-chart-recorder"
+import { useVideoMode } from "@/hooks/use-video-mode"
+import { VideoModeToggle } from "@/components/ui/video-mode-toggle"
+import { getThemeColors } from "@/lib/charts/theme-colors"
+import {
+  calculateDividendAdjustedPrices,
+  normalizeToPercentage,
+  normalizeOriginalPricesToPercentage,
+  type DividendRecord
+} from "@/lib/asset-screener/dividend-adjusted-prices"
+import { createAssetPriceYAxisScaleConfig } from "@/lib/charts/portfolio-chart-utils"
+
+// Define the props interface locally since it's not exported elsewhere
+interface AssetPriceChartProps {
+  asset: TrackedAsset
+}
+
+export type ChartPeriod = '1M' | '3M' | '6M' | '1Y' | '2Y' | '5Y' | 'ALL'
 
 export function AssetPriceChart({ asset }: AssetPriceChartProps) {
   const { theme } = useTheme()

@@ -4,6 +4,7 @@ import { getHistoricalDataWithMetadata } from '@/lib/portfolio/db-client'
 import { cacheManager } from '@/lib/cache/cache-manager'
 import { generateHistoricalCacheKey } from '@/lib/cache/cache-utils'
 import { isMarketClosed } from '@/lib/portfolio/market-hours'
+import { MarketDataService } from '@/lib/services/market-data'
 
 /**
  * Unified PK Equity Price API Route
@@ -67,10 +68,25 @@ export async function GET(request: NextRequest) {
     }
 
     // Handle current price query
-    const result = await fetchPKEquityPriceService(tickerUpper, refresh)
+    const service = MarketDataService.getInstance()
+
+    const result = await service.ensureData<{ price: number, date: string }>(
+      'pk-equity',
+      tickerUpper,
+      async () => {
+        const res = await fetchPKEquityPriceService(tickerUpper)
+        return res ? { price: res.price, date: res.date } : null as any
+      },
+      refresh
+    )
 
     if (result) {
-      return NextResponse.json(result)
+      return NextResponse.json({
+        ticker: tickerUpper,
+        price: result.price,
+        date: result.date,
+        source: 'market-data-service'
+      })
     }
 
     return NextResponse.json({ error: `Price not found for ticker: ${ticker}` }, { status: 404 })
