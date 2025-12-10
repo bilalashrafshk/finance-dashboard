@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/auth/middleware'
 import { getUserById } from '@/lib/auth/db-auth'
+import { toUserDTO } from '@/lib/dto/user'
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,16 +14,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Optimization: If payload has all data, return it directly
-    // authUser comes from payload in getAuthenticatedUser
-    // We need to typecase it as UserPayload or compatible if we expanded middleware
-
-    // However, getAuthenticatedUser currently only returns { id, email }
-    // We should probably update getAuthenticatedUser to return the full payload
-    // OR we just fetch from DB here as a sanity check (safest for now)
-
-    // Since the requirement is "Optimize", let's be smart. 
-    // db-auth.ts getUserById is already efficient.
+    // Optimization: We could rely on authUser payload if it had everything, 
+    // but fetching Fresh from DB is safer for role/status changes.
     const user = await getUserById(authUser.id)
 
     if (!user) {
@@ -34,15 +27,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        subscriptionTier: user.subscriptionTier,
-        accountStatus: user.accountStatus
-      },
-      // Note: We could issue a fresh token here if we wanted to implement sliding sessions
+      user: toUserDTO(user),
     })
   } catch (error) {
     console.error('Get user error:', error)

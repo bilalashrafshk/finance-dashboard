@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { loginUser } from '@/lib/auth/db-auth'
-import { loginSchema } from '@/validations/auth'
+import { loginSchema, formatZodError } from '@/lib/validation/auth'
+import { toUserDTO } from '@/lib/dto/user'
 import { rateLimit } from '@/lib/rate-limit'
 import { z } from 'zod'
-
-
-
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,22 +31,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        subscriptionTier: user.subscriptionTier,
-        accountStatus: user.accountStatus
-        // token is sent separately mainly, but kept here for existing contract if needed, 
-        // though usually HttpOnly cookie is better. Stick to existing contract.
-      },
+      user: toUserDTO(user),
       token,
     })
   } catch (error: any) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { success: false, error: error.errors[0].message, code: 'VALIDATION_ERROR' },
+        { success: false, error: formatZodError(error), code: 'VALIDATION_ERROR' },
         { status: 400 }
       )
     }

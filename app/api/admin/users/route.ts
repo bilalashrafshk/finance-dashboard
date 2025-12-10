@@ -2,7 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/auth/middleware'
 import { getAllUsers, createUser, getUserById } from '@/lib/auth/db-auth'
-import { registerSchema } from '@/validations/auth'
+import { registerSchema, formatZodError, updateUserSchema } from '@/lib/validation/auth'
+import { toUserDTO } from '@/lib/dto/user'
 import { z } from 'zod'
 
 // Helper to check admin status
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            users,
+            users: users.map(toUserDTO),
             pagination: {
                 page,
                 limit: safeLimit,
@@ -58,8 +59,7 @@ export async function POST(request: NextRequest) {
 
         const body = await request.json()
 
-        // Use z.object to pick fields from registerSchema and add role/status
-        // Or just validate manually since it's admin route but better to be safe
+        // Admin creation schema: register schema + optional administrative fields
         const adminCreateUserSchema = registerSchema.extend({
             role: z.enum(['admin', 'staff', 'tier_1_customer', 'tier_2_customer', 'tier_3_customer']).optional(),
             subscriptionTier: z.enum(['free', 'pro', 'enterprise']).optional(),
@@ -77,11 +77,11 @@ export async function POST(request: NextRequest) {
             accountStatus: validated.accountStatus
         })
 
-        return NextResponse.json({ success: true, user: newUser }, { status: 201 })
+        return NextResponse.json({ success: true, user: toUserDTO(newUser) }, { status: 201 })
     } catch (error: any) {
         if (error instanceof z.ZodError) {
             return NextResponse.json(
-                { success: false, error: error.errors[0].message, code: 'VALIDATION_ERROR' },
+                { success: false, error: formatZodError(error), code: 'VALIDATION_ERROR' },
                 { status: 400 }
             )
         }
