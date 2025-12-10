@@ -6,7 +6,7 @@ const pool = new Pool({
     ssl: (process.env.DATABASE_URL || process.env.POSTGRES_URL || '').includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
 })
 
-export const revalidate = 300 // 5 minutes cache
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
     const client = await pool.connect()
