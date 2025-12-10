@@ -1,2 +1,0 @@
-[fetchHistoricalData] Fetching: http://localhost:3002/api/us-equity/price?ticker=AAPL
-[fetchHistoricalData] Fetching: http://localhost:3002/api/indices/price?symbol=SPX500
