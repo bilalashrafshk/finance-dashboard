@@ -199,7 +199,7 @@ export function AssetList({ assets, onDelete, loading }: AssetListProps) {
                           {m.beta !== null && (
                             <div>
                               <span className="text-muted-foreground">Beta: </span>
-                              <span className="font-semibold">{m.beta.toFixed(2)}</span>
+                              <span className="font-semibold">{Number(m.beta).toFixed(2)}</span>
                             </div>
                           )}
 
@@ -207,10 +207,10 @@ export function AssetList({ assets, onDelete, loading }: AssetListProps) {
                             <div>
                               <span className="text-muted-foreground">Sharpe: </span>
                               <span className={`font-semibold ${m.sharpeRatio >= 1 ? 'text-green-600 dark:text-green-400' :
-                                  m.sharpeRatio >= 0 ? 'text-yellow-600 dark:text-yellow-400' :
-                                    'text-red-600 dark:text-red-400'
+                                m.sharpeRatio >= 0 ? 'text-yellow-600 dark:text-yellow-400' :
+                                  'text-red-600 dark:text-red-400'
                                 }`}>
-                                {m.sharpeRatio.toFixed(2)}
+                                {Number(m.sharpeRatio).toFixed(2)}
                               </span>
                             </div>
                           )}
@@ -219,7 +219,7 @@ export function AssetList({ assets, onDelete, loading }: AssetListProps) {
                             <div>
                               <span className="text-muted-foreground">Yield: </span>
                               <span className="font-semibold text-green-600 dark:text-green-400">
-                                {m.dividendYield.toFixed(2)}%
+                                {Number(m.dividendYield).toFixed(2)}%
                               </span>
                             </div>
                           )}
