@@ -33,26 +33,26 @@ interface AssetOption {
 
 export function PriceChartSection() {
   const { toast } = useToast()
-  
+
   // Asset class selection (required)
   const [selectedAssetClass, setSelectedAssetClass] = useState<AssetType | ''>('')
-  
+
   // Search and asset lists
   const [searchQuery, setSearchQuery] = useState('')
   const [availableAssets, setAvailableAssets] = useState<AssetOption[]>([])
   const [loadingAssets, setLoadingAssets] = useState(false)
-  
+
   // PK Equity state
   const [pkStocks, setPkStocks] = useState<StockInfo[]>([])
-  
+
   // US Equity state
   const [usSymbol, setUsSymbol] = useState('')
   const [validatingUsSymbol, setValidatingUsSymbol] = useState(false)
   const [usAssetName, setUsAssetName] = useState('')
-  
+
   // Crypto state
   const [cryptoOptions, setCryptoOptions] = useState<string[]>([])
-  
+
   // Selected asset
   const [selectedAsset, setSelectedAsset] = useState<TrackedAsset | null>(null)
 
@@ -105,7 +105,7 @@ export function PriceChartSection() {
       const { fetchBinanceSymbols } = await import('@/lib/portfolio/binance-api')
       const symbols = await fetchBinanceSymbols()
       setCryptoOptions(symbols)
-      
+
       // Convert to AssetOption format (show first 100)
       const assets: AssetOption[] = symbols.slice(0, 100).map((symbol: string) => {
         const displaySymbol = symbol.replace('USDT', '')
@@ -133,7 +133,7 @@ export function PriceChartSection() {
     if (!searchQuery.trim()) {
       return availableAssets.slice(0, 50) // Show first 50 if no search
     }
-    
+
     const query = searchQuery.toLowerCase()
     return availableAssets
       .filter(asset =>
@@ -149,7 +149,7 @@ export function PriceChartSection() {
 
     try {
       setValidatingUsSymbol(true)
-      const response = await fetch(`/api/us-equity/price?ticker=${encodeURIComponent(usSymbol)}`)
+      const response = await fetch(`/api/market/price?type=us-equity&symbol=${encodeURIComponent(usSymbol)}`)
       if (response.ok) {
         const data = await response.json()
         if (data.price !== undefined) {
@@ -318,11 +318,10 @@ export function PriceChartSection() {
                   return (
                     <div
                       key={`${asset.assetType}-${asset.symbol}`}
-                      className={`flex items-center justify-between p-3 border rounded-lg transition-colors ${
-                        isSelected 
-                          ? 'bg-primary/10 border-primary' 
+                      className={`flex items-center justify-between p-3 border rounded-lg transition-colors ${isSelected
+                          ? 'bg-primary/10 border-primary'
                           : 'hover:bg-muted/50 cursor-pointer'
-                      }`}
+                        }`}
                       onClick={() => !isSelected && selectAsset(asset)}
                     >
                       <div className="flex items-center gap-3 flex-1">
@@ -342,7 +341,7 @@ export function PriceChartSection() {
               </p>
             ) : (
               <p className="text-sm text-muted-foreground text-center py-8">
-                {selectedAssetClass === 'us-equity' 
+                {selectedAssetClass === 'us-equity'
                   ? 'Enter a stock symbol above to view charts'
                   : 'Start typing to search for assets'}
               </p>
@@ -381,7 +380,7 @@ export function PriceChartSection() {
             </CardHeader>
             <CardContent className="space-y-6">
               <AssetPriceChart asset={selectedAsset} />
-              
+
               {selectedAsset.assetType === 'pk-equity' && (
                 <HistoricPEChart asset={selectedAsset} />
               )}

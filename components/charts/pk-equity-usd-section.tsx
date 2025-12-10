@@ -66,33 +66,33 @@ export function PKEquityUSDSection() {
   const { theme } = useTheme()
   const colors = getThemeColors()
   const { toast } = useToast()
-  
+
   // Asset selection
   const [pkStocks, setPkStocks] = useState<StockInfo[]>([])
   const [loadingStocks, setLoadingStocks] = useState(false)
   const [selectedSymbol, setSelectedSymbol] = useState<string>('')
   const [selectedAssetName, setSelectedAssetName] = useState<string>('')
   const [assetType, setAssetType] = useState<'equity' | 'index'>('equity')
-  
+
   // Time frame selection
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>(getDefaultPeriod('daily'))
   const [customRange, setCustomRange] = useState<DateRange>({ startDate: null, endDate: null })
-  
+
   // Frequency selection
   const [frequency, setFrequency] = useState<'daily' | 'weekly' | 'monthly'>('daily')
-  
+
   // Data
   const [allCombinedData, setAllCombinedData] = useState<CombinedDataPoint[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
+
   // Cache for exchange rate data (doesn't change often)
   const exchangeRateCacheRef = useRef<{
     data: ExchangeRateData[]
     map: Map<string, number>
     timestamp: number
   } | null>(null)
-  
+
   const EXCHANGE_RATE_CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours
 
   // Load PK stocks on mount
@@ -185,10 +185,10 @@ export function PKEquityUSDSection() {
   // Load exchange rate data with caching
   const loadExchangeRateData = useCallback(async (): Promise<Map<string, number>> => {
     const now = Date.now()
-    
+
     // Check cache
-    if (exchangeRateCacheRef.current && 
-        (now - exchangeRateCacheRef.current.timestamp) < EXCHANGE_RATE_CACHE_DURATION) {
+    if (exchangeRateCacheRef.current &&
+      (now - exchangeRateCacheRef.current.timestamp) < EXCHANGE_RATE_CACHE_DURATION) {
       return exchangeRateCacheRef.current.map
     }
 
@@ -205,7 +205,7 @@ export function PKEquityUSDSection() {
     }
 
     // Sort exchange data by date
-    const sortedExchangeData = [...exchangeData].sort((a, b) => 
+    const sortedExchangeData = [...exchangeData].sort((a, b) =>
       new Date(a.date).getTime() - new Date(b.date).getTime()
     )
 
@@ -257,7 +257,7 @@ export function PKEquityUSDSection() {
           const priceResult = await priceResponse.json()
           priceData = priceResult.data || []
         } else {
-          const priceResponse = await fetch(`/api/pk-equity/price?ticker=${selectedSymbol}&startDate=1970-01-01&endDate=${format(new Date(), 'yyyy-MM-dd')}`)
+          const priceResponse = await fetch(`/api/market/price?type=pk-equity&symbol=${selectedSymbol}&startDate=1970-01-01&endDate=${format(new Date(), 'yyyy-MM-dd')}`)
           if (!priceResponse.ok) {
             throw new Error('Failed to fetch equity price data')
           }
@@ -281,7 +281,7 @@ export function PKEquityUSDSection() {
         for (const pricePoint of priceData) {
           const priceDate = new Date(pricePoint.date)
           const monthKey = `${priceDate.getFullYear()}-${String(priceDate.getMonth() + 1).padStart(2, '0')}`
-          
+
           // Find the exchange rate for this month (or closest previous month)
           let exchangeRate: number | null = null
           if (exchangeRateMap.has(monthKey)) {
@@ -410,7 +410,7 @@ export function PKEquityUSDSection() {
         borderColor: colors.border,
         borderWidth: 1,
         callbacks: {
-          label: function(context: any) {
+          label: function (context: any) {
             const dataPoint = data[context.dataIndex]
             return [
               `USD: $${context.parsed.y.toFixed(4)}`,
@@ -447,7 +447,7 @@ export function PKEquityUSDSection() {
         },
         ticks: {
           color: colors.foreground,
-          callback: function(value: any) {
+          callback: function (value: any) {
             return typeof value === 'number' ? `$${value.toFixed(2)}` : value
           },
         },
@@ -467,8 +467,8 @@ export function PKEquityUSDSection() {
   const latestValue = data.length > 0 ? data[data.length - 1].priceUSD : null
   const previousValue = data.length > 1 ? data[data.length - 2].priceUSD : null
   const change = latestValue !== null && previousValue !== null ? latestValue - previousValue : null
-  const changePercent = change !== null && previousValue !== null && previousValue !== 0 
-    ? (change / previousValue) * 100 
+  const changePercent = change !== null && previousValue !== null && previousValue !== 0
+    ? (change / previousValue) * 100
     : null
 
   return (
@@ -596,9 +596,8 @@ export function PKEquityUSDSection() {
               {change !== null && (
                 <div className="p-4 border rounded-lg">
                   <div className="text-sm text-muted-foreground">Change</div>
-                  <div className={`text-2xl font-bold mt-1 flex items-center gap-2 ${
-                    change >= 0 ? 'text-green-600' : 'text-red-600'
-                  }`}>
+                  <div className={`text-2xl font-bold mt-1 flex items-center gap-2 ${change >= 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
                     {change >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
                     {change > 0 ? '+' : ''}${change.toFixed(4)}
                   </div>

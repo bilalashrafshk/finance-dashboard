@@ -28,17 +28,17 @@ interface StockInfo {
 export function MPTAssetSelector({ onAssetAdded, existingAssets }: MPTAssetSelectorProps) {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<'pk-equity' | 'us-equity' | 'crypto'>('pk-equity')
-  
+
   // PK Equity state
   const [pkStocks, setPkStocks] = useState<StockInfo[]>([])
   const [pkSearchQuery, setPkSearchQuery] = useState('')
   const [loadingPkStocks, setLoadingPkStocks] = useState(true)
-  
+
   // US Equity state
   const [usSymbol, setUsSymbol] = useState('')
   const [usName, setUsName] = useState('')
   const [addingUsAsset, setAddingUsAsset] = useState(false)
-  
+
   // Crypto state
   const [cryptoSymbol, setCryptoSymbol] = useState('')
   const [addingCrypto, setAddingCrypto] = useState(false)
@@ -67,10 +67,10 @@ export function MPTAssetSelector({ onAssetAdded, existingAssets }: MPTAssetSelec
   // Filter PK stocks by search query
   const filteredPkStocks = useMemo(() => {
     if (!pkSearchQuery.trim()) return pkStocks.slice(0, 50) // Show first 50 if no search
-    
+
     const query = pkSearchQuery.toLowerCase()
     return pkStocks
-      .filter(stock => 
+      .filter(stock =>
         stock.symbol.toLowerCase().includes(query) ||
         stock.name.toLowerCase().includes(query) ||
         stock.sector.toLowerCase().includes(query)
@@ -172,7 +172,7 @@ export function MPTAssetSelector({ onAssetAdded, existingAssets }: MPTAssetSelec
       }
 
       // Try to fetch price to validate symbol
-      const priceResponse = await fetch(`/api/us-equity/price?ticker=${encodeURIComponent(usSymbol)}`)
+      const priceResponse = await fetch(`/api/market/price?type=us-equity&symbol=${encodeURIComponent(usSymbol)}`)
       if (!priceResponse.ok) {
         throw new Error('Invalid symbol or unable to fetch price data')
       }
@@ -250,7 +250,7 @@ export function MPTAssetSelector({ onAssetAdded, existingAssets }: MPTAssetSelec
 
       // Try to fetch price to validate symbol
       const binanceSymbol = parseSymbolToBinance(symbol)
-      const priceResponse = await fetch(`/api/crypto/price?symbol=${encodeURIComponent(binanceSymbol)}`)
+      const priceResponse = await fetch(`/api/market/price?type=crypto&symbol=${encodeURIComponent(binanceSymbol)}`)
       if (!priceResponse.ok) {
         throw new Error('Invalid symbol or unable to fetch price data')
       }

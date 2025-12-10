@@ -57,10 +57,10 @@ function getAbsoluteUrl(path: string, baseUrl?: string): string {
  */
 export async function fetchCryptoPrice(symbol: string, refresh = false, baseUrl?: string): Promise<PriceResponse | null> {
   try {
-    const params = new URLSearchParams({ symbol })
+    const params = new URLSearchParams({ symbol, type: 'crypto' })
     if (refresh) params.set('refresh', 'true')
 
-    const url = getAbsoluteUrl(`/api/crypto/price?${params}`, baseUrl)
+    const url = getAbsoluteUrl(`/api/market/price?${params}`, baseUrl)
     const response = await fetch(url)
 
     if (!response.ok) {
@@ -81,10 +81,12 @@ export async function fetchCryptoPrice(symbol: string, refresh = false, baseUrl?
  */
 export async function fetchPKEquityPrice(ticker: string, refresh = false, baseUrl?: string): Promise<PriceResponse | null> {
   try {
-    const params = new URLSearchParams({ ticker })
+    // Unified route expects 'symbol', but PK equities use 'ticker' in old route.
+    // We map 'ticker' to 'symbol' for the unified route.
+    const params = new URLSearchParams({ symbol: ticker, type: 'pk-equity' })
     if (refresh) params.set('refresh', 'true')
 
-    const url = getAbsoluteUrl(`/api/pk-equity/price?${params}`, baseUrl)
+    const url = getAbsoluteUrl(`/api/market/price?${params}`, baseUrl)
     const response = await fetch(url)
     if (!response.ok) return null
 
@@ -100,10 +102,11 @@ export async function fetchPKEquityPrice(ticker: string, refresh = false, baseUr
  */
 export async function fetchUSEquityPrice(ticker: string, refresh = false, baseUrl?: string): Promise<PriceResponse | null> {
   try {
-    const params = new URLSearchParams({ ticker })
+    // Unified route expects 'symbol'. Map 'ticker' to 'symbol'.
+    const params = new URLSearchParams({ symbol: ticker, type: 'us-equity' })
     if (refresh) params.set('refresh', 'true')
 
-    const url = getAbsoluteUrl(`/api/us-equity/price?${params}`, baseUrl)
+    const url = getAbsoluteUrl(`/api/market/price?${params}`, baseUrl)
     const response = await fetch(url)
     if (!response.ok) return null
 
@@ -323,10 +326,29 @@ export async function fetchHistoricalData(
   baseUrl?: string
 ): Promise<HistoricalDataResponse | null> {
   try {
+    // Map legacy routes to unified route
+    // Note: metals and indices might not be migrated yet in this 'market-data' refactor? 
+    // The prompt only mentioned crypto, pk-equity, us-equity.
+    // Leaving metals/indices as is for safety unless they are part of "fetcher-registry".
+    // Registry only has: crypto, pk-equity, us-equity.
+
+    // For migrated types:
+    if (assetType === 'crypto' || assetType === 'pk-equity' || assetType === 'us-equity') {
+      const params = new URLSearchParams({
+        symbol: symbol,
+        type: assetType
+      })
+      if (startDate) params.set('startDate', startDate)
+      if (endDate) params.set('endDate', endDate)
+
+      // Unified route: /api/market/price
+      const url = getAbsoluteUrl(`/api/market/price?${params}`, baseUrl)
+      const response = await fetch(url)
+      if (!response.ok) return null
+      return await response.json() as HistoricalDataResponse
+    }
+
     const routeMap: Record<string, string> = {
-      'crypto': '/api/crypto/price',
-      'pk-equity': '/api/pk-equity/price',
-      'us-equity': '/api/us-equity/price',
       'metals': '/api/metals/price',
       'indices': '/api/indices/price',
     }
@@ -335,9 +357,10 @@ export async function fetchHistoricalData(
     if (!route) return null
 
     const params = new URLSearchParams()
-    if (assetType === 'crypto' || assetType === 'metals' || assetType === 'indices') {
+    if (assetType === 'metals' || assetType === 'indices') {
       params.set('symbol', symbol)
     } else {
+      // Should not reach here for migrated types
       params.set('ticker', symbol)
     }
 

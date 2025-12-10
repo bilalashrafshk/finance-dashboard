@@ -47,7 +47,7 @@ export function StockListPopover({ stocks, sector, industry, children }: StockLi
         stocks.slice(0, 20).map(async (stock) => { // Limit to first 20 to avoid too many requests
           try {
             const response = await fetch(
-              `/api/pk-equity/price?ticker=${stock.symbol}&startDate=${getDateNDaysAgo(20)}&endDate=${getDateNDaysAgo(0)}`
+              `/api/market/price?type=pk-equity&symbol=${stock.symbol}&startDate=${getDateNDaysAgo(20)}&endDate=${getDateNDaysAgo(0)}`
             )
             if (response.ok) {
               const data = await response.json()
@@ -60,7 +60,7 @@ export function StockListPopover({ stocks, sector, industry, children }: StockLi
               } else if (data.prices && Array.isArray(data.prices)) {
                 priceData = data.prices
               }
-              
+
               if (priceData.length > 0) {
                 // Sort by date ascending
                 priceData.sort((a: any, b: any) => {
@@ -68,10 +68,10 @@ export function StockListPopover({ stocks, sector, industry, children }: StockLi
                   const dateB = b.date || b.t || ''
                   return dateA.localeCompare(dateB)
                 })
-                
+
                 const prices = priceData.map((d: any) => parseFloat(d.close || d.c || 0)).filter((p: number) => !isNaN(p) && p > 0)
                 const dates = priceData.map((d: any) => d.date || d.t || '').filter((d: string) => d)
-                
+
                 if (prices.length > 0 && dates.length > 0 && prices.length === dates.length) {
                   dataMap.set(stock.symbol, { symbol: stock.symbol, prices, dates })
                 }
@@ -147,8 +147,8 @@ export function StockListPopover({ stocks, sector, industry, children }: StockLi
   return (
     <Popover>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent 
-        className="w-[500px] max-h-[min(600px,calc(100vh-40px))] overflow-y-auto p-0 border-0 shadow-2xl bg-white dark:bg-gray-900" 
+      <PopoverContent
+        className="w-[500px] max-h-[min(600px,calc(100vh-40px))] overflow-y-auto p-0 border-0 shadow-2xl bg-white dark:bg-gray-900"
         align="start"
         side="right"
         sideOffset={8}
@@ -183,11 +183,10 @@ export function StockListPopover({ stocks, sector, industry, children }: StockLi
                     {formatCurrency(mainStock.price, 'PKR', 2)}
                   </div>
                   <div
-                    className={`text-lg font-extrabold leading-tight ${
-                      mainStock.changePercent !== null && mainStock.changePercent >= 0
+                    className={`text-lg font-extrabold leading-tight ${mainStock.changePercent !== null && mainStock.changePercent >= 0
                         ? 'text-green-600 dark:text-green-500'
                         : 'text-red-600 dark:text-red-500'
-                    }`}
+                      }`}
                   >
                     {mainStock.changePercent !== null
                       ? `${mainStock.changePercent > 0 ? '+' : ''}${mainStock.changePercent.toFixed(2)}%`
@@ -220,11 +219,10 @@ export function StockListPopover({ stocks, sector, industry, children }: StockLi
                       {formatCurrency(stock.price, 'PKR', 2)}
                     </div>
                     <div
-                      className={`text-sm font-extrabold leading-tight ${
-                        stock.changePercent !== null && stock.changePercent >= 0
+                      className={`text-sm font-extrabold leading-tight ${stock.changePercent !== null && stock.changePercent >= 0
                           ? 'text-green-600 dark:text-green-500'
                           : 'text-red-600 dark:text-red-500'
-                      }`}
+                        }`}
                     >
                       {stock.changePercent !== null
                         ? `${stock.changePercent > 0 ? '+' : ''}${stock.changePercent.toFixed(2)}%`
