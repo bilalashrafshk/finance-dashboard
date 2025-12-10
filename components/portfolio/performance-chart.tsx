@@ -16,6 +16,7 @@ import type { AssetTypeAllocation } from "@/lib/portfolio/types"
 import { ASSET_TYPE_LABELS, ASSET_TYPE_COLORS } from "@/lib/portfolio/types"
 import { getThemeColors } from "@/lib/charts/theme-colors"
 import { formatCurrency } from "@/lib/portfolio/portfolio-utils"
+import { ChartInfo } from "@/components/chart-info"
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
 
@@ -123,7 +124,13 @@ export function PerformanceChart({ allocation, currency = 'USD' }: PerformanceCh
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Asset Type Breakdown</CardTitle>
+        <div className="flex items-center gap-2">
+          <CardTitle>Asset Type Breakdown</CardTitle>
+          <ChartInfo
+            title="Asset Type Breakdown"
+            explanation="Compare the total value and count of holdings for each asset type in your portfolio."
+          />
+        </div>
       </CardHeader>
       <CardContent>
         <div className="h-[300px]">

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/accordion"
 import { CHART_CATEGORIES, type ChartId } from "@/lib/config/charts-registry"
 import { ChartsWelcome } from "./charts-welcome"
+import { ChartInfo } from "@/components/chart-info"
 
 function ChartsContent() {
     const router = useRouter()
@@ -166,6 +167,9 @@ function ChartsContent() {
                             <div className="flex items-center gap-2">
                                 <selectedChart.icon className="w-5 h-5 text-muted-foreground" />
                                 <h1 className="text-xl font-semibold tracking-tight">{selectedChart.title}</h1>
+                                {selectedChart.explanation && (
+                                    <ChartInfo title={selectedChart.title} explanation={selectedChart.explanation} />
+                                )}
                             </div>
                         )}
                     </div>

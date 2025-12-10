@@ -9,6 +9,7 @@ import { Loader2, RefreshCw, TrendingUp } from "lucide-react"
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { formatCurrency } from "@/lib/portfolio/portfolio-utils"
 import { useTheme } from "next-themes"
+import { ChartInfo } from "@/components/chart-info"
 
 interface PortfolioHistoryProps {
   currency?: string
@@ -184,7 +185,13 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
     <Card className="col-span-4">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <div className="space-y-1">
-          <CardTitle className="text-base font-normal">Total Portfolio Value</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-base font-normal">Total Portfolio Value</CardTitle>
+            <ChartInfo
+              title="Total Portfolio Value"
+              explanation="Tracks the daily total value of your portfolio, combining cached balances and the current market value of all holdings."
+            />
+          </div>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold">
               {formatCurrency(latestValue, displayCurrency)}

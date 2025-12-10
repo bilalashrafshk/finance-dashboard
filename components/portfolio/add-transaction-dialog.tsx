@@ -683,12 +683,25 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
           }
           if (pricePoint) {
             const closePrice = pricePoint.close
+            const highPrice = pricePoint.high
+            const lowPrice = pricePoint.low
+
             setHistoricalPrice(closePrice)
-            setPriceRange({
-              center: closePrice,
-              min: closePrice * 0.95,
-              max: closePrice * 1.05,
-            })
+
+            // Use High/Low for range if available, otherwise fallback to ±5%
+            if (highPrice > 0 && lowPrice > 0 && highPrice >= lowPrice) {
+              setPriceRange({
+                center: closePrice,
+                min: lowPrice,
+                max: highPrice,
+              })
+            } else {
+              setPriceRange({
+                center: closePrice,
+                min: closePrice * 0.95,
+                max: closePrice * 1.05,
+              })
+            }
           }
         } else if (assetType === 'metals' || assetType === 'kse100' || assetType === 'spx500') {
           pricePoint = historicalData.find((d: any) => d.date === tradeDateStr)
@@ -700,12 +713,25 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
           }
           if (pricePoint) {
             const closePrice = pricePoint.close
+            const highPrice = pricePoint.high
+            const lowPrice = pricePoint.low
+
             setHistoricalPrice(closePrice)
-            setPriceRange({
-              center: closePrice,
-              min: closePrice * 0.95,
-              max: closePrice * 1.05,
-            })
+
+            // Use High/Low for range if available, otherwise fallback to ±5%
+            if (highPrice > 0 && lowPrice > 0 && highPrice >= lowPrice) {
+              setPriceRange({
+                center: closePrice,
+                min: lowPrice,
+                max: highPrice,
+              })
+            } else {
+              setPriceRange({
+                center: closePrice,
+                min: closePrice * 0.95,
+                max: closePrice * 1.05,
+              })
+            }
           }
 
           // If we fetched historical data and don't have current price yet, use latest from historical data (for sell references)
@@ -723,12 +749,25 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
           }
           if (pricePoint) {
             const closePrice = pricePoint.c
+            const highPrice = pricePoint.h
+            const lowPrice = pricePoint.l
+
             setHistoricalPrice(closePrice)
-            setPriceRange({
-              center: closePrice,
-              min: closePrice * 0.95,
-              max: closePrice * 1.05,
-            })
+
+            // Use High/Low for range if available, otherwise fallback to ±5%
+            if (highPrice > 0 && lowPrice > 0 && highPrice >= lowPrice) {
+              setPriceRange({
+                center: closePrice,
+                min: lowPrice,
+                max: highPrice,
+              })
+            } else {
+              setPriceRange({
+                center: closePrice,
+                min: closePrice * 0.95,
+                max: closePrice * 1.05,
+              })
+            }
           }
 
           if (!currentPrice && historicalData.length > 0) {
@@ -1490,7 +1529,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                   today.setHours(0, 0, 0, 0)
                   tradeDateObj.setHours(0, 0, 0, 0)
                   const isPastTransaction = tradeDateObj < today
-                  
+
                   if (isPastTransaction) {
                     return (
                       <Alert className="border-blue-500 bg-blue-50 dark:bg-blue-950">

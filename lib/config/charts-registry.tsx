@@ -113,6 +113,7 @@ export interface ChartDefinition {
     icon: React.ElementType
     component: React.ReactNode
     keywords: string[]
+    explanation?: string
 }
 
 export interface CategoryDefinition {
@@ -135,6 +136,7 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 icon: Activity,
                 component: <MarketCycleChart />,
                 keywords: ["kse100", "stocks", "cycle", "market"],
+                explanation: "Visualizes the KSE100 index market cycles, highlighting bull and bear phases based on historical data. Helps in identifying potential market tops and bottoms.",
             },
             {
                 id: "market-heatmap",
@@ -191,6 +193,7 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 icon: BarChart3,
                 component: <EthRiskDashboard />,
                 keywords: ["eth", "ethereum", "crypto", "risk"],
+                explanation: "Comprehensive risk dashboard for Ethereum, tracking key metrics like volatility, moving averages, and on-chain signals to assess current risk levels.",
             },
         ],
     },
@@ -253,6 +256,7 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 icon: Map,
                 component: <LiquidityMapSection />,
                 keywords: ["liquidity", "map", "lipi", "nccpl", "scstrade", "foreign", "buying", "selling", "fipi", "invsetment", "sector"],
+                explanation: "Heatmap showing net liquidity flows (FIPI/LIPI) across difference sectors. Green indicates net buying (inflow), red indicates net selling (outflow).",
             },
             {
                 id: "interest-rates",

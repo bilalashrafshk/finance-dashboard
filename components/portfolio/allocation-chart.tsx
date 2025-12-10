@@ -16,6 +16,7 @@ import { ASSET_TYPE_LABELS, ASSET_TYPE_COLORS } from "@/lib/portfolio/types"
 import { getThemeColors } from "@/lib/charts/theme-colors"
 import { formatCurrency, calculateCurrentValue, combineHoldingsByAsset } from "@/lib/portfolio/portfolio-utils"
 import { X } from "lucide-react"
+import { ChartInfo } from "@/components/chart-info"
 
 ChartJS.register(ArcElement, Tooltip, Legend)
 
@@ -304,7 +305,13 @@ export function AllocationChart({ allocation, holdings, currency = 'USD' }: Allo
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle>Asset Allocation</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle>Asset Allocation</CardTitle>
+            <ChartInfo
+              title="Asset Allocation"
+              explanation="Visualizes your portfolio's distribution across different asset classes (e.g., Stocks, Crypto, Cash). Click segments to see detailed holdings."
+            />
+          </div>
           {expandedAssetType && (
             <Button
               variant="ghost"
