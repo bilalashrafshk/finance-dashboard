@@ -59,7 +59,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
   const [priceFetched, setPriceFetched] = useState(false)
   const [fetchingHistoricalPrice, setFetchingHistoricalPrice] = useState(false)
   const [historicalPrice, setHistoricalPrice] = useState<number | null>(null)
-  const [priceRange, setPriceRange] = useState<{ min: number; max: number; center: number } | null>(null)
+  const [priceRange, setPriceRange] = useState<{ min: number; max: number; center: number; type: 'high-low' | 'estimate' } | null>(null)
   const [historicalDataReady, setHistoricalDataReady] = useState(false)
   // Cache for fetched historical data to reuse between current and historical price fetches
   const [cachedHistoricalData, setCachedHistoricalData] = useState<any[] | null>(null)
@@ -694,12 +694,14 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                 center: closePrice,
                 min: lowPrice,
                 max: highPrice,
+                type: 'high-low',
               })
             } else {
               setPriceRange({
                 center: closePrice,
                 min: closePrice * 0.95,
                 max: closePrice * 1.05,
+                type: 'estimate',
               })
             }
           }
@@ -724,12 +726,14 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                 center: closePrice,
                 min: lowPrice,
                 max: highPrice,
+                type: 'high-low',
               })
             } else {
               setPriceRange({
                 center: closePrice,
                 min: closePrice * 0.95,
                 max: closePrice * 1.05,
+                type: 'estimate',
               })
             }
           }
@@ -761,12 +765,14 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                 center: closePrice,
                 min: lowPrice,
                 max: highPrice,
+                type: 'high-low',
               })
             } else {
               setPriceRange({
                 center: closePrice,
                 min: closePrice * 0.95,
                 max: closePrice * 1.05,
+                type: 'estimate',
               })
             }
           }
@@ -839,14 +845,18 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
         if (enteredPrice < priceRange.min || enteredPrice > priceRange.max) {
           return {
             isValid: false,
-            message: `Price must be within ±5% of ${priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} (Range: ${priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - ${priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})`,
+            message: priceRange.type === 'high-low'
+              ? `Price must be within intraday range: ${priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - ${priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })}`
+              : `Price must be within ±5% of ${priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} (Range: ${priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - ${priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})`,
             isWarning: false,
             isError: true,
           }
         }
         return {
           isValid: true,
-          message: `Price within expected range (±5% of ${priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})`,
+          message: priceRange.type === 'high-low'
+            ? `Price within intraday range (${priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - ${priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})`
+            : `Price within expected range (±5% of ${priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})`,
           isWarning: false,
           isError: false,
         }
@@ -862,7 +872,9 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
     if (enteredPrice < priceRange.min || enteredPrice > priceRange.max) {
       return {
         isValid: false,
-        message: `Price must be within ±5% of ${priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} (Range: ${priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - ${priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})`,
+        message: priceRange.type === 'high-low'
+          ? `Price must be within intraday range: ${priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - ${priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })}`
+          : `Price must be within ±5% of ${priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} (Range: ${priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - ${priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})`,
         isWarning: false,
         isError: true,
       }
@@ -870,7 +882,9 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
 
     return {
       isValid: true,
-      message: `Price within expected range (±5% of ${priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})`,
+      message: priceRange.type === 'high-low'
+        ? `Price within intraday range (${priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - ${priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})`
+        : `Price within expected range (±5% of ${priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})`,
       isWarning: false,
       isError: false,
     }
@@ -1303,7 +1317,10 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                     )}
                     {priceRange && tradeDate && (
                       <p className="text-xs text-muted-foreground">
-                        Expected range: {priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - {priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} (±5% of {priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} on {tradeDate})
+                        {priceRange.type === 'high-low'
+                          ? `Intraday Range: ${priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - ${priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })}`
+                          : `Expected range: ${priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - ${priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} (±5% of ${priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} on ${tradeDate})`
+                        }
                       </p>
                     )}
                     {priceValidation.message && (
@@ -1421,7 +1438,10 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
                     )}
                     {priceRange && (
                       <p className="text-xs text-muted-foreground">
-                        Expected range: {priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - {priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} (±5% of {priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})
+                        {priceRange.type === 'high-low'
+                          ? `Intraday Range: ${priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - ${priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })}`
+                          : `Expected range: ${priceRange.min.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} - ${priceRange.max.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })} (±5% of ${priceRange.center.toLocaleString('en-US', { style: 'currency', currency, minimumFractionDigits: 2 })})`
+                        }
                       </p>
                     )}
                     {priceValidation.message && priceTab === 'historical' && (
