@@ -43,7 +43,7 @@ function getColorForChange(changePercent: number | null): string {
   if (changePercent === null) {
     return 'rgba(156, 163, 175, 0.7)' // Gray for no data
   }
-  
+
   if (changePercent > 0) {
     // Positive: Light blue to green gradient
     if (changePercent >= 1.5) {
@@ -83,52 +83,52 @@ function squarify(
 
   const nodes: Array<{ bounds: { x: number; y: number; width: number; height: number }; data: any }> = []
   const totalValue = items.reduce((sum, item) => sum + item.value, 0)
-  
+
   // Sort by value descending
   const sorted = [...items].sort((a, b) => b.value - a.value)
-  
+
   let currentX = x
   let currentY = y
   let remainingWidth = width
   let remainingHeight = height
-  
+
   let row: Array<{ value: number; data: any }> = []
   let rowValue = 0
-  
+
   for (let i = 0; i < sorted.length; i++) {
     const item = sorted[i]
     const nextRow = [...row, item]
     const nextRowValue = rowValue + item.value
-    
+
     const isHorizontal = remainingWidth >= remainingHeight
-    
+
     // Calculate worst aspect ratio
     const rowLength = isHorizontal ? remainingWidth : remainingHeight
     const rowHeight = isHorizontal ? remainingHeight : remainingWidth
-    
+
     const currentWorst = row.length > 0
       ? Math.max(...row.map(r => {
-          const itemWidth = isHorizontal ? (r.value / rowValue) * rowLength : rowHeight
-          const itemHeight = isHorizontal ? rowHeight : (r.value / rowValue) * rowLength
-          return Math.max(itemWidth / itemHeight, itemHeight / itemWidth)
-        }))
+        const itemWidth = isHorizontal ? (r.value / rowValue) * rowLength : rowHeight
+        const itemHeight = isHorizontal ? rowHeight : (r.value / rowValue) * rowLength
+        return Math.max(itemWidth / itemHeight, itemHeight / itemWidth)
+      }))
       : Infinity
-    
+
     const nextWorst = Math.max(...nextRow.map(r => {
       const itemWidth = isHorizontal ? (r.value / nextRowValue) * rowLength : rowHeight
       const itemHeight = isHorizontal ? rowHeight : (r.value / nextRowValue) * rowLength
       return Math.max(itemWidth / itemHeight, itemHeight / itemWidth)
     }))
-    
+
     if (nextWorst > currentWorst && row.length > 0) {
       // Layout current row
       const rLength = isHorizontal ? remainingWidth : remainingHeight
       const rHeight = isHorizontal ? remainingHeight : remainingWidth
-      
+
       row.forEach((r) => {
         const itemWidth = isHorizontal ? (r.value / rowValue) * rLength : rHeight
         const itemHeight = isHorizontal ? rHeight : (r.value / rowValue) * rLength
-        
+
         nodes.push({
           bounds: {
             x: isHorizontal ? currentX : currentX,
@@ -138,14 +138,14 @@ function squarify(
           },
           data: r.data,
         })
-        
+
         if (isHorizontal) {
           currentX += itemWidth
         } else {
           currentY += itemHeight
         }
       })
-      
+
       if (isHorizontal) {
         currentY += rHeight
         remainingHeight -= rHeight
@@ -155,25 +155,25 @@ function squarify(
         remainingWidth -= rHeight
         currentY = y
       }
-      
+
       row = []
       rowValue = 0
     }
-    
+
     row.push(item)
     rowValue += item.value
   }
-  
+
   // Layout remaining row
   if (row.length > 0) {
     const isHorizontal = remainingWidth >= remainingHeight
     const rLength = isHorizontal ? remainingWidth : remainingHeight
     const rHeight = isHorizontal ? remainingHeight : remainingWidth
-    
+
     row.forEach((r) => {
       const itemWidth = isHorizontal ? (r.value / rowValue) * rLength : rHeight
       const itemHeight = isHorizontal ? rHeight : (r.value / rowValue) * rLength
-      
+
       nodes.push({
         bounds: {
           x: isHorizontal ? currentX : currentX,
@@ -183,7 +183,7 @@ function squarify(
         },
         data: r.data,
       })
-      
+
       if (isHorizontal) {
         currentX += itemWidth
       } else {
@@ -191,7 +191,7 @@ function squarify(
       }
     })
   }
-  
+
   return nodes
 }
 
@@ -230,13 +230,13 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
   // Create sector groups with total values
   const sectorGroups = useMemo(() => {
     const groups: Array<{ sector: string; stocks: MarketHeatmapStock[]; totalValue: number }> = []
-    
+
     stocksBySector.forEach((sectorStocks, sector) => {
       const totalValue = sectorStocks.reduce((sum, stock) => {
         const stockData = stockValues.find(s => s.stock.symbol === stock.symbol)
         return sum + (stockData?.value || 0)
       }, 0)
-      
+
       if (totalValue > 0) {
         groups.push({
           sector,
@@ -249,34 +249,34 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
         })
       }
     })
-    
+
     return groups.sort((a, b) => b.totalValue - a.totalValue)
   }, [stocksBySector, stockValues])
 
   // Create treemap layout
   const { sectorNodes, stockNodes } = useMemo(() => {
     const HEADER_HEIGHT = 32
-    
+
     // Create sector-level treemap
     const sectorItems = sectorGroups.map(group => ({
       value: group.totalValue,
       data: group,
     }))
-    
+
     const sectorLayout = squarify(sectorItems, 0, 0, width, height)
-    
+
     const sectors: SectorGroup[] = []
     const stocks: StockNode[] = []
-    
+
     sectorLayout.forEach(sectorLayoutNode => {
       const group = sectorLayoutNode.data as typeof sectorGroups[0]
       const sectorBounds = sectorLayoutNode.bounds
-      
+
       sectors.push({
         ...group,
         bounds: sectorBounds,
       })
-      
+
       // Create stock treemap within sector
       const stockAreaHeight = Math.max(0, sectorBounds.height - HEADER_HEIGHT)
       if (stockAreaHeight > 0 && group.stocks.length > 0) {
@@ -286,7 +286,7 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
             return stockData ? { value: stockData.value, data: stock } : null
           })
           .filter((item): item is { value: number; data: MarketHeatmapStock } => item !== null)
-        
+
         if (stockItems.length > 0) {
           const stockLayout = squarify(
             stockItems,
@@ -295,7 +295,7 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
             sectorBounds.width,
             stockAreaHeight
           )
-          
+
           stockLayout.forEach(stockLayoutNode => {
             stocks.push({
               stock: stockLayoutNode.data,
@@ -306,7 +306,7 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
         }
       }
     })
-    
+
     return { sectorNodes: sectors, stockNodes: stocks }
   }, [sectorGroups, stockValues, width, height])
 
@@ -346,9 +346,9 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
         const symbolSize = Math.max(9, Math.min(14, minDim / 5.5))
         const percentSize = Math.max(7, Math.min(11, minDim / 7))
         const showPercent = node.bounds.width > 50 && node.bounds.height > 40
-        
+
         const sectorStocks = stocksBySector.get(node.sector) || [node.stock]
-        
+
         return (
           <StockListPopover
             key={`stock-${index}`}
@@ -406,7 +406,7 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
                   }}
                 >
                   {node.stock.changePercent !== null
-                    ? `${node.stock.changePercent > 0 ? '+' : ''}${node.stock.changePercent.toFixed(1)}%`
+                    ? `${node.stock.changePercent > 0 ? '+' : ''}${Number(node.stock.changePercent).toFixed(1)}%`
                     : 'N/A'}
                 </div>
               )}

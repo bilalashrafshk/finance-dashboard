@@ -198,7 +198,7 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
             </span>
             {data.length > 0 && (
               <span className={`text-sm ${change >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                {change >= 0 ? '+' : ''}{changePercent.toFixed(2)}%
+                {change >= 0 ? '+' : ''}{typeof changePercent === 'number' ? changePercent.toFixed(2) : '0.00'}%
               </span>
             )}
           </div>
@@ -298,7 +298,7 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
                         </p>
                         {exchangeRate && unified && (
                           <p style={{ margin: 0, fontSize: '12px', opacity: 0.8 }}>
-                            Exchange Rate: 1 USD = {exchangeRate.toFixed(2)} PKR
+                            Exchange Rate: 1 USD = {Number(exchangeRate).toFixed(2)} PKR
                           </p>
                         )}
                       </div>

@@ -83,7 +83,7 @@ export function SummaryPanel({ riskMetrics }: SummaryPanelProps) {
 
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">ETH/BTC</div>
-            <div className="font-medium">{summary.ethBtc.toFixed(6)}</div>
+            <div className="font-medium">{Number(summary.ethBtc).toFixed(6)}</div>
           </div>
 
           <div className="space-y-2">
@@ -94,21 +94,21 @@ export function SummaryPanel({ riskMetrics }: SummaryPanelProps) {
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">{METRIC_NAMES.sVal.short}</div>
             <Badge variant={getRiskBadgeVariant(summary.sVal)} className="text-sm">
-              {summary.sVal.toFixed(3)}
+              {Number(summary.sVal).toFixed(3)}
             </Badge>
           </div>
 
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">{METRIC_NAMES.sRel.short}</div>
             <Badge variant={getRiskBadgeVariant(summary.sRel)} className="text-sm">
-              {summary.sRel.toFixed(3)}
+              {Number(summary.sRel).toFixed(3)}
             </Badge>
           </div>
 
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">{METRIC_NAMES.riskEq.short}</div>
             <Badge variant={getRiskBadgeVariant(summary.riskEq)} className="text-sm">
-              {summary.riskEq.toFixed(3)}
+              {Number(summary.riskEq).toFixed(3)}
             </Badge>
           </div>
         </div>
