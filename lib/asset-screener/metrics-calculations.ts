@@ -908,10 +908,16 @@ export function calculateAllMetrics(
  * @returns Formatted string with % sign
  */
 export function formatPercentage(value: number | null | undefined, decimals: number = 2): string {
-  if (value === null || value === undefined || isNaN(value)) {
+  if (value === null || value === undefined) {
     return 'N/A'
   }
-  return `${value >= 0 ? '+' : ''}${value.toFixed(decimals)}%`
+
+  const numValue = Number(value)
+  if (isNaN(numValue)) {
+    return 'N/A'
+  }
+
+  return `${numValue >= 0 ? '+' : ''}${numValue.toFixed(decimals)}%`
 }
 
 /**
@@ -923,15 +929,37 @@ export function formatPercentage(value: number | null | undefined, decimals: num
  * @returns Formatted currency string
  */
 export function formatCurrency(value: number | null | undefined, currency: string = 'USD', decimals: number = 2): string {
-  if (value === null || value === undefined || isNaN(value)) {
+  if (value === null || value === undefined) {
     return 'N/A'
   }
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: currency,
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(value)
+
+  const numValue = Number(value)
+  if (isNaN(numValue)) {
+    return 'N/A'
+  }
+
+  // Handle PKR specially as it may not be recognized by Intl.NumberFormat in some environments
+  if (currency === 'PKR') {
+    return `Rs. ${new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(numValue)}`
+  }
+
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(numValue)
+  } catch (error) {
+    // Fallback for unsupported currencies
+    return `${currency} ${new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(numValue)}`
+  }
 }
 
 /**
