@@ -152,7 +152,8 @@ export async function GET(request: NextRequest) {
       allCycles.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
       allCycles.forEach((cycle, index) => {
         cycle.cycleId = index + 1
-        cycle.cycleName = `Cycle ${index + 1}`
+        const isOngoing = cycle.cycleName.includes('(Ongoing)')
+        cycle.cycleName = `Cycle ${index + 1}${isOngoing ? ' (Ongoing)' : ''}`
       })
     }
 

@@ -107,9 +107,14 @@ export function LiquidityMapSection() {
             clientsSet.add(r.client_type)
 
             if (!matrixData[r.sector_name]) matrixData[r.sector_name] = {}
-            matrixData[r.sector_name][r.client_type] = r.net_value
 
-            maxVal = Math.max(maxVal, Math.abs(r.net_value))
+            // Fix: Accumulate values instead of overwriting (for Aggregated Range View)
+            const currentVal = matrixData[r.sector_name][r.client_type] || 0
+            const newVal = currentVal + r.net_value
+
+            matrixData[r.sector_name][r.client_type] = newVal
+
+            maxVal = Math.max(maxVal, Math.abs(newVal))
         })
 
         return {
