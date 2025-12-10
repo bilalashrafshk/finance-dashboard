@@ -33,46 +33,45 @@ async function fetchFromSCSTrade(path: string, payload: any) {
 }
 
 /**
- * Fetch and Store Liquidity Map Data for a specific date
+ * Fetch and Store Liquidity Map Data for a date range
+ * If startDate == endDate, it will cache the result in DB.
+ * If range, it fetches aggregate directly from API (no caching).
  */
-export async function ensureLipiData(date: string) {
-    // Check if we have fresh data
-    const needsRefresh = await shouldRefreshLipiData(date)
+export async function fetchLipiData(startDate: string, endDate: string) {
+    const isSingleDay = startDate === endDate
 
-    // Check if we have ANY data
-    let existingData = await getLipiData(date, date)
+    // 1. Single Day: Check Cache
+    if (isSingleDay) {
+        // Check if we have fresh data
+        const needsRefresh = await shouldRefreshLipiData(startDate)
 
-    if (!needsRefresh && existingData.length > 0) {
-        return existingData
+        // Check if we have ANY data
+        let existingData = await getLipiData(startDate, startDate)
+
+        if (!needsRefresh && existingData.length > 0) {
+            return existingData
+        }
     }
 
-    // Need to fetch
-    console.log(`[Lipi] Fetching data for ${date}`)
-    const payloadBase = {
-        date1: date, // Format: MM/DD/YYYY? User used 12/04/2025. 
-        date2: date,
+    // 2. Fetch from API (Single or Range)
+    console.log(`[Lipi] Fetching data for ${startDate} to ${endDate}`)
+
+    // Convert YYYY-MM-DD to MM/DD/YYYY for API
+    const formatForApi = (d: string) => {
+        const [y, m, day] = d.split('-')
+        return `${m}/${day}/${y}`
+    }
+
+    const apiPayload = {
+        date1: formatForApi(startDate),
+        date2: formatForApi(endDate),
         _search: false,
         nd: Date.now(),
         rows: 1000,
-        page: 1,
-    }
-
-    // Convert YYYY-MM-DD to MM/DD/YYYY for API
-    const [y, m, d] = date.split('-')
-    const formattedDate = `${m}/${d}/${y}`
-
-    const apiPayload = {
-        ...payloadBase,
-        date1: formattedDate,
-        date2: formattedDate
+        page: 1
     }
 
     try {
-        // 1. Fetch Summary (loadmain) - Net Value by Client
-        // Note: loadmain gives us Net Value. loadfipisector gives detailed Buy/Sell but separated by sector?
-        // Actually, let's look at the implementation plan again. 
-        // We want the Sector matrix. `loadfipisector` gives sector-wise details.
-
         const sectorData = await fetchFromSCSTrade('loadfipisector', {
             ...apiPayload,
             sidx: "FLSectorName asc, FLTypeNew",
@@ -84,7 +83,7 @@ export async function ensureLipiData(date: string) {
         }
 
         const records: LipiRecord[] = sectorData.map((item: any) => ({
-            date: date,
+            date: startDate, // For range, this date is nominal.
             client_type: item.FLTypeNew,
             sector_name: item.FLSectorName,
             buy_value: parseFloat(item.FLBuyValue) || 0,
@@ -93,14 +92,20 @@ export async function ensureLipiData(date: string) {
             source: 'scstrade'
         }))
 
-        // Insert into DB
-        await insertLipiData(records)
+        // 3. Single Day: Store in DB
+        if (isSingleDay) {
+            await insertLipiData(records)
+        }
 
         return records
 
     } catch (error) {
         console.error(`[Lipi] Failed to fetch data:`, error)
-        if (existingData.length > 0) return existingData // Fallback
+        // Fallback for single day only
+        if (isSingleDay) {
+            let existingData = await getLipiData(startDate, startDate)
+            if (existingData.length > 0) return existingData
+        }
         throw error
     }
 }

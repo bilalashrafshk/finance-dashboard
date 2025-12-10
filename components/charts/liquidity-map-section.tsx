@@ -7,10 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { format, subDays } from "date-fns"
+import { format, subDays, addDays } from "date-fns"
 import { CalendarIcon, RefreshCw, BarChart3, Table as TableIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from "recharts"
+import { DateRange } from "react-day-picker"
 
 interface LipiRecord {
     date: string
@@ -39,17 +40,24 @@ const getValueColor = (value: number, maxAbs: number) => {
 }
 
 export function LiquidityMapSection() {
-    const [date, setDate] = useState<Date>(() => subDays(new Date(), 1)) // Default to yesterday
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+        from: subDays(new Date(), 1),
+        to: subDays(new Date(), 1),
+    })
     const [data, setData] = useState<LipiRecord[]>([])
     const [loading, setLoading] = useState(false)
     const [viewMode, setViewMode] = useState<"heatmap" | "summary">("heatmap")
     const [summaryViewType, setSummaryViewType] = useState<"table" | "chart">("table")
 
-    async function fetchData(targetDate: Date) {
+    async function fetchData(range: DateRange | undefined) {
+        if (!range?.from) return
+
         setLoading(true)
         try {
-            const dateStr = format(targetDate, "yyyy-MM-dd")
-            const res = await fetch(`/api/scstrade/lipi?startDate=${dateStr}&endDate=${dateStr}`)
+            const startDate = format(range.from, "yyyy-MM-dd")
+            const endDate = range.to ? format(range.to, "yyyy-MM-dd") : startDate
+
+            const res = await fetch(`/api/scstrade/lipi?startDate=${startDate}&endDate=${endDate}`)
             if (!res.ok) throw new Error("Failed to fetch")
             const json = await res.json()
             setData(json)
@@ -61,8 +69,8 @@ export function LiquidityMapSection() {
     }
 
     useEffect(() => {
-        fetchData(date)
-    }, [date])
+        fetchData(dateRange)
+    }, [dateRange])
 
     // Process data for Summary View (Net by Client)
     const summaryData = useMemo(() => {
@@ -138,26 +146,39 @@ export function LiquidityMapSection() {
                                 <Button
                                     variant={"outline"}
                                     className={cn(
-                                        "w-[240px] justify-start text-left font-normal",
-                                        !date && "text-muted-foreground"
+                                        "w-[260px] justify-start text-left font-normal",
+                                        !dateRange && "text-muted-foreground"
                                     )}
                                 >
                                     <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {date ? format(date, "PPP") : <span>Pick a date</span>}
+                                    {dateRange?.from ? (
+                                        dateRange.to ? (
+                                            <>
+                                                {format(dateRange.from, "LLL dd, y")} -{" "}
+                                                {format(dateRange.to, "LLL dd, y")}
+                                            </>
+                                        ) : (
+                                            format(dateRange.from, "LLL dd, y")
+                                        )
+                                    ) : (
+                                        <span>Pick a date</span>
+                                    )}
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="end">
                                 <Calendar
-                                    mode="single"
-                                    selected={date}
-                                    onSelect={(d) => d && setDate(d)}
-                                    disabled={(date) => date > new Date() || date < new Date("1900-01-01")}
                                     initialFocus
+                                    mode="range"
+                                    defaultMonth={dateRange?.from}
+                                    selected={dateRange}
+                                    onSelect={setDateRange}
+                                    numberOfMonths={2}
+                                    disabled={(date) => date > new Date() || date < new Date("1900-01-01")}
                                 />
                             </PopoverContent>
                         </Popover>
 
-                        <Button variant="outline" size="icon" onClick={() => fetchData(date)} disabled={loading}>
+                        <Button variant="outline" size="icon" onClick={() => fetchData(dateRange)} disabled={loading}>
                             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
                         </Button>
                     </div>
