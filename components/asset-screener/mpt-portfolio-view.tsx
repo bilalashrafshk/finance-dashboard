@@ -45,6 +45,8 @@ import {
 import { useDebounce } from "@/hooks/use-debounce"
 import { ASSET_TYPE_LABELS } from "@/lib/portfolio/types"
 import type { AssetType } from "@/lib/portfolio/types"
+import { fetchHistoricalData } from "@/lib/portfolio/unified-price-api"
+import { subDays, format } from "date-fns"
 
 ChartJS.register(
   CategoryScale,
@@ -136,23 +138,70 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
 
       try {
         const assetIds = Array.from(selectedAssets)
-        const result = await fetchHistoricalData(assetIds, debouncedTimeFrame)
+        const newData = new Map<string, PriceDataPoint[]>()
 
-        if (result) {
-          // fetchHistoricalData already sets priceData via setPriceData internally if successful
-          // We can rely on that side effect or update it here.
-          // Looking at original fetchHistoricalData, it calls setPriceData.
-          // Let's rely on that for now, but we should make sure it doesn't race.
+        // Calculate start date based on time frame
+        let startDate: string | undefined
+        if (debouncedTimeFrame !== 'ALL') {
+          // Convert trading days (approx) to calendar days for fetching
+          // 1Y = 250 trading days -> 365 calendar days
+          // Using a simple multiplier 1.5 to cover weekends/holidays safe margin
+          const tradingDays = TIME_FRAME_LIMITS[debouncedTimeFrame]
+          const calendarDays = Math.ceil(tradingDays * 1.5)
+          startDate = format(subDays(new Date(), calendarDays), 'yyyy-MM-dd')
         }
+
+        // Fetch data for each asset in parallel
+        await Promise.all(assetIds.map(async (id) => {
+          const asset = assets.find(a => a.id === id)
+          if (!asset) return
+
+          // Map asset type to API compatible type
+          let apiAssetType: 'crypto' | 'pk-equity' | 'us-equity' | 'metals' | 'indices' | null = null
+
+          if (asset.assetType === 'kse100' || asset.assetType === 'spx500') {
+            apiAssetType = 'indices'
+          } else if (['crypto', 'pk-equity', 'us-equity', 'metals'].includes(asset.assetType)) {
+            apiAssetType = asset.assetType as any
+          }
+
+          if (!apiAssetType) return // Skip unsupported types (fd, cash, etc.)
+
+          try {
+            const data = await fetchHistoricalData(
+              apiAssetType,
+              asset.symbol,
+              startDate
+            )
+
+            if (data && data.data && data.data.length > 0) {
+              newData.set(id, data.data)
+            }
+          } catch (err) {
+            console.error(`Failed to fetch data for ${asset.symbol}`, err)
+          }
+        }))
+
+        setPriceData(newData)
+
+        if (newData.size < assetIds.length) {
+          toast({
+            title: "Partial Data",
+            description: "Some assets could not be loaded. Optimization will use available data.",
+            variant: "destructive",
+          })
+        }
+
       } catch (err) {
         console.error(err)
+        setError("Failed to fetch historical data")
       } finally {
         setLoading(false)
       }
     }
 
     fetchSelectedAssetsData()
-  }, [selectedAssets, debouncedTimeFrame, fetchHistoricalData])
+  }, [selectedAssets, debouncedTimeFrame, assets, toast])
 
   // Derived State: Optimization Calculations
   // This memoizes the heavy math so it only runs when price data or settings change
@@ -489,11 +538,11 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
                   ]
 
                   const sortedWeights = Object.entries(closestPoint.weights)
-                    .sort(([, a], [, b]) => b - a)
-                    .filter(([, weight]) => weight > 0.001)
+                    .sort(([, a], [, b]) => (b as number) - (a as number))
+                    .filter(([, weight]) => (weight as number) > 0.001)
 
                   sortedWeights.forEach(([symbol, weight]) => {
-                    labels.push(`${symbol}: ${formatPercentage(weight * 100)}`)
+                    labels.push(`${symbol}: ${formatPercentage((weight as number) * 100)}`)
                   })
 
                   return labels
@@ -513,11 +562,11 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
 
                   // Add portfolio weights sorted by allocation
                   const sortedWeights = Object.entries(optResult.weights)
-                    .sort(([, a], [, b]) => b - a)
-                    .filter(([, weight]) => weight > 0.001) // Only show weights > 0.1%
+                    .sort(([, a], [, b]) => (b as number) - (a as number))
+                    .filter(([, weight]) => (weight as number) > 0.001) // Only show weights > 0.1%
 
                   sortedWeights.forEach(([symbol, weight]) => {
-                    labels.push(`${symbol}: ${formatPercentage(weight * 100)}`)
+                    labels.push(`${symbol}: ${formatPercentage((weight as number) * 100)}`)
                   })
 
                   return labels
