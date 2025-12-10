@@ -250,101 +250,75 @@ export function PortfolioDashboardV2() {
 
       try {
         const token = localStorage.getItem('auth_token')
+        const headers: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {}
+        const todayStr = new Date().toISOString().split('T')[0]
 
-        // Determine currency and unified mode based on active tab
-        let currency = 'USD'
-        let unified = true
+        // Helper to calculate daily change for a single currency
+        const getChangeForCurrency = async (curr: string) => {
+          const liveVal = summary.byCurrency && summary.byCurrency[curr] ? summary.byCurrency[curr].currentValue : 0
+
+          const res = await fetch(`/api/user/portfolio/history?days=5&currency=${curr}&unified=false`, {
+            headers,
+            signal: controller.signal
+          })
+
+          if (!res.ok) return { change: 0, prevInvested: 0 }
+
+          const data = await res.json()
+          const hist = data.history || []
+
+          if (hist.length === 0) return { change: 0, prevInvested: 0 }
+
+          const sorted = [...hist].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
+          const historyToday = sorted.find((h: any) => h.date >= todayStr)
+          const historyPrevious = sorted.filter((h: any) => h.date < todayStr).pop()
+
+          if (!historyPrevious) return { change: 0, prevInvested: 0 } // No history
+
+          const prevInvested = historyPrevious.invested || 0
+          const cashFlow = historyToday ? (historyToday.cashFlow || 0) : 0
+
+          const chg = (liveVal - prevInvested) - cashFlow
+          return { change: chg, prevInvested }
+        }
+
         if (activeTab === 'pkr') {
-          currency = 'PKR'
-          unified = false
+          const { change, prevInvested } = await getChangeForCurrency('PKR')
+          const percent = prevInvested > 0 ? (change / prevInvested) * 100 : 0
+          if (!controller.signal.aborted) setTodayChange({ value: change, percent })
+
         } else if (activeTab === 'usd') {
-          currency = 'USD'
-          unified = false
+          const { change, prevInvested } = await getChangeForCurrency('USD')
+          const percent = prevInvested > 0 ? (change / prevInvested) * 100 : 0
+          if (!controller.signal.aborted) setTodayChange({ value: change, percent })
+
         } else {
-          // Overview tab - always use unified mode (converts PKR to USD)
-          currency = 'USD'
-          unified = true
+          // Overview / Unified
+          // Request specific calculation: "adding pkr + usd todays change, just divide pkr todays change by latest usdpkr"
+
+          const [usdRes, pkrRes] = await Promise.all([
+            getChangeForCurrency('USD'),
+            getChangeForCurrency('PKR')
+          ])
+
+          if (controller.signal.aborted) return
+
+          const usdpkr = exchangeRate || 278 // Fallback if no rate
+
+          // Total Change = USD Change + (PKR Change / Rate)
+          const totalChange = usdRes.change + (pkrRes.change / usdpkr)
+
+          // For percentage, we need the Combined Previous Invested Base
+          const totalPrevInvested = usdRes.prevInvested + (pkrRes.prevInvested / usdpkr)
+
+          const totalPercent = totalPrevInvested > 0 ? (totalChange / totalPrevInvested) * 100 : 0
+
+          setTodayChange({ value: totalChange, percent: totalPercent })
         }
 
-        // Get Live Value from local summary (more accurate for "Today" than backend history which might be stale)
-        let liveValue = 0
-        if (unified && summary.unified) {
-          liveValue = summary.unified.currentValue
-        } else if (!unified && summary.byCurrency && summary.byCurrency[currency]) {
-          liveValue = summary.byCurrency[currency].currentValue
-        }
+        responseReceived = true
 
-        // Use fewer days (5) for faster loading (Today, Yesterday, + buffer for weekends)
-        const unifiedParam = unified ? '&unified=true' : ''
-        const response = await fetch(`/api/user/portfolio/history?days=5&currency=${currency}${unifiedParam}`, {
-          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-          signal: controller.signal
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          const history = data.history || []
-
-          // If aborted, do nothing
-          if (controller.signal.aborted) {
-            return
-          }
-
-          responseReceived = true
-
-          // Need at least 1 day of history to show change calculation
-          if (history.length === 0) {
-            setTodayChange(null) // Or 0?
-            return
-          }
-
-          // Sort by date to ensure correct order
-          const sortedHistory = [...history].sort((a: any, b: any) =>
-            new Date(a.date).getTime() - new Date(b.date).getTime()
-          )
-
-          // We need "Yesterday's" closing value (or the latest available history BEFORE today)
-          // Backend history often includes Today (partial). We want the entry strictly before Today.
-          const todayStr = new Date().toISOString().split('T')[0]
-
-          // Find 'Today' entry in history to get today's cash flow
-          const historyToday = sortedHistory.find((h: any) => h.date >= todayStr)
-
-          // Find 'Previous' entry (strictly before today)
-          // If today is Monday, we want Sunday/Friday (last entry < todayStr)
-          const historyPrevious = sortedHistory.filter((h: any) => h.date < todayStr).pop()
-
-          if (!historyPrevious) {
-            // If we have NO history before today (e.g. first day of trading), change is 0? 
-            // Or Change = PnL today?
-            // Let's assume 0 for safety or use standard formula with 0 start
-            // If liveValue exists and no previous, maybe it's all new? 
-            // Let's stick to safe 0 if no basline.
-            setTodayChange(null)
-            return
-          }
-
-          const previousInvested = historyPrevious.invested || 0  // 'invested' is Total Value in API response
-          const todaysCashFlow = historyToday ? (historyToday.cashFlow || 0) : 0
-
-          // Calculate Daily P&L
-          // Formula: (Live Current Value - Yesterday's Value) - Today's Net Flows
-          const change = (liveValue - previousInvested) - todaysCashFlow
-          const changePercent = previousInvested > 0 ? (change / previousInvested) * 100 : 0
-
-          // Set if values are valid numbers
-          if (!isNaN(change) && !isNaN(changePercent) && isFinite(change) && isFinite(changePercent)) {
-            setTodayChange({ value: change, percent: changePercent })
-          } else {
-            setTodayChange(null)
-          }
-        } else {
-          if (!controller.signal.aborted) {
-            setTodayChange(null)
-          }
-        }
       } catch (error: any) {
-        // Ignore abort errors
         if (error.name !== 'AbortError') {
           setTodayChange(null)
         }
