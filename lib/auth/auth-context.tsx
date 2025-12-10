@@ -1,4 +1,3 @@
-```typescript
 "use client"
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
@@ -41,14 +40,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // However, on init, we might want to be explicit or ensure LS is set.
       // But since we are verifying the *stored* token, we should probably set it first or rely on apiClient reading it.
       // The safest way here is to rely on apiClient reading the key we just confirmed exists.
-      
-      const response = await apiClient.get<ApiResponse<{ user: UserDTO }>>('/auth/me')
-      
-      // If `response` is the parsed JSON:
-      // type is `ApiResponse`.
+
+      // The backend returns { success: true, user: UserDTO } directly
+      const response = await apiClient.get<{ success: boolean; user: UserDTO }>('/auth/me')
+
       if (response.success && response.user) {
-         setUser(response.user)
-         localStorage.setItem(USER_KEY, JSON.stringify(response.user))
+        setUser(response.user)
+        localStorage.setItem(USER_KEY, JSON.stringify(response.user))
       } else {
         // If success is false or user is missing, consider it an invalid token
         doLogout()
@@ -97,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     // Defines response structure: { success: boolean, token: string, user: UserDTO }
     const data = await apiClient.post<{ success: boolean; token: string; user: UserDTO }>(
-      '/auth/login', 
+      '/auth/login',
       { email, password }
     )
 
@@ -107,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(TOKEN_KEY, data.token)
       localStorage.setItem(USER_KEY, JSON.stringify(data.user))
     } else {
-      throw new Error(data.message || 'Login failed')
+      throw new Error((data as any).message || 'Login failed')
     }
   }
 
@@ -123,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(TOKEN_KEY, data.token)
       localStorage.setItem(USER_KEY, JSON.stringify(data.user))
     } else {
-      throw new Error(data.message || 'Registration failed')
+      throw new Error((data as any).message || 'Registration failed')
     }
   }
 
@@ -159,4 +157,3 @@ export function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null
   return localStorage.getItem(TOKEN_KEY)
 }
-```
