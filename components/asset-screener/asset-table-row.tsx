@@ -67,7 +67,7 @@ export function AssetTableRow({ asset, metrics, onDelete }: AssetTableRowProps) 
                     <div className="h-4 w-10 bg-muted animate-pulse rounded" />
                 ) : (
                     <span className="font-mono">
-                        {metrics?.peRatio !== null && metrics?.peRatio !== undefined ? metrics.peRatio.toFixed(1) + 'x' : '-'}
+                        {metrics?.peRatio !== null && metrics?.peRatio !== undefined ? Number(metrics.peRatio).toFixed(1) + 'x' : '-'}
                     </span>
                 )}
             </TableCell>
@@ -76,7 +76,7 @@ export function AssetTableRow({ asset, metrics, onDelete }: AssetTableRowProps) 
                     <div className="h-4 w-10 bg-muted animate-pulse rounded" />
                 ) : (
                     <span className="font-mono text-green-600 dark:text-green-400">
-                        {metrics?.dividendYield !== null && metrics?.dividendYield !== undefined ? metrics.dividendYield.toFixed(2) + '%' : '-'}
+                        {metrics?.dividendYield !== null && metrics?.dividendYield !== undefined ? Number(metrics.dividendYield).toFixed(2) + '%' : '-'}
                     </span>
                 )}
             </TableCell>
@@ -85,7 +85,7 @@ export function AssetTableRow({ asset, metrics, onDelete }: AssetTableRowProps) 
                     <div className="h-4 w-10 bg-muted animate-pulse rounded" />
                 ) : (
                     <span className="font-mono">
-                        {metrics?.beta !== null ? metrics.beta.toFixed(2) : '-'}
+                        {metrics?.beta !== null ? Number(metrics.beta).toFixed(2) : '-'}
                     </span>
                 )}
             </TableCell>
@@ -97,7 +97,7 @@ export function AssetTableRow({ asset, metrics, onDelete }: AssetTableRowProps) 
                         (metrics?.sharpeRatio ?? 0) >= 0 ? 'text-yellow-600 dark:text-yellow-400' :
                             'text-red-600 dark:text-red-400'
                         }`}>
-                        {metrics?.sharpeRatio !== null ? metrics.sharpeRatio.toFixed(2) : '-'}
+                        {metrics?.sharpeRatio !== null ? Number(metrics.sharpeRatio).toFixed(2) : '-'}
                     </span>
                 )}
             </TableCell>
