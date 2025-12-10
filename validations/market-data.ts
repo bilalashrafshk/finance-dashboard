@@ -13,6 +13,7 @@ export const AssetCategoryEnum = z.enum([
     'spx500', // Legacy
     'metals', // Legacy
     'commodity',
+    'commodities', // Supports DB value
 ]);
 
 export type AssetCategory = z.infer<typeof AssetCategoryEnum>;
