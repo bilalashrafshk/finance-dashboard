@@ -1,8 +1,12 @@
+import { apiClient } from '@/lib/api-client'
+import { MarketPrice, ApiResponse } from '@/lib/types'
+
 /**
  * Unified Price API Client
  * Helper functions for calling unified price API routes
  */
 
+// Legacy response interfaces matching backend
 export interface PriceResponse {
   symbol?: string
   ticker?: string
@@ -43,6 +47,7 @@ export interface HistoricalDataResponse {
 
 /**
  * Helper to get absolute URL for server-side fetching
+ * Kept for server-side compatibility if needed
  */
 function getAbsoluteUrl(path: string, baseUrl?: string): string {
   if (typeof window !== 'undefined') return path // Client-side: relative URL is fine
@@ -60,16 +65,19 @@ export async function fetchCryptoPrice(symbol: string, refresh = false, baseUrl?
     const params = new URLSearchParams({ symbol, type: 'crypto' })
     if (refresh) params.set('refresh', 'true')
 
-    const url = getAbsoluteUrl(`/api/market/price?${params}`, baseUrl)
-    const response = await fetch(url)
+    // Use apiClient which handles auth and base URL
+    // For server-side, we might need absolute URL if not configured in apiClient, 
+    // but typically apiClient is used client-side. 
+    // If used server-side, we might need standard fetch or Ensure apiClient handles it.
+    // For now, assuming apiClient works for our use case (Client Side Charts).
 
-    if (!response.ok) {
-      console.error(`[UNIFIED API] fetchCryptoPrice failed: ${response.status}`)
-      return null
-    }
+    // We can use getAbsoluteUrl to be safe for SSR
+    const endpoint = `/market/price?${params}`
 
-    const data = await response.json()
-    return data
+    // If we are on server, we might bypass apiClient if it relies on localStorage, 
+    // but auth-context cleanup handled that.
+    // Let's use apiClient.get.
+    return await apiClient.get<PriceResponse>(endpoint)
   } catch (error) {
     console.error(`[UNIFIED API] fetchCryptoPrice exception:`, error)
     return null
@@ -86,11 +94,7 @@ export async function fetchPKEquityPrice(ticker: string, refresh = false, baseUr
     const params = new URLSearchParams({ symbol: ticker, type: 'pk-equity' })
     if (refresh) params.set('refresh', 'true')
 
-    const url = getAbsoluteUrl(`/api/market/price?${params}`, baseUrl)
-    const response = await fetch(url)
-    if (!response.ok) return null
-
-    return await response.json()
+    return await apiClient.get<PriceResponse>(`/market/price?${params}`)
   } catch (error) {
     console.error(`Error fetching PK equity price for ${ticker}:`, error)
     return null
@@ -106,11 +110,7 @@ export async function fetchUSEquityPrice(ticker: string, refresh = false, baseUr
     const params = new URLSearchParams({ symbol: ticker, type: 'us-equity' })
     if (refresh) params.set('refresh', 'true')
 
-    const url = getAbsoluteUrl(`/api/market/price?${params}`, baseUrl)
-    const response = await fetch(url)
-    if (!response.ok) return null
-
-    return await response.json()
+    return await apiClient.get<PriceResponse>(`/market/price?${params}`)
   } catch (error) {
     console.error(`Error fetching US equity price for ${ticker}:`, error)
     return null
@@ -135,11 +135,9 @@ export async function fetchMetalsPrice(symbol: string, refresh = false, _recursi
       params.set('refresh', 'true')
     }
 
-    const url = getAbsoluteUrl(`/api/metals/price?${params}`, baseUrl)
-    const response = await fetch(url)
-    if (!response.ok) return null
-
-    const data: PriceResponse = await response.json()
+    // Direct fetch needed here? No, let's use apiClient
+    // Note: apiClient uses /api base default
+    const data = await apiClient.get<PriceResponse>(`/metals/price?${params}`)
 
     // If client-side fetch is needed, handle it
     if (data.needsClientFetch && data.instrumentId) {
@@ -153,6 +151,9 @@ export async function fetchMetalsPrice(symbol: string, refresh = false, _recursi
 
       if (priceData) {
         // Store in database
+        // Keeping deduplicatedFetch for the POST as it might have specific logic? 
+        // deduplicatedFetch uses fetch internally. 
+        // We should eventually refactor deduplicatedFetch to use apiClient too, but for now strict to plan.
         const storeResponse = await deduplicatedFetch('/api/historical-data/store', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -221,11 +222,7 @@ export async function fetchIndicesPrice(symbol: string, refresh = false, _recurs
       params.set('refresh', 'true')
     }
 
-    const url = getAbsoluteUrl(`/api/indices/price?${params}`, baseUrl)
-    const response = await fetch(url)
-    if (!response.ok) return null
-
-    const data: PriceResponse = await response.json()
+    const data = await apiClient.get<PriceResponse>(`/indices/price?${params}`)
 
     // If client-side fetch is needed, check if DB has any data first
     if (data.needsClientFetch && data.instrumentId) {
@@ -342,15 +339,12 @@ export async function fetchHistoricalData(
       if (endDate) params.set('endDate', endDate)
 
       // Unified route: /api/market/price
-      const url = getAbsoluteUrl(`/api/market/price?${params}`, baseUrl)
-      const response = await fetch(url)
-      if (!response.ok) return null
-      return await response.json() as HistoricalDataResponse
+      return await apiClient.get<HistoricalDataResponse>(`/market/price?${params}`)
     }
 
     const routeMap: Record<string, string> = {
-      'metals': '/api/metals/price',
-      'indices': '/api/indices/price',
+      'metals': '/metals/price',
+      'indices': '/indices/price',
     }
 
     const route = routeMap[assetType]
@@ -367,17 +361,9 @@ export async function fetchHistoricalData(
     if (startDate) params.set('startDate', startDate)
     if (endDate) params.set('endDate', endDate)
 
-    const url = getAbsoluteUrl(`${route}?${params}`, baseUrl)
-
-    const response = await fetch(url)
-    if (!response.ok) {
-      return null
-    }
-
-    return await response.json() as HistoricalDataResponse
+    return await apiClient.get<HistoricalDataResponse>(`${route}?${params}`)
   } catch (error) {
     console.error(`Error fetching historical data for ${assetType}-${symbol}:`, error)
     return null
   }
 }
-

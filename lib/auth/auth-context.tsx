@@ -1,23 +1,19 @@
+```typescript
 "use client"
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-
-interface User {
-  id: number
-  email: string
-  name: string | null
-  role: string
-}
+import { UserDTO, ApiResponse } from '@/lib/types'
+import { apiClient } from '@/lib/api-client'
 
 interface AuthContextType {
-  user: User | null
+  user: UserDTO | null
   token: string | null
   loading: boolean
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, name?: string) => Promise<void>
   logout: () => void
   refreshUser: () => Promise<void>
-  updateUser: (updatedUser: User) => void
+  updateUser: (updatedUser: UserDTO) => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -26,9 +22,43 @@ const TOKEN_KEY = 'auth_token'
 const USER_KEY = 'auth_user'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<UserDTO | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const doLogout = () => {
+    setUser(null)
+    setToken(null)
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(USER_KEY)
+    }
+  }
+
+  const refreshUserLogic = async (currentToken: string) => {
+    try {
+      // apiClient automatically attaches the token from localStorage if it exists.
+      // However, on init, we might want to be explicit or ensure LS is set.
+      // But since we are verifying the *stored* token, we should probably set it first or rely on apiClient reading it.
+      // The safest way here is to rely on apiClient reading the key we just confirmed exists.
+      
+      const response = await apiClient.get<ApiResponse<{ user: UserDTO }>>('/auth/me')
+      
+      // If `response` is the parsed JSON:
+      // type is `ApiResponse`.
+      if (response.success && response.user) {
+         setUser(response.user)
+         localStorage.setItem(USER_KEY, JSON.stringify(response.user))
+      } else {
+        // If success is false or user is missing, consider it an invalid token
+        doLogout()
+      }
+    } catch (err) {
+      console.error('Error verifying token:', err)
+      // If 401, apiClient throws. We should logout.
+      doLogout()
+    }
+  }
 
   // Load auth state from localStorage on mount
   useEffect(() => {
@@ -41,37 +71,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           setUser(JSON.parse(storedUser))
           // Verify token with server
-          try {
-            const response = await fetch('/api/auth/me', {
-              headers: {
-                'Authorization': `Bearer ${storedToken}`,
-              },
-            })
-
-            if (!response.ok) {
-              // Token invalid, clear auth
-              console.warn('Token invalid on init, logging out')
-              localStorage.removeItem(TOKEN_KEY)
-              localStorage.removeItem(USER_KEY)
-              setToken(null)
-              setUser(null)
-            } else {
-              // Update user data from server to ensure fresh role/data
-              const data = await response.json()
-              if (data.success) {
-                setUser(data.user)
-                localStorage.setItem(USER_KEY, JSON.stringify(data.user))
-              }
-            }
-          } catch (err) {
-            console.error('Error verifying token on init:', err)
-          }
+          await refreshUserLogic(storedToken)
         } catch (e) {
-          // Invalid stored user, clear it
-          localStorage.removeItem(TOKEN_KEY)
-          localStorage.removeItem(USER_KEY)
-          setToken(null)
-          setUser(null)
+          // Invalid stored data, clear it
+          doLogout()
         }
       }
 
@@ -85,88 +88,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = async () => {
     const storedToken = localStorage.getItem(TOKEN_KEY)
     if (!storedToken) {
-      setUser(null)
-      setToken(null)
+      doLogout()
       return
     }
-
-    try {
-      const response = await fetch('/api/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${storedToken}`,
-        },
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          setUser(data.user)
-          setToken(storedToken)
-          localStorage.setItem(USER_KEY, JSON.stringify(data.user))
-        } else {
-          // Token invalid, clear auth
-          logout()
-        }
-      } else {
-        // Token invalid, clear auth
-        logout()
-      }
-    } catch (error) {
-      console.error('Error refreshing user:', error)
-      logout()
-    }
+    await refreshUserLogic(storedToken)
   }
 
   const login = async (email: string, password: string) => {
-    const response = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, password }),
-    })
+    // Defines response structure: { success: boolean, token: string, user: UserDTO }
+    const data = await apiClient.post<{ success: boolean; token: string; user: UserDTO }>(
+      '/auth/login', 
+      { email, password }
+    )
 
-    const data = await response.json()
-
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || 'Login failed')
+    if (data.success && data.token && data.user) {
+      setUser(data.user)
+      setToken(data.token)
+      localStorage.setItem(TOKEN_KEY, data.token)
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user))
+    } else {
+      throw new Error(data.message || 'Login failed')
     }
-
-    setUser(data.user)
-    setToken(data.token)
-    localStorage.setItem(TOKEN_KEY, data.token)
-    localStorage.setItem(USER_KEY, JSON.stringify(data.user))
   }
 
   const register = async (email: string, password: string, name?: string) => {
-    const response = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, password, name }),
-    })
+    const data = await apiClient.post<{ success: boolean; token: string; user: UserDTO }>(
+      '/auth/register',
+      { email, password, name }
+    )
 
-    const data = await response.json()
-
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || 'Registration failed')
+    if (data.success && data.token && data.user) {
+      setUser(data.user)
+      setToken(data.token)
+      localStorage.setItem(TOKEN_KEY, data.token)
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user))
+    } else {
+      throw new Error(data.message || 'Registration failed')
     }
-
-    setUser(data.user)
-    setToken(data.token)
-    localStorage.setItem(TOKEN_KEY, data.token)
-    localStorage.setItem(USER_KEY, JSON.stringify(data.user))
   }
 
   const logout = () => {
-    setUser(null)
-    setToken(null)
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(USER_KEY)
+    doLogout()
   }
 
-  const updateUser = (updatedUser: User) => {
+  const updateUser = (updatedUser: UserDTO) => {
     setUser(updatedUser)
     localStorage.setItem(USER_KEY, JSON.stringify(updatedUser))
   }
@@ -188,8 +153,10 @@ export function useAuth() {
 
 /**
  * Get auth token for API calls
+ * @deprecated Use apiClient automatic injection instead
  */
 export function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null
   return localStorage.getItem(TOKEN_KEY)
 }
+```
