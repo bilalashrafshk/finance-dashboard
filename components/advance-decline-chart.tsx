@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input"
 import { Loader2, Info, Settings, ExternalLink, List } from "lucide-react"
 import Link from "next/link"
 import { Line } from "react-chartjs-2"
-Dialog,
+import {
+  Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
