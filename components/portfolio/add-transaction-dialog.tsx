@@ -748,9 +748,10 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
             }
           }
           if (pricePoint) {
-            const closePrice = pricePoint.c
-            const highPrice = pricePoint.h
-            const lowPrice = pricePoint.l
+            // Robustly check for properties (handle both mapped and raw formats)
+            const closePrice = pricePoint.c || pricePoint.close
+            const highPrice = pricePoint.h || pricePoint.high || 0
+            const lowPrice = pricePoint.l || pricePoint.low || 0
 
             setHistoricalPrice(closePrice)
 
