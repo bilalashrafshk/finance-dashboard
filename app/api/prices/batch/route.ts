@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { batchPriceSchema, AssetCategory } from '@/validations/market-data'
 import { MarketDataService } from '@/lib/services/market-data'
 import { fetchBinancePrice, parseSymbolToBinance } from '@/lib/portfolio/binance-api'
+import { fetchMetalsPrice, fetchIndicesPrice } from '@/lib/portfolio/unified-price-api'
 import { fetchPKEquityPriceService } from '@/lib/prices/pk-equity-service'
-import { fetchUSEquityPrice, fetchMetalsPrice, fetchIndicesPrice } from '@/lib/portfolio/unified-price-api'
+
 
 export async function POST(request: NextRequest) {
   try {
@@ -47,18 +48,21 @@ export async function POST(request: NextRequest) {
           return res ? { price: res.price, date: res.date } : null
         }
       } else if (type === 'us-equity' || type === 'equity') {
-        // Default generic 'equity' to US for now, or assume US fetcher handles it
         fetcher = async () => {
-          const res = await fetchUSEquityPrice(symbolUpper, false, baseUrl)
+          // Direct fetch to avoid API self-call deadlock
+          const { getLatestPriceFromStockAnalysis } = await import('@/lib/portfolio/stockanalysis-api')
+          const res = await getLatestPriceFromStockAnalysis(symbolUpper, 'US')
           return res ? { price: res.price, date: res.date } : null
         }
       } else if (type === 'metals') {
         fetcher = async () => {
+          // Safe to call API as /api/metals/price is NOT using MarketDataService yet (Loop safe)
           const res = await fetchMetalsPrice(symbolUpper, false, 0, baseUrl)
           return res ? { price: res.price, date: res.date } : null
         }
       } else if (type === 'index' || type === 'spx500') {
         fetcher = async () => {
+          // Safe to call API as /api/indices/price is NOT using MarketDataService yet (Loop safe)
           const res = await fetchIndicesPrice(symbolUpper, false, 0, baseUrl)
           return res ? { price: res.price, date: res.date } : null
         }
