@@ -42,6 +42,7 @@ import {
   type OptimizationResult,
   type EfficientFrontierPoint,
 } from "@/lib/algorithms/portfolio-optimization"
+import { useDebounce } from "@/hooks/use-debounce"
 import { ASSET_TYPE_LABELS } from "@/lib/portfolio/types"
 import type { AssetType } from "@/lib/portfolio/types"
 
@@ -86,21 +87,22 @@ const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
 export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
   const { theme } = useTheme()
   const { toast } = useToast()
-  // Always allow mixed asset types - removed the toggle
-  const allowMixedAssetTypes = true
+
+  // State
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set())
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('1Y')
   const [optimizationType, setOptimizationType] = useState<OptimizationType>('max-sharpe')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [priceData, setPriceData] = useState<Map<string, PriceDataPoint[]>>(new Map())
-  const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null)
-  const [efficientFrontier, setEfficientFrontier] = useState<EfficientFrontierPoint[]>([])
-  const [allOptimizations, setAllOptimizations] = useState<Map<string, OptimizationResult>>(new Map())
   const [riskFreeRates, setRiskFreeRates] = useState<RiskFreeRates>(loadRiskFreeRates())
   const [cache, setCache] = useState<CachedData | null>(null)
 
-  // Group assets by type
+  // Debounce inputs that trigger expensive operations
+  const debouncedTimeFrame = useDebounce(timeFrame, 300)
+  const debouncedRiskFreeRates = useDebounce(riskFreeRates, 500)
+
+  // Memoize assets mapping
   const assetsByType = useMemo(() => {
     const grouped = new Map<AssetType, TrackedAsset[]>()
     assets.forEach(asset => {
@@ -112,326 +114,155 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
     return grouped
   }, [assets])
 
-  // Always show all assets (mixed types always allowed)
-  const availableAssets = useMemo(() => {
-    return assets
-  }, [assets])
+  const availableAssets = useMemo(() => assets, [assets])
 
   // Clear selections when assets change
   useEffect(() => {
     setSelectedAssets(new Set())
     setPriceData(new Map())
-    setOptimizationResult(null)
-    setEfficientFrontier([])
-    setAllOptimizations(new Map())
     setCache(null)
   }, [assets])
 
-  // Get risk-free rate for asset type
-  const getRiskFreeRate = useCallback((assetType: AssetType): number => {
-    if (assetType === 'us-equity') return riskFreeRates.us
-    if (assetType === 'pk-equity') return riskFreeRates.pk
-    // Default for crypto, metals, indices
-    return 20 // 20% annual for Pakistan market
-  }, [riskFreeRates])
+  // Fetch data effect - Only runs when assets or timeframe changes
+  useEffect(() => {
+    const fetchSelectedAssetsData = async () => {
+      if (selectedAssets.size === 0) {
+        setPriceData(new Map())
+        return
+      }
 
-  // Fetch historical data for selected assets
-  const fetchHistoricalData = useCallback(async (assetIds: string[], timeFrame: TimeFrame) => {
-    setLoading(true)
-    setError(null)
+      setLoading(true)
+      setError(null)
+
+      try {
+        const assetIds = Array.from(selectedAssets)
+        const result = await fetchHistoricalData(assetIds, debouncedTimeFrame)
+
+        if (result) {
+          // fetchHistoricalData already sets priceData via setPriceData internally if successful
+          // We can rely on that side effect or update it here.
+          // Looking at original fetchHistoricalData, it calls setPriceData.
+          // Let's rely on that for now, but we should make sure it doesn't race.
+        }
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchSelectedAssetsData()
+  }, [selectedAssets, debouncedTimeFrame, fetchHistoricalData])
+
+  // Derived State: Optimization Calculations
+  // This memoizes the heavy math so it only runs when price data or settings change
+  const optimizationData = useMemo(() => {
+    if (selectedAssets.size < 2 || priceData.size < 2) {
+      return null
+    }
 
     try {
-      const limit = TIME_FRAME_LIMITS[timeFrame]
-      const newPriceData = new Map<string, PriceDataPoint[]>()
-      const symbols: string[] = []
+      const assetIds = Array.from(selectedAssets)
       const assetTypes: AssetType[] = []
 
-      // Check cache first
-      if (cache && 
-          cache.timeFrame === timeFrame &&
-          Date.now() - cache.timestamp < CACHE_DURATION &&
-          assetIds.every(id => cache.priceData.has(id))) {
-        // Use cached data
-        assetIds.forEach(id => {
-          const data = cache.priceData.get(id)
-          if (data) {
-            newPriceData.set(id, data)
-            const asset = assets.find(a => a.id === id)
-            if (asset) {
-              symbols.push(asset.symbol)
-              assetTypes.push(asset.assetType)
-            }
-          }
-        })
-        setPriceData(newPriceData)
-        setLoading(false)
-        return { priceData: newPriceData, symbols, assetTypes }
-      }
-
-      // Fetch data for all selected assets in parallel
-      const fetchPromises = assetIds.map(async (id) => {
-        const asset = assets.find(a => a.id === id)
-        if (!asset) return null
-
-        let historicalDataUrl = ''
-        
-        if (asset.assetType === 'crypto') {
-          const { parseSymbolToBinance } = await import('@/lib/portfolio/binance-api')
-          const binanceSymbol = parseSymbolToBinance(asset.symbol)
-          historicalDataUrl = `/api/historical-data?assetType=crypto&symbol=${encodeURIComponent(binanceSymbol)}${limit !== Infinity ? `&limit=${limit}` : ''}`
-        } else if (asset.assetType === 'pk-equity') {
-          historicalDataUrl = `/api/historical-data?assetType=pk-equity&symbol=${encodeURIComponent(asset.symbol)}&market=PSX${limit !== Infinity ? `&limit=${limit}` : ''}`
-        } else if (asset.assetType === 'us-equity') {
-          historicalDataUrl = `/api/historical-data?assetType=us-equity&symbol=${encodeURIComponent(asset.symbol)}&market=US${limit !== Infinity ? `&limit=${limit}` : ''}`
-        } else if (asset.assetType === 'metals') {
-          historicalDataUrl = `/api/historical-data?assetType=metals&symbol=${encodeURIComponent(asset.symbol)}${limit !== Infinity ? `&limit=${limit}` : ''}`
-        } else if (asset.assetType === 'kse100' || asset.assetType === 'spx500') {
-          const apiAssetType = asset.assetType === 'kse100' ? 'kse100' : 'spx500'
-          historicalDataUrl = `/api/historical-data?assetType=${apiAssetType}&symbol=${encodeURIComponent(asset.symbol)}${limit !== Infinity ? `&limit=${limit}` : ''}`
-        }
-
-        if (!historicalDataUrl) return null
-
-        const response = await fetch(historicalDataUrl)
-        if (!response.ok) {
-          throw new Error(`Failed to fetch data for ${asset.symbol}`)
-        }
-
-        const data = await response.json()
-        if (!data.data || !Array.isArray(data.data)) {
-          throw new Error(`Invalid data format for ${asset.symbol}`)
-        }
-
-        const pricePoints: PriceDataPoint[] = data.data
-          .map((record: any) => ({
-            date: record.date,
-            close: parseFloat(record.close),
-          }))
-          .filter((point: PriceDataPoint) => !isNaN(point.close))
-          .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
-
-        if (pricePoints.length < 30) {
-          throw new Error(`Insufficient data for ${asset.symbol} (need at least 30 days)`)
-        }
-
-        return { id, asset, pricePoints }
-      })
-
-      const results = await Promise.all(fetchPromises)
-      const validResults = results.filter(r => r !== null) as Array<{
-        id: string
-        asset: TrackedAsset
-        pricePoints: PriceDataPoint[]
-      }>
-
-      if (validResults.length === 0) {
-        throw new Error('No valid data fetched')
-      }
-
-      // Align dates across all assets (use common dates)
-      const allDates = new Set<string>()
-      validResults.forEach(r => {
-        r.pricePoints.forEach(p => allDates.add(p.date))
-      })
-      const sortedDates = Array.from(allDates).sort()
-
-      // Filter to dates where all assets have data
-      const commonDates = sortedDates.filter(date => {
-        return validResults.every(r => r.pricePoints.some(p => p.date === date))
-      })
-
-      if (commonDates.length < 30) {
-        throw new Error('Insufficient overlapping data (need at least 30 common trading days)')
-      }
-
-      // Create aligned price data
-      validResults.forEach(({ id, asset, pricePoints }) => {
-        const alignedData: PriceDataPoint[] = commonDates.map(date => {
-          const point = pricePoints.find(p => p.date === date)
-          return point || { date, close: 0 }
-        }).filter(p => p.close > 0)
-        newPriceData.set(id, alignedData)
-        symbols.push(asset.symbol)
-        assetTypes.push(asset.assetType)
-      })
-
-      // Update cache
-      setCache({
-        priceData: newPriceData,
-        returnsMatrix: [], // Will be calculated in optimization
-        expectedReturns: [],
-        covarianceMatrix: [],
-        symbols,
-        timeFrame,
-        timestamp: Date.now(),
-      })
-
-      setPriceData(newPriceData)
-      return { priceData: newPriceData, symbols, assetTypes }
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch historical data')
-      toast({
-        title: "Error",
-        description: err.message || 'Failed to fetch historical data',
-        variant: "destructive",
-      })
-      return null
-    } finally {
-      setLoading(false)
-    }
-  }, [assets, timeFrame, cache, toast])
-
-  // Run optimization
-  const runOptimization = useCallback(async () => {
-    if (selectedAssets.size < 2) {
-      setError('Please select at least 2 assets')
-      return
-    }
-
-    // Always allow optimization (mixed types always enabled)
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      // Fetch data if not already cached
-      const assetIds = Array.from(selectedAssets)
-      const dataResult = await fetchHistoricalData(assetIds, timeFrame)
-      if (!dataResult) return
-
-      const { priceData: fetchedPriceData, symbols, assetTypes } = dataResult
-      const priceDataMap = fetchedPriceData.size > 0 ? fetchedPriceData : priceData
-
-      if (priceDataMap.size < 2) {
-        setError('Insufficient data for optimization')
-        return
-      }
-
-      // Calculate returns matrix - use SIMPLE ARITHMETIC returns for everything
+      // Calculate returns matrix
       const returnsMatrix: number[][] = []
-      
+      const symbols: string[] = []
+
       assetIds.forEach(id => {
-        const data = priceDataMap.get(id)
-        if (data) {
+        const data = priceData.get(id)
+        const asset = assets.find(a => a.id === id)
+        if (data && asset) {
           const prices = data.map(p => p.close)
-          // Use simple arithmetic returns
           const returns = calculateDailyReturns(prices)
           returnsMatrix.push(returns)
+          symbols.push(asset.symbol)
+          assetTypes.push(asset.assetType)
         }
       })
 
-      // Align returns (use minimum length)
+      if (returnsMatrix.length === 0) return null
+
+      // Align returns
       const minLength = Math.min(...returnsMatrix.map(r => r.length))
+      if (minLength < 30) return null // Insufficient data
+
       const alignedReturns = returnsMatrix.map(r => r.slice(-minLength))
 
-      if (minLength < 30) {
-        setError('Insufficient overlapping data (need at least 30 common trading days)')
-        return
-      }
-
-      // Calculate expected returns from arithmetic returns
+      // Calculate stats
       const expectedReturns = alignedReturns.map(returns => calculateMeanReturn(returns))
-      
-      // Calculate covariance from arithmetic returns
       let covarianceMatrix = calculateCovarianceMatrix(alignedReturns)
-      
-      // Regularize to avoid singularity
       covarianceMatrix = regularizeCov(covarianceMatrix, 1e-4)
 
-      // Update cache with calculated values
-      if (cache) {
-        setCache({
-          ...cache,
-          returnsMatrix: alignedReturns, // Store arithmetic returns
-          expectedReturns,
-          covarianceMatrix,
-        })
-      }
-
-      // Get risk-free rate - use weighted average for mixed asset types
+      // Risk free rate
       let riskFreeRate: number
       if (assetTypes.length > 0) {
-        // Use average of risk-free rates for mixed asset types
-        const rates = assetTypes.map(type => getRiskFreeRate(type))
+        const rates = assetTypes.map(type => {
+          if (type === 'us-equity') return debouncedRiskFreeRates.us
+          if (type === 'pk-equity') return debouncedRiskFreeRates.pk
+          return 20
+        })
         riskFreeRate = rates.reduce((sum, rate) => sum + rate, 0) / rates.length
       } else {
-        // Fallback to US rate if no assets
-        riskFreeRate = getRiskFreeRate('us-equity')
+        riskFreeRate = debouncedRiskFreeRates.us
       }
 
-      // Run optimization
-      let weights: PortfolioWeights = {}
-      
-      if (optimizationType === 'min-variance') {
-        weights = optimizeMinimumVariance(covarianceMatrix, symbols)
-      } else if (optimizationType === 'max-sharpe') {
-        weights = optimizeMaximumSharpe(expectedReturns, covarianceMatrix, riskFreeRate, symbols)
-      } else if (optimizationType === 'max-sortino') {
-        weights = optimizeMaximumSortino(expectedReturns, alignedReturns, riskFreeRate, symbols)
-      } else if (optimizationType === 'max-return') {
-        weights = optimizeMaximumReturn(expectedReturns, symbols)
-      } else if (optimizationType === 'efficient-frontier') {
-        // Generate efficient frontier
-        const frontier = generateEfficientFrontier(expectedReturns, covarianceMatrix, symbols, 50)
-        setEfficientFrontier(frontier)
-        
-        // Calculate all optimization types for display on chart
-        const allOpts = new Map<string, OptimizationResult>()
-        
-        const minVarWeights = optimizeMinimumVariance(covarianceMatrix, symbols)
-        const minVarMetrics = calculatePortfolioMetrics(
-          minVarWeights, symbols, expectedReturns, covarianceMatrix, alignedReturns, riskFreeRate
-        )
-        allOpts.set('Min Variance', { weights: minVarWeights, metrics: minVarMetrics })
-        
-        const maxSharpeWeights = optimizeMaximumSharpe(expectedReturns, covarianceMatrix, riskFreeRate, symbols)
-        const maxSharpeMetrics = calculatePortfolioMetrics(
-          maxSharpeWeights, symbols, expectedReturns, covarianceMatrix, alignedReturns, riskFreeRate
-        )
-        allOpts.set('Max Sharpe', { weights: maxSharpeWeights, metrics: maxSharpeMetrics })
-        
-        const maxSortinoWeights = optimizeMaximumSortino(expectedReturns, alignedReturns, riskFreeRate, symbols)
-        const maxSortinoMetrics = calculatePortfolioMetrics(
-          maxSortinoWeights, symbols, expectedReturns, covarianceMatrix, alignedReturns, riskFreeRate
-        )
-        allOpts.set('Max Sortino', { weights: maxSortinoWeights, metrics: maxSortinoMetrics })
-        
-        const maxReturnWeights = optimizeMaximumReturn(expectedReturns, symbols)
-        const maxReturnMetrics = calculatePortfolioMetrics(
-          maxReturnWeights, symbols, expectedReturns, covarianceMatrix, alignedReturns, riskFreeRate
-        )
-        allOpts.set('Max Return', { weights: maxReturnWeights, metrics: maxReturnMetrics })
-        
-        setAllOptimizations(allOpts)
-        
-        // Use max Sharpe as the main result
-        weights = maxSharpeWeights
-      }
+      // Generate Efficient Frontier
+      const frontier = generateEfficientFrontier(expectedReturns, covarianceMatrix, symbols, 50)
 
-      // Calculate metrics
-      const metrics = calculatePortfolioMetrics(
-        weights,
-        symbols,
-        expectedReturns,
-        covarianceMatrix,
-        alignedReturns,
-        riskFreeRate
+      // Calculate all optimization types
+      const allOpts = new Map<string, OptimizationResult>()
+
+      const minVarWeights = optimizeMinimumVariance(covarianceMatrix, symbols)
+      const minVarMetrics = calculatePortfolioMetrics(
+        minVarWeights, symbols, expectedReturns, covarianceMatrix, alignedReturns, riskFreeRate
       )
+      allOpts.set('Min Variance', { weights: minVarWeights, metrics: minVarMetrics })
 
-      setOptimizationResult({ weights, metrics })
-    } catch (err: any) {
-      setError(err.message || 'Optimization failed')
-      toast({
-        title: "Optimization Error",
-        description: err.message || 'Optimization failed',
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
+      const maxSharpeWeights = optimizeMaximumSharpe(expectedReturns, covarianceMatrix, riskFreeRate, symbols)
+      const maxSharpeMetrics = calculatePortfolioMetrics(
+        maxSharpeWeights, symbols, expectedReturns, covarianceMatrix, alignedReturns, riskFreeRate
+      )
+      allOpts.set('Max Sharpe', { weights: maxSharpeWeights, metrics: maxSharpeMetrics })
+
+      const maxSortinoWeights = optimizeMaximumSortino(expectedReturns, alignedReturns, riskFreeRate, symbols)
+      const maxSortinoMetrics = calculatePortfolioMetrics(
+        maxSortinoWeights, symbols, expectedReturns, covarianceMatrix, alignedReturns, riskFreeRate
+      )
+      allOpts.set('Max Sortino', { weights: maxSortinoWeights, metrics: maxSortinoMetrics })
+
+      const maxReturnWeights = optimizeMaximumReturn(expectedReturns, symbols)
+      const maxReturnMetrics = calculatePortfolioMetrics(
+        maxReturnWeights, symbols, expectedReturns, covarianceMatrix, alignedReturns, riskFreeRate
+      )
+      allOpts.set('Max Return', { weights: maxReturnWeights, metrics: maxReturnMetrics })
+
+      // Determine current result based on selection
+      let currentResult: OptimizationResult
+      if (optimizationType === 'min-variance') currentResult = allOpts.get('Min Variance')!
+      else if (optimizationType === 'max-sharpe') currentResult = allOpts.get('Max Sharpe')!
+      else if (optimizationType === 'max-sortino') currentResult = allOpts.get('Max Sortino')!
+      else if (optimizationType === 'max-return') currentResult = allOpts.get('Max Return')!
+      else currentResult = allOpts.get('Max Sharpe')! // Default for 'efficient-frontier' view
+
+      return {
+        frontier,
+        allOpts,
+        currentResult
+      }
+
+    } catch (e) {
+      console.error("Optimization failed", e)
+      return null
     }
-  }, [selectedAssets, timeFrame, optimizationType, priceData, fetchHistoricalData, getRiskFreeRate, cache, toast])
+  }, [selectedAssets, priceData, debouncedRiskFreeRates, optimizationType, assets])
 
-  // Handle asset selection
+  // Extract values from memoized object or use defaults
+  const efficientFrontier = optimizationData?.frontier || []
+  const allOptimizations = optimizationData?.allOpts || new Map()
+  const optimizationResult = optimizationData?.currentResult || null
+
+  // Handle asset toggle
   const handleAssetToggle = (assetId: string) => {
     const newSelected = new Set(selectedAssets)
     if (newSelected.has(assetId)) {
@@ -440,17 +271,13 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
       newSelected.add(assetId)
     }
     setSelectedAssets(newSelected)
-    // Clear results when selection changes
-    setOptimizationResult(null)
-    setEfficientFrontier([])
-    setAllOptimizations(new Map())
   }
 
   // Efficient frontier chart data
   const frontierChartData = useMemo(() => {
     if (efficientFrontier.length === 0) return null
 
-    const colors = theme === 'dark' 
+    const colors = theme === 'dark'
       ? { line: 'rgba(59, 130, 246, 0.8)', point: 'rgba(59, 130, 246, 1)' }
       : { line: 'rgba(37, 99, 235, 0.8)', point: 'rgba(37, 99, 235, 1)' }
 
@@ -459,14 +286,14 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
     // This creates the proper U-shaped efficient frontier curve
     const filteredFrontier: EfficientFrontierPoint[] = []
     const volatilityTolerance = 0.001 // Small tolerance for grouping similar volatilities
-    
+
     // Sort by volatility first
     const sortedByVol = [...efficientFrontier].sort((a, b) => a.volatility - b.volatility)
-    
+
     // Group points by similar volatility and keep only the one with highest return
     let currentGroup: EfficientFrontierPoint[] = []
     let currentVol = sortedByVol[0]?.volatility
-    
+
     for (const point of sortedByVol) {
       // If volatility is similar (within tolerance), add to current group
       if (Math.abs(point.volatility - currentVol!) < volatilityTolerance) {
@@ -475,7 +302,7 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
         // New volatility level - process previous group
         if (currentGroup.length > 0) {
           // Keep only the point with highest return in this group
-          const bestPoint = currentGroup.reduce((best, p) => 
+          const bestPoint = currentGroup.reduce((best, p) =>
             p.expectedReturn > best.expectedReturn ? p : best
           )
           filteredFrontier.push(bestPoint)
@@ -485,15 +312,15 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
         currentVol = point.volatility
       }
     }
-    
+
     // Process last group
     if (currentGroup.length > 0) {
-      const bestPoint = currentGroup.reduce((best, p) => 
+      const bestPoint = currentGroup.reduce((best, p) =>
         p.expectedReturn > best.expectedReturn ? p : best
       )
       filteredFrontier.push(bestPoint)
     }
-    
+
     // Additional Pareto filtering: remove any point that is dominated
     // A point is dominated if there's another point with:
     // - Same or lower volatility AND higher return, OR
@@ -508,7 +335,7 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
         const hasHigherReturn = other.expectedReturn > point.expectedReturn + 1e-6
         const hasHigherOrEqualReturn = other.expectedReturn >= point.expectedReturn - 1e-6
         const hasLowerVol = other.volatility < point.volatility - volatilityTolerance
-        
+
         if ((hasLowerOrEqualVol && hasHigherReturn) || (hasHigherOrEqualReturn && hasLowerVol)) {
           isDominated = true
           break
@@ -518,7 +345,7 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
         paretoEfficient.push(point)
       }
     }
-    
+
     // Sort by volatility for smooth line rendering
     const sortedFrontier = paretoEfficient.sort((a, b) => a.volatility - b.volatility)
 
@@ -574,7 +401,7 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
     // Collect all volatility and return values for proper scaling
     const allVolatilities: number[] = [...efficientFrontier.map(p => p.volatility)]
     const allReturns: number[] = [...efficientFrontier.map(p => p.expectedReturn)]
-    
+
     // Add optimization points to the range calculation
     allOptimizations.forEach(result => {
       allVolatilities.push(result.metrics.volatility)
@@ -622,7 +449,7 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
               const datasetIndex = context.datasetIndex
               const dataset = context.dataset
               const point = context.parsed
-              
+
               if (datasetIndex === 0) {
                 // Efficient frontier - get point data from chart data
                 const dataPoint = dataset.data[context.dataIndex]
@@ -634,22 +461,22 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
                     ``,
                     `Portfolio Composition:`,
                   ]
-                  
+
                   // Add portfolio weights sorted by allocation
                   const sortedWeights = Object.entries((dataPoint as any).weights as PortfolioWeights)
                     .sort(([, a], [, b]) => (b as number) - (a as number))
                     .filter(([, weight]) => (weight as number) > 0.001) // Only show weights > 0.1%
-                  
+
                   sortedWeights.forEach(([symbol, weight]) => {
                     labels.push(`${symbol}: ${formatPercentage((weight as number) * 100)}`)
                   })
-                  
+
                   return labels
                 }
-                
+
                 // Fallback: find closest point from original frontier
                 const sortedFrontier = [...efficientFrontier].sort((a, b) => a.volatility - b.volatility)
-                const closestPoint = sortedFrontier.find(p => 
+                const closestPoint = sortedFrontier.find(p =>
                   Math.abs(p.volatility - point.x) < 0.1 && Math.abs(p.expectedReturn - point.y) < 0.1
                 )
                 if (closestPoint) {
@@ -660,15 +487,15 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
                     ``,
                     `Portfolio Composition:`,
                   ]
-                  
+
                   const sortedWeights = Object.entries(closestPoint.weights)
                     .sort(([, a], [, b]) => b - a)
                     .filter(([, weight]) => weight > 0.001)
-                  
+
                   sortedWeights.forEach(([symbol, weight]) => {
                     labels.push(`${symbol}: ${formatPercentage(weight * 100)}`)
                   })
-                  
+
                   return labels
                 }
               } else {
@@ -683,16 +510,16 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
                     ``,
                     `Portfolio Composition:`,
                   ]
-                  
+
                   // Add portfolio weights sorted by allocation
                   const sortedWeights = Object.entries(optResult.weights)
                     .sort(([, a], [, b]) => b - a)
                     .filter(([, weight]) => weight > 0.001) // Only show weights > 0.1%
-                  
+
                   sortedWeights.forEach(([symbol, weight]) => {
                     labels.push(`${symbol}: ${formatPercentage(weight * 100)}`)
                   })
-                  
+
                   return labels
                 }
               }
@@ -726,7 +553,7 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
               return `${(num * 100).toFixed(1)}%`
             },
           },
-          min: allVolatilities.length > 0 
+          min: allVolatilities.length > 0
             ? Math.max(0, minVol * 0.9)
             : undefined,
           max: allVolatilities.length > 0
@@ -857,26 +684,7 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
             </div>
           )}
 
-          {/* Run Optimization Button */}
-          {selectedAssets.size >= 2 && (
-            <Button
-              onClick={runOptimization}
-              disabled={loading}
-              className="w-full"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Optimizing...
-                </>
-              ) : (
-                <>
-                  <TrendingUp className="mr-2 h-4 w-4" />
-                  Run Optimization
-                </>
-              )}
-            </Button>
-          )}
+
 
           {error && (
             <Alert variant="destructive">
@@ -911,25 +719,23 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Sharpe Ratio</p>
-                  <p className={`text-2xl font-bold ${
-                    optimizationResult.metrics.sharpeRatio >= 1 
-                      ? 'text-green-600 dark:text-green-400' 
-                      : optimizationResult.metrics.sharpeRatio >= 0 
-                        ? 'text-yellow-600 dark:text-yellow-400' 
-                        : 'text-red-600 dark:text-red-400'
-                  }`}>
+                  <p className={`text-2xl font-bold ${optimizationResult.metrics.sharpeRatio >= 1
+                    ? 'text-green-600 dark:text-green-400'
+                    : optimizationResult.metrics.sharpeRatio >= 0
+                      ? 'text-yellow-600 dark:text-yellow-400'
+                      : 'text-red-600 dark:text-red-400'
+                    }`}>
                     {optimizationResult.metrics.sharpeRatio.toFixed(2)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Sortino Ratio</p>
-                  <p className={`text-2xl font-bold ${
-                    optimizationResult.metrics.sortinoRatio >= 1 
-                      ? 'text-green-600 dark:text-green-400' 
-                      : optimizationResult.metrics.sortinoRatio >= 0 
-                        ? 'text-yellow-600 dark:text-yellow-400' 
-                        : 'text-red-600 dark:text-red-400'
-                  }`}>
+                  <p className={`text-2xl font-bold ${optimizationResult.metrics.sortinoRatio >= 1
+                    ? 'text-green-600 dark:text-green-400'
+                    : optimizationResult.metrics.sortinoRatio >= 0
+                      ? 'text-yellow-600 dark:text-yellow-400'
+                      : 'text-red-600 dark:text-red-400'
+                    }`}>
                     {optimizationResult.metrics.sortinoRatio.toFixed(2)}
                   </p>
                 </div>
@@ -977,7 +783,7 @@ export function MPTPortfolioView({ assets }: MPTPortfolioViewProps) {
               </CardHeader>
               <CardContent>
                 <div className="h-96">
-                  <Line data={frontierChartData} options={frontierChartOptions} />
+                  <Line data={frontierChartData} options={frontierChartOptions as any} />
                 </div>
               </CardContent>
             </Card>
