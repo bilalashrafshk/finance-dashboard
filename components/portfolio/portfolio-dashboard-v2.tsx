@@ -243,7 +243,7 @@ export function PortfolioDashboardV2() {
     let responseReceived = false
 
     const calculateTodayChange = async () => {
-      if (!holdings.length || !user) {
+      if (!holdings.length || !user || !summary) {
         setTodayChange(null)
         return
       }
@@ -266,6 +266,14 @@ export function PortfolioDashboardV2() {
           unified = true
         }
 
+        // Get Live Value from local summary (more accurate for "Today" than backend history which might be stale)
+        let liveValue = 0
+        if (unified && summary.unified) {
+          liveValue = summary.unified.currentValue
+        } else if (!unified && summary.byCurrency && summary.byCurrency[currency]) {
+          liveValue = summary.byCurrency[currency].currentValue
+        }
+
         // Use fewer days (5) for faster loading (Today, Yesterday, + buffer for weekends)
         const unifiedParam = unified ? '&unified=true' : ''
         const response = await fetch(`/api/user/portfolio/history?days=5&currency=${currency}${unifiedParam}`, {
@@ -284,9 +292,9 @@ export function PortfolioDashboardV2() {
 
           responseReceived = true
 
-          // Need at least 1 day of history to show change (vs 0)
+          // Need at least 1 day of history to show change calculation
           if (history.length === 0) {
-            setTodayChange(null)
+            setTodayChange(null) // Or 0?
             return
           }
 
@@ -295,33 +303,36 @@ export function PortfolioDashboardV2() {
             new Date(a.date).getTime() - new Date(b.date).getTime()
           )
 
-          // Use the last 2 available days (not necessarily today and yesterday)
-          // This handles cases where today's PK equity data isn't available yet
-          if (sortedHistory.length < 1) {
+          // We need "Yesterday's" closing value (or the latest available history BEFORE today)
+          // Backend history often includes Today (partial). We want the entry strictly before Today.
+          const todayStr = new Date().toISOString().split('T')[0]
+
+          // Find 'Today' entry in history to get today's cash flow
+          const historyToday = sortedHistory.find((h: any) => h.date >= todayStr)
+
+          // Find 'Previous' entry (strictly before today)
+          // If today is Monday, we want Sunday/Friday (last entry < todayStr)
+          const historyPrevious = sortedHistory.filter((h: any) => h.date < todayStr).pop()
+
+          if (!historyPrevious) {
+            // If we have NO history before today (e.g. first day of trading), change is 0? 
+            // Or Change = PnL today?
+            // Let's assume 0 for safety or use standard formula with 0 start
+            // If liveValue exists and no previous, maybe it's all new? 
+            // Let's stick to safe 0 if no basline.
             setTodayChange(null)
             return
           }
 
-          const latest = sortedHistory[sortedHistory.length - 1]
-          const previous = sortedHistory.length >= 2 ? sortedHistory[sortedHistory.length - 2] : { invested: 0, cashFlow: 0 }
+          const previousInvested = historyPrevious.invested || 0  // 'invested' is Total Value in API response
+          const todaysCashFlow = historyToday ? (historyToday.cashFlow || 0) : 0
 
-          // Validate data (latest must exist)
-          if (!latest || latest.invested === undefined) {
-            setTodayChange(null)
-            return
-          }
-
-          // Calculate Daily P&L using standard formula:
-          // Daily P&L = (End Value - Start Value) - Net Flows
-
-          const latestCashFlow = latest.cashFlow || 0
-          const previousInvested = previous.invested || 0
-
-          // Note: latest.invested in API response is "Market Value + Cash".
-          const change = (latest.invested - previousInvested) - latestCashFlow
+          // Calculate Daily P&L
+          // Formula: (Live Current Value - Yesterday's Value) - Today's Net Flows
+          const change = (liveValue - previousInvested) - todaysCashFlow
           const changePercent = previousInvested > 0 ? (change / previousInvested) * 100 : 0
 
-          // Set if values are valid numbers (including 0 - don't filter out zero change)
+          // Set if values are valid numbers
           if (!isNaN(change) && !isNaN(changePercent) && isFinite(change) && isFinite(changePercent)) {
             setTodayChange({ value: change, percent: changePercent })
           } else {
@@ -351,7 +362,7 @@ export function PortfolioDashboardV2() {
         controller.abort() // Only abort if response hasn't arrived yet
       }
     }
-  }, [holdings, user, activeTab])
+  }, [holdings, user, activeTab, summary])
 
   const loadHoldings = async (fast: boolean = false) => {
     // Just trigger revalidation
