@@ -12,13 +12,14 @@ import { Input } from "@/components/ui/input"
 import { Loader2, Info, Settings, ExternalLink, List } from "lucide-react"
 import Link from "next/link"
 import { Line } from "react-chartjs-2"
-import {
-  Dialog,
+Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   Chart as ChartJS,
   CategoryScale,
