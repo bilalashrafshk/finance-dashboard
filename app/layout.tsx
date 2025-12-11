@@ -5,6 +5,7 @@ import { GeistMono } from "geist/font/mono"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/lib/auth/auth-context"
 import { Toaster } from "@/components/ui/toaster"
+import Footer from "@/components/footer"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -38,6 +39,7 @@ html {
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <AuthProvider>
             {children}
+            <Footer />
             <Toaster />
           </AuthProvider>
         </ThemeProvider>

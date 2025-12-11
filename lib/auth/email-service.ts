@@ -12,20 +12,20 @@ import { Resend } from 'resend'
  */
 export async function sendPasswordResetEmail(email: string, resetToken: string): Promise<void> {
   const resendApiKey = process.env.RESEND_API_KEY
-  
+
   if (!resendApiKey) {
     throw new Error('RESEND_API_KEY is not configured. Please add it to your .env.local file.')
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ||
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-  
+
   const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`
 
   const resend = new Resend(resendApiKey)
 
   await resend.emails.send({
-    from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
+    from: process.env.EMAIL_FROM || 'support@convictionpays.com',
     to: email,
     subject: 'Reset Your Password',
     html: `
@@ -50,7 +50,7 @@ export async function sendPasswordResetEmail(email: string, resetToken: string):
             <p style="font-size: 14px; color: #666; margin-top: 30px;">This link will expire in 1 hour.</p>
             <p style="font-size: 14px; color: #666;">If you didn't request this password reset, please ignore this email. Your password will remain unchanged.</p>
             <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
-            <p style="font-size: 12px; color: #999; text-align: center;">This is an automated message, please do not reply.</p>
+            <p style="font-size: 12px; color: #999; text-align: center;">&copy; {new Date().getFullYear()} Conviction Pays. All rights reserved.<br>This is an automated message, please do not reply.</p>
           </div>
         </body>
       </html>
