@@ -93,7 +93,11 @@ export function GlobalSearch() {
                     <span className="text-xs">⌘</span>K
                 </kbd>
             </button>
-            <CommandDialog open={open} onOpenChange={setOpen}>
+            <CommandDialog
+                open={open}
+                onOpenChange={setOpen}
+                commandProps={{ shouldFilter: false }}
+            >
                 <CommandInput
                     placeholder="Search stocks, crypto, commodities..."
                     value={query}
