@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/auth-context"
 import { useDebounce } from "use-debounce"
 import { AddAssetDialog } from "@/components/asset-screener/add-asset-dialog"
+import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
 
 import {
     CommandDialog,
@@ -45,7 +46,7 @@ export function GlobalSearch() {
 
 
 
-    const [debouncedQuery] = useDebounce(query, 300)
+    const [debouncedQuery] = useDebounce(query, 800)
     const [addAssetOpen, setAddAssetOpen] = React.useState(false)
 
     // Fetch initial data or search results
@@ -141,12 +142,7 @@ export function GlobalSearch() {
                                                 if (item.asset_type === 'index' || item.asset_type === 'kse100' || item.asset_type === 'spx500') {
                                                     runCommand(() => router.push(`/charts`))
                                                 } else {
-                                                    let slug = item.symbol;
-                                                    // Ensure consistent slug routing
-                                                    if (item.asset_type === 'pk-equity') {
-                                                        slug = `psx-${item.symbol}`;
-                                                    }
-                                                    // For crypto etc, straightforward symbol usually works, verify logic
+                                                    const slug = generateAssetSlug(item.asset_type, item.symbol)
                                                     runCommand(() => router.push(`/asset/${slug}`))
                                                 }
                                             }}

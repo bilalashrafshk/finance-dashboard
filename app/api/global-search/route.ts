@@ -6,6 +6,11 @@ const pool = new Pool({
   ssl: (process.env.DATABASE_URL || process.env.POSTGRES_URL || '').includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
 })
 
+// Simple in-memory cache for default list
+let defaultListCache: any[] | null = null;
+let defaultListCacheTimestamp = 0;
+const CACHE_TTL = 300 * 1000; // 5 minutes
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const queryParam = searchParams.get('query')
@@ -21,53 +26,89 @@ export async function GET(request: Request) {
     const searchQuery = trimmedQuery ? `%${trimmedQuery}%` : '%'
     const sortQuery = trimmedQuery ? `${trimmedQuery}%` : ''
 
-    // Fetch unique assets across multiple types
-    // We prioritize joining with company_profiles for names
-    const dbQuery = `
-      SELECT DISTINCT 
-        hpd.symbol,
-        hpd.asset_type,
-        COALESCE(cp.name, hpd.symbol) as name,
-        COALESCE(cp.sector, 
-          CASE 
-            WHEN hpd.asset_type = 'crypto' THEN 'Cryptocurrency'
-            WHEN hpd.asset_type = 'index' OR hpd.asset_type = 'kse100' OR hpd.asset_type = 'spx500' THEN 'Index'
-            WHEN hpd.asset_type LIKE '%commodity%' OR hpd.asset_type = 'metals' THEN 'Commodities'
+    // Optimized Union Strategy with Caching for Default View
+
+    // Check if we can serve default list from cache (if implemented globally)
+    // Note: In Next.js App Router, we can use standard request memoization or just let the DB handle it if fast.
+    // Given the constraints and the user usage, we'll implement a fast path.
+    if (!trimmedQuery) { // Only cache default list (empty query)
+      const now = Date.now();
+      if (defaultListCache && (now - defaultListCacheTimestamp < CACHE_TTL)) {
+        // Cache hit, return cached data
+        console.log('[Global Search] Serving default list from cache.');
+        return NextResponse.json({
+          success: true,
+          assets: defaultListCache
+        });
+      }
+    }
+
+    // Union Strategy:
+    // Searching the full table (1M rows) for 'symbol ILIKE' is slow.
+    // However, searching by (asset_type, symbol) is indexed.
+    // We iterate over known asset types and UNION the results. This is reasonably fast (~300-600ms).
+
+    const assetTypes = ['pk-equity', 'us-equity', 'crypto', 'commodities', 'kse100', 'metals', 'spx500']
+
+    // Create params array starting with fixed ones
+    // We need one param for the LIKE query per sub-query if we want to be safe, or just reuse the named/numbered param?
+    // PG allows reusing $1.
+
+    const unionParts = assetTypes.map(type => `
+      (SELECT 
+        symbol,
+        asset_type,
+        symbol as name, -- Fallback
+        CASE 
+            WHEN asset_type = 'crypto' THEN 'Cryptocurrency'
+            WHEN asset_type = 'index' OR asset_type = 'kse100' OR asset_type = 'spx500' THEN 'Index'
+            WHEN asset_type LIKE '%commodity%' OR asset_type = 'metals' THEN 'Commodities'
             ELSE 'Unknown'
-          END
-        ) as sector,
+        END as sector,
         CASE
-            WHEN hpd.asset_type = 'pk-equity' OR hpd.asset_type = 'kse100' THEN 'PKR'
+            WHEN asset_type = 'pk-equity' OR asset_type = 'kse100' THEN 'PKR'
             ELSE 'USD'
         END as currency
-      FROM historical_price_data hpd
-      LEFT JOIN company_profiles cp 
-        ON cp.symbol = hpd.symbol 
-        AND (cp.asset_type = hpd.asset_type OR (cp.asset_type = 'equity' AND hpd.asset_type = 'pk-equity'))
-      WHERE 
-        ($1 = '%' OR hpd.symbol ILIKE $1 OR COALESCE(cp.name, hpd.symbol) ILIKE $1)
+       FROM historical_price_data 
+       WHERE asset_type = '${type}' 
+       AND ($1 = '%' OR symbol ILIKE $1)
+       LIMIT 10)
+    `)
+
+    const dbQuery = `
+      SELECT DISTINCT * FROM (
+        ${unionParts.join(' UNION ALL ')}
+      ) as combined_results
       ORDER BY 
         CASE 
-          WHEN $2 != '' AND hpd.symbol ILIKE $2 THEN 1 
+          WHEN $2 != '' AND symbol ILIKE $2 THEN 1 
           ELSE 2 
         END,
-        hpd.asset_type,
-        hpd.symbol
+        asset_type,
+        symbol
       LIMIT 20
     `
 
-    // $1 is %query% (or %), $2 is query% (or empty)
     const { rows } = await client.query(dbQuery, [searchQuery, sortQuery])
+
+    const assets = rows.map(row => ({
+      symbol: row.symbol,
+      name: row.name,
+      sector: row.sector,
+      asset_type: row.asset_type,
+      currency: row.currency
+    }));
+
+    // Cache the result if it's the default list
+    if (!trimmedQuery) {
+      defaultListCache = assets;
+      defaultListCacheTimestamp = Date.now();
+      console.log('[Global Search] Default list cached.');
+    }
 
     return NextResponse.json({
       success: true,
-      assets: rows.map(row => ({
-        symbol: row.symbol,
-        name: row.name,
-        sector: row.sector,
-        asset_type: row.asset_type,
-        currency: row.currency
-      }))
+      assets: assets
     })
   } catch (error: any) {
     console.error('[Global Search] Error:', error)
