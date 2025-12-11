@@ -8,8 +8,8 @@ import { Toaster } from "@/components/ui/toaster"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "CONVICTION PLAY - Risk Dashboard",
-  description: "Investment risk analysis and portfolio management by CONVICTION PLAY",
+  title: "Conviction Pays - Risk Dashboard",
+  description: "Investment risk analysis and portfolio management by Conviction Pays",
 }
 
 export const viewport: Viewport = {

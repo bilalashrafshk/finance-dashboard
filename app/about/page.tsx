@@ -12,7 +12,7 @@ export default function AboutPage() {
             <CardHeader>
               <CardTitle className="text-3xl flex items-center gap-2">
                 <Target className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-                About CONVICTION PLAY
+                About Conviction Pays
               </CardTitle>
               <CardDescription>
                 Professional quantitative research platform for investment analysis
@@ -22,7 +22,7 @@ export default function AboutPage() {
               <section>
                 <h2 className="text-2xl font-semibold mb-4">Our Mission</h2>
                 <p>
-                  CONVICTION PLAY is a comprehensive quantitative research platform designed to empower investors and traders with professional-grade tools for market analysis, risk management, and portfolio optimization. We focus primarily on Pakistani equities while also providing research and analysis capabilities for US equities, cryptocurrencies, and metals.
+                  Conviction Pays is a comprehensive quantitative research platform designed to empower investors and traders with professional-grade tools for market analysis, risk management, and portfolio optimization. We focus primarily on Pakistani equities while also providing research and analysis capabilities for US equities, cryptocurrencies, and metals.
                 </p>
               </section>
 
@@ -63,7 +63,7 @@ export default function AboutPage() {
               <section>
                 <h2 className="text-2xl font-semibold mb-4">Our Focus</h2>
                 <p>
-                  While CONVICTION PLAY is primarily focused on Pakistani equities, we recognize the importance of a global perspective in investment analysis. Our platform provides:
+                  While Conviction Pays is primarily focused on Pakistani equities, we recognize the importance of a global perspective in investment analysis. Our platform provides:
                 </p>
                 <ul className="list-disc pl-6 space-y-2 mt-2">
                   <li><strong>Primary Focus:</strong> Comprehensive analysis of Pakistan Stock Exchange (PSX) listed companies with detailed market data, sector analysis, and macroeconomic indicators</li>
@@ -79,7 +79,7 @@ export default function AboutPage() {
                   <div className="p-4 bg-muted/50 rounded-lg">
                     <h3 className="font-semibold mb-2">Free and Accessible</h3>
                     <p className="text-sm text-muted-foreground">
-                      We believe professional-grade investment tools should be accessible to everyone. CONVICTION PLAY is free for all users, with no hidden fees or limitations.
+                      We believe professional-grade investment tools should be accessible to everyone. Conviction Pays is free for all users, with no hidden fees or limitations.
                     </p>
                   </div>
                   <div className="p-4 bg-muted/50 rounded-lg">
@@ -100,7 +100,7 @@ export default function AboutPage() {
               <section>
                 <h2 className="text-2xl font-semibold mb-4">Technology</h2>
                 <p>
-                  CONVICTION PLAY is built with modern web technologies to provide a fast, reliable, and secure experience. Our platform leverages:
+                  Conviction Pays is built with modern web technologies to provide a fast, reliable, and secure experience. Our platform leverages:
                 </p>
                 <ul className="list-disc pl-6 space-y-2 mt-2">
                   <li>Real-time data from multiple sources including StockAnalysis.com, Binance, and Investing.com</li>
@@ -116,13 +116,13 @@ export default function AboutPage() {
                   Have questions, feedback, or suggestions? We'd love to hear from you:
                 </p>
                 <ul className="list-none pl-0 space-y-2 mt-2">
-                  <li><strong>Email:</strong> support@convictionplay.com</li>
+                  <li><strong>Email:</strong> support@convictionpays.com</li>
                 </ul>
               </section>
 
               <section className="pt-6 border-t">
                 <p className="text-sm text-muted-foreground">
-                  Thank you for using CONVICTION PLAY. We're committed to helping you make better investment decisions through data-driven analysis and professional tools.
+                  Thank you for using Conviction Pays. We're committed to helping you make better investment decisions through data-driven analysis and professional tools.
                 </p>
               </section>
             </CardContent>

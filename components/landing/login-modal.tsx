@@ -68,7 +68,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
           </h2>
           <p className="text-slate-400">
             {isSignUp
-              ? 'Start your investment journey with CONVICTION PLAY'
+              ? 'Start your investment journey with Conviction Pays'
               : 'Sign in to access your portfolio'}
           </p>
         </div>
@@ -173,22 +173,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
           </button>
         </form>
 
-        {/* Divider */}
-        <div className="my-6 flex items-center gap-4">
-          <div className="flex-1 h-px bg-slate-700" />
-          <span className="text-sm text-slate-500">or</span>
-          <div className="flex-1 h-px bg-slate-700" />
-        </div>
 
-        {/* OAuth buttons */}
-        <div className="space-y-2">
-          <button className="w-full px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg hover:bg-slate-700 transition-colors flex items-center justify-center gap-2">
-            <span>🔵</span> Continue with Google
-          </button>
-          <button className="w-full px-4 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg hover:bg-slate-700 transition-colors flex items-center justify-center gap-2">
-            <span>🐙</span> Continue with GitHub
-          </button>
-        </div>
 
         {/* Toggle auth mode */}
         <div className="mt-6 text-center">

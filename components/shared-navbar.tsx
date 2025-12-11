@@ -44,7 +44,7 @@ export function SharedNavbar() {
                 <TrendingUp className="w-5 h-5 text-white" />
               </div>
               <div className="font-bold text-xl tracking-tight text-foreground hidden sm:block">
-                CONVICTION <span className="text-blue-600 dark:text-blue-500">PLAY</span>
+                CONVICTION <span className="text-blue-600 dark:text-blue-500">PAYS</span>
               </div>
             </Link>
 

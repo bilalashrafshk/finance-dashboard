@@ -6,14 +6,14 @@ export default function CtaSection() {
   return (
     <section className="py-20 px-4 relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-r from-blue-950/20 via-cyan-950/20 to-blue-950/20 pointer-events-none" />
-      
+
       <div className="max-w-4xl mx-auto relative z-10 text-center space-y-8">
         <h2 className="text-4xl lg:text-5xl font-bold text-white leading-tight">
           Ready to stack your gains?
         </h2>
-        
+
         <p className="text-lg text-slate-300 max-w-2xl mx-auto">
-          Join thousands of investors using CONVICTION PLAY to optimize their portfolio across PSX, US stocks, and crypto markets.
+          Join thousands of investors using Conviction Pays to optimize their portfolio across PSX, US stocks, and crypto markets.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">

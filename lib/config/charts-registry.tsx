@@ -105,7 +105,7 @@ const LiquidityMapSection = dynamic(() => import("@/components/charts/liquidity-
 })
 
 // Types
-export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "us-placeholder" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments" | "interest-rate-equities" | "cpi" | "gdp" | "exchange-rate" | "remittances" | "kibor" | "sbp-reserves" | "fdi" | "m2" | "deposits" | "vehicle-sales" | "cement-sales" | "electricity-generation" | "pol-sales" | "scra" | "sector-quarterly-performance" | "pk-equity-usd" | "pk-equity-ma" | "liquidity-map"
+export type ChartId = "market-cycle" | "market-heatmap" | "advance-decline" | "pe-ratio-scatter" | "eth-risk" | "mpt" | "seasonality" | "price-chart" | "interest-rates" | "balance-of-payments" | "interest-rate-equities" | "cpi" | "gdp" | "exchange-rate" | "remittances" | "kibor" | "sbp-reserves" | "fdi" | "m2" | "deposits" | "vehicle-sales" | "cement-sales" | "electricity-generation" | "pol-sales" | "scra" | "sector-quarterly-performance" | "pk-equity-usd" | "pk-equity-ma" | "liquidity-map"
 
 export interface ChartDefinition {
     id: ChartId
@@ -197,26 +197,7 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
             },
         ],
     },
-    {
-        id: "us-stocks",
-        title: "US Stocks",
-        icon: Globe,
-        charts: [
-            {
-                id: "us-placeholder",
-                title: "US Market Charts",
-                icon: Globe,
-                component: (
-                    <div className="p-12 border border-dashed rounded-lg text-center text-muted-foreground bg-muted/30">
-                        <Globe className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                        <h3 className="text-lg font-medium">US Market Charts Coming Soon</h3>
-                        <p>We are working on adding comprehensive charts for US markets.</p>
-                    </div>
-                ),
-                keywords: ["us", "stocks", "market"],
-            },
-        ],
-    },
+
     {
         id: "portfolio",
         title: "Portfolio",

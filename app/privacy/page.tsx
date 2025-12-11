@@ -18,7 +18,7 @@ export default function PrivacyPolicyPage() {
               <section>
                 <h2 className="text-2xl font-semibold mt-6 mb-4">1. Introduction</h2>
                 <p>
-                  Welcome to CONVICTION PLAY ("we," "our," or "us"). We are committed to protecting your privacy and ensuring you have a positive experience on our website and in using our products and services. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website and use our services.
+                  Welcome to Conviction Pays ("we," "our," or "us"). We are committed to protecting your privacy and ensuring you have a positive experience on our website and in using our products and services. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website and use our services.
                 </p>
               </section>
 
@@ -71,7 +71,7 @@ export default function PrivacyPolicyPage() {
                 <p>
                   We use cookies and similar tracking technologies to track activity on our website and hold certain information. Cookies are files with a small amount of data which may include an anonymous unique identifier.
                 </p>
-                
+
                 <h3 className="text-xl font-semibold mt-4 mb-2">5.1 Types of Cookies We Use</h3>
                 <ul className="list-disc pl-6 space-y-2">
                   <li><strong>Essential Cookies:</strong> Required for the website to function properly, including authentication and security</li>
@@ -147,7 +147,7 @@ export default function PrivacyPolicyPage() {
                   If you have any questions about this Privacy Policy, please contact us:
                 </p>
                 <ul className="list-none pl-0 space-y-2 mt-2">
-                  <li><strong>Email:</strong> support@convictionplay.com</li>
+                  <li><strong>Email:</strong> support@convictionpays.com</li>
                 </ul>
               </section>
 

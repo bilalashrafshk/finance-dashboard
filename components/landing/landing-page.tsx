@@ -1,456 +1,482 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { SharedNavbar } from "@/components/shared-navbar"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import React, { useState, useEffect, useRef } from 'react';
 import {
   TrendingUp,
-  ShieldCheckIcon,
-  BarChart3Icon,
-  ActivityIcon,
-  ZapIcon,
-  ChevronRightIcon,
-  CheckIcon,
-  LineChartIcon,
-  PieChartIcon,
-  Wallet,
+  BarChart2,
+  PieChart,
   Search,
+  Shield,
+  Zap,
+  Check,
+  ArrowRight,
+  Menu,
+  X,
+  ChevronRight,
   Globe,
-  DollarSign,
+  Clock,
+  Layers,
   Filter,
-} from "lucide-react"
-import Link from "next/link"
-import DashboardPreviewSimple from "./dashboard-preview-simple"
+  Command,
+  Star,
+  MousePointer2,
+  Wallet,
+  Coins,
+  Activity,
+  Flame
+} from 'lucide-react';
 
-interface Stats {
-  totalCompanies: number
-  pkCompanies: number
-  usCompanies: number
-  dataPoints: number
-  chartCount: number
+/**
+ * ANIMATION HELPERS
+ */
+
+// 1. Fade In on Scroll Component
+interface FadeInProps {
+  children: React.ReactNode;
+  delay?: number;
+  className?: string;
 }
 
-export default function LandingPage() {
-  const [stats, setStats] = useState<Stats | null>(null)
+const FadeIn = ({ children, delay = 0, className = "" }: FadeInProps) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const domRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Fetch stats from API
-    fetch("/api/stats")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setStats(data.stats)
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to fetch stats:", err)
-        // Set fallback stats
-        setStats({
-          totalCompanies: 0,
-          pkCompanies: 0,
-          usCompanies: 0,
-          dataPoints: 0,
-          chartCount: 25,
-        })
-      })
-  }, [])
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => setIsVisible(entry.isIntersecting));
+    }, { threshold: 0.1 }); // Trigger when 10% visible
 
-  const formatNumber = (num: number): string => {
-    if (num >= 1000000) {
-      return `${(num / 1000000).toFixed(1)}M+`
-    }
-    if (num >= 1000) {
-      return `${(num / 1000).toFixed(1)}K+`
-    }
-    return `${num}+`
-  }
+    const currentElement = domRef.current;
+    if (currentElement) observer.observe(currentElement);
+
+    return () => {
+      if (currentElement) observer.unobserve(currentElement);
+    };
+  }, []);
 
   return (
-    <div className="min-h-screen bg-background">
-      <SharedNavbar />
+    <div
+      ref={domRef}
+      className={`transition-all duration-1000 ease-out transform ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'
+        } ${className}`}
+      style={{ transitionDelay: `${delay}ms` }}
+    >
+      {children}
+    </div>
+  );
+};
 
-      {/* Hero Section */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-600/5 via-transparent to-cyan-600/5" />
-        <div className="container relative mx-auto px-4 py-24 md:py-32">
-          <div className="mx-auto max-w-3xl text-center space-y-6">
-            <Badge variant="secondary" className="gap-1">
-              <ZapIcon className="h-3 w-3" />
-              Professional Quantitative Research Platform
-            </Badge>
-            <h1 className="text-4xl font-bold tracking-tight text-balance md:text-6xl lg:text-7xl">
-              Intelligent Market Analysis for <span className="bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">Pakistani Equities</span>
+// 2. Spotlight Card Effect (Tracks Mouse)
+interface SpotlightCardProps {
+  children: React.ReactNode;
+  className?: string;
+  spotlightColor?: string;
+}
+
+const SpotlightCard = ({ children, className = "", spotlightColor = "rgba(59, 130, 246, 0.15)" }: SpotlightCardProps) => {
+  const divRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ x: -500, y: -500 });
+  const [opacity, setOpacity] = useState(0);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!divRef.current) return;
+    const rect = divRef.current.getBoundingClientRect();
+    setPosition({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    setOpacity(1);
+  };
+
+  const handleMouseLeave = () => {
+    setOpacity(0);
+  };
+
+  return (
+    <div
+      ref={divRef}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      className={`relative overflow-hidden ${className}`}
+    >
+      {/* The Moving Spotlight Gradient */}
+      <div
+        className="pointer-events-none absolute -inset-px transition duration-300"
+        style={{
+          opacity,
+          background: `radial-gradient(600px circle at ${position.x}px ${position.y}px, ${spotlightColor}, transparent 40%)`,
+        }}
+      />
+      {/* Content */}
+      <div className="relative z-10 h-full">{children}</div>
+    </div>
+  );
+};
+
+const LandingPage = () => {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-[#020617] text-slate-200 font-sans selection:bg-cyan-500/30 overflow-x-hidden">
+
+      {/* 1. NAVBAR (Public) */}
+      <header className="sticky top-0 z-50 bg-[#020617]/80 backdrop-blur-xl border-b border-white/5 transition-all duration-300">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+          {/* Logo */}
+          <div className="flex items-center gap-3 cursor-pointer group">
+            <div className="relative">
+              <div className="absolute inset-0 bg-blue-500 blur-lg opacity-20 group-hover:opacity-40 transition-opacity"></div>
+              <div className="relative bg-gradient-to-br from-blue-600 to-cyan-500 p-2.5 rounded-xl shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-all duration-500 group-hover:scale-105">
+                <TrendingUp className="w-5 h-5 text-white" />
+              </div>
+            </div>
+            <div className="font-bold text-xl tracking-tight text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-slate-400 transition-all">
+              CONVICTION <span className="text-cyan-400">PAYS</span>
+            </div>
+          </div>
+
+          {/* Desktop Nav Links */}
+          <nav className="hidden md:flex items-center gap-8">
+            {['Platform', 'Markets', 'Pricing'].map((item) => (
+              <a key={item} href={`#${item.toLowerCase()}`} className="text-sm font-medium text-slate-400 hover:text-white transition-colors relative group">
+                {item}
+                <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-cyan-400 transition-all group-hover:w-full"></span>
+              </a>
+            ))}
+          </nav>
+
+          {/* Auth Buttons */}
+          <div className="hidden md:flex items-center gap-4">
+            <button className="text-sm font-medium text-white hover:text-cyan-400 transition-colors">
+              Log In
+            </button>
+            <button className="bg-white text-black hover:bg-cyan-50 px-5 py-2.5 rounded-full text-sm font-bold transition-all shadow-[0_0_20px_-5px_rgba(255,255,255,0.3)] hover:shadow-[0_0_25px_-5px_rgba(6,182,212,0.5)] hover:-translate-y-0.5 active:translate-y-0">
+              Get Started
+            </button>
+          </div>
+
+          {/* Mobile Menu Toggle */}
+          <button className="md:hidden text-slate-400" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+            {mobileMenuOpen ? <X /> : <Menu />}
+          </button>
+        </div>
+
+        {/* Mobile Dropdown */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-white/10 bg-[#020617] p-6 space-y-4 animate-in slide-in-from-top-5">
+            <a href="#platform" className="block text-slate-300 hover:text-white">Platform</a>
+            <a href="#markets" className="block text-slate-300 hover:text-white">Markets</a>
+            <a href="#pricing" className="block text-slate-300 hover:text-white">Pricing</a>
+            <div className="pt-4 border-t border-white/10 flex flex-col gap-3">
+              <button className="w-full text-center text-white font-medium py-2">Log In</button>
+              <button className="w-full bg-white text-black py-3 rounded-full font-bold">Get Started</button>
+            </div>
+          </div>
+        )}
+      </header>
+
+      {/* 2. HERO SECTION */}
+      <section className="relative pt-32 pb-40 overflow-hidden">
+        {/* Animated Background Effects */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[1000px] opacity-30 animate-pulse-slow">
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 blur-[100px] rounded-full mix-blend-screen" />
+          </div>
+          <div className="absolute top-20 right-20 w-2 h-2 bg-white rounded-full blur-[1px] animate-ping opacity-50 duration-1000"></div>
+          <div className="absolute bottom-40 left-20 w-1 h-1 bg-cyan-400 rounded-full blur-[1px] animate-pulse opacity-70"></div>
+        </div>
+
+        <div className="relative max-w-5xl mx-auto px-6 text-center z-10">
+          <FadeIn delay={100}>
+            <h1 className="text-6xl md:text-8xl font-extrabold text-white tracking-tight mb-8 leading-none drop-shadow-2xl">
+              Conviction <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-cyan-400 to-emerald-400">
+                Always Pays Off.
+              </span>
             </h1>
-            <p className="text-lg text-muted-foreground text-pretty md:text-xl">
-              Make data-driven investment decisions with advanced quantitative tools, real-time analytics, and
-              comprehensive risk management. Focused on PK equities with research capabilities for US equities, crypto, and metals.
+          </FadeIn>
+
+          <FadeIn delay={300}>
+            <p className="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto mb-12 leading-relaxed font-light">
+              Invest with zero noise. Track <strong>Crypto</strong>, <strong>Stocks</strong>, and <strong>Net Worth</strong> on a dashboard built for speed.
+              Spot cycle tops and manage risk without the spreadsheet headache.
             </p>
-            <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
-              <Button size="lg" className="gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700" asChild>
-                <Link href="/charts">
-                  Sign Up for Free
-                  <ChevronRightIcon className="h-4 w-4" />
-                </Link>
-              </Button>
-              <Button size="lg" variant="outline" asChild>
-                <Link href="/charts">
-                  Explore Charts
-                </Link>
-              </Button>
-            </div>
-            <div className="flex items-center justify-center gap-8 pt-4 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                No credit card required
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                Free forever
-              </div>
-            </div>
-          </div>
+          </FadeIn>
 
-          {/* Dashboard Preview */}
-          <DashboardPreviewSimple />
+          {/* The "Launchpad" Search Bar - Hover Glow Effect */}
+          <FadeIn delay={500}>
+            <div className="max-w-2xl mx-auto relative group z-20">
+              <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-2xl blur opacity-25 group-hover:opacity-75 transition duration-1000 group-hover:duration-200"></div>
+              <div className="relative bg-[#0B1121] border border-white/10 rounded-2xl p-2 flex items-center shadow-2xl transition-transform duration-300 group-hover:scale-[1.01]">
+                <div className="pl-4 pr-3 text-slate-500 group-hover:text-cyan-400 transition-colors">
+                  <Search className="w-6 h-6" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search Tickers (e.g. BTC, LUCK, Gold)..."
+                  className="w-full bg-transparent border-none text-white text-lg placeholder:text-slate-600 focus:ring-0 h-14 outline-none"
+                />
+                <div className="flex gap-2">
+                  <button className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold uppercase tracking-wider hover:bg-slate-700 transition-colors">
+                    <Zap className="w-3 h-3 text-amber-400" /> Pro Mode
+                  </button>
+                  <button className="bg-blue-600 hover:bg-blue-500 text-white px-8 rounded-xl text-base font-bold transition-all shadow-lg shadow-blue-600/20 hover:shadow-blue-600/50">
+                    Analyze
+                  </button>
+                </div>
+              </div>
+              {/* Quick links below search */}
+              <div className="flex flex-wrap justify-center gap-6 mt-6 text-sm text-slate-500">
+                <span className="flex items-center gap-1.5 hover:text-cyan-400 transition-colors cursor-pointer"><Activity className="w-3 h-3 text-cyan-500" /> Cycle Indicators</span>
+                <span className="flex items-center gap-1.5 hover:text-purple-400 transition-colors cursor-pointer"><Coins className="w-3 h-3 text-purple-500" /> Crypto Risk</span>
+                <span className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors cursor-pointer"><Wallet className="w-3 h-3 text-emerald-500" /> Net Worth</span>
+              </div>
+            </div>
+          </FadeIn>
         </div>
       </section>
 
-      {/* Stats Section */}
-      <section className="border-y border-border bg-muted/30">
-        <div className="container mx-auto px-4 py-12">
-          <div className="grid gap-8 md:grid-cols-4">
-            <div className="text-center space-y-2">
-              <div className="text-3xl font-bold font-mono bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
-                {stats ? formatNumber(stats.totalCompanies) : "—"}
-              </div>
-              <div className="text-sm text-muted-foreground">Listed Companies</div>
+      {/* 3. BENTO GRID FEATURES - "BUILD AROUND YOUR STRATEGY" */}
+      <section id="platform" className="py-24 relative">
+        <div className="max-w-7xl mx-auto px-6">
+          <FadeIn>
+            <div className="mb-16 text-center md:text-left">
+              <h2 className="text-4xl font-bold text-white mb-4">Your money, <span className="text-cyan-400">upgraded.</span></h2>
+              <p className="text-slate-400 max-w-xl">All your assets. All the data. One beautiful interface made for your convenience.</p>
             </div>
-            <div className="text-center space-y-2">
-              <div className="text-3xl font-bold font-mono bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
-                {stats ? formatNumber(stats.dataPoints) : "—"}
-              </div>
-              <div className="text-sm text-muted-foreground">Data Points Analyzed</div>
-            </div>
-            <div className="text-center space-y-2">
-              <div className="text-3xl font-bold font-mono bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
-                {stats ? `${stats.chartCount}+` : "—"}
-              </div>
-              <div className="text-sm text-muted-foreground">Market Charts</div>
-            </div>
-            <div className="text-center space-y-2">
-              <div className="text-3xl font-bold font-mono bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">100%</div>
-              <div className="text-sm text-muted-foreground">Free Forever</div>
-            </div>
+          </FadeIn>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            {/* Large Card: Market Cycles */}
+            <FadeIn delay={200} className="md:col-span-2">
+              <SpotlightCard className="h-full bg-slate-900/40 border border-white/10 rounded-3xl p-8 hover:border-white/20 transition-colors group">
+                <div className="absolute top-0 right-0 p-12 bg-blue-600/20 blur-[80px] rounded-full pointer-events-none group-hover:bg-blue-600/30 transition-all duration-700" />
+                <div className="relative z-10 flex flex-col h-full justify-between min-h-[300px]">
+                  <div>
+                    <div className="w-12 h-12 bg-blue-500/20 rounded-2xl flex items-center justify-center mb-6 text-blue-400 group-hover:scale-110 transition-transform duration-500">
+                      <Activity className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-2xl font-bold text-white mb-2">Cycle Hunters</h3>
+                    <p className="text-slate-400 max-w-md group-hover:text-slate-200 transition-colors">
+                      Stop guessing. Use proprietary <strong>Top & Bottom Indicators</strong> for Bitcoin and KSE-100 to know exactly when to enter and exit.
+                    </p>
+                  </div>
+                  {/* Mock Cycle Visual */}
+                  <div className="mt-8 flex items-end gap-1 h-32 w-full opacity-50 group-hover:opacity-100 transition-opacity duration-500">
+                    <svg viewBox="0 0 100 40" className="w-full h-full overflow-visible">
+                      <path d="M0 35 Q 20 40, 40 20 T 100 5" fill="none" stroke="url(#gradientLine)" strokeWidth="3" />
+                      <defs>
+                        <linearGradient id="gradientLine" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor="#3b82f6" />
+                          <stop offset="50%" stopColor="#8b5cf6" />
+                          <stop offset="100%" stopColor="#ef4444" />
+                        </linearGradient>
+                      </defs>
+                      {/* Top Indicator */}
+                      <circle cx="95" cy="5" r="3" fill="#ef4444" className="animate-pulse" />
+                      <text x="85" y="-5" fill="#ef4444" fontSize="8" fontWeight="bold">SELL</text>
+                    </svg>
+                  </div>
+                </div>
+              </SpotlightCard>
+            </FadeIn>
+
+            {/* Card: Crypto Risk */}
+            <FadeIn delay={400}>
+              <SpotlightCard className="h-full bg-slate-900/40 border border-white/10 rounded-3xl p-8 hover:border-white/20 transition-colors group" spotlightColor="rgba(249, 115, 22, 0.15)">
+                <div className="relative z-10 h-full flex flex-col">
+                  <div className="w-12 h-12 bg-orange-500/20 rounded-2xl flex items-center justify-center mb-6 text-orange-400 group-hover:rotate-12 transition-transform duration-500">
+                    <Flame className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-white mb-2">Crypto Risk</h3>
+                  <p className="text-slate-400 mb-8 group-hover:text-slate-200 transition-colors">
+                    Deep-dive risk profiles. See Fair Value Trendlines and know if BTC is overheated instantly.
+                  </p>
+                  <div className="mt-auto flex justify-end">
+                    <div className="w-12 h-12 rounded-full border border-white/10 bg-white/5 flex items-center justify-center group-hover:scale-110 group-hover:bg-orange-500 group-hover:text-white transition-all duration-300 cursor-pointer">
+                      <ArrowRight className="w-5 h-5" />
+                    </div>
+                  </div>
+                </div>
+              </SpotlightCard>
+            </FadeIn>
+
+            {/* Card: Net Worth Tracker */}
+            <FadeIn delay={200}>
+              <SpotlightCard className="h-full bg-slate-900/40 border border-white/10 rounded-3xl p-8 hover:border-white/20 transition-colors group" spotlightColor="rgba(16, 185, 129, 0.15)">
+                <div className="relative z-10">
+                  <div className="w-12 h-12 bg-emerald-500/20 rounded-2xl flex items-center justify-center mb-6 text-emerald-400 group-hover:scale-110 transition-transform">
+                    <Wallet className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-white mb-2">Total Net Worth</h3>
+                  <p className="text-slate-400 group-hover:text-slate-200 transition-colors">
+                    One number for everything. Track PK & US Stocks, Crypto, Metals, Commodities, and Cash in real-time.
+                  </p>
+                </div>
+              </SpotlightCard>
+            </FadeIn>
+
+            {/* Large Card: Macro & Liquidity */}
+            <FadeIn delay={400} className="md:col-span-2">
+              <SpotlightCard className="h-full bg-slate-900/40 border border-white/10 rounded-3xl p-8 hover:border-white/20 transition-colors group" spotlightColor="rgba(245, 158, 11, 0.15)">
+                <div className="absolute bottom-0 left-0 p-12 bg-amber-600/10 blur-[80px] rounded-full pointer-events-none group-hover:bg-amber-600/20 transition-all duration-700" />
+                <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
+                  <div className="flex-1">
+                    <div className="w-12 h-12 bg-amber-500/20 rounded-2xl flex items-center justify-center mb-6 text-amber-400 group-hover:scale-110 transition-transform">
+                      <Layers className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-2xl font-bold text-white mb-2">Macro & Liquidity</h3>
+                    <p className="text-slate-400 group-hover:text-slate-200 transition-colors">
+                      See where the money is moving. Institutional Liquidity Maps (Lipi), SBP Interest Rates, and Balance of Payments data.
+                    </p>
+                  </div>
+                  <div className="flex-1 w-full bg-slate-950/50 border border-white/5 rounded-xl p-4 group-hover:border-amber-500/30 transition-colors">
+                    <div className="grid grid-cols-4 gap-1 h-24 opacity-70 group-hover:opacity-100 transition-opacity">
+                      {[...Array(16)].map((_, i) => (
+                        <div key={i} className={`rounded-sm ${i % 3 === 0 ? 'bg-emerald-500/40' : i % 2 === 0 ? 'bg-rose-500/40' : 'bg-slate-800'}`}></div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </SpotlightCard>
+            </FadeIn>
+
           </div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <section id="features" className="py-24">
-        <div className="container mx-auto px-4">
-          <div className="mx-auto max-w-2xl text-center space-y-4 mb-16">
-            <h2 className="text-3xl font-bold tracking-tight text-balance md:text-4xl">
-              Everything You Need for Quantitative Analysis
-            </h2>
-            <p className="text-lg text-muted-foreground text-pretty">
-              Powerful tools designed for professional investors and traders. Focused on Pakistani equities with research capabilities for US equities, crypto, and metals.
+      {/* 4. "LAUNCHPAD" SECTION - "ACCESS EVERYTHING" */}
+      <section className="py-24 bg-gradient-to-b from-[#020617] to-blue-950/20 overflow-hidden relative">
+        {/* Background glow for launchpad */}
+        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/5 blur-[120px] rounded-full pointer-events-none" />
+
+        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center gap-16 relative z-10">
+          <FadeIn className="flex-1">
+            <h2 className="text-5xl font-extrabold text-white mb-6 leading-tight">Your command <br />center.</h2>
+            <p className="text-lg text-slate-400 mb-8 leading-relaxed">
+              Switch between Bitcoin Risk Charts, KSE-100 cycles, and your Net Worth in milliseconds. Technology that remembers your strategy.
+            </p>
+            <div className="flex items-center gap-4 text-slate-500 text-sm font-medium">
+              <span className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 group cursor-pointer hover:bg-white/10 transition-colors">
+                <Command className="w-4 h-4 group-hover:text-white transition-colors" /> K
+              </span>
+              to activate Launchpad
+            </div>
+          </FadeIn>
+
+          <FadeIn delay={200} className="flex-1 w-full">
+            <div className="bg-[#0B1121] border border-white/10 rounded-2xl p-6 shadow-2xl relative overflow-hidden group hover:border-blue-500/30 transition-colors duration-500">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 blur-[60px] rounded-full pointer-events-none group-hover:bg-cyan-500/20 transition-colors" />
+
+              <div className="flex items-center gap-4 mb-6 border-b border-white/5 pb-4">
+                <Search className="w-5 h-5 text-slate-400 group-hover:text-cyan-400 transition-colors" />
+                <span className="text-xl text-white">BTC</span>
+                <span className="ml-auto text-xs text-slate-500 bg-white/5 px-2 py-1 rounded">ESC</span>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-4 p-3 bg-blue-600/10 border border-blue-500/20 rounded-xl cursor-pointer hover:bg-blue-600/20 transition-colors">
+                  <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-orange-500/30">B</div>
+                  <div>
+                    <div className="text-white font-bold">Bitcoin</div>
+                    <div className="text-xs text-blue-400">Open in Crypto Dashboard</div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-blue-400 ml-auto" />
+                </div>
+
+                <div className="flex items-center gap-4 p-3 hover:bg-white/5 rounded-xl cursor-pointer transition-colors group/item">
+                  <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-white font-bold text-xs border border-white/10 group-hover/item:border-emerald-500/50 group-hover/item:text-emerald-400 transition-colors">
+                    <Wallet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-slate-200 group-hover/item:text-white transition-colors">Add to Net Worth</div>
+                    <div className="text-xs text-slate-500">Action</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </FadeIn>
+        </div>
+      </section>
+
+      {/* 5. PRICING - "POWERFUL CONNECTIONS" */}
+      <section id="pricing" className="py-24 relative overflow-hidden">
+        {/* Floor Light Effect - from video */}
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-emerald-500/10 blur-[100px] rounded-[100%] pointer-events-none animate-pulse-slow" />
+
+        <div className="relative z-10 max-w-2xl mx-auto px-6 text-center">
+          <FadeIn>
+            <h2 className="text-4xl font-bold text-white mb-12">Made for you, <span className="text-emerald-400">with you.</span></h2>
+          </FadeIn>
+
+          {/* Single Free Plan Card */}
+          <FadeIn delay={200}>
+            <div className="h-full p-8 rounded-3xl bg-slate-900/50 border border-white/10 hover:bg-slate-900 transition-colors hover:border-white/20 shadow-2xl">
+              <h3 className="font-bold text-2xl text-white mb-2">Scout</h3>
+              <p className="text-slate-400 text-sm mb-6">Start your journey today</p>
+              <div className="text-5xl font-extrabold text-white mb-8">Free <span className="text-lg font-normal text-slate-500">forever</span></div>
+
+              <ul className="space-y-4 mb-8 text-left max-w-md mx-auto">
+                {[
+                  'Standard Market Charts & Analytics',
+                  'Basic Portfolio Tracking',
+                  'Stock Screener & Watchlist',
+                  'KSE-100 & Crypto Data'
+                ].map((item, i) => (
+                  <li key={i} className="flex items-center gap-3 text-slate-300 text-sm">
+                    <div className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center shrink-0"><Check className="w-3 h-3 text-white" /></div> {item}
+                  </li>
+                ))}
+              </ul>
+              <button className="w-full py-4 rounded-xl bg-white text-black font-bold hover:bg-slate-200 transition-all hover:scale-[1.02] shadow-[0_0_20px_-5px_rgba(255,255,255,0.2)]">
+                Start Journey
+              </button>
+            </div>
+          </FadeIn>
+        </div>
+      </section>
+
+      {/* 6. FOOTER */}
+      <footer className="border-t border-white/10 bg-[#020617] pt-20 pb-10 relative z-10">
+        <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-12 mb-16">
+          <div className="col-span-1 md:col-span-1">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="bg-blue-600 p-1.5 rounded-lg shadow-lg shadow-blue-600/30">
+                <TrendingUp className="w-5 h-5 text-white" />
+              </div>
+              <span className="font-bold text-lg text-white">CONVICTION PAYS</span>
+            </div>
+            <p className="text-slate-500 text-sm leading-relaxed mb-6">
+              Professional quantitative research platform for Pakistani equities, with research capabilities for US equities, crypto, and metals.
             </p>
           </div>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            <Card className="border-l-4 border-l-blue-600">
-              <CardHeader>
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-600/10">
-                  <LineChartIcon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                </div>
-                <CardTitle>Market Charts & Analytics</CardTitle>
-                <CardDescription>
-                  KSE100 Market Cycle, Market Heatmap, Advance-Decline indicators, P/E Ratio analysis, and Interest Rate correlations for PK equities
-                </CardDescription>
-              </CardHeader>
-            </Card>
 
-            <Card className="border-l-4 border-l-cyan-600">
-              <CardHeader>
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-cyan-600/10">
-                  <ShieldCheckIcon className="h-6 w-6 text-cyan-600 dark:text-cyan-400" />
-                </div>
-                <CardTitle>Risk Management</CardTitle>
-                <CardDescription>
-                  Comprehensive risk metrics including Sharpe ratio, Sortino ratio, beta analysis, maximum drawdown, and stress testing
-                </CardDescription>
-              </CardHeader>
-            </Card>
+          <div>
+            <h4 className="font-bold text-white mb-6">Company</h4>
+            <ul className="space-y-4 text-sm text-slate-400">
+              <li><a href="#" className="hover:text-cyan-400 transition-colors">About</a></li>
+            </ul>
+          </div>
 
-            <Card className="border-l-4 border-l-blue-500">
-              <CardHeader>
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-500/10">
-                  <PieChartIcon className="h-6 w-6 text-blue-500 dark:text-blue-400" />
-                </div>
-                <CardTitle>Portfolio Optimization</CardTitle>
-                <CardDescription>
-                  Modern Portfolio Theory tools for asset allocation, efficient frontier analysis, and diversification strategies
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card className="border-l-4 border-l-cyan-500">
-              <CardHeader>
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-cyan-500/10">
-                  <Wallet className="h-6 w-6 text-cyan-500 dark:text-cyan-400" />
-                </div>
-                <CardTitle>Multi-Asset Portfolio Tracking</CardTitle>
-                <CardDescription>
-                  Track PK equities, US equities, crypto, commodities, and indices with detailed performance analytics
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card className="border-l-4 border-l-blue-400">
-              <CardHeader>
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-400/10">
-                  <ActivityIcon className="h-6 w-6 text-blue-400 dark:text-blue-300" />
-                </div>
-                <CardTitle>Market Breadth Analysis</CardTitle>
-                <CardDescription>
-                  Advance-decline indicators, new highs/lows tracking, and sector rotation analysis for market sentiment
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card className="border-l-4 border-l-cyan-400">
-              <CardHeader>
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-cyan-400/10">
-                  <Search className="h-6 w-6 text-cyan-400 dark:text-cyan-300" />
-                </div>
-                <CardTitle>Asset Screening</CardTitle>
-                <CardDescription>
-                  Build and save custom stock screeners with fundamental and technical criteria for finding opportunities across PK and US equities
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card className="border-l-4 border-l-blue-600">
-              <CardHeader>
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-600/10">
-                  <BarChart3Icon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                </div>
-                <CardTitle>ETH Risk Dashboard</CardTitle>
-                <CardDescription>
-                  Real-time Ethereum risk analysis with valuation metrics, relative risk to Bitcoin, and fair value trendlines
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card className="border-l-4 border-l-cyan-600">
-              <CardHeader>
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-cyan-600/10">
-                  <Globe className="h-6 w-6 text-cyan-600 dark:text-cyan-400" />
-                </div>
-                <CardTitle>Macro Analysis</CardTitle>
-                <CardDescription>
-                  Comprehensive macroeconomic analysis with GDP, CPI, interest rates, exchange rates, remittances, reserves, and industrial data. Analyze correlations between macro factors and equity markets.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card className="border-l-4 border-l-blue-500">
-              <CardHeader>
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-500/10">
-                  <TrendingUp className="h-6 w-6 text-blue-500 dark:text-blue-400" />
-                </div>
-                <CardTitle>Historical Analysis</CardTitle>
-                <CardDescription>
-                  10+ years of historical data with seasonality patterns, drawdown analysis, and benchmark comparisons
-                </CardDescription>
-              </CardHeader>
-            </Card>
+          <div>
+            <h4 className="font-bold text-white mb-6">Legal</h4>
+            <ul className="space-y-4 text-sm text-slate-400">
+              <li><a href="#" className="hover:text-cyan-400 transition-colors">Privacy</a></li>
+              <li><a href="#" className="hover:text-cyan-400 transition-colors">Terms</a></li>
+              <li><a href="#" className="hover:text-cyan-400 transition-colors">Security</a></li>
+            </ul>
           </div>
         </div>
-      </section>
-
-      {/* Pricing Section */}
-      <section id="pricing" className="py-24 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <div className="mx-auto max-w-2xl text-center space-y-4 mb-16">
-            <h2 className="text-3xl font-bold tracking-tight text-balance md:text-4xl">Simple, Transparent Pricing</h2>
-            <p className="text-lg text-muted-foreground text-pretty">Choose the plan that fits your trading style</p>
+        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center pt-8 border-t border-white/5">
+          <div className="text-slate-600 text-sm mb-4 md:mb-0">
+            &copy; 2025 Conviction Pays. All rights reserved.
           </div>
-          <div className="grid gap-6 lg:grid-cols-3 mx-auto max-w-5xl">
-            <Card>
-              <CardHeader>
-                <CardTitle>Free</CardTitle>
-                <CardDescription>Perfect for everyone</CardDescription>
-                <div className="mt-4">
-                  <span className="text-3xl font-bold font-mono bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">Free</span>
-                  <span className="text-muted-foreground"> forever</span>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <ul className="space-y-2">
-                  <li className="flex items-center gap-2">
-                    <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">All market charts & analytics</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">Portfolio tracking</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">Risk metrics & analysis</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">Asset screening</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">Macro analysis</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">ETH risk dashboard</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">Modern Portfolio Theory</span>
-                  </li>
-                </ul>
-                <Button className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700" asChild>
-                  <Link href="/charts">Get Started</Link>
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="border-blue-600 shadow-lg scale-105">
-              <CardHeader>
-                <Badge className="w-fit mb-2 bg-gradient-to-r from-blue-600 to-cyan-600">Most Popular</Badge>
-                <CardTitle>Free</CardTitle>
-                <CardDescription>For everyone</CardDescription>
-                <div className="mt-4">
-                  <span className="text-3xl font-bold font-mono bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">Free</span>
-                  <span className="text-muted-foreground"> forever</span>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <ul className="space-y-2">
-                  <li className="flex items-center gap-2">
-                    <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">Everything included</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">No limitations</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">Full feature access</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">Unlimited portfolios</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">All charts & analytics</span>
-                  </li>
-                </ul>
-                <Button className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700" asChild>
-                  <Link href="/charts">Get Started</Link>
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Free</CardTitle>
-                <CardDescription>For everyone</CardDescription>
-                <div className="mt-4">
-                  <span className="text-3xl font-bold font-mono bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">Free</span>
-                  <span className="text-muted-foreground"> forever</span>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <ul className="space-y-2">
-                  <li className="flex items-center gap-2">
-                    <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">Complete platform access</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">All features unlocked</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">No hidden fees</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm">Regular updates</span>
-                  </li>
-                </ul>
-                <Button variant="outline" className="w-full bg-transparent" asChild>
-                  <Link href="/charts">Get Started</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t border-border bg-muted/30">
-        <div className="container mx-auto px-4 py-12">
-          <div className="grid gap-8 md:grid-cols-4">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500">
-                  <TrendingUp className="h-5 w-5 text-white" />
-                </div>
-                <span className="font-bold">CONVICTION PLAY</span>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Professional quantitative research platform for Pakistani equities, with research capabilities for US equities, crypto, and metals.
-              </p>
-            </div>
-            <div>
-              <h3 className="font-semibold mb-3">Company</h3>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>
-                  <Link href="/about" className="hover:text-foreground transition-colors">
-                    About
-                  </Link>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-semibold mb-3">Legal</h3>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>
-                  <Link href="/privacy" className="hover:text-foreground transition-colors">
-                    Privacy
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/terms" className="hover:text-foreground transition-colors">
-                    Terms
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/security" className="hover:text-foreground transition-colors">
-                    Security
-                  </Link>
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div className="mt-12 pt-8 border-t border-border text-center text-sm text-muted-foreground">
-            © 2025 CONVICTION PLAY. All rights reserved.
+          <div className="flex items-center gap-2 text-xs font-medium bg-white/5 px-3 py-1 rounded-full text-slate-400 border border-white/5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            All Systems Operational
           </div>
         </div>
       </footer>
     </div>
-  )
-}
+  );
+};
+
+export default LandingPage;

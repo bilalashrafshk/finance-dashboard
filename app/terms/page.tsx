@@ -18,14 +18,14 @@ export default function TermsPage() {
               <section>
                 <h2 className="text-2xl font-semibold mt-6 mb-4">1. Acceptance of Terms</h2>
                 <p>
-                  By accessing and using CONVICTION PLAY ("the Service"), you accept and agree to be bound by the terms and provision of this agreement. If you do not agree to abide by the above, please do not use this service.
+                  By accessing and using Conviction Pays ("the Service"), you accept and agree to be bound by the terms and provision of this agreement. If you do not agree to abide by the above, please do not use this service.
                 </p>
               </section>
 
               <section>
                 <h2 className="text-2xl font-semibold mt-6 mb-4">2. Description of Service</h2>
                 <p>
-                  CONVICTION PLAY is a quantitative research platform that provides market analysis, portfolio tracking, risk metrics, and asset screening tools. The Service focuses primarily on Pakistani equities but also provides research and analysis for US equities, cryptocurrencies, and metals.
+                  Conviction Pays is a quantitative research platform that provides market analysis, portfolio tracking, risk metrics, and asset screening tools. The Service focuses primarily on Pakistani equities but also provides research and analysis for US equities, cryptocurrencies, and metals.
                 </p>
               </section>
 
@@ -65,14 +65,14 @@ export default function TermsPage() {
                   <li>Are provided "as is" without warranties of any kind</li>
                 </ul>
                 <p className="mt-2">
-                  You acknowledge that all investment decisions are your own responsibility and that CONVICTION PLAY is not liable for any losses or damages resulting from your use of the Service.
+                  You acknowledge that all investment decisions are your own responsibility and that Conviction Pays is not liable for any losses or damages resulting from your use of the Service.
                 </p>
               </section>
 
               <section>
                 <h2 className="text-2xl font-semibold mt-6 mb-4">6. Intellectual Property</h2>
                 <p>
-                  The Service and its original content, features, and functionality are owned by CONVICTION PLAY and are protected by international copyright, trademark, patent, trade secret, and other intellectual property laws.
+                  The Service and its original content, features, and functionality are owned by Conviction Pays and are protected by international copyright, trademark, patent, trade secret, and other intellectual property laws.
                 </p>
                 <p className="mt-2">
                   You may not modify, reproduce, distribute, create derivative works, publicly display, or otherwise use any content from the Service without our prior written permission.
@@ -99,7 +99,7 @@ export default function TermsPage() {
               <section>
                 <h2 className="text-2xl font-semibold mt-6 mb-4">9. Limitation of Liability</h2>
                 <p>
-                  TO THE MAXIMUM EXTENT PERMITTED BY LAW, CONVICTION PLAY SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS OR REVENUES, WHETHER INCURRED DIRECTLY OR INDIRECTLY, OR ANY LOSS OF DATA, USE, GOODWILL, OR OTHER INTANGIBLE LOSSES.
+                  TO THE MAXIMUM EXTENT PERMITTED BY LAW, Conviction Pays SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS OR REVENUES, WHETHER INCURRED DIRECTLY OR INDIRECTLY, OR ANY LOSS OF DATA, USE, GOODWILL, OR OTHER INTANGIBLE LOSSES.
                 </p>
               </section>
 
@@ -129,7 +129,7 @@ export default function TermsPage() {
                   If you have any questions about these Terms of Service, please contact us:
                 </p>
                 <ul className="list-none pl-0 space-y-2 mt-2">
-                  <li><strong>Email:</strong> support@convictionplay.com</li>
+                  <li><strong>Email:</strong> support@convictionpays.com</li>
                 </ul>
               </section>
 

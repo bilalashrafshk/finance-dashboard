@@ -28,7 +28,7 @@ export const DashboardView = () => {
             description: "Net Buy/Sell activity heatmap by client type and sector.",
             icon: Layers,
             color: "text-blue-400",
-            url: "https://finance-dashboard-six-snowy.vercel.app/charts?chart=liquidity-map",
+            action: () => handleNavigate('/charts?chart=liquidity-map'),
             visual: (
                 <div className="grid grid-cols-4 gap-1 w-full h-full p-2 opacity-60">
                     {[...Array(16)].map((_, i) => (
@@ -163,7 +163,7 @@ export const DashboardView = () => {
                         <ChartCard
                             key={i}
                             {...card}
-                            onClick={() => card.url ? window.open(card.url, '_blank') : card.action?.()}
+                            onClick={() => card.action?.()}
                         />
                     ))}
                 </div>
@@ -178,7 +178,7 @@ export const DashboardView = () => {
                         <ChartCard
                             key={i}
                             {...card}
-                            onClick={() => card.url ? window.open(card.url, '_blank') : card.action?.()}
+                            onClick={() => card.action?.()}
                         />
                     ))}
                 </div>
