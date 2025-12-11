@@ -48,23 +48,24 @@ export function GlobalSearch() {
     const [debouncedQuery] = useDebounce(query, 300)
     const [addAssetOpen, setAddAssetOpen] = React.useState(false)
 
+    // Fetch initial data or search results
     React.useEffect(() => {
-        if (open && debouncedQuery.length >= 1) {
-            setLoading(true)
-            fetch(`/api/global-search?query=${encodeURIComponent(debouncedQuery)}`)
-                .then((res) => res.json())
-                .then((json) => {
-                    if (json.success && Array.isArray(json.assets)) {
-                        setData(json.assets)
-                    } else {
-                        setData([])
-                    }
-                })
-                .catch(console.error)
-                .finally(() => setLoading(false))
-        } else if (debouncedQuery.length === 0) {
-            setData([])
-        }
+        const fetchUrl = debouncedQuery.length >= 1
+            ? `/api/global-search?query=${encodeURIComponent(debouncedQuery)}`
+            : "/api/global-search" // Support default list
+
+        setLoading(true)
+        fetch(fetchUrl)
+            .then((res) => res.json())
+            .then((json) => {
+                if (json.success && Array.isArray(json.assets)) {
+                    setData(json.assets)
+                } else {
+                    setData([])
+                }
+            })
+            .catch(console.error)
+            .finally(() => setLoading(false))
     }, [open, debouncedQuery])
 
     const runCommand = React.useCallback((command: () => unknown) => {

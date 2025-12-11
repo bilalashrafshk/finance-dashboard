@@ -10,21 +10,15 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const queryParam = searchParams.get('query')
 
-  // Lazy loading: if no query, return empty or default list (optional, but requested "lazy-loading" usually implies search-as-you-type)
-  // The user asked for "lazy-loading of all assets", implying we shouldn't fetch EVERYTHING at once.
-  // We'll require a query of at least 1 character to search, or maybe return trending?
-  // Let's implement search logic. If no query, return empty list to avoid payload size.
-
-  if (!queryParam || queryParam.length < 1) {
-    return NextResponse.json({
-      success: true,
-      assets: []
-    })
-  }
+  // Lazy loading: if no query, we can return a default list or trending items.
+  // User feedback suggests "no stock is listed", implying they expect a default list.
+  // We will allow empty query to proceed to SQL with a wildcard or separate query.
 
   const client = await pool.connect()
   try {
-    const searchQuery = `%${queryParam}%`
+    // If queryParam is null or empty, `%${queryParam}%` becomes `%%`, which acts as a wildcard matching everything.
+    const searchQuery = queryParam ? `%${queryParam}%` : '%'
+    const sortQuery = queryParam ? `${queryParam}%` : ''
 
     // Fetch unique assets across multiple types
     // We prioritize joining with company_profiles for names
@@ -50,18 +44,19 @@ export async function GET(request: Request) {
         ON cp.symbol = hpd.symbol 
         AND (cp.asset_type = hpd.asset_type OR (cp.asset_type = 'equity' AND hpd.asset_type = 'pk-equity'))
       WHERE 
-        (hpd.symbol ILIKE $1 OR COALESCE(cp.name, hpd.symbol) ILIKE $1)
+        ($1 = '%' OR hpd.symbol ILIKE $1 OR COALESCE(cp.name, hpd.symbol) ILIKE $1)
       ORDER BY 
         CASE 
-          WHEN hpd.symbol ILIKE $2 THEN 1 
+          WHEN $2 != '' AND hpd.symbol ILIKE $2 THEN 1 
           ELSE 2 
         END,
+        hpd.asset_type,
         hpd.symbol
       LIMIT 20
     `
 
-    // $1 is %query%, $2 is query% for better sorting (starts with match first)
-    const { rows } = await client.query(dbQuery, [searchQuery, `${queryParam}%`])
+    // $1 is %query% (or %), $2 is query% (or empty)
+    const { rows } = await client.query(dbQuery, [searchQuery, sortQuery])
 
     return NextResponse.json({
       success: true,
