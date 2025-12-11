@@ -114,6 +114,8 @@ const SpotlightCard = ({ children, className = "", spotlightColor = "rgba(59, 13
 import LoginModal from '@/components/landing/login-modal';
 import Link from 'next/link';
 
+import { Logo } from '@/components/logo';
+
 const LandingPage = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
@@ -134,17 +136,7 @@ const LandingPage = () => {
       <header className="sticky top-0 z-50 bg-[#020617]/80 backdrop-blur-xl border-b border-white/5 transition-all duration-300">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           {/* Logo */}
-          <div className="flex items-center gap-3 cursor-pointer group">
-            <div className="relative">
-              <div className="absolute inset-0 bg-blue-500 blur-lg opacity-20 group-hover:opacity-40 transition-opacity"></div>
-              <div className="relative bg-gradient-to-br from-blue-600 to-cyan-500 p-2.5 rounded-xl shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-all duration-500 group-hover:scale-105">
-                <TrendingUp className="w-5 h-5 text-white" />
-              </div>
-            </div>
-            <div className="font-bold text-xl tracking-tight text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-slate-400 transition-all">
-              CONVICTION <span className="text-cyan-400">PAYS</span>
-            </div>
-          </div>
+          <Logo />
 
           {/* Desktop Nav Links */}
           <nav className="hidden md:flex items-center gap-8">
@@ -468,13 +460,8 @@ const LandingPage = () => {
       <footer className="border-t border-white/10 bg-[#020617] pt-20 pb-10 relative z-10">
         <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-12 mb-16">
           <div className="col-span-1 md:col-span-1">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="bg-blue-600 p-1.5 rounded-lg shadow-lg shadow-blue-600/30">
-                <TrendingUp className="w-5 h-5 text-white" />
-              </div>
-              <span className="font-bold text-lg text-white">CONVICTION PAYS</span>
-            </div>
-            <p className="text-slate-500 text-sm leading-relaxed mb-6">
+            <Logo />
+            <p className="text-slate-500 text-sm leading-relaxed mb-6 mt-4">
               Professional quantitative research platform for Pakistani equities, with research capabilities for US equities, crypto, and metals.
             </p>
           </div>

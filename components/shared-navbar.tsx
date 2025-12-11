@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { TrendingUp, Menu, X, LogOut, BarChart3, Wallet, Search, User, Settings, Crown, Filter, Grid3x3, Bell } from 'lucide-react'
+import { Logo } from '@/components/logo'
 import { useAuth } from '@/lib/auth/auth-context'
 import LoginModal from '@/components/landing/login-modal'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -36,16 +37,11 @@ export function SharedNavbar() {
 
   return (
     <>
-      <nav className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <nav className="sticky top-0 z-50 bg-[#020617]/80 backdrop-blur-xl border-b border-white/5 transition-all duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="flex items-center gap-2 group">
-              <div className="bg-blue-600 p-1.5 rounded-lg">
-                <TrendingUp className="w-5 h-5 text-white" />
-              </div>
-              <div className="font-bold text-xl tracking-tight text-foreground hidden sm:block">
-                CONVICTION <span className="text-blue-600 dark:text-blue-500">PAYS</span>
-              </div>
+              <Logo />
             </Link>
 
             {/* Desktop Navigation */}
@@ -55,8 +51,8 @@ export function SharedNavbar() {
                   <Link
                     href="/charts"
                     className={`px-4 py-2 rounded-lg transition-colors ${isActive('/charts')
-                      ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
-                      : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
+                      ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
+                      : 'text-slate-400 hover:text-white'
                       }`}
                   >
                     <div className="flex items-center gap-2">
@@ -67,8 +63,8 @@ export function SharedNavbar() {
                   <Link
                     href="/portfolio"
                     className={`px-4 py-2 rounded-lg transition-colors ${isActive('/portfolio')
-                      ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
-                      : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
+                      ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
+                      : 'text-slate-400 hover:text-white'
                       }`}
                   >
                     <div className="flex items-center gap-2">
@@ -79,8 +75,8 @@ export function SharedNavbar() {
                   <Link
                     href="/my-list"
                     className={`px-4 py-2 rounded-lg transition-colors ${isActive('/my-list')
-                      ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
-                      : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
+                      ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
+                      : 'text-slate-400 hover:text-white'
                       }`}
                   >
                     <div className="flex items-center gap-2">
@@ -91,8 +87,8 @@ export function SharedNavbar() {
                   <Link
                     href="/screener"
                     className={`px-4 py-2 rounded-lg transition-colors ${isActive('/screener')
-                      ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
-                      : 'text-foreground hover:text-blue-600 dark:hover:text-blue-400'
+                      ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
+                      : 'text-slate-400 hover:text-white'
                       }`}
                   >
                     <div className="flex items-center gap-2">
@@ -163,15 +159,15 @@ export function SharedNavbar() {
                 <>
                   <button
                     onClick={() => setLoginModalOpen(true)}
-                    className="px-6 py-2 text-foreground hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                    className="text-sm font-medium text-white hover:text-cyan-400 transition-colors"
                   >
-                    Sign In
+                    Log In
                   </button>
                   <button
                     onClick={() => setLoginModalOpen(true)}
-                    className="px-6 py-2 rounded-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-medium hover:shadow-lg hover:shadow-blue-500/20 transition-all"
+                    className="bg-white text-black hover:bg-cyan-50 px-5 py-2.5 rounded-full text-sm font-bold transition-all shadow-[0_0_20px_-5px_rgba(255,255,255,0.3)] hover:shadow-[0_0_25px_-5px_rgba(6,182,212,0.5)] hover:-translate-y-0.5 active:translate-y-0"
                   >
-                    Sign Up
+                    Get Started
                   </button>
                 </>
               )}
