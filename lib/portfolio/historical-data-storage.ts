@@ -21,9 +21,9 @@ import type { StockAnalysisDataPoint } from './stockanalysis-api'
 import type { BinanceHistoricalDataPoint } from './binance-historical-api'
 import type { InvestingHistoricalDataPoint } from './investing-client-api'
 
-export type HistoricalDataPoint = 
-  | StockAnalysisDataPoint 
-  | BinanceHistoricalDataPoint 
+export type HistoricalDataPoint =
+  | StockAnalysisDataPoint
+  | BinanceHistoricalDataPoint
   | InvestingHistoricalDataPoint
 
 export interface StoredHistoricalData {
@@ -48,16 +48,16 @@ function getStorageKey(assetType: string, symbol: string): string {
  */
 function getLatestDate(data: HistoricalDataPoint[]): string | null {
   if (!data || data.length === 0) return null
-  
+
   // Different data sources have different date field names
   const dates = data.map(point => {
     if ('t' in point) return point.t // StockAnalysis format
     if ('date' in point) return point.date // Binance/Investing format
     return null
   }).filter(Boolean) as string[]
-  
+
   if (dates.length === 0) return null
-  
+
   // Sort and return latest
   dates.sort((a, b) => b.localeCompare(a))
   return dates[0]
@@ -75,16 +75,16 @@ export function loadHistoricalData(
   try {
     const key = getStorageKey(assetType, symbol)
     const stored = localStorage.getItem(key)
-    
+
     if (!stored) return null
-    
+
     const parsed = JSON.parse(stored) as StoredHistoricalData
-    
+
     // Calculate lastStoredDate if not present (for backward compatibility)
     if (!parsed.lastStoredDate && parsed.data) {
       parsed.lastStoredDate = getLatestDate(parsed.data) || ''
     }
-    
+
     return parsed
   } catch (error) {
     console.error(`Error loading historical data for ${assetType}-${symbol}:`, error)
@@ -106,16 +106,16 @@ export function saveHistoricalData(
   try {
     const key = getStorageKey(assetType, symbol)
     const lastStoredDate = getLatestDate(data)
-    
+
     const toStore: StoredHistoricalData = {
       data,
       lastUpdated: new Date().toISOString(),
       lastStoredDate: lastStoredDate || '',
       source,
     }
-    
+
     const json = JSON.stringify(toStore)
-    
+
     // Check storage size (localStorage has ~5-10MB limit)
     if (json.length > MAX_STORAGE_SIZE) {
       console.warn(`Historical data for ${assetType}-${symbol} exceeds storage limit, truncating...`)
@@ -123,21 +123,21 @@ export function saveHistoricalData(
       const twoYearsAgo = new Date()
       twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2)
       const cutoffDate = twoYearsAgo.toISOString().split('T')[0]
-      
+
       const filtered = data.filter(point => {
         const date = ('t' in point ? point.t : point.date)
         return date >= cutoffDate
       })
-      
+
       toStore.data = filtered
       toStore.lastStoredDate = getLatestDate(filtered) || ''
     }
-    
+
     localStorage.setItem(key, JSON.stringify(toStore))
     return true
   } catch (error) {
     console.error(`Error saving historical data for ${assetType}-${symbol}:`, error)
-    
+
     // If quota exceeded, try to clear old data
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
       console.warn('localStorage quota exceeded, clearing old historical data...')
@@ -150,7 +150,7 @@ export function saveHistoricalData(
         console.error('Failed to save after clearing old data:', retryError)
       }
     }
-    
+
     return false
   }
 }
@@ -165,28 +165,28 @@ export function mergeHistoricalData(
 ): HistoricalDataPoint[] {
   if (!existing || existing.length === 0) return newData
   if (!newData || newData.length === 0) return existing
-  
+
   const existingDates = new Set(
     existing.map(point => 't' in point ? point.t : point.date)
   )
-  
+
   // Only add new dates
   const toAdd = newData.filter(point => {
     const date = 't' in point ? point.t : point.date
     return !existingDates.has(date)
   })
-  
+
   if (toAdd.length === 0) return existing
-  
+
   // Combine and sort by date
   const combined = [...existing, ...toAdd]
-  
+
   combined.sort((a, b) => {
     const dateA = 't' in a ? a.t : a.date
     const dateB = 't' in b ? b.t : b.date
     return dateA.localeCompare(dateB)
   })
-  
+
   return combined
 }
 
@@ -198,11 +198,11 @@ export function getFetchStartDate(
   symbol: string
 ): string | undefined {
   const stored = loadHistoricalData(assetType, symbol)
-  
+
   if (!stored || !stored.lastStoredDate) {
     return undefined // No stored data, fetch from beginning
   }
-  
+
   // Return day after last stored date
   const lastDate = new Date(stored.lastStoredDate)
   lastDate.setDate(lastDate.getDate() + 1)
@@ -220,11 +220,11 @@ function clearOldHistoricalData(): void {
     const twoYearsAgo = new Date()
     twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2)
     const cutoffDate = twoYearsAgo.toISOString().split('T')[0]
-    
-    const keys = Object.keys(localStorage).filter(key => 
+
+    const keys = Object.keys(localStorage).filter(key =>
       key.startsWith(STORAGE_PREFIX)
     )
-    
+
     for (const key of keys) {
       try {
         const stored = JSON.parse(localStorage.getItem(key) || '{}') as StoredHistoricalData
@@ -233,7 +233,7 @@ function clearOldHistoricalData(): void {
             const date = 't' in point ? point.t : point.date
             return date >= cutoffDate
           })
-          
+
           if (filtered.length < stored.data.length) {
             stored.data = filtered
             stored.lastStoredDate = getLatestDate(filtered) || ''
@@ -257,12 +257,12 @@ export function clearAllHistoricalData(): void {
   if (typeof window === 'undefined') return
 
   try {
-    const keys = Object.keys(localStorage).filter(key => 
+    const keys = Object.keys(localStorage).filter(key =>
       key.startsWith(STORAGE_PREFIX)
     )
-    
+
     keys.forEach(key => localStorage.removeItem(key))
-    console.log(`Cleared ${keys.length} historical data entries`)
+
   } catch (error) {
     console.error('Error clearing all historical data:', error)
   }

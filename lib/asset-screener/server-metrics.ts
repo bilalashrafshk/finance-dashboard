@@ -80,7 +80,7 @@ export async function getAssetMetrics(asset: TrackedAsset, baseUrl?: string) {
 
         // Fallback: If not in DB, return nulls (or we could trigger a calc, but for now keep it simple)
         // The cron job should populate this.
-        console.log(`[Server Metrics] No pre-calculated metrics found for ${asset.symbol}`)
+
         return {
             price: null,
             ytdReturn: null,

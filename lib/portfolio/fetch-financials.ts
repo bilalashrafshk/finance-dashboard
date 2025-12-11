@@ -42,7 +42,7 @@ async function fetchSectorFromPSX(symbol: string): Promise<string | null> {
   try {
     const normalizedSymbol = symbol.toUpperCase().trim();
     const now = Date.now();
-    
+
     // Check cache validity
     if (psxSymbolsCache && (now - psxSymbolsCacheTimestamp) < PSX_SYMBOLS_CACHE_TTL) {
       const cachedSector = psxSymbolsCache.get(normalizedSymbol);
@@ -50,7 +50,7 @@ async function fetchSectorFromPSX(symbol: string): Promise<string | null> {
         return cachedSector || null; // Return null if empty string was cached
       }
     }
-    
+
     // Fetch from API
     const response = await fetch('https://dps.psx.com.pk/symbols', {
       headers: {
@@ -58,14 +58,14 @@ async function fetchSectorFromPSX(symbol: string): Promise<string | null> {
         'Accept': 'application/json',
       },
     });
-    
+
     if (!response.ok) {
       console.error(`[PSX Symbols API] Failed to fetch: ${response.status}`);
       return null;
     }
-    
+
     const symbols: PSXSymbol[] = await response.json();
-    
+
     // Build cache map
     psxSymbolsCache = new Map();
     for (const sym of symbols) {
@@ -73,7 +73,7 @@ async function fetchSectorFromPSX(symbol: string): Promise<string | null> {
       psxSymbolsCache.set(sym.symbol.toUpperCase(), sym.sectorName || '');
     }
     psxSymbolsCacheTimestamp = now;
-    
+
     // Return sector for requested symbol
     const sector = psxSymbolsCache.get(normalizedSymbol);
     return sector && sector.trim() ? sector.trim() : null;
@@ -161,26 +161,26 @@ function extractRowValues(html: string, labels: string[]): (number | null)[] {
     // Find the row header
     const regex = new RegExp(`>${safeLabel}<`, 'i');
     const matchIndex = html.search(regex);
-    
+
     if (matchIndex !== -1) {
       // Get the row content (approx next 2000 chars)
       const rowChunk = html.substring(matchIndex, matchIndex + 3000);
       // Split by <td> to find cells
       // Note: This is a rough parser. Ideally use a DOM parser, but regex is faster/lighter for this specific consistent layout.
       const cells = rowChunk.split('<td');
-      
+
       // Skip the first part (label cell) and map the rest
       // The first actual value usually starts at index 1 or 2 depending on hidden columns
       // In StockAnalysis, the values are usually in standard <td> cells
       const values: (number | null)[] = [];
-      
+
       for (let i = 1; i < cells.length; i++) {
         // Clean value: remove tags, commas
         let cleanVal = cells[i].split('</td>')[0].replace(/>/g, '').replace(/<[^>]*>/g, '').trim();
-        
+
         // Stop if we hit a new row (</tr>) which might be caught in the chunk if we aren't careful
         if (cleanVal.includes('tr>')) break;
-        
+
         // Handle "Upgrade" or empty
         if (cleanVal.includes('Upgrade') || cleanVal === '-' || cleanVal === 'n/a' || cleanVal === '') {
           values.push(null);
@@ -189,7 +189,7 @@ function extractRowValues(html: string, labels: string[]): (number | null)[] {
           cleanVal = cleanVal.replace('%', '');
           // Handle commas
           cleanVal = cleanVal.replace(/,/g, '');
-          
+
           const num = parseFloat(cleanVal);
           values.push(isNaN(num) ? null : num);
         }
@@ -208,10 +208,10 @@ function extractDates(html: string): string[] {
   const label = 'Period Ending';
   const index = html.indexOf(label);
   if (index === -1) return [];
-  
+
   const chunk = html.substring(index, index + 3000);
   const parts = chunk.split('<td'); // StockAnalysis uses <td> for dates too usually, or <th>
-  
+
   const dates: string[] = [];
   // Parse dates
   // Format usually: Sep 30, 2025
@@ -222,7 +222,7 @@ function extractDates(html: string): string[] {
 
   for (let i = 1; i < parts.length; i++) {
     let rawDate = parts[i].split('</td>')[0].replace(/>/g, '').replace(/<[^>]*>/g, '').trim();
-    
+
     // Regex for "Mmm DD, YYYY"
     const match = rawDate.match(/([A-Z][a-z]{2}) (\d{1,2}), (\d{4})/);
     if (match) {
@@ -232,7 +232,7 @@ function extractDates(html: string): string[] {
       dates.push(`${y}-${mm}-${dd}`);
     }
   }
-  
+
   return dates;
 }
 
@@ -242,13 +242,13 @@ function extractDates(html: string): string[] {
 export async function updateFinancials(symbol: string, assetType: string = 'pk-equity') {
   const baseUrl = `https://stockanalysis.com/quote/psx/${symbol}`;
   const periods = ['quarterly', 'annual'];
-  
-  console.log(`Starting financial update for ${symbol}...`);
+
+
 
   for (const period of periods) {
     const periodType = period as 'quarterly' | 'annual';
     const suffix = period === 'quarterly' ? '?period=quarterly' : '?period=annual';
-    
+
     // 1. Fetch pages
     const [incomeHtml, balanceHtml, flowHtml] = await Promise.all([
       fetchHtml(`${baseUrl}/financials/${suffix}`),
@@ -285,33 +285,33 @@ export async function updateFinancials(symbol: string, assetType: string = 'pk-e
     // Execute parsing for all metrics
     // Income
     Object.entries(METRIC_MAPPING).forEach(([key, labels]) => {
-      if (['revenue', 'net_income', 'eps_diluted', 'interest_income', 'currency_gain_loss'].includes(key)) { 
-         mapRowToData(incomeHtml, key, labels);
+      if (['revenue', 'net_income', 'eps_diluted', 'interest_income', 'currency_gain_loss'].includes(key)) {
+        mapRowToData(incomeHtml, key, labels);
       }
     });
-    
+
     // Balance Sheet (Check balanceHtml)
     Object.entries(METRIC_MAPPING).forEach(([key, labels]) => {
-       if (['total_assets', 'total_debt', 'cash_and_equivalents', 'accounts_receivable', 'inventory'].includes(key)) {
-         mapRowToData(balanceHtml, key, labels);
-       }
+      if (['total_assets', 'total_debt', 'cash_and_equivalents', 'accounts_receivable', 'inventory'].includes(key)) {
+        mapRowToData(balanceHtml, key, labels);
+      }
     });
 
     // Cash Flow (Check flowHtml)
     Object.entries(METRIC_MAPPING).forEach(([key, labels]) => {
-       if (['operating_cash_flow', 'free_cash_flow', 'change_in_working_capital'].includes(key)) {
-         mapRowToData(flowHtml, key, labels);
-       }
+      if (['operating_cash_flow', 'free_cash_flow', 'change_in_working_capital'].includes(key)) {
+        mapRowToData(flowHtml, key, labels);
+      }
     });
-    
+
     // Note: The loop above is simplified; we should run ALL keys against the right HTML
     // Let's do it properly:
-    
+
     // INCOME KEYS
     const incomeKeys = [
       'revenue', 'cost_of_revenue', 'gross_profit', 'operating_expenses', 'operating_income',
       'interest_expense', 'interest_income', 'currency_gain_loss', 'pretax_income',
-      'income_tax_expense', 'net_income', 'eps_basic', 'eps_diluted', 
+      'income_tax_expense', 'net_income', 'eps_basic', 'eps_diluted',
       'shares_outstanding_basic', 'shares_outstanding_diluted'
     ];
     incomeKeys.forEach(k => mapRowToData(incomeHtml, k, METRIC_MAPPING[k]));
@@ -334,8 +334,8 @@ export async function updateFinancials(symbol: string, assetType: string = 'pk-e
 
 
     // 4. Save to Database
-    console.log(`Saving ${periodData.length} ${period} records for ${symbol}...`);
-    
+
+
     for (const record of periodData) {
       // Skip if essential data is missing (e.g., no revenue AND no net income)
       if (record.metrics['revenue'] === undefined && record.metrics['net_income'] === undefined) continue;
@@ -345,16 +345,16 @@ export async function updateFinancials(symbol: string, assetType: string = 'pk-e
         'symbol', 'asset_type', 'period_end_date', 'period_type',
         ...Object.keys(record.metrics)
       ];
-      
+
       const vals = [
         record.symbol, record.asset_type, record.period_end_date, record.period_type,
         ...Object.values(record.metrics)
       ];
-      
+
       // This needs a robust UPSERT. 
       // Since we are using @vercel/postgres or generic pg, we might need parameterized queries.
       // For simplicity in this generated file, I'll write the query construction logic.
-      
+
       const query = `
         INSERT INTO financial_statements (${cols.join(', ')})
         VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')})
@@ -363,7 +363,7 @@ export async function updateFinancials(symbol: string, assetType: string = 'pk-e
           updated_at = NOW(),
           ${Object.keys(record.metrics).map(k => `${k} = EXCLUDED.${k}`).join(', ')}
       `;
-      
+
       try {
         // Note: In a real Next.js app, use the pool. This requires the environment to be set up.
         await sql.query(query, vals);
@@ -375,55 +375,55 @@ export async function updateFinancials(symbol: string, assetType: string = 'pk-e
 
   // 5. Also fetch and update PROFILE (Float, Market Cap)
   await updateCompanyProfile(symbol, assetType);
-  
+
   return { success: true };
 }
 
 async function updateCompanyProfile(symbol: string, assetType: string) {
-    const baseUrl = `https://stockanalysis.com/quote/psx/${symbol}`;
-    
-    // We need the Profile page (Industry) and Statistics page (Float/Shares)
-    // Sector is fetched from PSX API, not StockAnalysis
-    // Also fetch Face Value from SCSTrade
-    const [profileHtml, statsHtml, faceValue, psxSector] = await Promise.all([
-        fetchHtml(`${baseUrl}/profile/`),
-        fetchHtml(`${baseUrl}/statistics/`),
-        fetchFaceValue(symbol),
-        assetType === 'pk-equity' ? fetchSectorFromPSX(symbol) : Promise.resolve(null)
-    ]);
+  const baseUrl = `https://stockanalysis.com/quote/psx/${symbol}`;
 
-    // Parse Profile
-    // Industry still comes from StockAnalysis
-    const industryMatch = profileHtml.match(/Industry:[\s\S]*?>([^<]+)</);
-    const descMatch = profileHtml.match(/<meta name="description" content="([^"]+)"/);
+  // We need the Profile page (Industry) and Statistics page (Float/Shares)
+  // Sector is fetched from PSX API, not StockAnalysis
+  // Also fetch Face Value from SCSTrade
+  const [profileHtml, statsHtml, faceValue, psxSector] = await Promise.all([
+    fetchHtml(`${baseUrl}/profile/`),
+    fetchHtml(`${baseUrl}/statistics/`),
+    fetchFaceValue(symbol),
+    assetType === 'pk-equity' ? fetchSectorFromPSX(symbol) : Promise.resolve(null)
+  ]);
 
-    // Sector from PSX API (for PK equity), otherwise null
-    const sector = assetType === 'pk-equity' ? psxSector : null;
-    const industry = industryMatch ? industryMatch[1] : null;
-    const description = descMatch ? descMatch[1] : null;
+  // Parse Profile
+  // Industry still comes from StockAnalysis
+  const industryMatch = profileHtml.match(/Industry:[\s\S]*?>([^<]+)</);
+  const descMatch = profileHtml.match(/<meta name="description" content="([^"]+)"/);
 
-    // Parse Stats
-    // Look for "Float", "Shares Outstanding", "Market Cap"
-    const parseStat = (label: string, html: string) => {
-        const regex = new RegExp(`>${label}<[\\s\\S]*?<td[^>]*>([\\s\\S]*?)<\\/td>`, 'i');
-        const match = html.match(regex);
-        if (!match) return null;
-        
-        let val = match[1].replace(/<[^>]+>/g, '').trim();
-        // Handle B/M/T suffixes
-        const multiplier = val.endsWith('T') ? 1e12 : val.endsWith('B') ? 1e9 : val.endsWith('M') ? 1e6 : 1;
-        val = val.replace(/[TBM,]/g, '');
-        return parseFloat(val) * multiplier;
-    };
+  // Sector from PSX API (for PK equity), otherwise null
+  const sector = assetType === 'pk-equity' ? psxSector : null;
+  const industry = industryMatch ? industryMatch[1] : null;
+  const description = descMatch ? descMatch[1] : null;
 
-    const float = parseStat('Float', statsHtml);
-    const shares = parseStat('Shares Outstanding', statsHtml);
-    const mcap = parseStat('Market Cap', statsHtml);
-    
-    console.log(`[Profile] ${symbol}: Face Value = ${faceValue}, Float = ${float}, Shares = ${shares}`);
+  // Parse Stats
+  // Look for "Float", "Shares Outstanding", "Market Cap"
+  const parseStat = (label: string, html: string) => {
+    const regex = new RegExp(`>${label}<[\\s\\S]*?<td[^>]*>([\\s\\S]*?)<\\/td>`, 'i');
+    const match = html.match(regex);
+    if (!match) return null;
 
-    // Upsert Profile
-    await sql`
+    let val = match[1].replace(/<[^>]+>/g, '').trim();
+    // Handle B/M/T suffixes
+    const multiplier = val.endsWith('T') ? 1e12 : val.endsWith('B') ? 1e9 : val.endsWith('M') ? 1e6 : 1;
+    val = val.replace(/[TBM,]/g, '');
+    return parseFloat(val) * multiplier;
+  };
+
+  const float = parseStat('Float', statsHtml);
+  const shares = parseStat('Shares Outstanding', statsHtml);
+  const mcap = parseStat('Market Cap', statsHtml);
+
+
+
+  // Upsert Profile
+  await sql`
       INSERT INTO company_profiles (symbol, asset_type, sector, industry, description, float_shares, shares_outstanding, market_cap, face_value, last_updated)
       VALUES (${symbol}, ${assetType}, ${sector}, ${industry}, ${description}, ${float}, ${shares}, ${mcap}, ${faceValue}, NOW())
       ON CONFLICT (asset_type, symbol)
@@ -438,11 +438,11 @@ async function updateCompanyProfile(symbol: string, assetType: string) {
         face_value = EXCLUDED.face_value,
         last_updated = NOW()
     `;
-    
-    // Recalculate market cap based on latest price (don't use external source)
-    // This ensures market cap = price × shares outstanding
-    await updateMarketCapFromPrice(assetType, symbol);
-    
-    console.log(`Updated profile for ${symbol}`);
+
+  // Recalculate market cap based on latest price (don't use external source)
+  // This ensures market cap = price × shares outstanding
+  await updateMarketCapFromPrice(assetType, symbol);
+
+
 }
 

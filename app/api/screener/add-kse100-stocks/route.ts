@@ -27,12 +27,12 @@ export async function POST(request: NextRequest) {
       const cacheResult = await client.query(
         `SELECT last_run FROM kse100_batch_cache WHERE id = 1`
       )
-      
+
       if (cacheResult.rows.length > 0) {
         const lastRun = new Date(cacheResult.rows[0].last_run)
         const oneMonthAgo = new Date()
         oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1)
-        
+
         if (lastRun > oneMonthAgo) {
           const daysRemaining = Math.ceil((lastRun.getTime() - oneMonthAgo.getTime()) / (1000 * 60 * 60 * 24))
           return NextResponse.json({
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Fetch KSE100 page
-      console.log('[KSE100 Batch] Fetching KSE100 stocks from PSX...')
+
       const response = await fetch('https://dps.psx.com.pk/indices/KSE100', {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       }
 
       const html = await response.text()
-      
+
       // Parse HTML to extract stocks
       // Pattern: <td data-order="SYMBOL"><a class="tbl__symbol" href="/company/SYMBOL" data-title="Company Name">
       const symbolRegex = /<td data-order="([A-Z0-9]+)">\s*<a class="tbl__symbol"[^>]*data-title="([^"]+)"[^>]*>\s*<strong>([A-Z0-9]+)<\/strong>/g
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      console.log(`[KSE100 Batch] Found ${stocks.length} stocks in KSE100`)
+
 
       if (stocks.length === 0) {
         return NextResponse.json({
@@ -89,8 +89,8 @@ export async function POST(request: NextRequest) {
 
       // Filter to only missing stocks (those without price data)
       const missingStocks = stocks.filter(s => !existingSet.has(s.symbol.toUpperCase()))
-      
-      console.log(`[KSE100 Batch] ${existingSet.size} already have price data, ${missingStocks.length} need to be added`)
+
+
 
       if (missingStocks.length === 0) {
         // Update cache even if nothing to add
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
           `INSERT INTO kse100_batch_cache (id, last_run) VALUES (1, NOW())
            ON CONFLICT (id) DO UPDATE SET last_run = NOW()`
         )
-        
+
         return NextResponse.json({
           success: true,
           message: 'All KSE100 stocks already have price data in database',
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
           // when financials are fetched (via /api/financials/update)
 
           added.push(stock.symbol)
-          console.log(`[KSE100 Batch] Added price data for ${stock.symbol}: ${stock.name}`)
+
         } catch (error: any) {
           console.error(`[KSE100 Batch] Failed to add ${stock.symbol}:`, error)
           failed.push({ symbol: stock.symbol, error: error.message || 'Unknown error' })
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       )
     }
-    
+
     console.error('[KSE100 Batch] Error:', error)
     return NextResponse.json({
       success: false,

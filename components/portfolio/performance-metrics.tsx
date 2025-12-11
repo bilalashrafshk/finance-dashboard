@@ -123,7 +123,7 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
 
           const xirrVal = calculateXIRR(flows);
           if (xirrVal !== null) xirr = xirrVal * 100;
-        } catch (e) { console.error("XIRR Error", e); }
+        } catch (e) { /* silent */ }
 
 
         // --- 2. Liquid Portfolio Metrics (Risk) ---
@@ -290,7 +290,7 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
               }
             }
           }
-        } catch (e) { console.error("Beta Error", e) }
+        } catch (e) { /* silent */ }
 
         setMetrics({
           cagr,
@@ -306,7 +306,7 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
         });
 
       } catch (err) {
-        console.error('[Performance Metrics] Error', err)
+        // silent error
       } finally {
         setLoading(false)
       }

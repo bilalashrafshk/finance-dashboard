@@ -35,27 +35,27 @@ function logApiRequest(cacheKey: string, cacheStatus: string) {
   const timestamp = new Date().toISOString()
   const logEntry = { id, timestamp, cacheKey: cacheKey.substring(0, 100), cacheStatus }
   apiRequestLog.push(logEntry)
-  
+
   // Keep only last 50 entries
   if (apiRequestLog.length > 50) {
     apiRequestLog.shift()
   }
-  
-  console.log(`[API Route #${id}] ${timestamp} - Cache: ${cacheStatus} | Key: ${cacheKey.substring(0, 80)}...`)
-  
+
+
+
   // Make log accessible globally for debugging
   if (typeof global !== 'undefined') {
     (global as any).__apiRequestLog = apiRequestLog
-    // Helper function to view logs
-    ;(global as any).getApiRequestLog = () => {
-      console.table(apiRequestLog)
-      return apiRequestLog
-    }
-    ;(global as any).clearApiRequestLog = () => {
-      apiRequestLog.length = 0
-      apiRequestCounter = 0
-      console.log('API request log cleared')
-    }
+      // Helper function to view logs
+      ; (global as any).getApiRequestLog = () => {
+        console.table(apiRequestLog)
+        return apiRequestLog
+      }
+      ; (global as any).clearApiRequestLog = () => {
+        apiRequestLog.length = 0
+        apiRequestCounter = 0
+
+      }
   }
 }
 
@@ -90,11 +90,11 @@ export async function GET(request: NextRequest) {
     const { data: metrics, fromCache } = await cacheManager.getOrSet(
       cacheKey,
       async () => {
-        console.log(`[API Route #${apiRequestCounter + 1}] Cache MISS - Fetching from Binance...`)
+
         const fetchStartTime = Date.now()
         const result = await calculateRiskMetrics(bandParams, cutoffDate, riskWeights)
         const fetchTime = Date.now() - fetchStartTime
-        console.log(`[API Route #${apiRequestCounter}] Data fetched in ${fetchTime}ms`)
+
         return result
       },
       'risk-metrics',

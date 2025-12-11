@@ -37,34 +37,34 @@ export async function fetchAndStoreDividends(
     if (!forceRefresh) {
       const hasData = await hasDividendData(assetType, tickerUpper)
       if (hasData) {
-        console.log(`[Dividend Fetcher] Dividend data already exists for ${tickerUpper}, skipping fetch`)
+
         return
       }
     }
 
-    console.log(`[Dividend Fetcher] Fetching dividend data for ${tickerUpper}...`)
-    
+
+
     // Get Face Value (try DB first, then scraper, default to 10)
     let faceValue = await getCompanyFaceValue(tickerUpper, assetType)
     if (!faceValue) {
-      console.log(`[Dividend Fetcher] Face value not in DB for ${tickerUpper}, fetching from source...`)
+
       faceValue = await fetchFaceValue(tickerUpper)
     }
-    
+
     // Default to 10 if still not found
     const finalFaceValue = faceValue || 10
-    console.log(`[Dividend Fetcher] Using Face Value: ${finalFaceValue} for ${tickerUpper}`)
+
 
     const dividendData = await fetchDividendData(tickerUpper, 100, finalFaceValue)
 
     if (!dividendData || dividendData.length === 0) {
-      console.log(`[Dividend Fetcher] No dividend data available for ${tickerUpper}`)
+
       return
     }
 
     // Store in database
     const result = await insertDividendData(assetType, tickerUpper, dividendData, 'scstrade')
-    console.log(`[Dividend Fetcher] Stored ${result.inserted} dividend records for ${tickerUpper}`)
+
   } catch (error: any) {
     // Log error but don't throw - price fetching should continue
     console.error(`[Dividend Fetcher] Error fetching/storing dividends for ${ticker}:`, error.message)

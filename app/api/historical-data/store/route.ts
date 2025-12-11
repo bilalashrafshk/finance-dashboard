@@ -31,7 +31,7 @@ function logStoreRequest(assetType: string, symbol: string, records: number, ins
     storeRequestLog.shift()
   }
 
-  console.log(`[Store API #${id}] ${timestamp} - ${assetType}/${symbol}: ${records} records → inserted: ${inserted}, skipped: ${skipped}`)
+
 
   if (typeof global !== 'undefined') {
     (global as any).__storeRequestLog = storeRequestLog
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { assetType, symbol, data, source } = body
 
-    console.log(`[Store API] 📥 Received request for ${assetType}-${symbol}, ${data?.length || 0} records`)
+
 
     if (!assetType || !symbol || !data || !Array.isArray(data)) {
       console.error(`[Store API] ❌ Invalid request: assetType=${assetType}, symbol=${symbol}, data is array=${Array.isArray(data)}`)
@@ -83,9 +83,8 @@ export async function POST(request: NextRequest) {
       change_pct: null,
     }))
 
-    console.log(`[Store API] 🔄 Converting ${records.length} records for ${assetType}-${symbol}`)
-    const dates = records.map(r => r.date).join(', ')
-    console.log(`[Store API] 📅 Dates to store: ${dates}`)
+
+
 
     // Store in database via MarketDataService
     // This allows the service to handle potential invalidations or state updates in future
@@ -111,7 +110,7 @@ export async function POST(request: NextRequest) {
     // Dummy stats for legacy log
     logStoreRequest(assetType, symbol, records.length, records.length, 0)
 
-    console.log(`[Store API] ✅ COMPLETED via MarketDataService in ${responseTime}ms`)
+
 
     // Invalidate cache logic is now ideally centralized or we do it here?
     // MarketDataService doesn't do cache invalidation (yet - LRU/Redis).

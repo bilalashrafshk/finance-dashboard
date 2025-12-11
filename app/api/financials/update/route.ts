@@ -38,16 +38,16 @@ export async function GET(request: NextRequest) {
           `SELECT last_updated FROM company_profiles WHERE symbol = $1 AND asset_type = 'pk-equity'`,
           [symbol]
         );
-        
+
         if (cacheRes.rows.length > 0 && cacheRes.rows[0].last_updated) {
           const lastUpdated = new Date(cacheRes.rows[0].last_updated);
           const now = new Date();
           const diffDays = (now.getTime() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24);
-          
+
           if (diffDays < 10) {
-            return NextResponse.json({ 
-              success: true, 
-              status: 'fresh', 
+            return NextResponse.json({
+              success: true,
+              status: 'fresh',
               message: `Data is up to date (updated ${Math.round(diffDays)} days ago).`,
               last_updated: lastUpdated
             });
@@ -56,14 +56,14 @@ export async function GET(request: NextRequest) {
       }
 
       // 1. Scrape & Update Profile
-      console.log(`Scraping profile for ${symbol}...`);
+
       const [profile, faceValue] = await Promise.all([
         scrapeCompanyProfile(symbol),
         fetchFaceValue(symbol)
       ]);
-      
-      console.log(`[Profile] ${symbol}: Face Value = ${faceValue}`);
-      
+
+
+
       await client.query(`
         INSERT INTO company_profiles (symbol, asset_type, name, sector, industry, market_cap, shares_outstanding, float_shares, face_value, last_updated)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
@@ -94,9 +94,9 @@ export async function GET(request: NextRequest) {
       await updateMarketCapFromPrice('pk-equity', profile.symbol);
 
       // 2. Scrape & Update Financials (Quarterly)
-      console.log(`Scraping quarterly financials for ${symbol}...`);
+
       const quarterly = await scrapeFinancials(symbol, 'quarterly');
-      
+
       for (const stat of quarterly) {
         try {
           await client.query(`
@@ -209,10 +209,10 @@ export async function GET(request: NextRequest) {
           throw err;
         }
       }
-      
+
       // 3. Scrape & Update Financials (Annual)
       // (Repeating logic for Annual - could refactor, but explicit is fine for now)
-      console.log(`Scraping annual financials for ${symbol}...`);
+
       const annual = await scrapeFinancials(symbol, 'annual');
       for (const stat of annual) {
         try {

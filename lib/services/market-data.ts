@@ -97,7 +97,7 @@ export class MarketDataService {
 
         // 1. Check Deduplication Map
         if (MarketDataService.activeRequests.has(requestKey)) {
-            console.log(`[MarketData] ⚡ Joining active request: ${normalizedSymbol}`)
+
             try {
                 const result = await MarketDataService.activeRequests.get(requestKey)
                 // Clone if necessary? Promises return values, assume stateless data objects.
@@ -128,7 +128,7 @@ export class MarketDataService {
 
         // 3. Trigger Fetch (Deduplicated)
         const fetchPromise = (async () => {
-            console.log(`[MarketData] 🌍 Fetching External: ${normalizedSymbol} (${category})`)
+
             try {
                 // Timeout Logic
                 // 8s for Financials/Macros (slow scrapers), 5s for Prices

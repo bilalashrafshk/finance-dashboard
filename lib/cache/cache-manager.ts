@@ -25,7 +25,7 @@ interface CacheEntry<T> {
  */
 class InMemoryCache {
   private store = new Map<string, CacheEntry<any>>()
-  
+
   /**
    * Cleanup interval to remove expired entries
    */
@@ -43,18 +43,18 @@ class InMemoryCache {
    */
   get<T>(key: string): T | null {
     const entry = this.store.get(key)
-    
+
     if (!entry) {
       return null
     }
-    
+
     // Check if expired
     const age = Date.now() - entry.timestamp
     if (age >= entry.ttl) {
       this.store.delete(key)
       return null
     }
-    
+
     return entry.data as T
   }
 
@@ -63,7 +63,7 @@ class InMemoryCache {
    */
   set<T>(key: string, value: T, ttl: number): void {
     const normalizedKey = normalizeCacheKey(key)
-    
+
     this.store.set(normalizedKey, {
       data: value,
       timestamp: Date.now(),
@@ -86,14 +86,14 @@ class InMemoryCache {
   deletePattern(pattern: string): number {
     let deleted = 0
     const regex = new RegExp(pattern.replace(/\*/g, '.*'))
-    
+
     for (const key of this.store.keys()) {
       if (regex.test(key)) {
         this.store.delete(key)
         deleted++
       }
     }
-    
+
     return deleted
   }
 
@@ -120,7 +120,7 @@ class InMemoryCache {
   private cleanup(): void {
     const now = Date.now()
     let cleaned = 0
-    
+
     for (const [key, entry] of this.store.entries()) {
       const age = now - entry.timestamp
       if (age >= entry.ttl) {
@@ -128,9 +128,9 @@ class InMemoryCache {
         cleaned++
       }
     }
-    
+
     if (cleaned > 0) {
-      console.log(`[Cache] Cleaned up ${cleaned} expired entries`)
+
     }
   }
 
@@ -178,7 +178,7 @@ export class CacheManager {
 
     // Cache miss - compute value
     const data = await computeFn()
-    
+
     // Get TTL and cache the result
     const ttl = cacheConfig.getTTL(assetType, context)
     if (ttl > 0) {
@@ -282,7 +282,7 @@ export async function withCache<T>(
 export function revalidateCache(tags: string[]): void {
   // This will be used with Next.js revalidateTag when needed
   // For now, we use in-memory cache invalidation
-  console.log(`[Cache] Revalidation requested for tags: ${tags.join(', ')}`)
+
 }
 
 

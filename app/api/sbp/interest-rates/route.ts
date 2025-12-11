@@ -33,63 +33,63 @@ async function fetchSBPInterestRatesFromAPI(
   series_name: string
 }>> {
   const apiKey = process.env.SBP_API_KEY
-  
+
   if (!apiKey) {
     throw new Error('SBP_API_KEY environment variable is not set')
   }
-  
+
   const params = new URLSearchParams({
     api_key: apiKey,
     format: 'json'
   })
-  
+
   if (startDate) {
     params.append('start_date', startDate)
   }
   if (endDate) {
     params.append('end_date', endDate)
   }
-  
+
   const url = `${SBP_API_BASE_URL}/${seriesKey}/data?${params.toString()}`
-  
+
   const response = await fetch(url, {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
     },
   })
-  
+
   if (!response.ok) {
     const errorText = await response.text()
     throw new Error(`SBP API error (${response.status}): ${errorText.substring(0, 200)}`)
   }
-  
+
   const data: SBPAPIResponse = await response.json()
-  
+
   if (!data.rows || data.rows.length === 0) {
     return []
   }
-  
+
   // Find column indices
-  const dateColIdx = data.columns.findIndex(col => 
+  const dateColIdx = data.columns.findIndex(col =>
     col.toLowerCase().includes('date') || col.toLowerCase().includes('observation date')
   )
-  const valueColIdx = data.columns.findIndex(col => 
+  const valueColIdx = data.columns.findIndex(col =>
     col.toLowerCase().includes('value') || col.toLowerCase().includes('observation value')
   )
-  const seriesNameColIdx = data.columns.findIndex(col => 
+  const seriesNameColIdx = data.columns.findIndex(col =>
     col.toLowerCase().includes('series name')
   )
-  const unitColIdx = data.columns.findIndex(col => 
+  const unitColIdx = data.columns.findIndex(col =>
     col.toLowerCase().includes('unit')
   )
-  const statusColIdx = data.columns.findIndex(col => 
+  const statusColIdx = data.columns.findIndex(col =>
     col.toLowerCase().includes('status') && !col.toLowerCase().includes('comment')
   )
-  const commentsColIdx = data.columns.findIndex(col => 
+  const commentsColIdx = data.columns.findIndex(col =>
     col.toLowerCase().includes('comment')
   )
-  
+
   return data.rows.map(row => ({
     date: String(row[dateColIdx] || ''),
     value: parseFloat(String(row[valueColIdx] || 0)),
@@ -106,49 +106,49 @@ export async function GET(request: NextRequest) {
   const startDate = searchParams.get('startDate') || undefined
   const endDate = searchParams.get('endDate') || undefined
   const refresh = searchParams.get('refresh') === 'true'
-  
+
   if (!seriesKey) {
     return NextResponse.json(
       { error: 'seriesKey parameter is required' },
       { status: 400 }
     )
   }
-  
+
   // Validate series key format
   const validSeriesKeys = [
     'TS_GP_IR_SIRPR_AH.SBPOL0010', // Reverse Repo Rate
     'TS_GP_IR_SIRPR_AH.SBPOL0020', // Repo Rate
     'TS_GP_IR_SIRPR_AH.SBPOL0030', // Policy Target Rate
   ]
-  
+
   if (!validSeriesKeys.includes(seriesKey)) {
     return NextResponse.json(
       { error: `Invalid seriesKey. Must be one of: ${validSeriesKeys.join(', ')}` },
       { status: 400 }
     )
   }
-  
+
   try {
     // Check if we need to refresh (3-day cache)
     const needsRefresh = refresh || await shouldRefreshSBPInterestRates(seriesKey)
-    
+
     // Get data from database first
     let { data, latestStoredDate, earliestStoredDate } = await getSBPInterestRates(
       seriesKey,
       startDate,
       endDate
     )
-    
+
     // If no data in database or needs refresh, fetch from API
     if (needsRefresh || data.length === 0) {
-      console.log(`[SBP API] Fetching fresh data for ${seriesKey} (cache expired, refresh requested, or no data in DB)`)
-      
+
+
       try {
         // If no date range provided, fetch all available historical data
         // Set default start date based on series (earliest available date)
         let fetchStartDate = startDate
         let fetchEndDate = endDate
-        
+
         if (!fetchStartDate) {
           // Set start date based on series availability
           if (seriesKey.includes('SBPOL0030')) {
@@ -167,15 +167,15 @@ export async function GET(request: NextRequest) {
             fetchStartDate = date.toISOString().split('T')[0]
           }
         }
-        
+
         if (!fetchEndDate) {
           // Default end date: today
           fetchEndDate = new Date().toISOString().split('T')[0]
         }
-        
+
         // Fetch from API with date range
         const apiData = await fetchSBPInterestRatesFromAPI(seriesKey, fetchStartDate, fetchEndDate)
-        
+
         if (apiData.length > 0) {
           // Store in database
           const seriesName = apiData[0].series_name
@@ -190,16 +190,16 @@ export async function GET(request: NextRequest) {
               status_comments: d.status_comments
             }))
           )
-          
-          console.log(`[SBP API] Stored ${insertResult.inserted} new records, skipped ${insertResult.skipped} duplicates for ${seriesKey}`)
-          
+
+
+
           // Re-fetch from database to get the stored data
           const dbResult = await getSBPInterestRates(seriesKey, startDate, endDate)
           data = dbResult.data
           latestStoredDate = dbResult.latestStoredDate
           earliestStoredDate = dbResult.earliestStoredDate
         } else {
-          console.log(`[SBP API] No data returned from API for ${seriesKey}`)
+
         }
       } catch (apiError: any) {
         console.error(`[SBP API] Error fetching from API for ${seriesKey}:`, apiError.message)
@@ -207,27 +207,27 @@ export async function GET(request: NextRequest) {
         if (data.length === 0) {
           throw apiError // Only throw if we have no data at all
         }
-        console.log(`[SBP API] Using existing database data despite API error`)
+
       }
     } else {
-      console.log(`[SBP API] Using cached data for ${seriesKey} (less than 3 days old)`)
+
     }
-    
+
     // Sort by date descending (most recent first)
-    const sortedData = [...data].sort((a, b) => 
+    const sortedData = [...data].sort((a, b) =>
       new Date(b.date).getTime() - new Date(a.date).getTime()
     )
-    
+
     if (sortedData.length === 0) {
       return NextResponse.json(
-        { 
+        {
           error: 'No data available for this series',
           details: 'Please check that SBP_API_KEY is set and the series key is correct'
         },
         { status: 404 }
       )
     }
-    
+
     return NextResponse.json({
       seriesKey,
       seriesName: sortedData[0]?.series_name || '',
@@ -243,9 +243,9 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error('[SBP API] Error fetching interest rates:', error)
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to fetch SBP interest rates',
-        details: error.message 
+        details: error.message
       },
       { status: 500 }
     )

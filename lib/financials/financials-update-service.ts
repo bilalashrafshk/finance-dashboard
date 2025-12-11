@@ -61,13 +61,13 @@ export async function updateFinancials(symbol: string, force: boolean = false): 
         }
 
         // 1. Scrape & Update Profile
-        console.log(`Scraping profile for ${symbol}...`);
+
         const [profile, faceValue] = await Promise.all([
             scrapeCompanyProfile(symbol),
             fetchFaceValue(symbol)
         ]);
 
-        console.log(`[Profile] ${symbol}: Face Value = ${faceValue}`);
+
 
         await client.query(`
       INSERT INTO company_profiles (symbol, asset_type, name, sector, industry, market_cap, shares_outstanding, float_shares, face_value, last_updated)
@@ -99,7 +99,7 @@ export async function updateFinancials(symbol: string, force: boolean = false): 
         await updateMarketCapFromPrice('pk-equity', profile.symbol);
 
         // 2. Scrape & Update Financials (Quarterly)
-        console.log(`Scraping quarterly financials for ${symbol}...`);
+
         const quarterly = await scrapeFinancials(symbol, 'quarterly');
 
         for (const stat of quarterly) {
@@ -216,7 +216,7 @@ export async function updateFinancials(symbol: string, force: boolean = false): 
         }
 
         // 3. Scrape & Update Financials (Annual)
-        console.log(`Scraping annual financials for ${symbol}...`);
+
         const annual = await scrapeFinancials(symbol, 'annual');
         for (const stat of annual) {
             try {

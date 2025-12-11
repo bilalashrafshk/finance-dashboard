@@ -534,7 +534,7 @@ export async function POST(request: NextRequest) {
         revalidateTag(`holdings-${user.id}`)
       } catch (error) {
         // revalidateTag might not be available in all contexts, ignore if it fails
-        console.log('[Trade] Next.js cache revalidation skipped (not available in this context)')
+
       }
 
       return NextResponse.json({ success: true, trade, realizedPnL }, { status: 201 })

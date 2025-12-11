@@ -32,7 +32,7 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
   const [historicalPrice, setHistoricalPrice] = useState<number | null>(null)
   const [fetchingHistoricalPrice, setFetchingHistoricalPrice] = useState(false)
   const [priceRange, setPriceRange] = useState<{ min: number; max: number; center: number } | null>(null)
-  
+
   // New state for robust data fetching
   const [initializingHistoricalData, setInitializingHistoricalData] = useState(false)
   const [historicalDataReady, setHistoricalDataReady] = useState(false)
@@ -50,7 +50,7 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
       setPriceRange(null)
       setInitializingHistoricalData(false)
       setHistoricalDataReady(false)
-      
+
       // Auto-fetch current price and initialize historical data if needed
       fetchCurrentPrice()
     }
@@ -64,7 +64,7 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
   ): Promise<boolean> => {
     const startTime = Date.now()
     const { deduplicatedFetch } = await import('@/lib/portfolio/request-deduplication')
-    
+
     // For indices and metals, if DB is empty, fetch all historical data first
     if (assetType === 'kse100' || assetType === 'spx500' || assetType === 'metals') {
       try {
@@ -72,12 +72,12 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
         const checkUrl = `/api/historical-data?assetType=${assetType}&symbol=${encodeURIComponent(symbol)}&limit=1`
         const checkResponse = await deduplicatedFetch(checkUrl)
         const hasData = checkResponse.ok && (await checkResponse.json()).data?.length > 0
-        
+
         if (!hasData) {
-          console.log(`[Sell Holding] DB is empty for ${assetType}/${symbol}, fetching all historical data...`)
-          
+
+
           let instrumentId: string | null = null
-          
+
           if (assetType === 'metals') {
             const { getMetalInstrumentId } = await import('@/lib/portfolio/metals-api')
             instrumentId = getMetalInstrumentId(symbol.toUpperCase())
@@ -85,7 +85,7 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
             const { KSE100_INSTRUMENT_ID, SPX500_INSTRUMENT_ID } = await import('@/lib/portfolio/investing-client-api')
             instrumentId = assetType === 'kse100' ? KSE100_INSTRUMENT_ID : SPX500_INSTRUMENT_ID
           }
-          
+
           if (instrumentId) {
             const { fetchInvestingHistoricalDataClient } = await import('@/lib/portfolio/investing-client-api')
             const defaultStartDate = '1970-01-01'
@@ -94,7 +94,7 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
               defaultStartDate,
               new Date().toISOString().split('T')[0]
             )
-            
+
             if (clientData && clientData.length > 0) {
               try {
                 const storeResponse = await fetch('/api/historical-data/store', {
@@ -107,7 +107,7 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
                     source: 'investing',
                   }),
                 })
-                
+
                 if (storeResponse.ok) {
                   return true
                 }
@@ -123,14 +123,14 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
         console.error(`[Sell Holding] Error fetching historical data for ${assetType}/${symbol}:`, error)
       }
     }
-    
+
     // For other asset types or if fetch above failed, poll DB
     while (Date.now() - startTime < maxWaitTime) {
       try {
         const market = assetType === 'pk-equity' ? 'PSX' : assetType === 'us-equity' ? 'US' : null
         const url = `/api/historical-data?assetType=${assetType}&symbol=${encodeURIComponent(symbol)}${market ? `&market=${market}` : ''}`
         const response = await deduplicatedFetch(url)
-        
+
         if (response.ok) {
           const data = await response.json()
           const records = data.data || []
@@ -143,7 +143,7 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
       }
       await new Promise(resolve => setTimeout(resolve, 500))
     }
-    
+
     return false
   }
 
@@ -165,7 +165,7 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
       const checkUrl = `/api/historical-data?assetType=${assetType}&symbol=${encodeURIComponent(symbol)}${market ? `&market=${market}` : ''}&limit=1`
       const checkResponse = await deduplicatedFetch(checkUrl)
       const hasExistingData = checkResponse.ok && (await checkResponse.json()).data?.length > 0
-      
+
       if (!hasExistingData) {
         setInitializingHistoricalData(true)
       } else {
@@ -179,7 +179,7 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
         if (data && data.price) {
           setCurrentPrice(data.price.toString())
         }
-        
+
         if (!hasExistingData) {
           const dataReady = await waitForHistoricalData('crypto', binanceSymbol)
           setHistoricalDataReady(dataReady)
@@ -190,7 +190,7 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
         if (data && data.price) {
           setCurrentPrice(data.price.toString())
         }
-        
+
         if (!hasExistingData) {
           const dataReady = await waitForHistoricalData('pk-equity', symbol)
           setHistoricalDataReady(dataReady)
@@ -201,7 +201,7 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
         if (data && data.price) {
           setCurrentPrice(data.price.toString())
         }
-        
+
         if (!hasExistingData) {
           const dataReady = await waitForHistoricalData('us-equity', symbol)
           setHistoricalDataReady(dataReady)
@@ -212,7 +212,7 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
         if (data && data.price) {
           setCurrentPrice(data.price.toString())
         }
-        
+
         if (!hasExistingData) {
           const dataReady = await waitForHistoricalData('metals', symbol)
           setHistoricalDataReady(dataReady)
@@ -247,7 +247,7 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
 
     try {
       setFetchingHistoricalPrice(true)
-      
+
       // If we're still initializing historical data, wait a bit
       if (initializingHistoricalData) {
         let waitCount = 0
@@ -258,7 +258,7 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
       }
 
       const { deduplicatedFetch } = await import('@/lib/portfolio/request-deduplication')
-      
+
       let historicalData: any[] | null = null
       const dateStr = new Date(date).toISOString().split('T')[0]
 
@@ -300,7 +300,7 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
       if (historicalData && historicalData.length > 0) {
         // Find price for the sell date
         let pricePoint: any = null
-        
+
         if (assetType === 'crypto') {
           pricePoint = historicalData.find((d: any) => d.date === dateStr)
           if (!pricePoint) {
@@ -337,10 +337,10 @@ export function SellHoldingDialog({ open, onOpenChange, holding, onSell }: SellH
             })
           }
         }
-        
+
         // If DB was previously empty and we just populated it, we might have set historicalDataReady to true
         if (!historicalDataReady) setHistoricalDataReady(true)
-        
+
       } else {
         setHistoricalPrice(null)
         setPriceRange(null)

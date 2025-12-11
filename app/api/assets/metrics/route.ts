@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
 
         // Process assets in parallel
         // We limit concurrency if needed, but for < 50 assets Promise.all is fine
-        console.log(`[API] Fetching metrics for ${assets.length} assets with baseUrl: ${baseUrl}`)
+
         const results = await Promise.all(
             assets.map(async (asset) => {
                 try {

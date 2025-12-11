@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
 
     // Log for debugging
     if (allDetectedCycles.length === 0) {
-      console.log(`[Market Cycles] No cycles detected for ${assetType}/${symbol}. Data points: ${priceData.length}, Start date: ${startFromDate || '1998-07-13'}`)
+
     }
 
     // Separate completed cycles from current cycle

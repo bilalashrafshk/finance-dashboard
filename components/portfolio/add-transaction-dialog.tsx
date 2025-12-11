@@ -327,7 +327,7 @@ export function AddTransactionDialog({ open, onOpenChange, onSave, editingTrade,
 
         if (!hasData) {
           // DB is empty - fetch all historical data client-side and store it
-          console.log(`[AddTransaction] DB is empty for ${assetType}/${symbol}, fetching all historical data...`)
+
 
           let instrumentId: string | null = null
 

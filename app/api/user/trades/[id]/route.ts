@@ -217,7 +217,7 @@ export async function PUT(
 
           // If cost increased (delta > 0), we need to inject more cash (Adjustment Deposit)
           if (delta > 0.0001) {
-            console.log(`[Trade Update] Cost increased by ${delta}. Injecting cash adjustment.`)
+
 
             // Find or create cash holding (reuse logic or just insert trade if holding exists)
             const cashHoldingResult = await client.query(
@@ -285,7 +285,7 @@ export async function PUT(
       try {
         revalidateTag(`holdings-${user.id}`)
       } catch (error) {
-        console.log('[Trade Update] Next.js cache revalidation skipped')
+
       }
 
       return NextResponse.json({ success: true, trade })
@@ -365,7 +365,7 @@ export async function DELETE(
       try {
         revalidateTag(`holdings-${user.id}`)
       } catch (error) {
-        console.log('[Trade Delete] Next.js cache revalidation skipped')
+
       }
 
       return NextResponse.json({ success: true })

@@ -1132,7 +1132,7 @@ export async function updateMarketCapFromPrice(
         [newMarketCap, assetType, symbol.toUpperCase()]
       )
 
-      console.log(`[Market Cap] Updated ${assetType}/${symbol}: ${newMarketCap.toLocaleString()} (Price: ${latestPrice}, Shares: ${sharesOutstanding})`)
+
     } finally {
       client.release()
     }

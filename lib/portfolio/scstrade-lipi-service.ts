@@ -44,7 +44,7 @@ async function fetchFromSCSTrade(path: string, payload: any) {
  * 5. Returns combined dataset.
  */
 export async function fetchLipiData(startDate: string, endDate: string) {
-    console.log(`[Lipi] Request for ${startDate} to ${endDate}`)
+
 
     // 1. Get existing data from DB
     const existingRecords = await getLipiData(startDate, endDate)
@@ -67,15 +67,15 @@ export async function fetchLipiData(startDate: string, endDate: string) {
         .sort()
 
     if (missingDates.length === 0) {
-        console.log(`[Lipi] All dates found in DB. Returning ${existingRecords.length} records.`)
+
         return existingRecords
     }
 
-    console.log(`[Lipi] Found ${missingDates.length} missing dates. Optimizing fetch...`)
+
 
     // 3. Group into contiguous ranges
     const ranges = getContiguousRanges(missingDates)
-    console.log(`[Lipi] Identified ${ranges.length} fetch operations:`, ranges)
+
 
     const newRecords: LipiRecord[] = []
 
@@ -89,7 +89,7 @@ export async function fetchLipiData(startDate: string, endDate: string) {
             try {
                 if (range.start === range.end) {
                     // Single day fetch -> Store in DB
-                    console.log(`[Lipi] Fetching single day: ${range.start}`)
+
                     const dayRecords = await fetchSingleDayFromAPI(range.start)
                     if (dayRecords.length > 0) {
                         await insertLipiData(dayRecords)
@@ -97,7 +97,7 @@ export async function fetchLipiData(startDate: string, endDate: string) {
                     }
                 } else {
                     // Range fetch -> Do NOT store (aggregated data)
-                    console.log(`[Lipi] Fetching aggregated range: ${range.start} to ${range.end}`)
+
                     const rangeRecords = await fetchRangeFromAPI(range.start, range.end)
                     newRecords.push(...rangeRecords)
                 }

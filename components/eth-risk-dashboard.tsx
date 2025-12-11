@@ -52,28 +52,28 @@ export function EthRiskDashboard() {
     const timestamp = new Date().toISOString()
     const logEntry = { id, timestamp, action, params }
     apiCallLogRef.current.push(logEntry)
-    
+
     // Keep only last 50 entries
     if (apiCallLogRef.current.length > 50) {
       apiCallLogRef.current.shift()
     }
-    
+
     // Log to console
-    console.log(`[API Call #${id}] ${timestamp} - ${action}`, params ? `Params: ${params.substring(0, 100)}...` : '')
-    
+
+
     // Also log to window for easy access
     if (typeof window !== 'undefined') {
       (window as any).__apiCallLog = apiCallLogRef.current
-      // Helper function to view logs
-      ;(window as any).getApiCallLog = () => {
-        console.table(apiCallLogRef.current)
-        return apiCallLogRef.current
-      }
-      ;(window as any).clearApiCallLog = () => {
-        apiCallLogRef.current = []
-        requestIdRef.current = 0
-        console.log('API call log cleared')
-      }
+        // Helper function to view logs
+        ; (window as any).getApiCallLog = () => {
+          console.table(apiCallLogRef.current)
+          return apiCallLogRef.current
+        }
+        ; (window as any).clearApiCallLog = () => {
+          apiCallLogRef.current = []
+          requestIdRef.current = 0
+
+        }
     }
   }
 
@@ -91,7 +91,7 @@ export function EthRiskDashboard() {
 
       // Determine cutoff date: use user input if provided, otherwise use default (last date of 2024)
       const cutoffDate = sValCutoffDate || defaultCutoffDate ? new Date(sValCutoffDate || defaultCutoffDate) : null
-      
+
       // Build API request URL with parameters
       const params = new URLSearchParams()
       params.set('bandParams', JSON.stringify(bandParams))
@@ -107,9 +107,9 @@ export function EthRiskDashboard() {
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error("Request timeout: Data fetching took too long. This may happen on first load when fetching historical data from Binance.")), 180000)
       })
-      
+
       const startTime = Date.now()
-      
+
       // Call API route instead of direct calculation
       const response = await Promise.race([
         fetch(requestUrl),

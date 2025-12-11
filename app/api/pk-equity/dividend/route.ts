@@ -14,14 +14,14 @@ function getTTLUntilMidnight(): number {
   const now = new Date()
   const psxTimezone = 'Asia/Karachi'
   const psxTime = new Date(now.toLocaleString('en-US', { timeZone: psxTimezone }))
-  
+
   // Create midnight in PSX timezone
   const midnight = new Date(psxTime)
   midnight.setHours(24, 0, 0, 0)
-  
+
   // Calculate TTL
   const ttl = midnight.getTime() - psxTime.getTime()
-  
+
   // Ensure minimum TTL of 1 hour and maximum of 24 hours
   return Math.max(3600000, Math.min(86400000, ttl))
 }
@@ -63,17 +63,17 @@ export async function GET(request: NextRequest) {
     const tickerUpper = ticker.toUpperCase()
     const assetType = 'pk-equity'
     const today = getTodayInMarketTimezone('PSX')
-    
+
     // Rate limiting: Check if we've already checked for new dividends today
     const cacheKey = `dividend-check-${assetType}-${tickerUpper}-${today}`
     const alreadyCheckedToday = cacheManager.get<boolean>(cacheKey)
-    
+
     // If refresh=true, bypass cache check
     const shouldCheckForNew = refresh || !alreadyCheckedToday
 
     // Get existing data from database
     const existingData = await getDividendData(assetType, tickerUpper, startDate || undefined, endDate || undefined)
-    
+
     // If we have data and user doesn't want refresh and we've already checked today, return immediately
     if (!refresh && alreadyCheckedToday && existingData.length > 0) {
       return NextResponse.json({
@@ -89,43 +89,43 @@ export async function GET(request: NextRequest) {
     if (shouldCheckForNew) {
       // Get latest dividend date from database
       const latestDbDate = await getLatestDividendDate(assetType, tickerUpper)
-      
-      console.log(`[Dividend API] Checking for new dividends for ${tickerUpper} (latest DB date: ${latestDbDate || 'none'})`)
-      
+
+
+
       // Get Face Value (try DB first, then scraper, default to 10)
       let faceValue = await getCompanyFaceValue(tickerUpper, assetType)
       if (!faceValue) {
-        console.log(`[Dividend API] Face value not in DB for ${tickerUpper}, fetching from source...`)
+
         faceValue = await fetchFaceValue(tickerUpper)
       }
       const finalFaceValue = faceValue || 10
-      console.log(`[Dividend API] Using Face Value: ${finalFaceValue} for ${tickerUpper}`)
-      
+
+
       // Fetch from API with face value
       const apiDividendData = await fetchDividendData(tickerUpper, 100, finalFaceValue)
 
       if (apiDividendData && apiDividendData.length > 0) {
         // Find latest date in API data
         const latestApiDate = apiDividendData.sort((a, b) => b.date.localeCompare(a.date))[0].date
-        
+
         // Check if API has newer dividends than what's in DB
         const hasNewDividends = !latestDbDate || latestApiDate > latestDbDate
-        
+
         if (hasNewDividends) {
-          console.log(`[Dividend API] New dividends detected for ${tickerUpper} (API latest: ${latestApiDate}, DB latest: ${latestDbDate || 'none'})`)
-          
+
+
           // Store new dividends in database
           try {
             const result = await insertDividendData(assetType, tickerUpper, apiDividendData, 'scstrade')
-            console.log(`[Dividend API] Stored ${result.inserted} dividend records for ${tickerUpper} (${result.skipped} skipped)`)
-            
+
+
             // Reload from database to get all data (including newly stored)
             const reloadedData = await getDividendData(assetType, tickerUpper, startDate || undefined, endDate || undefined)
-            
+
             // Mark as checked for today (TTL until midnight)
             const ttlUntilMidnight = getTTLUntilMidnight()
             cacheManager.setWithCustomTTL(cacheKey, true, ttlUntilMidnight)
-            
+
             // Filter by date range if provided
             let filteredData = reloadedData
             if (startDate || endDate) {
@@ -135,7 +135,7 @@ export async function GET(request: NextRequest) {
                 return true
               })
             }
-            
+
             return NextResponse.json({
               ticker: tickerUpper,
               dividends: filteredData,
@@ -149,8 +149,8 @@ export async function GET(request: NextRequest) {
             // Continue to return existing data even if storage fails
           }
         } else {
-          console.log(`[Dividend API] No new dividends for ${tickerUpper} (latest dates match: ${latestApiDate})`)
-          
+
+
           // Mark as checked for today even if no new data (prevents repeated checks)
           const ttlUntilMidnight = getTTLUntilMidnight()
           cacheManager.setWithCustomTTL(cacheKey, true, ttlUntilMidnight)
@@ -159,7 +159,7 @@ export async function GET(request: NextRequest) {
         // No dividend data available from API - mark as checked to prevent repeated API calls
         const ttlUntilMidnight = getTTLUntilMidnight()
         cacheManager.setWithCustomTTL(cacheKey, true, ttlUntilMidnight)
-        
+
         if (existingData.length === 0) {
           // No data in DB and no data from API
           return NextResponse.json({

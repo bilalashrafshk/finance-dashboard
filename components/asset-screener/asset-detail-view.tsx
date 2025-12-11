@@ -142,7 +142,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
             if (currentPrice === undefined && historicalData.length > 0) {
               const latestDataPoint = historicalData[historicalData.length - 1]
               currentPrice = latestDataPoint.close
-              console.log(`[Asset Screener] Using latest historical price as fallback: ${currentPrice} (date: ${latestDataPoint.date})`)
+
             }
           }
         }

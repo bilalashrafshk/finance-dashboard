@@ -85,7 +85,7 @@ async function fetchNewDataInBackground(
             const todayInMarketTimezone = getTodayInMarketTimezone(marketForCheck)
 
             if (marketClosed && fetchStartDate === todayInMarketTimezone) {
-                console.log(`[Gap Detection] ${assetType}/${symbol}: Market is closed, skipping fetch for today's data only (${todayInMarketTimezone})`)
+
                 return
             }
         }
@@ -128,7 +128,7 @@ async function fetchNewDataInBackground(
                 }
             }
         } else if (assetType === 'us-equity') {
-            console.log(`[${assetType}-${symbol}] Fetching from StockAnalysis API`)
+
             const apiData = await retryWithBackoff(
                 () => fetchStockAnalysisData(symbol, 'US'),
                 3,
@@ -144,7 +144,7 @@ async function fetchNewDataInBackground(
             }
         } else if (assetType === 'crypto') {
             const cryptoStartDate = fetchStartDate || '2010-01-01'
-            console.log(`[${assetType}-${symbol}] Fetching from Binance API`)
+
             const apiData = await retryWithBackoff(
                 () => fetchBinanceHistoricalData(symbol, cryptoStartDate, today),
                 3,
@@ -157,7 +157,7 @@ async function fetchNewDataInBackground(
             }
         } else if (assetType === 'kse100') {
             const kseStartDate = fetchStartDate || '2000-01-01'
-            console.log(`[${assetType}] Fetching from SCSTrade API`)
+
             const { fetchKSE100Data } = await import('@/lib/portfolio/scstrade-indices-api')
             const apiData = await retryWithBackoff(
                 () => fetchKSE100Data(kseStartDate, today),

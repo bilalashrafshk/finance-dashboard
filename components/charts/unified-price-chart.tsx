@@ -285,7 +285,7 @@ export function UnifiedPriceChart() {
 
                     // Handle client-side fetch requirement (e.g. for Metals, SPX500)
                     if (result.needsClientFetch && result.instrumentId) {
-                        console.log(`[UnifiedPriceChart] Client-side fetch required for ${selectedSymbol}`)
+
                         const { fetchInvestingHistoricalDataClient } = await import('@/lib/portfolio/investing-client-api')
 
                         // Fetch data from 2010 to today

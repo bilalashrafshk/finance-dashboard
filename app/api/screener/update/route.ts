@@ -35,7 +35,7 @@ export async function GET(request: Request) {
   const TIME_LIMIT_MS = 25000 // 25 seconds safety limit
 
   try {
-    console.log('[Screener Update] Starting optimized update...')
+
 
     // Parse params
     const url = new URL(request.url)
@@ -60,7 +60,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: true, count: 0, message: 'No symbols found or all up to date' })
     }
 
-    console.log(`[Screener Update] Processing ${allSymbols.length} stale symbols...`)
+
 
     // Determine base URL
     const baseUrl = url.origin ||
@@ -101,12 +101,12 @@ export async function GET(request: Request) {
       // TIME CHECK: Stop if we are running out of time
       const elapsedTime = Date.now() - startTime
       if (elapsedTime > TIME_LIMIT_MS) {
-        console.log(`[Screener Update] Time limit reached (${elapsedTime}ms). Stopping early.`)
+
         break
       }
 
       const batchSymbols = allSymbols.slice(i, i + BATCH_SIZE)
-      console.log(`[Screener Update] Batch ${i / BATCH_SIZE + 1}: ${batchSymbols.length} symbols. (Elapsed: ${elapsedTime}ms)`)
+
       const batchStart = Date.now()
 
       try {
@@ -131,7 +131,7 @@ export async function GET(request: Request) {
           historyPromise,
           dividendPromise
         ])
-        console.log(`[Screener Update] Batch ${i} Fetch Complete in ${Date.now() - batchStart}ms`)
+
 
         // Process each symbol in memory (CPU bound, fast)
         const updatePromises = batchSymbols.map(async (symbol) => {
@@ -275,7 +275,7 @@ export async function GET(request: Request) {
     // 4. Update Macros (Only if we have time, or skipped if frequent updates)
     //    We can make this conditional or separate cron
     if (Date.now() - startTime < TIME_LIMIT_MS) {
-      console.log('[Screener Update] Checking macro indicators...')
+
       try {
         const { ensureSBPEconomicData, MACRO_KEYS } = await import('@/lib/portfolio/sbp-service')
         // Only update one macro key per run to save time? Or check all if fast
@@ -287,7 +287,7 @@ export async function GET(request: Request) {
     }
 
     const duration = Date.now() - startTime
-    console.log(`[Screener Update] Finished in ${duration}ms. Processed: ${processedCount}.`)
+
 
     return NextResponse.json({
       success: true,
