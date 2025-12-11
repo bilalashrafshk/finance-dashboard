@@ -1102,3 +1102,65 @@ export function calculateXIRR(
 
   return null;
 }
+
+/**
+ * Calculate adjusted portfolio history SPECIFICALLY for the "Liquid Only" portfolio.
+ * 
+ * Key Differences from Standard Calculation:
+ * 1. Uses `liquidValue` and `liquidCashFlow` fields (requires backend support).
+ * 2. Implements "Zero-Basis Safeguard": If the liquid portfolio is fully drained 
+ *    (e.g., all cash moved to Illiquid), the return is forcibly set to 0% to prevent
+ *    mathematical anomalies (like -100% or -infinity returns).
+ * 
+ * @param history - Raw portfolio history
+ * @returns Array of adjusted history entries for Liquid portfolio
+ */
+export function calculateLiquidAdjustedHistory(
+  history: PortfolioHistoryEntry[]
+): { date: string; adjustedValue: number; rawValue: number; dailyReturn: number }[] {
+  if (!history || history.length === 0) {
+    return [];
+  }
+
+  const liquidAdjustedHistory: { date: string; adjustedValue: number; rawValue: number; dailyReturn: number }[] = [];
+  let cumulativeIndex = 100; // Start Index at 100
+
+  // Sort by date safety check
+  const sortedHistory = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  for (let i = 0; i < sortedHistory.length; i++) {
+    const today = sortedHistory[i];
+
+    // Use server-provided Liquid fields if available (fallback to Total if not yet cached/migrated)
+    const todayLiquidVal = today.liquidValue !== undefined ? today.liquidValue : today.value;
+    const todayLiquidFlow = today.liquidCashFlow !== undefined ? today.liquidCashFlow : today.cashFlow || 0;
+
+    let dailyRet = 0;
+
+    if (i > 0) {
+      const yesterday = sortedHistory[i - 1];
+      const startVal = yesterday.liquidValue !== undefined ? yesterday.liquidValue : yesterday.value;
+
+      const adjustedStart = startVal + todayLiquidFlow;
+
+      if (adjustedStart > 0.01) { // Threshold for valid denominator
+        dailyRet = (todayLiquidVal / adjustedStart) - 1;
+      } else {
+        // ZERO-BASIS SAFEGUARD:
+        // If adjusted start is <= 0 (Liquid "Paused"), we force 0 return.
+        dailyRet = 0;
+      }
+    }
+
+    cumulativeIndex = cumulativeIndex * (1 + dailyRet);
+
+    liquidAdjustedHistory.push({
+      date: today.date,
+      adjustedValue: cumulativeIndex,
+      rawValue: todayLiquidVal,
+      dailyReturn: dailyRet * 100 // Percentage
+    });
+  }
+
+  return liquidAdjustedHistory;
+}

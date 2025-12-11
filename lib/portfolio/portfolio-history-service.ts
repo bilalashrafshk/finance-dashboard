@@ -309,6 +309,10 @@ export async function getPortfolioHistory(
             iterationCount++
             const dateStr = currentDate.toISOString().split('T')[0]
 
+
+            // Daily Liquid Flow Tracker
+            let dailyLiquidFlowAdjustment = 0; // Net flow adjustment for liquid portfolio (Comm Buy = -, Comm Sell = +)
+
             // Apply trades
             while (tradeIndex < sortedTrades.length) {
                 const t = sortedTrades[tradeIndex]
@@ -316,6 +320,23 @@ export async function getPortfolioHistory(
                 if (t.tradeDate === dateStr) {
                     // Apply trade logic
                     const ccy = t.currency || 'USD'
+
+                    // Track Liquid Flows caused by Commodity Trades
+                    if (t.assetType === 'commodities') {
+                        let flowAmt = t.totalAmount;
+                        if (unified && t.currency === 'PKR') {
+                            const r = getExchangeRateForDate(dateStr)
+                            if (r) flowAmt = flowAmt / r
+                        } else if (!unified && t.currency.toUpperCase() !== currency.toUpperCase()) {
+                            flowAmt = 0 // Should not happen given filtered trades but safe check
+                        }
+
+                        if (t.tradeType === 'buy') {
+                            dailyLiquidFlowAdjustment -= flowAmt; // Withdrawal from Liquid
+                        } else if (t.tradeType === 'sell') {
+                            dailyLiquidFlowAdjustment += flowAmt; // Deposit to Liquid
+                        }
+                    }
 
                     if (t.assetType === 'cash') {
                         const bal = currentCash.get(ccy) || 0
@@ -346,12 +367,14 @@ export async function getPortfolioHistory(
 
             // Calculate Daily Value
             let dailyMarketVal = 0
+            let dailyLiquidVal = 0 // Value of Non-Commodity Assets
 
             for (const [k, qty] of currentQty.entries()) {
                 if (qty <= 0.000001) continue
                 const [type, sym, ccyOfAsset] = k.split(':')
                 const iAmt = currentInvested.get(k) || 0
                 let val = 0
+                let isLiquid = type !== 'commodities'
 
                 if (type === 'commodities') {
                     val = qty * (currentAvgPrice.get(k) || 0)
@@ -371,7 +394,11 @@ export async function getPortfolioHistory(
                 } else if (!unified && ccyOfAsset.toUpperCase() !== currency.toUpperCase()) {
                     continue
                 }
+
                 dailyMarketVal += val
+                if (isLiquid) {
+                    dailyLiquidVal += val
+                }
             }
 
             let dailyCashVal = 0
@@ -388,16 +415,24 @@ export async function getPortfolioHistory(
                 dailyCashVal = currentCash.get(currency) || 0
             }
 
+            // Cash is always Liquid
+            const totalLiquidValue = dailyLiquidVal + dailyCashVal;
+            const totalLiquidFlow = (cashFlowsByDate.get(dateStr) || 0) + dailyLiquidFlowAdjustment;
+
             dailyHoldings[dateStr] = {
                 date: dateStr,
                 cash: dailyCashVal,
-                invested: dailyMarketVal + dailyCashVal,
-                cashFlow: cashFlowsByDate.get(dateStr) || 0,
+                invested: dailyMarketVal + dailyCashVal, // This is Total Value
+                cashFlow: cashFlowsByDate.get(dateStr) || 0, // Total External Flow
                 marketValue: dailyMarketVal + dailyCashVal,
-                value: dailyMarketVal + dailyCashVal // Frontend expects 'value'
+                value: dailyMarketVal + dailyCashVal,
+                // Liquid Only Fields
+                liquidValue: totalLiquidValue,
+                liquidCashFlow: totalLiquidFlow
             }
 
             currentDate.setDate(currentDate.getDate() + 1)
+
         }
 
         // Sort

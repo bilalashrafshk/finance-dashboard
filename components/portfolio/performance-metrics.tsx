@@ -9,6 +9,7 @@ import {
   calculateAdjustedPortfolioHistory,
   calculateAdjustedDailyReturns,
   calculateXIRR,
+  calculateLiquidAdjustedHistory,
   type PortfolioHistoryEntry,
   type AdjustedPortfolioHistoryEntry,
   type AdjustedDailyReturn
@@ -47,8 +48,9 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
     avgDailyReturn: null,
   })
 
+
   useEffect(() => {
-    const fetchMetrics = async () => {
+    async function calculateMetrics() {
       setLoading(true)
       try {
         const token = localStorage.getItem('auth_token')
@@ -57,313 +59,238 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
           return
         }
 
-        // Fetch portfolio history (get enough data for calculations)
-        const unifiedParam = unified ? '&unified=true' : ''
-        const historyRes = await fetch(`/api/user/portfolio/history?days=ALL&currency=${currency}${unifiedParam}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        })
+        const headers = { 'Authorization': `Bearer ${token}` }
+
+        const historyRes = await fetch(
+          `/api/user/portfolio/history?currency=${currency === 'PKR' ? 'PKR' : 'USD'}&unified=${unified}&days=ALL`,
+          { headers }
+        )
 
         if (!historyRes.ok) {
+          console.error("Failed to fetch history")
           setLoading(false)
           return
         }
 
         const historyData = await historyRes.json()
-        const rawHistory: PortfolioHistoryEntry[] = historyData.history || []
 
-        if (rawHistory.length < 2) {
-          console.log('[Performance Metrics] Insufficient history data:', rawHistory.length)
+        if (!historyData.history || historyData.history.length === 0) {
+          setMetrics({
+            cagr: null, xirr: null, maxDrawdown: null, volatility: null,
+            sharpeRatio: null, beta: null, bestDay: null, worstDay: null,
+            winningDays: null, avgDailyReturn: null
+          })
           setLoading(false)
           return
         }
 
-        // Use centralized function to calculate adjusted history (accounting for cash flows)
-        const adjustedHistory = calculateAdjustedPortfolioHistory(rawHistory)
+        const rawHistory: PortfolioHistoryEntry[] = historyData.history
 
-        if (adjustedHistory.length < 2) {
-          console.log('[Performance Metrics] Insufficient adjusted history data')
-          setLoading(false)
-          return
-        }
+        // --- 1. Total Portfolio Metrics (Wealth) ---
+        // Used for CAGR and IRR/XIRR (External perspective)
+        const totalAdjustedHistory = calculateAdjustedPortfolioHistory(rawHistory)
 
-        // Use centralized function to calculate adjusted daily returns
-        const dailyReturns = calculateAdjustedDailyReturns(adjustedHistory, rawHistory)
-
-        if (dailyReturns.length === 0) {
-          console.log('[Performance Metrics] No daily returns calculated')
-          setLoading(false)
-          return
-        }
-
-        // Calculate CAGR using adjusted values
-        // Formula: CAGR = ((Adjusted Ending Value / Adjusted Beginning Value) ^ (1 / years)) - 1
+        // CAGR
         let cagr: number | null = null
-
-        // Find first non-zero adjusted entry
-        const firstAdjustedEntry = adjustedHistory.find(entry => entry.adjustedValue > 0)
-        const lastAdjustedEntry = adjustedHistory[adjustedHistory.length - 1]
-
-        if (firstAdjustedEntry && lastAdjustedEntry) {
-          const firstValue = firstAdjustedEntry.adjustedValue
-          const lastValue = lastAdjustedEntry.adjustedValue
-          const firstDateStr = firstAdjustedEntry.date
-          const lastDateStr = lastAdjustedEntry.date
-
-          if (firstValue > 0 && lastValue > 0 && firstDateStr && lastDateStr) {
-            try {
-              // Parse dates - handle both YYYY-MM-DD and ISO format
-              const firstDate = firstDateStr.includes('T')
-                ? new Date(firstDateStr)
-                : new Date(firstDateStr + 'T00:00:00')
-              const lastDate = lastDateStr.includes('T')
-                ? new Date(lastDateStr)
-                : new Date(lastDateStr + 'T00:00:00')
-
-              // Validate dates
-              if (!isNaN(firstDate.getTime()) && !isNaN(lastDate.getTime())) {
-                const timeDiff = lastDate.getTime() - firstDate.getTime()
-                const years = timeDiff / (365.25 * 24 * 60 * 60 * 1000)
-
-                // Calculate CAGR for any time period (standard annualization approach)
-                // Minimum: at least 1 day of data (0.00274 years)
-                if (years >= 0.00274 && !isNaN(years) && isFinite(years)) {
-                  const ratio = lastValue / firstValue
-                  if (ratio > 0 && isFinite(ratio)) {
-                    const cagrValue = (Math.pow(ratio, 1 / years) - 1) * 100
-                    // Validate result
-                    if (!isNaN(cagrValue) && isFinite(cagrValue) && cagrValue <= 1000000) {
-                      cagr = cagrValue
-                    }
-                  }
-                }
+        if (totalAdjustedHistory.length > 0) {
+          const first = totalAdjustedHistory.find(e => e.adjustedValue > 0)
+          const last = totalAdjustedHistory[totalAdjustedHistory.length - 1]
+          if (first && last) {
+            const firstVal = first.adjustedValue
+            const lastVal = last.adjustedValue
+            const years = (new Date(last.date).getTime() - new Date(first.date).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
+            if (years >= 0.00274) {
+              const ratio = lastVal / firstVal
+              if (ratio > 0 && isFinite(ratio)) {
+                const val = (Math.pow(ratio, 1 / years) - 1) * 100
+                if (!isNaN(val) && isFinite(val) && val <= 1000000) cagr = val
               }
-            } catch (error) {
-              console.error('[Performance Metrics] Error calculating CAGR:', error)
-              cagr = null
             }
           }
         }
 
-        // Calculate XIRR (Investor Return)
+        // IRR (XIRR)
         let xirr: number | null = null
         try {
-          // Construct cash flows from history
-          // Inputs: deposits (-) and withdrawals (+)
-          // NOTE: cashFlow in history is Net Flow (Dep - With). 
-          // If Net Flow > 0 (Deposit), we need NEGATIVE amount for XIRR.
-          // If Net Flow < 0 (Withdrawal), we need POSITIVE amount for XIRR.
-          // So Amount = -cashFlow
-
-          const cashFlows = rawHistory
-            .filter(h => h.cashFlow && Math.abs(h.cashFlow) > 0.001)
-            .map(h => ({
+          const currentTotalValue = rawHistory[rawHistory.length - 1].value;
+          const flows = rawHistory
+            .filter((h: any) => h.cashFlow !== 0)
+            .map((h: any) => ({
               amount: -(h.cashFlow || 0),
               date: h.date
-            }))
+            }));
+          flows.push({ amount: currentTotalValue, date: new Date().toISOString().split('T')[0] });
 
-          // Add Current Value as Final Positive Flow
-          const lastEntry = rawHistory[rawHistory.length - 1]
-          if (lastEntry) {
-            cashFlows.push({
-              amount: lastEntry.invested,
-              date: new Date().toISOString().split('T')[0] // Today or last entry date
-            })
-          }
+          const xirrVal = calculateXIRR(flows);
+          if (xirrVal !== null) xirr = xirrVal * 100;
+        } catch (e) { console.error("XIRR Error", e); }
 
-          if (cashFlows.length >= 2) {
-            const xirrVal = calculateXIRR(cashFlows)
-            if (xirrVal !== null) {
-              xirr = xirrVal * 100
-            }
-          }
-        } catch (error) {
-          console.error('[Performance Metrics] Error calculating XIRR:', error)
+
+        // --- 2. Liquid Portfolio Metrics (Risk) ---
+        // Specific Logic: Exclude Commodities, Treat Comm. Buy as Withdrawal.
+        // Handled by backend fields `liquidValue` and `liquidCashFlow`.
+        // Zero-Basis Safeguard: If Liquid Start <= 0, Return = 0.
+
+        // Use centralized utility for consistent logic
+        const liquidStats: { date: string; adjustedValue: number; rawValue: number; dailyReturn: number }[] = calculateLiquidAdjustedHistory(rawHistory);
+
+        const liquidAdjustedHistory: { date: string; adjustedValue: number }[] = liquidStats.map(e => ({
+          date: e.date,
+          adjustedValue: e.adjustedValue
+        }));
+
+        // Daily returns (skip first day as it has no valid return relative to previous)
+        const liquidDailyReturns: { date: string; return: number; adjustedValue: number }[] = liquidStats.slice(1).map(e => ({
+          date: e.date,
+          return: e.dailyReturn,
+          adjustedValue: e.adjustedValue
+        }));
+
+
+        // Max Drawdown (Liquid)
+        let maxDrawdown = 0;
+        let peak = -Infinity;
+        for (const entry of liquidAdjustedHistory) {
+          if (entry.adjustedValue > peak) peak = entry.adjustedValue;
+          const dd = peak > 0 ? ((entry.adjustedValue - peak) / peak) * 100 : 0;
+          if (dd < maxDrawdown) maxDrawdown = dd;
         }
 
-        // Calculate Max Drawdown using adjusted values
-        let maxDrawdown: number | null = null
-        let peak: number | null = null
-        let maxDD = 0
-
-        for (const entry of adjustedHistory) {
-          if (entry.adjustedValue > 0) {
-            if (peak === null || entry.adjustedValue > peak) {
-              peak = entry.adjustedValue
-            }
-            const drawdown = peak > 0 ? ((entry.adjustedValue - peak) / peak) * 100 : 0
-            if (drawdown < maxDD) {
-              maxDD = drawdown
-            }
-          }
-        }
-        maxDrawdown = maxDD
-
-        // Calculate 30-day Volatility using adjusted returns
-        const last30Days = dailyReturns.slice(-30)
-        let volatility: number | null = null
-        if (last30Days.length >= 5) {
-          const returns = last30Days.map(r => r.return / 100) // Convert to decimal
-          const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length
-          const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length
-          const stdDev = Math.sqrt(variance)
-          // Annualize: multiply by sqrt(252 trading days)
-          volatility = stdDev * Math.sqrt(252) * 100
+        // Volatility (Liquid)
+        let volatility: number | null = null;
+        if (liquidDailyReturns.length > 1) {
+          const rets = liquidDailyReturns.map(r => r.return / 100);
+          const mean = rets.reduce((a: number, b: number) => a + b, 0) / rets.length;
+          const variance = rets.reduce((a: number, b: number) => a + Math.pow(b - mean, 2), 0) / rets.length;
+          volatility = Math.sqrt(variance) * Math.sqrt(252) * 100;
         }
 
-        // Calculate Sharpe Ratio using adjusted returns
-        let sharpeRatio: number | null = null
-        if (dailyReturns.length >= 5) {
-          const returns = dailyReturns.map(r => r.return / 100)
-          const meanDaily = returns.reduce((sum, r) => sum + r, 0) / returns.length
-          const variance = returns.reduce((sum, r) => sum + Math.pow(r - meanDaily, 2), 0) / returns.length
-          const stdDev = Math.sqrt(variance)
-
-          if (stdDev > 0) {
-            const annualizedReturn = meanDaily * 252 * 100 // Convert to percentage
-            const annualizedStdDev = stdDev * Math.sqrt(252) * 100
-            const riskFreeRate = 2.5 // 2.5% annual risk-free rate
-            sharpeRatio = (annualizedReturn - riskFreeRate) / annualizedStdDev
-          }
+        // Sharpe Ratio (Liquid)
+        let sharpeRatio: number | null = null;
+        if (volatility && volatility > 0 && liquidDailyReturns.length > 0) {
+          const rets = liquidDailyReturns.map(r => r.return / 100);
+          const meanDaily = rets.reduce((s: number, r: number) => s + r, 0) / rets.length;
+          const annRet = meanDaily * 252 * 100;
+          const riskFreeRate = 2.5; // 2.5% annual risk-free rate
+          sharpeRatio = (annRet - riskFreeRate) / (volatility || 1); // Avoid division by zero
         }
 
-        // Calculate Beta using adjusted returns
-        let beta: number | null = null
-        try {
-          // Determine benchmark based on currency
-          const benchmarkSymbol = currency === 'PKR' ? 'KSE100' : 'SPX500'
-          const benchmarkAssetType = currency === 'PKR' ? 'kse100' : 'spx500'
 
-          // Fetch benchmark data for the same period
-          const firstDate = adjustedHistory[0].date
-          const lastDate = adjustedHistory[adjustedHistory.length - 1].date
+        // Highlights (Using Liquid Returns? Usually people want Total highlights, but for consistency lets use Liquid for consistency)
+        // actually let's use LIQUID returns for 'Winning Days' etc as it reflects trading skill better 
+        // without commodity holding bias.
+        const last30 = liquidDailyReturns.slice(-30);
+        const last90 = liquidDailyReturns.slice(-90);
 
-          const benchmarkRes = await fetch(
-            `/api/historical-data?assetType=${benchmarkAssetType}&symbol=${benchmarkSymbol}&startDate=${firstDate}&endDate=${lastDate}`
-          )
+        let bestDayReturn: { date: string; return: number } | null = null;
+        let worstDayReturn: { date: string; return: number } | null = null;
 
-          if (benchmarkRes.ok) {
-            const benchmarkData = await benchmarkRes.json()
-            const benchmarkPrices = (benchmarkData.data || []).sort((a: any, b: any) =>
-              new Date(a.date).getTime() - new Date(b.date).getTime()
-            )
-
-            if (benchmarkPrices.length >= 5) {
-              // Create maps for aligned date matching
-              const adjustedValueMap = new Map(adjustedHistory.map(h => [h.date, h.adjustedValue]))
-              const benchmarkMap = new Map(benchmarkPrices.map((p: any) => [p.date, p.close]))
-
-              // Get all dates that exist in both adjusted history and benchmark
-              const commonDates = Array.from(adjustedValueMap.keys())
-                .filter(date => benchmarkMap.has(date))
-                .sort()
-
-              // Calculate returns for consecutive dates (matching portfolio and benchmark)
-              const portfolioReturns: number[] = []
-              const benchmarkReturns: number[] = []
-
-              for (let i = 1; i < commonDates.length; i++) {
-                const prevDate = commonDates[i - 1]
-                const currDate = commonDates[i]
-
-                const prevAdjustedValue = adjustedValueMap.get(prevDate) || 0
-                const currAdjustedValue = adjustedValueMap.get(currDate) || 0
-                const prevBenchmark = benchmarkMap.get(prevDate) || 0
-                const currBenchmark = benchmarkMap.get(currDate) || 0
-
-                // Calculate returns from adjusted values (accounting for cash flows)
-                if (prevAdjustedValue > 0 && currAdjustedValue > 0 && prevBenchmark > 0 && currBenchmark > 0) {
-                  // Portfolio return from adjusted values (already accounts for cash flows)
-                  const portfolioReturn = (currAdjustedValue - prevAdjustedValue) / prevAdjustedValue
-
-                  // Benchmark return
-                  const benchmarkReturn = (currBenchmark - prevBenchmark) / prevBenchmark
-
-                  portfolioReturns.push(portfolioReturn)
-                  benchmarkReturns.push(benchmarkReturn)
-                }
-              }
-
-              // Calculate beta if we have enough aligned returns
-              if (portfolioReturns.length >= 5) {
-                const portfolioMean = portfolioReturns.reduce((sum, r) => sum + r, 0) / portfolioReturns.length
-                const benchmarkMean = benchmarkReturns.reduce((sum, r) => sum + r, 0) / benchmarkReturns.length
-
-                let covariance = 0
-                let benchmarkVariance = 0
-
-                for (let i = 0; i < portfolioReturns.length; i++) {
-                  covariance += (portfolioReturns[i] - portfolioMean) * (benchmarkReturns[i] - benchmarkMean)
-                  benchmarkVariance += Math.pow(benchmarkReturns[i] - benchmarkMean, 2)
-                }
-
-                covariance = covariance / (portfolioReturns.length - 1)
-                benchmarkVariance = benchmarkVariance / (portfolioReturns.length - 1)
-
-                if (benchmarkVariance > 0) {
-                  beta = covariance / benchmarkVariance
-                }
-              }
-            }
-          }
-        } catch (error) {
-          console.error('[Performance Metrics] Error calculating beta:', error)
+        if (liquidDailyReturns.length > 0) {
+          bestDayReturn = liquidDailyReturns.reduce((best: { date: string; return: number }, curr: { date: string; return: number }) => curr.return > best.return ? curr : best, liquidDailyReturns[0]);
+          worstDayReturn = liquidDailyReturns.reduce((worst: { date: string; return: number }, curr: { date: string; return: number }) => curr.return < worst.return ? curr : worst, liquidDailyReturns[0]);
         }
 
-        // Performance Highlights using adjusted returns
-        const last30DaysReturns = dailyReturns.slice(-30)
-        const last90DaysReturns = dailyReturns.slice(-90)
+        // Calculate Dollar Value for Best/Worst (Approximation using Total History value change? Or Liquid Value change?)
+        // Let's use Liquid Value change to match the return %
+        // Actually showing Dollar change of LIQUID part only might be confusing if user thinks "Total Portfolio".
+        // But Mixing metrics is worse. Let's stick to Liquid for consistency with the "Risk/Performance" theme.
 
-        // Calculate dollar values for best/worst day
-        // Create a map of adjusted values by date for easy lookup
-        const adjustedValueMap = new Map(adjustedHistory.map(h => [h.date, h.adjustedValue]))
-
-        // Best Day - find the day with highest return percentage, then calculate dollar change
-        const bestDayReturn = dailyReturns.length > 0 ? dailyReturns.reduce((best, current) =>
-          current.return > (best?.return || -Infinity) ? current : best,
-          dailyReturns[0]
-        ) : null
-
-        // Worst Day - find the day with lowest return percentage, then calculate dollar change
-        const worstDayReturn = dailyReturns.length > 0 ? dailyReturns.reduce((worst, current) =>
-          current.return < (worst?.return || Infinity) ? current : worst,
-          dailyReturns[0]
-        ) : null
-
-        // Calculate dollar values for best/worst day
-        let bestDay: { value: number; date: string } | null = null
-        let worstDay: { value: number; date: string } | null = null
+        let bestDay: { value: number; date: string } | null = null;
+        let worstDay: { value: number; date: string } | null = null;
 
         if (bestDayReturn) {
-          // Find previous day's adjusted value from adjusted history
-          const currentIndex = adjustedHistory.findIndex(h => h.date === bestDayReturn.date)
-          if (currentIndex > 0) {
-            const prevAdjustedValue = adjustedHistory[currentIndex - 1].adjustedValue
-            const dollarChange = bestDayReturn.adjustedValue - prevAdjustedValue
-            bestDay = { value: dollarChange, date: bestDayReturn.date }
+          const idx = liquidAdjustedHistory.findIndex(h => h.date === bestDayReturn!.date);
+          if (idx > 0) {
+            // Improve: Calculate actual dollar gain from raw liquid value?
+            // Current logic usually was: Adjusted Value comparison. 
+            // Let's stick to logic: Dollar Gain = Liquid Value Today - (Liquid Value Yesterday + Net Liquid Flow)
+            // Or just Delta.
+            // Ideally we want "PnL".
+            const dayRaw = rawHistory.find(h => h.date === bestDayReturn!.date);
+            const prevRaw = rawHistory.find(h => h.date === liquidAdjustedHistory[idx - 1].date);
+            if (dayRaw && prevRaw) {
+              const flow = dayRaw.liquidCashFlow !== undefined ? dayRaw.liquidCashFlow : dayRaw.cashFlow;
+              const val = dayRaw.liquidValue !== undefined ? dayRaw.liquidValue : dayRaw.value;
+              const prevVal = prevRaw.liquidValue !== undefined ? prevRaw.liquidValue : prevRaw.value;
+              const pnl = val - ((prevVal || 0) + (flow || 0)); // Pure PnL
+              bestDay = { value: pnl, date: bestDayReturn.date };
+            }
           }
         }
 
         if (worstDayReturn) {
-          // Find previous day's adjusted value from adjusted history
-          const currentIndex = adjustedHistory.findIndex(h => h.date === worstDayReturn.date)
-          if (currentIndex > 0) {
-            const prevAdjustedValue = adjustedHistory[currentIndex - 1].adjustedValue
-            const dollarChange = worstDayReturn.adjustedValue - prevAdjustedValue
-            worstDay = { value: dollarChange, date: worstDayReturn.date }
+          const idx = liquidAdjustedHistory.findIndex(h => h.date === worstDayReturn!.date);
+          if (idx > 0) {
+            const dayRaw = rawHistory.find(h => h.date === worstDayReturn!.date);
+            const prevRaw = rawHistory.find(h => h.date === liquidAdjustedHistory[idx - 1].date);
+            if (dayRaw && prevRaw) {
+              const flow = dayRaw.liquidCashFlow !== undefined ? dayRaw.liquidCashFlow : dayRaw.cashFlow;
+              const val = dayRaw.liquidValue !== undefined ? dayRaw.liquidValue : dayRaw.value;
+              const prevVal = prevRaw.liquidValue !== undefined ? prevRaw.liquidValue : prevRaw.value;
+              const pnl = val - ((prevVal || 0) + (flow || 0));
+              worstDay = { value: pnl, date: worstDayReturn.date };
+            }
           }
         }
 
-        // Winning Days (last 30 days)
-        const winningDays = last30DaysReturns.length > 0
-          ? (last30DaysReturns.filter(r => r.return > 0).length / last30DaysReturns.length) * 100
-          : null
+        const winningDays = last30.length > 0 ? (last30.filter(r => r.return > 0).length / last30.length) * 100 : null;
+        const avgDailyReturn = last90.length > 0 ? last90.reduce((s: number, r: { date: string; return: number; adjustedValue: number }) => s + r.return, 0) / last90.length : null;
 
-        // Avg Daily Return (last 90 days)
-        const avgDailyReturn = last90DaysReturns.length > 0
-          ? last90DaysReturns.reduce((sum, r) => sum + r.return, 0) / last90DaysReturns.length
-          : null
+        // BETA (Liquid)
+        let beta: number | null = null;
+        try {
+          const benchmarkAssetType = currency === 'PKR' ? 'kse100' : 'spx500';
+          const benchmarkSymbol = currency === 'PKR' ? 'KSE100' : 'SPX500';
+
+          if (liquidAdjustedHistory.length > 0) {
+            const startD = liquidAdjustedHistory[0].date;
+            const endD = liquidAdjustedHistory[liquidAdjustedHistory.length - 1].date;
+
+            const benchRes = await fetch(`/api/historical-data?assetType=${benchmarkAssetType}&symbol=${benchmarkSymbol}&startDate=${startD}&endDate=${endD}`);
+
+            if (benchRes.ok) {
+              const benchData = await benchRes.json();
+              const benchPrices = (benchData.data || []).filter((p: any) => p.close > 0);
+
+              if (benchPrices.length >= 5) {
+                // Explicit types for Map to satisfy linter
+                const liqMap = new Map<string, number>(liquidAdjustedHistory.map(h => [h.date, h.adjustedValue]));
+                const benMap = new Map<string, number>(benchPrices.map((p: any) => [p.date, p.close]));
+
+                const common = Array.from(liqMap.keys()).filter(d => benMap.has(d)).sort();
+                const pRet: number[] = [];
+                const bRet: number[] = [];
+
+                for (let i = 1; i < common.length; i++) {
+                  const curD = common[i];
+                  const preD = common[i - 1];
+                  const cL = liqMap.get(curD);
+                  const pL = liqMap.get(preD);
+                  const cB = benMap.get(curD);
+                  const pB = benMap.get(preD);
+
+                  if (cL !== undefined && pL !== undefined && cB !== undefined && pB !== undefined) {
+                    if (pL > 0 && pB > 0) {
+                      pRet.push((cL - pL) / pL);
+                      bRet.push((cB - pB) / pB);
+                    }
+                  }
+                }
+
+                if (pRet.length >= 5) {
+                  const meanP = pRet.reduce((a, b) => a + b, 0) / pRet.length;
+                  const meanB = bRet.reduce((a, b) => a + b, 0) / bRet.length;
+                  let cov = 0, varB = 0;
+                  for (let k = 0; k < pRet.length; k++) {
+                    cov += (pRet[k] - meanP) * (bRet[k] - meanB);
+                    varB += Math.pow(bRet[k] - meanB, 2);
+                  }
+                  if (varB > 0) beta = cov / varB;
+                }
+              }
+            }
+          }
+        } catch (e) { console.error("Beta Error", e) }
 
         setMetrics({
           cagr,
@@ -372,20 +299,22 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
           volatility,
           sharpeRatio,
           beta,
-          bestDay: bestDay ? { value: bestDay.value, date: bestDay.date } : null,
-          worstDay: worstDay ? { value: worstDay.value, date: worstDay.date } : null,
+          bestDay,
+          worstDay,
           winningDays,
-          avgDailyReturn,
-        })
-      } catch (error) {
-        console.error('Error calculating performance metrics:', error)
+          avgDailyReturn
+        });
+
+      } catch (err) {
+        console.error('[Performance Metrics] Error', err)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchMetrics()
+    calculateMetrics();
   }, [currency, unified])
+
 
   if (loading) {
     return (
