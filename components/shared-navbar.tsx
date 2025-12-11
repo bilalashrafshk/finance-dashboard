@@ -105,12 +105,6 @@ export function SharedNavbar() {
             </div>
 
             <div className="hidden md:flex items-center gap-4">
-              {user && (
-                <button className="relative text-muted-foreground hover:text-foreground transition-colors mr-2">
-                  <Bell className="w-5 h-5" />
-                  <span className="absolute top-0 right-0 w-2 h-2 bg-rose-500 rounded-full"></span>
-                </button>
-              )}
               {user && <GlobalSearch />}
               <ThemeToggle />
               {user ? (
