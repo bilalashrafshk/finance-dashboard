@@ -110,8 +110,22 @@ const SpotlightCard = ({ children, className = "", spotlightColor = "rgba(59, 13
   );
 };
 
+
+import LoginModal from '@/components/landing/login-modal';
+import Link from 'next/link';
+
 const LandingPage = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+
+  const handleOpenAuth = () => setLoginModalOpen(true);
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleOpenAuth();
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 font-sans selection:bg-cyan-500/30 overflow-x-hidden">
@@ -144,10 +158,16 @@ const LandingPage = () => {
 
           {/* Auth Buttons */}
           <div className="hidden md:flex items-center gap-4">
-            <button className="text-sm font-medium text-white hover:text-cyan-400 transition-colors">
+            <button
+              onClick={handleOpenAuth}
+              className="text-sm font-medium text-white hover:text-cyan-400 transition-colors"
+            >
               Log In
             </button>
-            <button className="bg-white text-black hover:bg-cyan-50 px-5 py-2.5 rounded-full text-sm font-bold transition-all shadow-[0_0_20px_-5px_rgba(255,255,255,0.3)] hover:shadow-[0_0_25px_-5px_rgba(6,182,212,0.5)] hover:-translate-y-0.5 active:translate-y-0">
+            <button
+              onClick={handleOpenAuth}
+              className="bg-white text-black hover:bg-cyan-50 px-5 py-2.5 rounded-full text-sm font-bold transition-all shadow-[0_0_20px_-5px_rgba(255,255,255,0.3)] hover:shadow-[0_0_25px_-5px_rgba(6,182,212,0.5)] hover:-translate-y-0.5 active:translate-y-0"
+            >
               Get Started
             </button>
           </div>
@@ -165,8 +185,8 @@ const LandingPage = () => {
             <a href="#markets" className="block text-slate-300 hover:text-white">Markets</a>
             <a href="#pricing" className="block text-slate-300 hover:text-white">Pricing</a>
             <div className="pt-4 border-t border-white/10 flex flex-col gap-3">
-              <button className="w-full text-center text-white font-medium py-2">Log In</button>
-              <button className="w-full bg-white text-black py-3 rounded-full font-bold">Get Started</button>
+              <button onClick={handleOpenAuth} className="w-full text-center text-white font-medium py-2">Log In</button>
+              <button onClick={handleOpenAuth} className="w-full bg-white text-black py-3 rounded-full font-bold">Get Started</button>
             </div>
           </div>
         )}
@@ -211,22 +231,29 @@ const LandingPage = () => {
                 <input
                   type="text"
                   placeholder="Search Tickers (e.g. BTC, LUCK, Gold)..."
+                  onKeyDown={handleSearchKeyDown}
                   className="w-full bg-transparent border-none text-white text-lg placeholder:text-slate-600 focus:ring-0 h-14 outline-none"
                 />
                 <div className="flex gap-2">
-                  <button className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold uppercase tracking-wider hover:bg-slate-700 transition-colors">
+                  <button
+                    onClick={handleOpenAuth}
+                    className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold uppercase tracking-wider hover:bg-slate-700 transition-colors"
+                  >
                     <Zap className="w-3 h-3 text-amber-400" /> Pro Mode
                   </button>
-                  <button className="bg-blue-600 hover:bg-blue-500 text-white px-8 rounded-xl text-base font-bold transition-all shadow-lg shadow-blue-600/20 hover:shadow-blue-600/50">
+                  <button
+                    onClick={handleOpenAuth}
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-8 rounded-xl text-base font-bold transition-all shadow-lg shadow-blue-600/20 hover:shadow-blue-600/50"
+                  >
                     Analyze
                   </button>
                 </div>
               </div>
               {/* Quick links below search */}
               <div className="flex flex-wrap justify-center gap-6 mt-6 text-sm text-slate-500">
-                <span className="flex items-center gap-1.5 hover:text-cyan-400 transition-colors cursor-pointer"><Activity className="w-3 h-3 text-cyan-500" /> Cycle Indicators</span>
-                <span className="flex items-center gap-1.5 hover:text-purple-400 transition-colors cursor-pointer"><Coins className="w-3 h-3 text-purple-500" /> Crypto Risk</span>
-                <span className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors cursor-pointer"><Wallet className="w-3 h-3 text-emerald-500" /> Net Worth</span>
+                <span onClick={handleOpenAuth} className="flex items-center gap-1.5 hover:text-cyan-400 transition-colors cursor-pointer"><Activity className="w-3 h-3 text-cyan-500" /> Cycle Indicators</span>
+                <span onClick={handleOpenAuth} className="flex items-center gap-1.5 hover:text-purple-400 transition-colors cursor-pointer"><Coins className="w-3 h-3 text-purple-500" /> Crypto Risk</span>
+                <span onClick={handleOpenAuth} className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors cursor-pointer"><Wallet className="w-3 h-3 text-emerald-500" /> Net Worth</span>
               </div>
             </div>
           </FadeIn>
@@ -373,7 +400,7 @@ const LandingPage = () => {
               </div>
 
               <div className="space-y-2">
-                <div className="flex items-center gap-4 p-3 bg-blue-600/10 border border-blue-500/20 rounded-xl cursor-pointer hover:bg-blue-600/20 transition-colors">
+                <div onClick={handleOpenAuth} className="flex items-center gap-4 p-3 bg-blue-600/10 border border-blue-500/20 rounded-xl cursor-pointer hover:bg-blue-600/20 transition-colors">
                   <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-orange-500/30">B</div>
                   <div>
                     <div className="text-white font-bold">Bitcoin</div>
@@ -382,7 +409,7 @@ const LandingPage = () => {
                   <ArrowRight className="w-4 h-4 text-blue-400 ml-auto" />
                 </div>
 
-                <div className="flex items-center gap-4 p-3 hover:bg-white/5 rounded-xl cursor-pointer transition-colors group/item">
+                <div onClick={handleOpenAuth} className="flex items-center gap-4 p-3 hover:bg-white/5 rounded-xl cursor-pointer transition-colors group/item">
                   <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-white font-bold text-xs border border-white/10 group-hover/item:border-emerald-500/50 group-hover/item:text-emerald-400 transition-colors">
                     <Wallet className="w-4 h-4" />
                   </div>
@@ -426,7 +453,10 @@ const LandingPage = () => {
                   </li>
                 ))}
               </ul>
-              <button className="w-full py-4 rounded-xl bg-white text-black font-bold hover:bg-slate-200 transition-all hover:scale-[1.02] shadow-[0_0_20px_-5px_rgba(255,255,255,0.2)]">
+              <button
+                onClick={handleOpenAuth}
+                className="w-full py-4 rounded-xl bg-white text-black font-bold hover:bg-slate-200 transition-all hover:scale-[1.02] shadow-[0_0_20px_-5px_rgba(255,255,255,0.2)]"
+              >
                 Start Journey
               </button>
             </div>
@@ -452,16 +482,16 @@ const LandingPage = () => {
           <div>
             <h4 className="font-bold text-white mb-6">Company</h4>
             <ul className="space-y-4 text-sm text-slate-400">
-              <li><a href="#" className="hover:text-cyan-400 transition-colors">About</a></li>
+              <li><Link href="/about" className="hover:text-cyan-400 transition-colors">About</Link></li>
             </ul>
           </div>
 
           <div>
             <h4 className="font-bold text-white mb-6">Legal</h4>
             <ul className="space-y-4 text-sm text-slate-400">
-              <li><a href="#" className="hover:text-cyan-400 transition-colors">Privacy</a></li>
-              <li><a href="#" className="hover:text-cyan-400 transition-colors">Terms</a></li>
-              <li><a href="#" className="hover:text-cyan-400 transition-colors">Security</a></li>
+              <li><Link href="/privacy" className="hover:text-cyan-400 transition-colors">Privacy</Link></li>
+              <li><Link href="/terms" className="hover:text-cyan-400 transition-colors">Terms</Link></li>
+              <li><Link href="/security" className="hover:text-cyan-400 transition-colors">Security</Link></li>
             </ul>
           </div>
         </div>
@@ -469,12 +499,9 @@ const LandingPage = () => {
           <div className="text-slate-600 text-sm mb-4 md:mb-0">
             &copy; 2025 Conviction Pays. All rights reserved.
           </div>
-          <div className="flex items-center gap-2 text-xs font-medium bg-white/5 px-3 py-1 rounded-full text-slate-400 border border-white/5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            All Systems Operational
-          </div>
         </div>
       </footer>
+      <LoginModal isOpen={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
     </div>
   );
 };
