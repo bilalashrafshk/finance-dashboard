@@ -42,44 +42,41 @@ export interface OptimizationResult {
   metrics: PortfolioMetrics
 }
 
-const TRADING_DAYS_PER_YEAR = 252
+const TRADING_DAYS_PER_YEAR = 250
 
 /**
- * Calculate daily log returns from price data ensures time-additivity
- * r_t = ln(P_t / P_{t-1})
+ * Calculate daily simple (arithmetic) returns from price data
+ * r_t = P_t / P_{t-1} - 1
  */
-export function toDailyReturns(prices: number[]): number[] {
+export function calculateDailyReturns(prices: number[]): number[] {
   const returns: number[] = []
   for (let i = 1; i < prices.length; i++) {
     const prev = prices[i - 1]
-    const current = prices[i]
-    if (prev > 0 && current > 0) {
-      // Log returns: ln(Price[t] / Price[t-1])
-      returns.push(Math.log(current / prev))
+    if (prev > 0) {
+      const ret = prices[i] / prev - 1 // Simple arithmetic returns
+      returns.push(ret)
     } else {
       returns.push(0)
     }
   }
+
   return returns
 }
 
 /**
- * Legacy wrapper for compatibility
- */
-export function calculateDailyReturns(prices: number[]): number[] {
-  return toDailyReturns(prices)
-}
-
-/**
- * Calculate mean return (annualized)
- * For log returns, annualization is linear: mean_daily * 252
+ * Calculate mean return (annualized) using geometric mean (compound growth)
+ * r_ann = (1 + r̄_daily)^250 - 1
+ * 
+ * Uses geometric annualization because returns compound over time.
+ * Arithmetic annualization (r̄_daily × 250) is incorrect for returns.
  */
 export function calculateMeanReturn(returns: number[]): number {
   if (returns.length === 0) return 0
   const meanDaily = returns.reduce((sum, r) => sum + r, 0) / returns.length
 
-  // Linear annualization for log returns
-  return meanDaily * TRADING_DAYS_PER_YEAR
+  // Geometric annualization (compound growth)
+  // If daily return is r, then annual return = (1 + r)^250 - 1
+  return Math.pow(1 + meanDaily, TRADING_DAYS_PER_YEAR) - 1
 }
 
 /**
@@ -236,48 +233,6 @@ export function portfolioVolatility(weights: number[], covarianceMatrix: number[
 }
 
 /**
- * Calculate Standard Deviation (Volatility)
- * Expects array of daily returns.
- * Annualizes by multiplying by sqrt(252).
- */
-export function calculateStandardDeviation(returns: number[]): number {
-  if (returns.length === 0) return 0
-  const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length
-  const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length
-  return Math.sqrt(variance) * Math.sqrt(TRADING_DAYS_PER_YEAR)
-}
-
-/**
- * Calculate Beta
- * Beta = Cov(Asset, Benchmark) / Var(Benchmark)
- * converting prices to daily returns first
- */
-export function calculateBeta(assetPrices: number[], benchmarkPrices: number[]): number {
-  const assetReturns = toDailyReturns(assetPrices)
-  const benchmarkReturns = toDailyReturns(benchmarkPrices)
-
-  const n = Math.min(assetReturns.length, benchmarkReturns.length)
-  if (n < 2) return 0
-
-  const ra = assetReturns.slice(0, n)
-  const rb = benchmarkReturns.slice(0, n)
-
-  const meanA = ra.reduce((s, x) => s + x, 0) / n
-  const meanB = rb.reduce((s, x) => s + x, 0) / n
-
-  let cov = 0
-  let varB = 0
-
-  for (let i = 0; i < n; i++) {
-    cov += (ra[i] - meanA) * (rb[i] - meanB)
-    varB += Math.pow(rb[i] - meanB, 2)
-  }
-
-  if (varB === 0) return 0
-  return cov / varB
-}
-
-/**
  * Calculate downside deviation (for Sortino ratio)
  * Uses daily excess returns against daily RF (rf_daily = rf_annual / 250)
  * Then annualize downside by sqrt(250)
@@ -313,31 +268,8 @@ export function sortinoRatio(expectedReturnAnn: number, rfAnnual: number, downsi
 
 /**
  * Calculate Sharpe ratio
- * Formula: (AverageDailyReturn - DailyRiskFreeRate) / DailyStandardDeviation
- * Then annualize by sqrt(252)
- * 
- * @param returns Array of daily returns (log returns preferred)
- * @param rfAnnual Annual risk-free rate as decimal (e.g. 0.05 for 5%)
- */
-export function calculateSharpeRatio(returns: number[], rfAnnual: number): number {
-  if (returns.length < 2) return 0
-
-  const meanDailyReturn = returns.reduce((sum, r) => sum + r, 0) / returns.length
-  const stdDevDailyReturn = Math.sqrt(
-    returns.reduce((sum, r) => sum + Math.pow(r - meanDailyReturn, 2), 0) / returns.length
-  )
-
-  if (stdDevDailyReturn === 0) return 0
-
-  const rfDaily = rfAnnual / TRADING_DAYS_PER_YEAR
-  const dailySharpe = (meanDailyReturn - rfDaily) / stdDevDailyReturn
-
-  return dailySharpe * Math.sqrt(TRADING_DAYS_PER_YEAR)
-}
-
-/**
- * Legacy generic Sharpe Ratio (from annualized inputs)
- * Retained for compatibility but marked deprecated
+ * Sharpe = (expectedReturnAnn - rfAnnual) / volatilityAnn
+ * rfAnnual should be decimal (e.g., 0.20 for 20%)
  */
 export function sharpeRatio(expectedReturnAnn: number, rfAnnual: number, volatilityAnn: number): number {
   const excess = expectedReturnAnn - rfAnnual
@@ -874,7 +806,7 @@ export function calculatePortfolioMetrics(
 
   const downsideDev = calculateDownsideDeviation(portfolioReturns, rfAnnual)
 
-  const sharpe = calculateSharpeRatio(portfolioReturns, rfAnnual)
+  const sharpe = sharpeRatio(expectedReturn, rfAnnual, volatility)
   const sortino = sortinoRatio(expectedReturn, rfAnnual, downsideDev)
 
   return {
@@ -884,5 +816,158 @@ export function calculatePortfolioMetrics(
     sortinoRatio: sortino,
     weights
   }
+}
+
+/**
+ * Time-Weighted Return (TWR) Support
+ * for adjusting cash deposits/withdrawals from performance metrics.
+ */
+
+export interface DailyPortfolioData {
+  date: string
+  value: number
+  netFlow: number
+}
+
+export interface PortfolioReturnPoint {
+  date: string
+  return: number
+}
+
+/**
+ * Calculate Daily TWR using "Flow at Start" logic
+ * Best for "Auto-deposits" that participate in the day's return.
+ * 
+ * Formula: Return = (Value_End) / (Value_Start + Net_Flow) - 1
+ */
+export function calculateDailyTimeWeightedReturns(history: DailyPortfolioData[]): PortfolioReturnPoint[] {
+  if (history.length < 2) return []
+
+  const returns: PortfolioReturnPoint[] = []
+
+  // Skip the very first day (inception) as it has no "Start Value" from yesterday
+  // unless we treat flow as the start. But return requires a change.
+  // We start from index 1.
+  for (let i = 1; i < history.length; i++) {
+    const today = history[i]
+    const yesterday = history[i - 1]
+
+    const valueEnd = today.value
+    const valueStart = yesterday.value
+    // We assume the flow happened specifically for this day (Today's flow)
+    const netFlow = today.netFlow
+
+    // Denominator: Start Capital + New Capital
+    const investedCapital = valueStart + netFlow
+
+    let dailyReturn = 0
+    if (investedCapital !== 0) {
+      dailyReturn = (valueEnd / investedCapital) - 1
+    }
+
+    returns.push({
+      date: today.date,
+      return: dailyReturn
+    })
+  }
+
+  return returns
+}
+
+/**
+ * Align Portfolio Returns with Benchmark Prices for Correlation/Beta
+ * Performs an inner join on Date.
+ */
+function alignPortfolioAndBenchmark(
+  portfolioReturns: PortfolioReturnPoint[],
+  benchmarkPrices: PriceDataPoint[]
+): { portfolioRestricted: number[], benchmarkRestricted: number[] } {
+  // 1. Calculate Benchmark Returns
+  // benchmarkPrices is sorted.
+  const benchReturnsMap = new Map<string, number>()
+  for (let i = 1; i < benchmarkPrices.length; i++) {
+    const p0 = benchmarkPrices[i - 1].close
+    const p1 = benchmarkPrices[i].close
+    if (p0 > 0) {
+      benchReturnsMap.set(benchmarkPrices[i].date, p1 / p0 - 1)
+    }
+  }
+
+  // 2. Align
+  const alignedPort: number[] = []
+  const alignedBench: number[] = []
+
+  for (const pr of portfolioReturns) {
+    // Only includes dates present in BOTH
+    if (benchReturnsMap.has(pr.date)) {
+      alignedPort.push(pr.return)
+      alignedBench.push(benchReturnsMap.get(pr.date)!)
+    }
+  }
+
+  return { portfolioRestricted: alignedPort, benchmarkRestricted: alignedBench }
+}
+
+/**
+ * Calculate Beta using Adjusted TWR Series
+ */
+export function calculatePortfolioBeta(
+  portfolioReturns: PortfolioReturnPoint[],
+  benchmarkPrices: PriceDataPoint[]
+): number | null {
+  const { portfolioRestricted, benchmarkRestricted } = alignPortfolioAndBenchmark(portfolioReturns, benchmarkPrices)
+
+  if (portfolioRestricted.length < 20) return null // Insufficient overlapping data
+
+  // Beta = Cov(Rp, Rb) / Var(Rb)
+  const cov = covariance(portfolioRestricted, benchmarkRestricted)
+  const varB = variance(benchmarkRestricted)
+
+  if (varB === 0) return null
+  return cov / varB
+}
+
+/**
+ * Calculate Sharpe Ratio using Adjusted TWR Series
+ */
+export function calculatePortfolioSharpeRatio(
+  portfolioReturns: PortfolioReturnPoint[],
+  riskFreeRateAnnualPercent: number
+): number {
+  if (portfolioReturns.length === 0) return 0
+
+  const returns = portfolioReturns.map(p => p.return)
+  const avgDailyRet = returns.reduce((a, b) => a + b, 0) / returns.length
+
+  // Std Dev
+  const variance = returns.reduce((sum, r) => sum + Math.pow(r - avgDailyRet, 2), 0) / returns.length
+  const dailyVol = Math.sqrt(variance)
+
+  // Annualize
+  const annualRet = avgDailyRet * 252
+  // OR Geometric: Math.pow(1 + avgDailyRet, 252) - 1
+
+  const annualVol = dailyVol * Math.sqrt(252)
+  const rf = riskFreeRateAnnualPercent / 100
+
+  if (annualVol === 0) return 0
+
+  return (annualRet - rf) / annualVol
+}
+
+// Helpers duplicated/adapted to avoid circular deps if needed, 
+// or could import from metrics-calculations if clean.
+// Since we are in portfolio-optimization.ts, we already have some helpers but let's just add simple ones here to be self-contained for these new functions.
+function mean(data: number[]) {
+  return data.reduce((a, b) => a + b, 0) / data.length
+}
+function variance(data: number[]) {
+  const mu = mean(data)
+  return data.reduce((a, b) => a + Math.pow(b - mu, 2), 0) / data.length
+}
+function covariance(data1: number[], data2: number[]) {
+  const mu1 = mean(data1)
+  const mu2 = mean(data2)
+  return data1.reduce((acc, val, i) => acc + (val - mu1) * (data2[i] - mu2), 0) / data1.length
 }
 
