@@ -87,17 +87,17 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
   ): Promise<boolean> => {
     const startTime = Date.now()
     const { deduplicatedFetch } = await import('@/lib/portfolio/request-deduplication')
-    
+
     if (assetType === 'kse100' || assetType === 'spx500' || assetType === 'metals') {
       try {
         const market = assetType === 'pk-equity' ? 'PSX' : assetType === 'us-equity' ? 'US' : null
         const checkUrl = `/api/historical-data?assetType=${assetType}&symbol=${encodeURIComponent(symbol)}${market ? `&market=${market}` : ''}&limit=1`
         const checkResponse = await deduplicatedFetch(checkUrl)
         const hasData = checkResponse.ok && (await checkResponse.json()).data?.length > 0
-        
+
         if (!hasData) {
           let instrumentId: string | null = null
-          
+
           if (assetType === 'metals') {
             const { getMetalInstrumentId } = await import('@/lib/portfolio/metals-api')
             instrumentId = getMetalInstrumentId(symbol.toUpperCase())
@@ -105,7 +105,7 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
             const { KSE100_INSTRUMENT_ID, SPX500_INSTRUMENT_ID } = await import('@/lib/portfolio/investing-client-api')
             instrumentId = assetType === 'kse100' ? KSE100_INSTRUMENT_ID : SPX500_INSTRUMENT_ID
           }
-          
+
           if (instrumentId) {
             const { fetchInvestingHistoricalDataClient } = await import('@/lib/portfolio/investing-client-api')
             const defaultStartDate = '1970-01-01'
@@ -114,7 +114,7 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
               defaultStartDate,
               new Date().toISOString().split('T')[0]
             )
-            
+
             if (clientData && clientData.length > 0) {
               try {
                 const storeResponse = await fetch('/api/historical-data/store', {
@@ -127,7 +127,7 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
                     source: 'investing',
                   }),
                 })
-                
+
                 if (storeResponse.ok) {
                   await storeResponse.json()
                   return true
@@ -144,17 +144,17 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
         console.error(`Error fetching historical data for ${assetType}/${symbol}:`, error)
       }
     }
-    
+
     while (Date.now() - startTime < maxWaitTime) {
       try {
         const market = assetType === 'pk-equity' ? 'PSX' : assetType === 'us-equity' ? 'US' : null
         const url = `/api/historical-data?assetType=${assetType}&symbol=${encodeURIComponent(symbol)}${market ? `&market=${market}` : ''}`
         const response = await deduplicatedFetch(url)
-        
+
         if (response.ok) {
           const data = await response.json()
           const records = data.data || []
-          
+
           if (records.length > 0) {
             return true
           }
@@ -162,10 +162,10 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
       } catch (error) {
         console.error('Error checking historical data:', error)
       }
-      
+
       await new Promise(resolve => setTimeout(resolve, 500))
     }
-    
+
     return false
   }
 
@@ -177,29 +177,29 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
       setInitializingHistoricalData(false)
       setHistoricalDataReady(false)
       setError(null)
-      
+
       const effectiveAssetType = restrictToAssetType || assetType
       const { deduplicatedFetch } = await import('@/lib/portfolio/request-deduplication')
       const market = effectiveAssetType === 'pk-equity' ? 'PSX' : effectiveAssetType === 'us-equity' ? 'US' : null
       const checkUrl = `/api/historical-data?assetType=${effectiveAssetType}&symbol=${encodeURIComponent(symbol.toUpperCase())}${market ? `&market=${market}` : ''}&limit=1`
       const checkResponse = await deduplicatedFetch(checkUrl)
       const hasExistingData = checkResponse.ok && (await checkResponse.json()).data?.length > 0
-      
+
       if (!hasExistingData) {
         setInitializingHistoricalData(true)
       }
-      
+
       if (effectiveAssetType === 'crypto') {
         const binanceSymbol = parseSymbolToBinance(symbol)
         const { fetchCryptoPrice } = await import('@/lib/portfolio/unified-price-api')
         const data = await fetchCryptoPrice(binanceSymbol)
-        
+
         if (data && data.price) {
           if (!name) {
             setName(formatSymbolForDisplay(binanceSymbol))
           }
         }
-        
+
         if (!hasExistingData) {
           const dataReady = await waitForHistoricalData('crypto', binanceSymbol)
           setHistoricalDataReady(dataReady)
@@ -209,13 +209,13 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
       } else if (effectiveAssetType === 'pk-equity') {
         const { fetchPKEquityPrice } = await import('@/lib/portfolio/unified-price-api')
         const data = await fetchPKEquityPrice(symbol.toUpperCase())
-        
+
         if (data && data.price) {
           if (!name) {
             setName(symbol.toUpperCase())
           }
         }
-        
+
         if (!hasExistingData) {
           const dataReady = await waitForHistoricalData('pk-equity', symbol.toUpperCase())
           setHistoricalDataReady(dataReady)
@@ -226,7 +226,7 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
         const indexSymbol = effectiveAssetType === 'kse100' ? 'KSE100' : 'SPX500'
         const { fetchIndicesPrice } = await import('@/lib/portfolio/unified-price-api')
         const data = await fetchIndicesPrice(indexSymbol)
-        
+
         if (data && data.price) {
           if (!name) {
             setName(effectiveAssetType === 'kse100' ? 'KSE 100 Index' : 'S&P 500 Index')
@@ -235,7 +235,7 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
             setSymbol(indexSymbol)
           }
         }
-        
+
         if (!hasExistingData) {
           const apiAssetType = effectiveAssetType === 'kse100' ? 'kse100' : 'spx500'
           const dataReady = await waitForHistoricalData(apiAssetType, indexSymbol)
@@ -246,13 +246,13 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
       } else if (effectiveAssetType === 'us-equity') {
         const { fetchUSEquityPrice } = await import('@/lib/portfolio/unified-price-api')
         const data = await fetchUSEquityPrice(symbol.toUpperCase())
-        
+
         if (data && data.price) {
           if (!name) {
             setName(symbol.toUpperCase())
           }
         }
-        
+
         if (!hasExistingData) {
           const dataReady = await waitForHistoricalData('us-equity', symbol.toUpperCase())
           setHistoricalDataReady(dataReady)
@@ -262,13 +262,13 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
       } else if (effectiveAssetType === 'metals') {
         const { fetchMetalsPrice } = await import('@/lib/portfolio/unified-price-api')
         const data = await fetchMetalsPrice(symbol.toUpperCase())
-        
+
         if (data && data.price) {
           if (!name) {
             setName(formatMetalForDisplay(symbol))
           }
         }
-        
+
         if (data && data.price) {
           setHistoricalDataReady(true)
         }
@@ -301,9 +301,9 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    
+
     const finalAssetType = restrictToAssetType || assetType
-    
+
     const asset: Omit<TrackedAsset, 'id' | 'createdAt' | 'updatedAt'> = {
       assetType: finalAssetType,
       symbol: symbol.toUpperCase().trim(),
@@ -322,10 +322,10 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
 
   const effectiveAssetType = restrictToAssetType || assetType
   const needsHistoricalData = effectiveAssetType === 'pk-equity' || effectiveAssetType === 'us-equity' || effectiveAssetType === 'crypto' || effectiveAssetType === 'metals' || effectiveAssetType === 'kse100' || effectiveAssetType === 'spx500'
-  
-  const isFormValid = symbol.trim() && 
-                      name.trim() &&
-                      (!needsHistoricalData || historicalDataReady)
+
+  const isFormValid = symbol.trim() &&
+    name.trim() &&
+    (!needsHistoricalData || historicalDataReady)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -336,7 +336,7 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
             Add an asset to track and analyze. Historical data will be fetched automatically.
           </DialogDescription>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
@@ -400,12 +400,12 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
                     value={symbol}
                     onValueChange={handleCryptoSelect}
                   />
-                  ) : effectiveAssetType === 'metals' ? (
+                ) : effectiveAssetType === 'metals' ? (
                   <MetalsSelector
                     value={symbol}
                     onValueChange={handleMetalSelect}
                   />
-                  ) : effectiveAssetType === 'kse100' || effectiveAssetType === 'spx500' ? (
+                ) : effectiveAssetType === 'kse100' || effectiveAssetType === 'spx500' ? (
                   <Input
                     id="symbol"
                     value={symbol}
@@ -418,7 +418,7 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
                   <Input
                     id="symbol"
                     value={symbol}
-                    onChange={(e) => setSymbol(e.target.value)}
+                    onChange={(e) => setSymbol(e.target.value.toUpperCase())}
                     placeholder={
                       effectiveAssetType === 'pk-equity'
                         ? 'PTC, HBL, UBL, etc.'
@@ -494,7 +494,7 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
               </AlertDescription>
             </Alert>
           )}
-          
+
           {needsHistoricalData && !historicalDataReady && !initializingHistoricalData && symbol && (
             <Alert variant="destructive" className="mb-4">
               <AlertCircle className="h-4 w-4" />
@@ -508,8 +508,8 @@ export function AddAssetDialog({ open, onOpenChange, onSave, defaultAssetType, r
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={!isFormValid || initializingHistoricalData || (needsHistoricalData && !historicalDataReady)}
             >
               {initializingHistoricalData ? (

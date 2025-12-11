@@ -189,13 +189,13 @@ export function GlobalSearch() {
                     // Checking AddAssetDialog usage... it takes onSave prop.
 
                     try {
-                        const response = await fetch('/api/user/watchlist', { // Assuming watchlist or portfolio
+                        const response = await fetch('/api/user/tracked-assets', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(asset)
                         })
                         if (!response.ok) throw new Error('Failed to add asset')
-                        // After adding, maybe navigate?
+                        // Asset added successfully
                     } catch (e) {
                         console.error(e)
                         throw e
