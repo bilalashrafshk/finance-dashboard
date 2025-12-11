@@ -55,7 +55,7 @@ export async function GET(request: Request) {
     // PG allows reusing $1.
 
     const unionParts = assetTypes.map(type => `
-      (SELECT 
+      (SELECT DISTINCT
         symbol,
         asset_type,
         symbol as name, -- Fallback
@@ -76,7 +76,7 @@ export async function GET(request: Request) {
     `)
 
     const dbQuery = `
-      SELECT DISTINCT * FROM (
+      SELECT * FROM (
         ${unionParts.join(' UNION ALL ')}
       ) as combined_results
       ORDER BY 
