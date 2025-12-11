@@ -50,8 +50,9 @@ export function GlobalSearch() {
 
     // Fetch initial data or search results
     React.useEffect(() => {
-        const fetchUrl = debouncedQuery.length >= 1
-            ? `/api/global-search?query=${encodeURIComponent(debouncedQuery)}`
+        const trimmedQuery = debouncedQuery.trim()
+        const fetchUrl = trimmedQuery.length >= 1
+            ? `/api/global-search?query=${encodeURIComponent(trimmedQuery)}`
             : "/api/global-search" // Support default list
 
         setLoading(true)

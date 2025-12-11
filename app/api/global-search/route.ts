@@ -17,8 +17,9 @@ export async function GET(request: Request) {
   const client = await pool.connect()
   try {
     // If queryParam is null or empty, `%${queryParam}%` becomes `%%`, which acts as a wildcard matching everything.
-    const searchQuery = queryParam ? `%${queryParam}%` : '%'
-    const sortQuery = queryParam ? `${queryParam}%` : ''
+    const trimmedQuery = (queryParam || '').trim()
+    const searchQuery = trimmedQuery ? `%${trimmedQuery}%` : '%'
+    const sortQuery = trimmedQuery ? `${trimmedQuery}%` : ''
 
     // Fetch unique assets across multiple types
     // We prioritize joining with company_profiles for names
