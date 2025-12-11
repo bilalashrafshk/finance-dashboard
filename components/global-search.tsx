@@ -1,9 +1,11 @@
 "use client"
 
 import * as React from "react"
-import { Search } from "lucide-react"
+import { Search, Plus } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/auth-context"
+import { useDebounce } from "use-debounce"
+import { AddAssetDialog } from "@/components/asset-screener/add-asset-dialog"
 
 import {
     CommandDialog,
@@ -41,36 +43,39 @@ export function GlobalSearch() {
         return () => document.removeEventListener("keydown", down)
     }, [])
 
-    // Fetch assets on mount
+
+
+    const [debouncedQuery] = useDebounce(query, 300)
+    const [addAssetOpen, setAddAssetOpen] = React.useState(false)
+
     React.useEffect(() => {
-        if (open && data.length === 0) {
+        if (open && debouncedQuery.length >= 1) {
             setLoading(true)
-            fetch("/api/global-search")
+            fetch(`/api/global-search?query=${encodeURIComponent(debouncedQuery)}`)
                 .then((res) => res.json())
                 .then((json) => {
                     if (json.success && Array.isArray(json.assets)) {
                         setData(json.assets)
+                    } else {
+                        setData([])
                     }
                 })
                 .catch(console.error)
                 .finally(() => setLoading(false))
+        } else if (debouncedQuery.length === 0) {
+            setData([])
         }
-    }, [open, data.length])
+    }, [open, debouncedQuery])
 
     const runCommand = React.useCallback((command: () => unknown) => {
         setOpen(false)
         command()
     }, [])
 
-    // Client-side filtering
-    const filteredData = React.useMemo(() => {
-        if (!query) return data.slice(0, 20)
-        const lower = query.toLowerCase()
-        return data.filter(item =>
-            item.symbol.toLowerCase().includes(lower) ||
-            item.name?.toLowerCase().includes(lower)
-        ).slice(0, 20)
-    }, [data, query])
+    // Handle adding custom asset - we can use this to refresh data or just show success
+    const handleAssetAdded = async () => {
+        // Maybe toast success?
+    }
 
     if (!user) return null;
 
@@ -89,7 +94,7 @@ export function GlobalSearch() {
             </button>
             <CommandDialog open={open} onOpenChange={setOpen}>
                 <CommandInput
-                    placeholder="Search stocks..."
+                    placeholder="Search stocks, crypto, commodities..."
                     value={query}
                     onValueChange={setQuery}
                     className="border-none focus:ring-0"
@@ -102,49 +107,100 @@ export function GlobalSearch() {
                         </div>
                     ) : (
                         <>
-                            <CommandEmpty>No results found.</CommandEmpty>
-                            <CommandGroup heading="Stocks">
-                                {filteredData.map((item) => (
+                            {data.length === 0 && query.length > 0 && (
+                                <CommandGroup heading="No results found">
                                     <CommandItem
-                                        key={`${item.asset_type}-${item.symbol}`}
-                                        value={`${item.symbol} ${item.name}`}
+                                        value="add-custom-asset"
                                         onSelect={() => {
-                                            if (item.asset_type === 'index') {
-                                                runCommand(() => router.push(`/charts`))
-                                            } else {
-                                                let slug = item.symbol;
-                                                if (item.asset_type === 'pk-equity' || item.asset_type === 'equity') {
-                                                    slug = `psx-${item.symbol}`;
-                                                }
-                                                runCommand(() => router.push(`/asset/${slug}`))
-                                            }
+                                            setOpen(false)
+                                            setAddAssetOpen(true)
                                         }}
                                         className="cursor-pointer aria-selected:bg-slate-800 aria-selected:text-white"
                                     >
-                                        <div className="flex items-center justify-between w-full">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold 
-                                                    ${item.asset_type.includes('us-equity') ? 'bg-indigo-500/10 text-indigo-500' : 'bg-green-500/10 text-green-500'}`}>
-                                                    {item.symbol.substring(0, 2)}
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <span className="font-bold text-white">{item.symbol}</span>
-                                                    <span className="text-slate-500 text-xs truncate max-w-[180px]">{item.name}</span>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[10px] uppercase tracking-wider text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
-                                                    {item.asset_type === 'pk-equity' ? 'PSX' : 'US'}
-                                                </span>
-                                            </div>
+                                        <div className="flex items-center gap-2 text-blue-400">
+                                            <Plus className="w-4 h-4" />
+                                            <span>Add "{query}" as custom asset</span>
                                         </div>
                                     </CommandItem>
-                                ))}
-                            </CommandGroup>
+                                </CommandGroup>
+                            )}
+
+                            {data.length > 0 && (
+                                <CommandGroup heading="Assets">
+                                    {data.map((item) => (
+                                        <CommandItem
+                                            key={`${item.asset_type}-${item.symbol}`}
+                                            value={`${item.symbol} ${item.name}`}
+                                            onSelect={() => {
+                                                if (item.asset_type === 'index' || item.asset_type === 'kse100' || item.asset_type === 'spx500') {
+                                                    runCommand(() => router.push(`/charts`))
+                                                } else {
+                                                    let slug = item.symbol;
+                                                    // Ensure consistent slug routing
+                                                    if (item.asset_type === 'pk-equity') {
+                                                        slug = `psx-${item.symbol}`;
+                                                    }
+                                                    // For crypto etc, straightforward symbol usually works, verify logic
+                                                    runCommand(() => router.push(`/asset/${slug}`))
+                                                }
+                                            }}
+                                            className="cursor-pointer aria-selected:bg-slate-800 aria-selected:text-white"
+                                        >
+                                            <div className="flex items-center justify-between w-full">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold 
+                                                        ${item.asset_type.includes('us-equity') ? 'bg-indigo-500/10 text-indigo-500' :
+                                                            item.asset_type === 'crypto' ? 'bg-orange-500/10 text-orange-500' :
+                                                                'bg-green-500/10 text-green-500'}`}>
+                                                        {item.symbol.substring(0, 2)}
+                                                    </div>
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold text-white">{item.symbol}</span>
+                                                        <span className="text-slate-500 text-xs truncate max-w-[180px]">{item.name}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] uppercase tracking-wider text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
+                                                        {item.asset_type === 'pk-equity' ? 'PSX' : item.asset_type === 'us-equity' ? 'US' : item.asset_type}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </CommandItem>
+                                    ))}
+                                </CommandGroup>
+                            )}
                         </>
                     )}
                 </CommandList>
             </CommandDialog>
+
+            <AddAssetDialog
+                open={addAssetOpen}
+                onOpenChange={setAddAssetOpen}
+                onSave={async (asset: any) => {
+                    // Call API to save to user's list? Or just trigger screener add?
+                    // The AddAssetDialog onSave usually expects a function.
+                    // We might need to implement a basic save function or import one.
+                    // For Global Search, adding usually means 'Tracking' it.
+                    // Reusing the same AddAssetDialog as in Screener/Portfolio requires handling onSave.
+                    // Let's assume we use the POST /api/user/trades logic or similar, but AddAssetDialog is generic component?
+                    // Checking AddAssetDialog usage... it takes onSave prop.
+
+                    try {
+                        const response = await fetch('/api/user/watchlist', { // Assuming watchlist or portfolio
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(asset)
+                        })
+                        if (!response.ok) throw new Error('Failed to add asset')
+                        // After adding, maybe navigate?
+                    } catch (e) {
+                        console.error(e)
+                        throw e
+                    }
+                }}
+                defaultAssetType="us-equity" // Default
+            />
         </>
     )
 }

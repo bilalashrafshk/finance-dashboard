@@ -26,9 +26,7 @@ import type { TrackedAsset } from "./add-asset-dialog"
 import type { PriceDataPoint } from "@/lib/asset-screener/metrics-calculations"
 import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
 import Link from "next/link"
-import { useChartRecorder } from "@/hooks/use-chart-recorder"
-import { useVideoMode } from "@/hooks/use-video-mode"
-import { VideoModeToggle } from "@/components/ui/video-mode-toggle"
+
 import { getThemeColors } from "@/lib/charts/theme-colors"
 import {
   calculateDividendAdjustedPrices,
@@ -47,36 +45,12 @@ export type ChartPeriod = '1M' | '3M' | '6M' | '1Y' | '2Y' | '5Y' | 'ALL'
 
 export function AssetPriceChart({ asset }: AssetPriceChartProps) {
   const { theme } = useTheme()
-  const { isVideoMode, toggleVideoMode, containerClassName, videoModeColors, videoModeStyle } = useVideoMode()
   const colors = useMemo(() => {
-    const themeColors = getThemeColors()
-    if (isVideoMode) {
-      return {
-        ...themeColors,
-        ...videoModeColors,
-        price: videoModeColors.stroke!,
-      }
-    }
-    return themeColors
-  }, [theme, isVideoMode, videoModeColors])
+    return getThemeColors()
+  }, [theme])
 
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const [replayKey, setReplayKey] = useState(0)
-
-  // Recording Hook
-  const { isRecording, isEncoding, startRecording, stopRecording } = useChartRecorder(chartContainerRef as React.RefObject<HTMLElement>, {
-    workerScript: '/gif.worker.js',
-    quality: 10,
-    delay: 100 // 10 FPS
-  })
-
-  // Handle recording start with redraw
-  const handleRecordStart = async () => {
-    // Trigger redraw
-    setReplayKey(prev => prev + 1)
-    // Wait for re-render and animation start
-    await new Promise(resolve => setTimeout(resolve, 500))
-  }
 
   const { toast } = useToast()
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('1Y')
@@ -453,9 +427,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
       legend: {
         display: true,
         position: 'top' as const,
-        labels: {
-          color: isVideoMode ? videoModeColors.text : undefined
-        }
+
       },
       tooltip: {
         mode: 'index' as const,
@@ -475,7 +447,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
       x: {
         display: true,
         ticks: {
-          color: isVideoMode ? videoModeColors.text : undefined
+          color: undefined
         },
         grid: {
           display: false,
@@ -491,10 +463,10 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
           theme,
         }),
         ticks: {
-          color: isVideoMode ? videoModeColors.text : undefined
+          color: undefined
         },
         grid: {
-          color: isVideoMode ? videoModeColors.grid : undefined
+          color: undefined
         }
       }
     },
@@ -505,7 +477,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
   }), [asset, showComparison, showTotalReturn, canShowComparison, canShowTotalReturn, theme, formatCurrency, useLogScale])
 
   return (
-    <Card className={containerClassName} style={videoModeStyle}>
+    <Card className="h-full w-full">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
@@ -539,14 +511,6 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
                 </Label>
               </div>
             )}
-            <VideoModeToggle
-              isVideoMode={isVideoMode}
-              onToggle={toggleVideoMode}
-              isRecording={isRecording}
-              isEncoding={isEncoding}
-              onRecordStart={() => startRecording(handleRecordStart)}
-              onRecordStop={stopRecording}
-            />
             <Select value={chartPeriod} onValueChange={(value) => setChartPeriod(value as ChartPeriod)}>
               <SelectTrigger className="w-[120px]">
                 <SelectValue />

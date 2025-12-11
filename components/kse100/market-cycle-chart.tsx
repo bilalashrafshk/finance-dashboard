@@ -19,9 +19,6 @@ import {
 import { normalizeCyclesForChart, detectMarketCycles, type MarketCycle } from "@/lib/algorithms/market-cycle-detection"
 import { type InvestingHistoricalDataPoint } from "@/lib/portfolio/investing-client-api"
 import type { PriceDataPoint } from "@/lib/asset-screener/metrics-calculations"
-import { useVideoMode } from "@/hooks/use-video-mode"
-import { VideoModeToggle } from "@/components/ui/video-mode-toggle"
-import { useChartRecorder } from "@/hooks/use-chart-recorder"
 
 interface MarketCycleChartProps {
   // Optional: if not provided, will fetch KSE100 data
@@ -60,25 +57,8 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
   const [visibleCycles, setVisibleCycles] = useState<Set<string>>(new Set())
   const [isDark, setIsDark] = useState(false)
   const [currency, setCurrency] = useState<'PKR' | 'USD'>('PKR')
-  const { isVideoMode, toggleVideoMode, containerClassName, videoModeColors, videoModeStyle } = useVideoMode()
-  const [replayKey, setReplayKey] = useState(0)
 
   const chartContainerRef = useRef<HTMLDivElement>(null)
-
-  // Recording Hook
-  const { isRecording, isEncoding, startRecording, stopRecording } = useChartRecorder(chartContainerRef as React.RefObject<HTMLElement>, {
-    workerScript: '/gif.worker.js',
-    quality: 10,
-    delay: 100 // 10 FPS
-  })
-
-  // Handle recording start with redraw
-  const handleRecordStart = async () => {
-    // Trigger redraw
-    setReplayKey(prev => prev + 1)
-    // Wait for re-render and animation start
-    await new Promise(resolve => setTimeout(resolve, 500))
-  }
 
   // Cache for exchange rate data
   const exchangeRateCacheRef = useRef<{
@@ -507,9 +487,10 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
   }
 
   // Theme-aware colors
-  const gridColor = isVideoMode ? (videoModeColors.grid || 'rgba(0,0,0,0.2)') : (isDark ? '#374151' : '#e5e7eb')
-  const axisColor = isVideoMode ? (videoModeColors.text || '#000000') : (isDark ? '#9ca3af' : '#6b7280')
-  const axisLabelColor = isVideoMode ? (videoModeColors.text || '#000000') : (isDark ? '#f3f4f6' : '#1f2937')
+  // Theme-aware colors
+  const gridColor = isDark ? '#374151' : '#e5e7eb'
+  const axisColor = isDark ? '#9ca3af' : '#6b7280'
+  const axisLabelColor = isDark ? '#f3f4f6' : '#1f2937'
 
   if (loading) {
     return (
@@ -545,7 +526,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
 
   return (
     <div ref={chartContainerRef}>
-      <Card className={containerClassName} style={videoModeStyle}>
+      <Card className="w-full">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -554,14 +535,6 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
                 Trough-to-peak cycles overlaid from 100% baseline. Click legend items to show/hide cycles.
               </CardDescription>
             </div>
-            <VideoModeToggle
-              isVideoMode={isVideoMode}
-              onToggle={toggleVideoMode}
-              isRecording={isRecording}
-              isEncoding={isEncoding}
-              onRecordStart={() => startRecording(handleRecordStart)}
-              onRecordStop={stopRecording}
-            />
           </div>
         </CardHeader>
         <CardContent>
@@ -649,7 +622,7 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
             {/* Chart */}
             <div className="h-[500px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart key={replayKey} data={chartData} margin={{ top: 20, right: 30, bottom: 50, left: 50 }}>
+                <LineChart data={chartData} margin={{ top: 20, right: 30, bottom: 50, left: 50 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={gridColor} opacity={0.4} />
 
                   <XAxis
@@ -704,14 +677,13 @@ export function MarketCycleChart({ data: providedData }: MarketCycleChartProps) 
                         key={cycle.cycleId}
                         type="monotone"
                         dataKey={cycle.cycleName}
-                        stroke={isVideoMode && videoModeColors[`chart${(idx % 5) + 1}` as keyof typeof videoModeColors] ? videoModeColors[`chart${(idx % 5) + 1}` as keyof typeof videoModeColors] : CYCLE_COLORS[idx % CYCLE_COLORS.length]}
-                        strokeWidth={isVideoMode ? 3 : 2}
+                        stroke={CYCLE_COLORS[idx % CYCLE_COLORS.length]}
+                        strokeWidth={2}
                         dot={false}
                         activeDot={{ r: 4 }}
                         name={`${cycle.cycleName} (${cycle.roi >= 0 ? '+' : ''}${cycle.roi.toFixed(1)}%)`}
                         legendType="none"
                         connectNulls
-                        isAnimationActive={!isRecording || isRecording} // Ensure animation runs during recording
                         animationDuration={1500} // Force consistent duration
                       />
                     )

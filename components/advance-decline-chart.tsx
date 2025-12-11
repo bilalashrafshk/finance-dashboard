@@ -37,9 +37,6 @@ import "chartjs-adapter-date-fns"
 import { createTimeSeriesChartOptions } from "@/lib/charts/chart-config"
 import { getThemeColors } from "@/lib/charts/theme-colors"
 import { useToast } from "@/hooks/use-toast"
-import { useVideoMode } from "@/hooks/use-video-mode"
-import { VideoModeToggle } from "@/components/ui/video-mode-toggle"
-import { useChartRecorder } from "@/hooks/use-chart-recorder"
 import { useRef } from "react"
 
 ChartJS.register(
@@ -104,36 +101,12 @@ export function AdvanceDeclineChart({
   const [internalStartDate, setInternalStartDate] = useState<string>(getDefaultStartDate())
   const [internalEndDate, setInternalEndDate] = useState<string>(getDefaultEndDate())
   const { theme } = useTheme()
-  const { isVideoMode, toggleVideoMode, containerClassName, videoModeColors, videoModeStyle } = useVideoMode()
   const colors = useMemo(() => {
-    const themeColors = getThemeColors()
-    if (isVideoMode) {
-      return {
-        ...themeColors,
-        ...videoModeColors,
-        price: videoModeColors.stroke!,
-      }
-    }
-    return themeColors
-  }, [theme, isVideoMode, videoModeColors])
+    return getThemeColors()
+  }, [theme])
 
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const [replayKey, setReplayKey] = useState(0)
-
-  // Recording Hook
-  const { isRecording, isEncoding, startRecording, stopRecording } = useChartRecorder(chartContainerRef as React.RefObject<HTMLElement>, {
-    workerScript: '/gif.worker.js',
-    quality: 10,
-    delay: 100 // 10 FPS
-  })
-
-  // Handle recording start with redraw
-  const handleRecordStart = async () => {
-    // Trigger redraw
-    setReplayKey(prev => prev + 1)
-    // Wait for re-render and animation start
-    await new Promise(resolve => setTimeout(resolve, 500))
-  }
 
   const { toast } = useToast()
 
@@ -337,6 +310,8 @@ export function AdvanceDeclineChart({
         pointHoverRadius: 4,
         borderWidth: 2,
         yAxisID: 'y',
+        borderDash: [],
+        spanGaps: true,
       },
       {
         label: 'Net Advances',
@@ -372,22 +347,23 @@ export function AdvanceDeclineChart({
         }
 
         // If no value (weekend/holiday), use last known value to keep line continuous
-        return lastKse100Value
+        return lastKse100Value || 0
       })
 
       const matchedCount = kse100Values.filter(v => v !== null).length
 
       datasets.push({
         label: 'KSE100',
-        data: formatTimeSeriesData(kse100Values),
+        data: formatTimeSeriesData(kse100Values.map(v => v !== null ? v : 0)), // Ensure no nulls
         borderColor: '#f59e0b',
         backgroundColor: '#f59e0b20',
         fill: false,
         tension: 0.1,
         pointRadius: 0,
         pointHoverRadius: 4,
-        borderWidth: 1.5,
-        yAxisID: 'y1', // Use separate y-axis
+        borderWidth: 2, // Changed from 1.5 to 2
+        borderDash: [], // Added
+        yAxisID: 'y3', // Changed from y1 to y3
         spanGaps: true, // Connect across gaps (weekends)
       })
     }
@@ -407,7 +383,7 @@ export function AdvanceDeclineChart({
         }
 
         // Forward-fill with last known value to keep line continuous
-        return lastSectorIndexValue
+        return lastSectorIndexValue || 0
       })
 
       // Only add dataset if we have at least some valid values
@@ -415,7 +391,7 @@ export function AdvanceDeclineChart({
       if (validValues.length > 0) {
         datasets.push({
           label: `${selectedSector} Index${includeDividends ? ' (Total Return)' : ' (Price Return)'}`,
-          data: formatTimeSeriesData(sectorIndexValues),
+          data: formatTimeSeriesData(sectorIndexValues.map(v => v !== null ? v : 0)), // Ensure no nulls if strictly typed
           borderColor: '#8b5cf6',
           backgroundColor: '#8b5cf620',
           fill: false,
@@ -463,10 +439,10 @@ export function AdvanceDeclineChart({
         title: {
           display: true,
           text: "AD Line Value",
-          color: isVideoMode ? videoModeColors.text : colors.foreground,
+          color: colors.foreground,
         },
         ticks: {
-          color: isVideoMode ? videoModeColors.text : colors.foreground,
+          color: colors.foreground,
           callback: function (value: any) {
             return typeof value === 'number' ? value.toLocaleString() : value
           },
@@ -475,9 +451,9 @@ export function AdvanceDeclineChart({
           color: (context: any) => {
             // Highlight zero line
             if (context.tick.value === 0) {
-              return isVideoMode ? videoModeColors.grid : colors.gridStrong
+              return colors.gridStrong
             }
-            return isVideoMode ? videoModeColors.grid : colors.grid
+            return colors.grid
           },
           lineWidth: (context: any) => {
             return context.tick.value === 0 ? 2 : 1
@@ -714,7 +690,7 @@ export function AdvanceDeclineChart({
   return (
     <div className="space-y-4">
       {/* Settings Panel */}
-      <Card className={containerClassName} style={videoModeStyle}>
+      <Card className="h-full w-full">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -725,14 +701,6 @@ export function AdvanceDeclineChart({
               <CardDescription>Configure date range, filters and overlays</CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <VideoModeToggle
-                isVideoMode={isVideoMode}
-                onToggle={toggleVideoMode}
-                isRecording={isRecording}
-                isEncoding={isEncoding}
-                onRecordStart={() => startRecording(handleRecordStart)}
-                onRecordStop={stopRecording}
-              />
               <Button
                 variant="ghost"
                 size="sm"
@@ -879,7 +847,7 @@ export function AdvanceDeclineChart({
 
       {/* Chart Card */}
       <div ref={chartContainerRef}>
-        <Card className={containerClassName} style={videoModeStyle}>
+        <Card className="h-full w-full">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>

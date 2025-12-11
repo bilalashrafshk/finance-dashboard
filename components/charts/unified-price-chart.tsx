@@ -28,9 +28,6 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Check } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useVideoMode } from "@/hooks/use-video-mode"
-import { VideoModeToggle } from "@/components/ui/video-mode-toggle"
-import { useChartRecorder } from "@/hooks/use-chart-recorder"
 
 interface MovingAverageConfig {
     id: string
@@ -99,39 +96,11 @@ function filterDataByRange(data: PriceDataPoint[], range: TimeRange): PriceDataP
 
 export function UnifiedPriceChart() {
     const { theme } = useTheme()
-    const { isVideoMode, toggleVideoMode, containerClassName, videoModeColors, videoModeStyle } = useVideoMode()
+    const colors = useMemo(() => {
+        return getThemeColors()
+    }, [theme])
     const { toast } = useToast()
     const chartContainerRef = useRef<HTMLDivElement>(null)
-    const [replayKey, setReplayKey] = useState(0)
-
-    // Recording Hook
-    const { isRecording, isEncoding, startRecording, stopRecording } = useChartRecorder(chartContainerRef as React.RefObject<HTMLElement>, {
-        workerScript: '/gif.worker.js',
-        quality: 10,
-        delay: 100 // 10 FPS
-    })
-
-    // Handle recording start with redraw
-    const handleRecordStart = async () => {
-        // Trigger redraw
-        setReplayKey(prev => prev + 1)
-        // Wait for re-render and animation start
-        await new Promise(resolve => setTimeout(resolve, 500))
-    }
-
-    const colors = useMemo(() => {
-        const themeColors = getThemeColors()
-        if (isVideoMode) {
-            return {
-                ...themeColors,
-                ...videoModeColors,
-                foreground: videoModeColors.text!,
-                grid: videoModeColors.grid!,
-                border: videoModeColors.stroke!,
-            }
-        }
-        return themeColors
-    }, [theme, isVideoMode, videoModeColors])
     const chartRef = useRef<IChartApi | null>(null)
     const priceSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
     const comparisonSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
@@ -465,7 +434,7 @@ export function UnifiedPriceChart() {
 
         chartRef.current.applyOptions({
             layout: {
-                background: { type: ColorType.Solid, color: isDark ? colors.background : '#ffffff' },
+                background: { type: ColorType.Solid, color: 'transparent' },
                 textColor: colors.foreground,
             },
             grid: {
@@ -792,25 +761,18 @@ export function UnifiedPriceChart() {
 
     return (
         <div className="space-y-4">
-            <Card className={containerClassName} style={videoModeStyle}>
-                <CardHeader className="pb-4">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div>
-                            <CardTitle>Unified Price Chart</CardTitle>
-                            <CardDescription>Advanced charting with technical indicators</CardDescription>
+            {/* Chart Card */}
+            <Card className="h-full w-full">
+                <CardHeader className="pb-2">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="space-y-1">
+                            <CardTitle className="text-xl font-bold flex items-center gap-2">
+                                {(selectedSymbol || assetType).replace(/-/g, ' ').toUpperCase()} Price Chart
+                            </CardTitle>
                         </div>
 
-                        {/* Compact Asset Selector */}
-                        <div className="flex items-center gap-2 w-full md:w-auto">
-                            <VideoModeToggle
-                                isVideoMode={isVideoMode}
-                                onToggle={toggleVideoMode}
-                                isRecording={isRecording}
-                                isEncoding={isEncoding}
-                                onRecordStart={() => startRecording(handleRecordStart)}
-                                onRecordStop={stopRecording}
-                            />
-                            <Select value={assetType} onValueChange={(v) => setAssetType(v as AssetType)}>
+                        <div className="flex items-center gap-2">
+                            {/* Range Selectors */}                          <Select value={assetType} onValueChange={(v) => setAssetType(v as AssetType)}>
                                 <SelectTrigger className="w-[130px]">
                                     <SelectValue />
                                 </SelectTrigger>
