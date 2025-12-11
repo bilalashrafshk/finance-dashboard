@@ -5,7 +5,7 @@
  * Format: market-ticker (e.g., "psx-ogdc", "us-aapl")
  */
 
-export type MarketPrefix = 'psx' | 'us' | 'crypto' | 'metals' | 'indices'
+export type MarketPrefix = 'psx' | 'us' | 'crypto' | 'metals' | 'indices' | 'commodities'
 
 /**
  * Get market prefix from asset type
@@ -22,9 +22,14 @@ export function getMarketPrefix(assetType: string): MarketPrefix {
       return 'crypto'
     case 'metals':
       return 'metals'
+    case 'commodities':
+    case 'commodity': // Handle potential variations
+      return 'commodities'
     case 'indices':
       return 'indices'
     default:
+      // Check if it contains commodity
+      if (assetType.includes('commodity')) return 'commodities'
       return 'us' // Default fallback
   }
 }
@@ -50,7 +55,7 @@ export function parseAssetSlug(slug: string): { market: MarketPrefix; ticker: st
 
   const market = parts[0]
   const ticker = parts.slice(1).join('-') // Handle tickers that might contain hyphens
-  const validMarkets: MarketPrefix[] = ['psx', 'us', 'crypto', 'metals', 'indices']
+  const validMarkets: MarketPrefix[] = ['psx', 'us', 'crypto', 'metals', 'indices', 'commodities']
 
   if (!validMarkets.includes(market.toLowerCase() as MarketPrefix)) {
     return null
@@ -77,6 +82,8 @@ export function getAssetTypeFromMarket(market: MarketPrefix, ticker: string): st
       return 'crypto'
     case 'metals':
       return 'metals'
+    case 'commodities':
+      return 'commodities'
     case 'indices':
       return 'indices'
     default:
