@@ -42,41 +42,44 @@ export interface OptimizationResult {
   metrics: PortfolioMetrics
 }
 
-const TRADING_DAYS_PER_YEAR = 250
+const TRADING_DAYS_PER_YEAR = 252
 
 /**
- * Calculate daily simple (arithmetic) returns from price data
- * r_t = P_t / P_{t-1} - 1
+ * Calculate daily log returns from price data ensures time-additivity
+ * r_t = ln(P_t / P_{t-1})
  */
-export function calculateDailyReturns(prices: number[]): number[] {
+export function toDailyReturns(prices: number[]): number[] {
   const returns: number[] = []
   for (let i = 1; i < prices.length; i++) {
     const prev = prices[i - 1]
-    if (prev > 0) {
-      const ret = prices[i] / prev - 1 // Simple arithmetic returns
-      returns.push(ret)
+    const current = prices[i]
+    if (prev > 0 && current > 0) {
+      // Log returns: ln(Price[t] / Price[t-1])
+      returns.push(Math.log(current / prev))
     } else {
       returns.push(0)
     }
   }
-  
   return returns
 }
 
 /**
- * Calculate mean return (annualized) using geometric mean (compound growth)
- * r_ann = (1 + r̄_daily)^250 - 1
- * 
- * Uses geometric annualization because returns compound over time.
- * Arithmetic annualization (r̄_daily × 250) is incorrect for returns.
+ * Legacy wrapper for compatibility
+ */
+export function calculateDailyReturns(prices: number[]): number[] {
+  return toDailyReturns(prices)
+}
+
+/**
+ * Calculate mean return (annualized)
+ * For log returns, annualization is linear: mean_daily * 252
  */
 export function calculateMeanReturn(returns: number[]): number {
   if (returns.length === 0) return 0
   const meanDaily = returns.reduce((sum, r) => sum + r, 0) / returns.length
-  
-  // Geometric annualization (compound growth)
-  // If daily return is r, then annual return = (1 + r)^250 - 1
-  return Math.pow(1 + meanDaily, TRADING_DAYS_PER_YEAR) - 1
+
+  // Linear annualization for log returns
+  return meanDaily * TRADING_DAYS_PER_YEAR
 }
 
 /**
@@ -115,14 +118,14 @@ function isPositiveDefinite(matrix: number[][]): boolean {
   try {
     // Attempt Cholesky decomposition: A = L * L^T
     const L: number[][] = Array(n).fill(null).map(() => Array(n).fill(0))
-    
+
     for (let i = 0; i < n; i++) {
       for (let j = 0; j <= i; j++) {
         let sum = 0
         for (let k = 0; k < j; k++) {
           sum += L[i][k] * L[j][k]
         }
-        
+
         if (i === j) {
           const diag = matrix[i][i] - sum
           if (diag <= 0) return false // Not positive definite
@@ -147,7 +150,7 @@ function isPositiveDefinite(matrix: number[][]): boolean {
 export function regularizeCov(cov: number[][], lambda = 1e-4): number[][] {
   const n = cov.length
   const out: number[][] = []
-  
+
   // Step 1: Ensure symmetry (standard practice)
   for (let i = 0; i < n; i++) {
     out[i] = []
@@ -155,10 +158,10 @@ export function regularizeCov(cov: number[][], lambda = 1e-4): number[][] {
       out[i][j] = (cov[i][j] + cov[j][i]) / 2
     }
   }
-  
+
   // Step 2: Calculate average variance for shrinkage target
   const avgVariance = out.reduce((sum, row, i) => sum + row[i], 0) / n
-  
+
   // Step 3: Apply Ledoit-Wolf style shrinkage towards identity
   // Shrinkage factor: blend between sample covariance and identity
   const shrinkage = 0.1 // Conservative shrinkage factor
@@ -173,14 +176,14 @@ export function regularizeCov(cov: number[][], lambda = 1e-4): number[][] {
       }
     }
   }
-  
+
   // Step 4: Add ridge regularization to ensure positive definiteness
   // Standard practice: add small multiple of identity
   const ridgeLambda = Math.max(lambda, avgVariance * 0.01)
   for (let i = 0; i < n; i++) {
     out[i][i] += ridgeLambda
   }
-  
+
   // Step 5: Verify positive definiteness, strengthen if needed
   let attempts = 0
   const maxAttempts = 10
@@ -192,7 +195,7 @@ export function regularizeCov(cov: number[][], lambda = 1e-4): number[][] {
     }
     attempts++
   }
-  
+
   // Step 6: Final check - ensure diagonal dominance as fallback
   if (!isPositiveDefinite(out)) {
     for (let i = 0; i < n; i++) {
@@ -200,7 +203,7 @@ export function regularizeCov(cov: number[][], lambda = 1e-4): number[][] {
       out[i][i] = Math.max(out[i][i], rowSum * 1.1 + ridgeLambda)
     }
   }
-  
+
   return out
 }
 
@@ -217,10 +220,10 @@ export function portfolioReturn(weights: number[], expectedReturns: number[]): n
 export function portfolioVariance(weights: number[], covarianceMatrix: number[][]): number {
   const w = weights
   const cov = covarianceMatrix
-  
+
   // Compute Σ @ w first (matrix-vector multiply)
   const cov_w = matrixVectorMultiply(cov, w)
-  
+
   // Then compute w^T @ (Σ @ w) = dot product
   return dotProduct(w, cov_w)
 }
@@ -233,6 +236,48 @@ export function portfolioVolatility(weights: number[], covarianceMatrix: number[
 }
 
 /**
+ * Calculate Standard Deviation (Volatility)
+ * Expects array of daily returns.
+ * Annualizes by multiplying by sqrt(252).
+ */
+export function calculateStandardDeviation(returns: number[]): number {
+  if (returns.length === 0) return 0
+  const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length
+  const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length
+  return Math.sqrt(variance) * Math.sqrt(TRADING_DAYS_PER_YEAR)
+}
+
+/**
+ * Calculate Beta
+ * Beta = Cov(Asset, Benchmark) / Var(Benchmark)
+ * converting prices to daily returns first
+ */
+export function calculateBeta(assetPrices: number[], benchmarkPrices: number[]): number {
+  const assetReturns = toDailyReturns(assetPrices)
+  const benchmarkReturns = toDailyReturns(benchmarkPrices)
+
+  const n = Math.min(assetReturns.length, benchmarkReturns.length)
+  if (n < 2) return 0
+
+  const ra = assetReturns.slice(0, n)
+  const rb = benchmarkReturns.slice(0, n)
+
+  const meanA = ra.reduce((s, x) => s + x, 0) / n
+  const meanB = rb.reduce((s, x) => s + x, 0) / n
+
+  let cov = 0
+  let varB = 0
+
+  for (let i = 0; i < n; i++) {
+    cov += (ra[i] - meanA) * (rb[i] - meanB)
+    varB += Math.pow(rb[i] - meanB, 2)
+  }
+
+  if (varB === 0) return 0
+  return cov / varB
+}
+
+/**
  * Calculate downside deviation (for Sortino ratio)
  * Uses daily excess returns against daily RF (rf_daily = rf_annual / 250)
  * Then annualize downside by sqrt(250)
@@ -240,16 +285,16 @@ export function portfolioVolatility(weights: number[], covarianceMatrix: number[
  */
 export function calculateDownsideDeviation(portfolioDailyReturns: number[], rfAnnual: number): number {
   const rfDaily = rfAnnual / TRADING_DAYS_PER_YEAR
-  
+
   const downsides = portfolioDailyReturns
     .map(r => Math.min(0, r - rfDaily))
     .filter(x => x < 0)
-  
+
   if (downsides.length === 0) return 0
-  
+
   const meanDown = downsides.reduce((s, v) => s + v, 0) / downsides.length
   const variance = downsides.reduce((s, v) => s + Math.pow(v - meanDown, 2), 0) / downsides.length
-  
+
   return Math.sqrt(variance) * Math.sqrt(TRADING_DAYS_PER_YEAR) // Annualize
 }
 
@@ -268,8 +313,31 @@ export function sortinoRatio(expectedReturnAnn: number, rfAnnual: number, downsi
 
 /**
  * Calculate Sharpe ratio
- * Sharpe = (expectedReturnAnn - rfAnnual) / volatilityAnn
- * rfAnnual should be decimal (e.g., 0.20 for 20%)
+ * Formula: (AverageDailyReturn - DailyRiskFreeRate) / DailyStandardDeviation
+ * Then annualize by sqrt(252)
+ * 
+ * @param returns Array of daily returns (log returns preferred)
+ * @param rfAnnual Annual risk-free rate as decimal (e.g. 0.05 for 5%)
+ */
+export function calculateSharpeRatio(returns: number[], rfAnnual: number): number {
+  if (returns.length < 2) return 0
+
+  const meanDailyReturn = returns.reduce((sum, r) => sum + r, 0) / returns.length
+  const stdDevDailyReturn = Math.sqrt(
+    returns.reduce((sum, r) => sum + Math.pow(r - meanDailyReturn, 2), 0) / returns.length
+  )
+
+  if (stdDevDailyReturn === 0) return 0
+
+  const rfDaily = rfAnnual / TRADING_DAYS_PER_YEAR
+  const dailySharpe = (meanDailyReturn - rfDaily) / stdDevDailyReturn
+
+  return dailySharpe * Math.sqrt(TRADING_DAYS_PER_YEAR)
+}
+
+/**
+ * Legacy generic Sharpe Ratio (from annualized inputs)
+ * Retained for compatibility but marked deprecated
  */
 export function sharpeRatio(expectedReturnAnn: number, rfAnnual: number, volatilityAnn: number): number {
   const excess = expectedReturnAnn - rfAnnual
@@ -288,7 +356,7 @@ function projectOntoSimplex(v: number[]): number[] {
   const u = v.slice().sort((a, b) => b - a) // descending
   let cssv = 0
   let rho = -1
-  
+
   for (let i = 0; i < n; i++) {
     cssv += u[i]
     const t = (cssv - 1) / (i + 1)
@@ -298,12 +366,12 @@ function projectOntoSimplex(v: number[]): number[] {
       break
     }
   }
-  
+
   if (rho === -1) {
     // fallback to uniform
     return Array(n).fill(1 / n)
   }
-  
+
   cssv = u.slice(0, rho + 1).reduce((s, x) => s + x, 0)
   const theta = (cssv - 1) / (rho + 1)
   return v.map(x => Math.max(0, x - theta))
@@ -415,7 +483,7 @@ export function optimizeMinimumVariance(
   // QP: min 0.5 * w^T Σ w
   // Dmat = Σ (quadratic term)
   const Dmat = to1Indexed(covarianceMatrix)
-  
+
   // dvec = 0 (linear term)
   const dvec = vecTo1Indexed(Array(n).fill(0))
 
@@ -439,10 +507,10 @@ export function optimizeMinimumVariance(
   const meq = 1 // First constraint is equality
 
   const solution = qp.solveQP(Dmat, dvec, Amat, bvec, meq)
-  
+
   // Check if solution is valid (empty message often means success in quadprog)
   const isSuccess = solution.message === 'optimal' || solution.message === '' || !solution.message || solution.message === undefined
-  
+
   if (!isSuccess) {
     // Fallback to equal weights
     const result: PortfolioWeights = {}
@@ -453,12 +521,12 @@ export function optimizeMinimumVariance(
   }
 
   const weights = vecTo0Indexed(solution.solution)
-  
+
   const result: PortfolioWeights = {}
   symbols.forEach((symbol, i) => {
     result[symbol] = Math.max(0, weights[i]) // Ensure non-negative
   })
-  
+
   // Normalize to sum to 1
   const sum = Object.values(result).reduce((s, w) => s + w, 0)
   if (sum > 0) {
@@ -470,7 +538,7 @@ export function optimizeMinimumVariance(
       result[symbol] = 1 / n
     })
   }
-  
+
   return result
 }
 
@@ -518,10 +586,10 @@ export function optimizeMaximumSharpe(
   const meq = 1 // First constraint is equality
 
   const solution = qp.solveQP(Dmat, dvec, Amat, bvec, meq)
-  
+
   // Check if solution is valid (empty message often means success in quadprog)
   const isSuccess = solution.message === 'optimal' || solution.message === '' || !solution.message || solution.message === undefined
-  
+
   if (!isSuccess) {
     // Fallback to equal weights
     const result: PortfolioWeights = {}
@@ -532,7 +600,7 @@ export function optimizeMaximumSharpe(
   }
 
   let weights = vecTo0Indexed(solution.solution)
-  
+
   // Ensure non-negative and normalize
   weights = weights.map(w => Math.max(0, w))
   const sum = weights.reduce((s, w) => s + w, 0)
@@ -546,7 +614,7 @@ export function optimizeMaximumSharpe(
   symbols.forEach((symbol, i) => {
     result[symbol] = weights[i]
   })
-  
+
   return result
 }
 
@@ -593,7 +661,7 @@ export function optimizeMaximumSortino(
     const eps = 1e-6
     const grad: number[] = []
     const baseObj = objective(w)
-    
+
     for (let i = 0; i < n; i++) {
       const wPlus = [...w]
       wPlus[i] += eps
@@ -628,7 +696,7 @@ export function optimizeMaximumReturn(
   expectedReturns: number[],
   symbols: string[]
 ): PortfolioWeights {
-  const maxIndex = expectedReturns.reduce((maxIdx, val, idx) => 
+  const maxIndex = expectedReturns.reduce((maxIdx, val, idx) =>
     val > expectedReturns[maxIdx] ? idx : maxIdx, 0
   )
 
@@ -655,12 +723,12 @@ function isTargetReturnFeasible(
 ): boolean {
   const minReturn = Math.min(...expectedReturns)
   const maxReturn = Math.max(...expectedReturns)
-  
+
   // Target must be within achievable range
   if (targetReturn < minReturn - tolerance || targetReturn > maxReturn + tolerance) {
     return false
   }
-  
+
   return true
 }
 
@@ -673,7 +741,7 @@ export function generateEfficientFrontier(
   const n = symbols.length
   const minReturn = Math.min(...expectedReturns)
   const maxReturn = Math.max(...expectedReturns)
-  
+
   const frontier: EfficientFrontierPoint[] = []
 
   // QP setup (same for all points)
@@ -682,12 +750,12 @@ export function generateEfficientFrontier(
 
   for (let i = 0; i < numPoints; i++) {
     const targetReturn = minReturn + (maxReturn - minReturn) * i / (numPoints - 1)
-    
+
     // Validate target return feasibility (standard practice)
     if (!isTargetReturnFeasible(targetReturn, expectedReturns)) {
       continue
     }
-    
+
     // Constraints: w^T @ μ = targetReturn, sum(w) = 1, w >= 0
     // Constraint 1 (equality): expectedReturns^T * w = targetReturn
     // Constraint 2 (equality): sum(w) = 1
@@ -714,20 +782,20 @@ export function generateEfficientFrontier(
     let solution = qp.solveQP(Dmat, dvec, Amat, bvec, meq)
     let retryCount = 0
     const maxRetries = 2
-    
+
     // If matrix not positive definite, try with additional regularization
     while (
       solution.message === 'matrix D in quadratic function is not positive definite!' &&
       retryCount < maxRetries
     ) {
       retryCount++
-      
+
       // Create a more strongly regularized covariance matrix
       const additionalLambda = 1e-3 * Math.pow(10, retryCount)
       const strengthenedCov = covarianceMatrix.map((row, i) =>
         row.map((val, j) => (i === j ? val + additionalLambda : val))
       )
-      
+
       // Verify it's now positive definite
       if (isPositiveDefinite(strengthenedCov)) {
         const strengthenedDmat = to1Indexed(strengthenedCov)
@@ -737,16 +805,16 @@ export function generateEfficientFrontier(
         break
       }
     }
-    
+
     // Check if solution is valid (empty message often means success in quadprog)
     const isSuccess = solution.message === 'optimal' || solution.message === '' || !solution.message || solution.message === undefined
-    
+
     if (!isSuccess) {
       continue
     }
 
     let weights = vecTo0Indexed(solution.solution)
-    
+
     // Ensure non-negative
     weights = weights.map(w => Math.max(0, w))
     const sum = weights.reduce((s, w) => s + w, 0)
@@ -786,10 +854,10 @@ export function calculatePortfolioMetrics(
   riskFreeRate: number
 ): PortfolioMetrics {
   const weightArray = symbols.map(s => weights[s] || 0)
-  
+
   const expectedReturn = portfolioReturn(weightArray, expectedReturns)
   const volatility = portfolioVolatility(weightArray, covarianceMatrix)
-  
+
   // Calculate portfolio returns time series
   const m = returnsMatrix[0].length
   const portfolioReturns: number[] = []
@@ -803,10 +871,10 @@ export function calculatePortfolioMetrics(
 
   // riskFreeRate comes as percentage, convert to decimal
   const rfAnnual = riskFreeRate / 100
-  
+
   const downsideDev = calculateDownsideDeviation(portfolioReturns, rfAnnual)
-  
-  const sharpe = sharpeRatio(expectedReturn, rfAnnual, volatility)
+
+  const sharpe = calculateSharpeRatio(portfolioReturns, rfAnnual)
   const sortino = sortinoRatio(expectedReturn, rfAnnual, downsideDev)
 
   return {
