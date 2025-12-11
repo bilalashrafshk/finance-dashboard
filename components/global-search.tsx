@@ -28,6 +28,8 @@ export function GlobalSearch() {
     const router = useRouter()
     const { user } = useAuth()
 
+    const [loading, setLoading] = React.useState(false)
+
     React.useEffect(() => {
         const down = (e: KeyboardEvent) => {
             if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
@@ -42,6 +44,7 @@ export function GlobalSearch() {
     // Fetch assets on mount
     React.useEffect(() => {
         if (open && data.length === 0) {
+            setLoading(true)
             fetch("/api/global-search")
                 .then((res) => res.json())
                 .then((json) => {
@@ -50,6 +53,7 @@ export function GlobalSearch() {
                     }
                 })
                 .catch(console.error)
+                .finally(() => setLoading(false))
         }
     }, [open, data.length])
 
@@ -85,64 +89,60 @@ export function GlobalSearch() {
             </button>
             <CommandDialog open={open} onOpenChange={setOpen}>
                 <CommandInput
-                    placeholder="Search across all markets..."
+                    placeholder="Search stocks..."
                     value={query}
                     onValueChange={setQuery}
                     className="border-none focus:ring-0"
                 />
-                <CommandList className="bg-slate-950 border-t border-slate-800">
-                    <CommandEmpty>No results found.</CommandEmpty>
-                    <CommandGroup heading="Assets">
-                        {filteredData.map((item) => (
-                            <CommandItem
-                                key={`${item.asset_type}-${item.symbol}`}
-                                value={`${item.symbol} ${item.name}`}
-                                onSelect={() => {
-                                    if (item.asset_type === 'index') {
-                                        runCommand(() => router.push(`/charts`))
-                                    } else {
-                                        // Handle different asset implementations if views differ
-                                        // For now, routing all to /asset/[slug] except indices
-                                        // Ensure slug format matches expectation (e.g. psx-SYMBOL for PK)
-                                        // Current app seems to specificy prefix manually in old code?
-                                        // Actually `asset/[slug]` usually takes just ID or slug.
-                                        // Let's assume standard `symbol` or construct `psx-` if pk-equity.
-                                        let slug = item.symbol;
-                                        if (item.asset_type === 'pk-equity' || item.asset_type === 'equity') {
-                                            slug = `psx-${item.symbol}`;
-                                        }
-                                        // For crypto, it might be just symbol or 'crypto-symbol'
-                                        // We'll trust the symbol is sufficient or refine if user report issues.
-                                        // Given old code used `psx-`, we maintain that for PK.
-
-                                        runCommand(() => router.push(`/asset/${slug}`))
-                                    }
-                                }}
-                                className="cursor-pointer aria-selected:bg-slate-800 aria-selected:text-white"
-                            >
-                                <div className="flex items-center justify-between w-full">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold 
-                                            ${item.asset_type.includes('crypto') ? 'bg-orange-500/10 text-orange-500' :
-                                                item.asset_type.includes('equity') ? 'bg-blue-500/10 text-blue-500' :
-                                                    item.asset_type.includes('commodity') ? 'bg-yellow-500/10 text-yellow-500' :
-                                                        'bg-slate-800 text-slate-400'}`}>
-                                            {item.symbol.substring(0, 2)}
+                <CommandList className="bg-slate-950 border-t border-slate-800 min-h-[300px]">
+                    {loading ? (
+                        <div className="py-6 text-center text-sm text-slate-500 flex items-center justify-center gap-2">
+                            <div className="w-4 h-4 border-2 border-slate-600 border-t-slate-400 rounded-full animate-spin"></div>
+                            Loading assets...
+                        </div>
+                    ) : (
+                        <>
+                            <CommandEmpty>No results found.</CommandEmpty>
+                            <CommandGroup heading="Stocks">
+                                {filteredData.map((item) => (
+                                    <CommandItem
+                                        key={`${item.asset_type}-${item.symbol}`}
+                                        value={`${item.symbol} ${item.name}`}
+                                        onSelect={() => {
+                                            if (item.asset_type === 'index') {
+                                                runCommand(() => router.push(`/charts`))
+                                            } else {
+                                                let slug = item.symbol;
+                                                if (item.asset_type === 'pk-equity' || item.asset_type === 'equity') {
+                                                    slug = `psx-${item.symbol}`;
+                                                }
+                                                runCommand(() => router.push(`/asset/${slug}`))
+                                            }
+                                        }}
+                                        className="cursor-pointer aria-selected:bg-slate-800 aria-selected:text-white"
+                                    >
+                                        <div className="flex items-center justify-between w-full">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold 
+                                                    ${item.asset_type.includes('us-equity') ? 'bg-indigo-500/10 text-indigo-500' : 'bg-green-500/10 text-green-500'}`}>
+                                                    {item.symbol.substring(0, 2)}
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold text-white">{item.symbol}</span>
+                                                    <span className="text-slate-500 text-xs truncate max-w-[180px]">{item.name}</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[10px] uppercase tracking-wider text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
+                                                    {item.asset_type === 'pk-equity' ? 'PSX' : 'US'}
+                                                </span>
+                                            </div>
                                         </div>
-                                        <div className="flex flex-col">
-                                            <span className="font-bold text-white">{item.symbol}</span>
-                                            <span className="text-slate-500 text-xs truncate max-w-[180px]">{item.name}</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] uppercase tracking-wider text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
-                                            {item.asset_type === 'pk-equity' ? 'PSX' : item.asset_type.replace('-', ' ')}
-                                        </span>
-                                    </div>
-                                </div>
-                            </CommandItem>
-                        ))}
-                    </CommandGroup>
+                                    </CommandItem>
+                                ))}
+                            </CommandGroup>
+                        </>
+                    )}
                 </CommandList>
             </CommandDialog>
         </>

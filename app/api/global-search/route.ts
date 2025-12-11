@@ -2,16 +2,16 @@ import { NextResponse } from 'next/server'
 import { Pool } from 'pg'
 
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
-    ssl: (process.env.DATABASE_URL || process.env.POSTGRES_URL || '').includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
+  connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
+  ssl: (process.env.DATABASE_URL || process.env.POSTGRES_URL || '').includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
 })
 
 export async function GET() {
-    const client = await pool.connect()
-    try {
-        // Fetch unique assets across multiple types
-        // We prioritize joining with company_profiles for names
-        const query = `
+  const client = await pool.connect()
+  try {
+    // Fetch unique assets across multiple types
+    // We prioritize joining with company_profiles for names
+    const query = `
       SELECT DISTINCT 
         hpd.symbol,
         hpd.asset_type,
@@ -28,29 +28,29 @@ export async function GET() {
       LEFT JOIN company_profiles cp 
         ON cp.symbol = hpd.symbol 
         AND (cp.asset_type = hpd.asset_type OR (cp.asset_type = 'equity' AND hpd.asset_type = 'pk-equity'))
-      WHERE hpd.asset_type IN ('pk-equity', 'us-equity', 'crypto', 'index', 'commodity', 'commodities', 'metals')
+      WHERE hpd.asset_type IN ('pk-equity', 'us-equity')
       ORDER BY hpd.asset_type, hpd.symbol
     `
 
-        const { rows } = await client.query(query)
+    const { rows } = await client.query(query)
 
-        return NextResponse.json({
-            success: true,
-            assets: rows.map(row => ({
-                symbol: row.symbol,
-                name: row.name,
-                sector: row.sector,
-                asset_type: row.asset_type
-            }))
-        })
-    } catch (error: any) {
-        console.error('[Global Search] Error:', error)
-        return NextResponse.json({
-            success: false,
-            error: 'Failed to fetch assets',
-            details: error.message
-        }, { status: 500 })
-    } finally {
-        client.release()
-    }
+    return NextResponse.json({
+      success: true,
+      assets: rows.map(row => ({
+        symbol: row.symbol,
+        name: row.name,
+        sector: row.sector,
+        asset_type: row.asset_type
+      }))
+    })
+  } catch (error: any) {
+    console.error('[Global Search] Error:', error)
+    return NextResponse.json({
+      success: false,
+      error: 'Failed to fetch assets',
+      details: error.message
+    }, { status: 500 })
+  } finally {
+    client.release()
+  }
 }
