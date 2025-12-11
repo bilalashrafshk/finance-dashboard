@@ -1036,3 +1036,69 @@ export async function calculateTotalDividendsCollected(
 }
 
 
+
+/**
+ * Calculate XIRR (Extended Internal Rate of Return)
+ * Uses Newton-Raphson method
+ * 
+ * @param cashFlows - Array of { amount: number, date: Date | string }
+ * Amount should be negative for deposits/investments, positive for withdrawals/current value.
+ * @param guess - Initial guess (default 0.1)
+ * @returns XIRR as a decimal (e.g., 0.15 for 15%)
+ */
+export function calculateXIRR(
+  cashFlows: { amount: number; date: Date | string }[],
+  guess: number = 0.1
+): number | null {
+  if (cashFlows.length < 2) return null;
+
+  const flows = cashFlows.map(f => ({
+    amount: f.amount,
+    date: new Date(f.date).getTime() / (1000 * 60 * 60 * 24) // Convert to days
+  }));
+
+  // Sort by date
+  flows.sort((a, b) => a.date - b.date);
+
+  const t0 = flows[0].date;
+
+  // Normalize dates relative to start (t0 = 0)
+  // Formula: sum( amount_i / (1+r)^((t_i - t0)/365) ) = 0
+
+  const xnpv = (rate: number): number => {
+    return flows.reduce((sum, f) => {
+      const dt = (f.date - t0) / 365.0;
+      return sum + f.amount / Math.pow(1 + rate, dt);
+    }, 0);
+  };
+
+  const xnpvPrime = (rate: number): number => {
+    return flows.reduce((sum, f) => {
+      const dt = (f.date - t0) / 365.0;
+      return sum - (dt * f.amount) / Math.pow(1 + rate, dt + 1);
+    }, 0);
+  };
+
+  let rate = guess;
+  const maxIter = 100;
+  const tol = 1e-6;
+
+  for (let i = 0; i < maxIter; i++) {
+    const p = xnpv(rate);
+    const d = xnpvPrime(rate);
+
+    if (Math.abs(d) < 1e-10) return null; // Derivative too close to 0
+
+    const newRate = rate - p / d;
+
+    // Sanity check
+    if (!isFinite(newRate) || isNaN(newRate)) return null;
+
+    if (Math.abs(newRate - rate) < tol) {
+      return newRate;
+    }
+    rate = newRate;
+  }
+
+  return null;
+}

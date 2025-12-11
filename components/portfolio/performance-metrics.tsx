@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Loader2, TrendingUp, TrendingDown, Activity, Shield, ArrowUpRight, ArrowDownRight } from "lucide-react"
-import { 
-  formatCurrency, 
+import { Loader2, TrendingUp, TrendingDown, Activity, Shield, ArrowUpRight, ArrowDownRight, Wallet } from "lucide-react"
+import {
+  formatCurrency,
   formatPercent,
   calculateAdjustedPortfolioHistory,
   calculateAdjustedDailyReturns,
+  calculateXIRR,
   type PortfolioHistoryEntry,
   type AdjustedPortfolioHistoryEntry,
   type AdjustedDailyReturn
@@ -20,6 +21,7 @@ interface PerformanceMetricsProps {
 
 interface PerformanceData {
   cagr: number | null
+  xirr: number | null
   maxDrawdown: number | null
   volatility: number | null
   sharpeRatio: number | null
@@ -34,6 +36,7 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
   const [loading, setLoading] = useState(true)
   const [metrics, setMetrics] = useState<PerformanceData>({
     cagr: null,
+    xirr: null,
     maxDrawdown: null,
     volatility: null,
     sharpeRatio: null,
@@ -78,7 +81,7 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
 
         // Use centralized function to calculate adjusted history (accounting for cash flows)
         const adjustedHistory = calculateAdjustedPortfolioHistory(rawHistory)
-        
+
         if (adjustedHistory.length < 2) {
           console.log('[Performance Metrics] Insufficient adjusted history data')
           setLoading(false)
@@ -97,32 +100,32 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
         // Calculate CAGR using adjusted values
         // Formula: CAGR = ((Adjusted Ending Value / Adjusted Beginning Value) ^ (1 / years)) - 1
         let cagr: number | null = null
-        
+
         // Find first non-zero adjusted entry
         const firstAdjustedEntry = adjustedHistory.find(entry => entry.adjustedValue > 0)
         const lastAdjustedEntry = adjustedHistory[adjustedHistory.length - 1]
-        
+
         if (firstAdjustedEntry && lastAdjustedEntry) {
           const firstValue = firstAdjustedEntry.adjustedValue
           const lastValue = lastAdjustedEntry.adjustedValue
           const firstDateStr = firstAdjustedEntry.date
           const lastDateStr = lastAdjustedEntry.date
-          
+
           if (firstValue > 0 && lastValue > 0 && firstDateStr && lastDateStr) {
             try {
               // Parse dates - handle both YYYY-MM-DD and ISO format
-              const firstDate = firstDateStr.includes('T') 
-                ? new Date(firstDateStr) 
+              const firstDate = firstDateStr.includes('T')
+                ? new Date(firstDateStr)
                 : new Date(firstDateStr + 'T00:00:00')
               const lastDate = lastDateStr.includes('T')
                 ? new Date(lastDateStr)
                 : new Date(lastDateStr + 'T00:00:00')
-              
+
               // Validate dates
               if (!isNaN(firstDate.getTime()) && !isNaN(lastDate.getTime())) {
                 const timeDiff = lastDate.getTime() - firstDate.getTime()
                 const years = timeDiff / (365.25 * 24 * 60 * 60 * 1000)
-                
+
                 // Calculate CAGR for any time period (standard annualization approach)
                 // Minimum: at least 1 day of data (0.00274 years)
                 if (years >= 0.00274 && !isNaN(years) && isFinite(years)) {
@@ -141,6 +144,42 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
               cagr = null
             }
           }
+        }
+
+        // Calculate XIRR (Investor Return)
+        let xirr: number | null = null
+        try {
+          // Construct cash flows from history
+          // Inputs: deposits (-) and withdrawals (+)
+          // NOTE: cashFlow in history is Net Flow (Dep - With). 
+          // If Net Flow > 0 (Deposit), we need NEGATIVE amount for XIRR.
+          // If Net Flow < 0 (Withdrawal), we need POSITIVE amount for XIRR.
+          // So Amount = -cashFlow
+
+          const cashFlows = rawHistory
+            .filter(h => h.cashFlow && Math.abs(h.cashFlow) > 0.001)
+            .map(h => ({
+              amount: -(h.cashFlow || 0),
+              date: h.date
+            }))
+
+          // Add Current Value as Final Positive Flow
+          const lastEntry = rawHistory[rawHistory.length - 1]
+          if (lastEntry) {
+            cashFlows.push({
+              amount: lastEntry.invested,
+              date: new Date().toISOString().split('T')[0] // Today or last entry date
+            })
+          }
+
+          if (cashFlows.length >= 2) {
+            const xirrVal = calculateXIRR(cashFlows)
+            if (xirrVal !== null) {
+              xirr = xirrVal * 100
+            }
+          }
+        } catch (error) {
+          console.error('[Performance Metrics] Error calculating XIRR:', error)
         }
 
         // Calculate Max Drawdown using adjusted values
@@ -180,7 +219,7 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
           const meanDaily = returns.reduce((sum, r) => sum + r, 0) / returns.length
           const variance = returns.reduce((sum, r) => sum + Math.pow(r - meanDaily, 2), 0) / returns.length
           const stdDev = Math.sqrt(variance)
-          
+
           if (stdDev > 0) {
             const annualizedReturn = meanDaily * 252 * 100 // Convert to percentage
             const annualizedStdDev = stdDev * Math.sqrt(252) * 100
@@ -195,18 +234,18 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
           // Determine benchmark based on currency
           const benchmarkSymbol = currency === 'PKR' ? 'KSE100' : 'SPX500'
           const benchmarkAssetType = currency === 'PKR' ? 'kse100' : 'spx500'
-          
+
           // Fetch benchmark data for the same period
           const firstDate = adjustedHistory[0].date
           const lastDate = adjustedHistory[adjustedHistory.length - 1].date
-          
+
           const benchmarkRes = await fetch(
             `/api/historical-data?assetType=${benchmarkAssetType}&symbol=${benchmarkSymbol}&startDate=${firstDate}&endDate=${lastDate}`
           )
-          
+
           if (benchmarkRes.ok) {
             const benchmarkData = await benchmarkRes.json()
-            const benchmarkPrices = (benchmarkData.data || []).sort((a: any, b: any) => 
+            const benchmarkPrices = (benchmarkData.data || []).sort((a: any, b: any) =>
               new Date(a.date).getTime() - new Date(b.date).getTime()
             )
 
@@ -214,20 +253,20 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
               // Create maps for aligned date matching
               const adjustedValueMap = new Map(adjustedHistory.map(h => [h.date, h.adjustedValue]))
               const benchmarkMap = new Map(benchmarkPrices.map((p: any) => [p.date, p.close]))
-              
+
               // Get all dates that exist in both adjusted history and benchmark
               const commonDates = Array.from(adjustedValueMap.keys())
                 .filter(date => benchmarkMap.has(date))
                 .sort()
-              
+
               // Calculate returns for consecutive dates (matching portfolio and benchmark)
               const portfolioReturns: number[] = []
               const benchmarkReturns: number[] = []
-              
+
               for (let i = 1; i < commonDates.length; i++) {
                 const prevDate = commonDates[i - 1]
                 const currDate = commonDates[i]
-                
+
                 const prevAdjustedValue = adjustedValueMap.get(prevDate) || 0
                 const currAdjustedValue = adjustedValueMap.get(currDate) || 0
                 const prevBenchmark = benchmarkMap.get(prevDate) || 0
@@ -237,10 +276,10 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
                 if (prevAdjustedValue > 0 && currAdjustedValue > 0 && prevBenchmark > 0 && currBenchmark > 0) {
                   // Portfolio return from adjusted values (already accounts for cash flows)
                   const portfolioReturn = (currAdjustedValue - prevAdjustedValue) / prevAdjustedValue
-                  
+
                   // Benchmark return
                   const benchmarkReturn = (currBenchmark - prevBenchmark) / prevBenchmark
-                  
+
                   portfolioReturns.push(portfolioReturn)
                   benchmarkReturns.push(benchmarkReturn)
                 }
@@ -279,23 +318,23 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
         // Calculate dollar values for best/worst day
         // Create a map of adjusted values by date for easy lookup
         const adjustedValueMap = new Map(adjustedHistory.map(h => [h.date, h.adjustedValue]))
-        
+
         // Best Day - find the day with highest return percentage, then calculate dollar change
-        const bestDayReturn = dailyReturns.length > 0 ? dailyReturns.reduce((best, current) => 
+        const bestDayReturn = dailyReturns.length > 0 ? dailyReturns.reduce((best, current) =>
           current.return > (best?.return || -Infinity) ? current : best,
           dailyReturns[0]
         ) : null
-        
+
         // Worst Day - find the day with lowest return percentage, then calculate dollar change
-        const worstDayReturn = dailyReturns.length > 0 ? dailyReturns.reduce((worst, current) => 
+        const worstDayReturn = dailyReturns.length > 0 ? dailyReturns.reduce((worst, current) =>
           current.return < (worst?.return || Infinity) ? current : worst,
           dailyReturns[0]
         ) : null
-        
+
         // Calculate dollar values for best/worst day
         let bestDay: { value: number; date: string } | null = null
         let worstDay: { value: number; date: string } | null = null
-        
+
         if (bestDayReturn) {
           // Find previous day's adjusted value from adjusted history
           const currentIndex = adjustedHistory.findIndex(h => h.date === bestDayReturn.date)
@@ -305,7 +344,7 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
             bestDay = { value: dollarChange, date: bestDayReturn.date }
           }
         }
-        
+
         if (worstDayReturn) {
           // Find previous day's adjusted value from adjusted history
           const currentIndex = adjustedHistory.findIndex(h => h.date === worstDayReturn.date)
@@ -328,6 +367,7 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
 
         setMetrics({
           cagr,
+          xirr,
           maxDrawdown,
           volatility,
           sharpeRatio,
@@ -371,7 +411,7 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
           <CardDescription>Key risk and return indicators</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             {/* CAGR */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -381,7 +421,19 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
               <div className={`text-xl sm:text-2xl font-bold truncate ${metrics.cagr !== null && metrics.cagr >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                 {metrics.cagr !== null ? formatPercent(metrics.cagr, 2) : '—'}
               </div>
-              <p className="text-xs text-muted-foreground">Compound Annual Growth Rate</p>
+              <p className="text-xs text-muted-foreground">Portfolio Return (TWR)</p>
+            </div>
+
+            {/* Investor Return (IRR) */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Wallet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-sm font-medium text-muted-foreground">Investor Return</span>
+              </div>
+              <div className={`text-xl sm:text-2xl font-bold truncate ${metrics.xirr !== null && metrics.xirr >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                {metrics.xirr !== null ? formatPercent(metrics.xirr, 2) : '—'}
+              </div>
+              <p className="text-xs text-muted-foreground">Money-weighted (XIRR)</p>
             </div>
 
             {/* Max Drawdown */}
@@ -454,10 +506,10 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
                     {formatCurrency(metrics.bestDay.value, currency)}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {new Date(metrics.bestDay.date + 'T00:00:00').toLocaleDateString('en-US', { 
-                      month: 'short', 
-                      day: 'numeric', 
-                      year: 'numeric' 
+                    {new Date(metrics.bestDay.date + 'T00:00:00').toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric'
                     })}
                   </p>
                 </>
@@ -476,10 +528,10 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
                     {formatCurrency(metrics.worstDay.value, currency)}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {new Date(metrics.worstDay.date + 'T00:00:00').toLocaleDateString('en-US', { 
-                      month: 'short', 
-                      day: 'numeric', 
-                      year: 'numeric' 
+                    {new Date(metrics.worstDay.date + 'T00:00:00').toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric'
                     })}
                   </p>
                 </>
@@ -518,4 +570,5 @@ export function PerformanceMetrics({ currency = 'USD', unified = false }: Perfor
     </div>
   )
 }
+
 
