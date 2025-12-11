@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { TrendingUp, Menu, X, LogOut, BarChart3, Wallet, Search, User, Settings, Crown, Filter, Grid3x3 } from 'lucide-react'
+import { TrendingUp, Menu, X, LogOut, BarChart3, Wallet, Search, User, Settings, Crown, Filter, Grid3x3, Bell } from 'lucide-react'
 import { useAuth } from '@/lib/auth/auth-context'
 import LoginModal from '@/components/landing/login-modal'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -40,26 +40,11 @@ export function SharedNavbar() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="flex items-center gap-2 group">
-              <span className="text-lg font-bold text-foreground inline-flex items-baseline">
-                {"CONVICTION PLAY".split("").map((char, index) => {
-                  const scale = Math.pow(1.06, index); // Compounding factor of 6% per letter
-                  // Round to 4 decimal places to prevent hydration mismatch
-                  const fontSize = Math.round(scale * 10000) / 10000;
-                  return (
-                    <span
-                      key={index}
-                      className="text-foreground"
-                      style={{
-                        fontSize: `${fontSize}em`,
-                      }}
-                    >
-                      {char === " " ? "\u00A0" : char}
-                    </span>
-                  );
-                })}
-              </span>
-              <div className="p-2 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg group-hover:shadow-lg group-hover:shadow-blue-500/20 transition-all">
+              <div className="bg-blue-600 p-1.5 rounded-lg">
                 <TrendingUp className="w-5 h-5 text-white" />
+              </div>
+              <div className="font-bold text-xl tracking-tight text-foreground hidden sm:block">
+                CONVICTION <span className="text-blue-600 dark:text-blue-500">PLAY</span>
               </div>
             </Link>
 
@@ -120,6 +105,12 @@ export function SharedNavbar() {
             </div>
 
             <div className="hidden md:flex items-center gap-4">
+              {user && (
+                <button className="relative text-muted-foreground hover:text-foreground transition-colors mr-2">
+                  <Bell className="w-5 h-5" />
+                  <span className="absolute top-0 right-0 w-2 h-2 bg-rose-500 rounded-full"></span>
+                </button>
+              )}
               {user && <GlobalSearch />}
               <ThemeToggle />
               {user ? (
