@@ -39,6 +39,22 @@ Financial analysis and optimization tool.
     -   **Data Fetching**: Requests massive blocks of historical price data (`/api/historical-data`) for selected assets (~250-1000 data points per asset).
     -   **Caching**: Implements a 5-minute local cache to prevent re-fetching history during optimization tweaks.
 
+### D. Liquidity Map (LIPI/FIPI)
+**File:** `components/charts/liquidity-map-section.tsx`
+
+Visualizes market liquidity flows by Investor Type and Sector.
+-   **Smart Fetching**: Frontend requests date ranges. Backend optimizes this into aggregated batch requests.
+-   **Visualizations**:
+    -   **Heatmap**: Sector vs Client matrix.
+    -   **Summary Table/Chart**: Net flows by Client Type.
+
+### E. Admin Dashboard
+**Route:** `/admin`
+
+User management interface.
+-   **Capabilities**: List users, edit roles, deactivate accounts.
+-   **Security**: Routes protected by `isAdmin` middleware check.
+
 ## 2. Shared Logic & Utilities
 
 ### Portfolio Utilities (`lib/portfolio/portfolio-utils.ts`)
@@ -46,6 +62,10 @@ A massive utility library shared across components to ensure consistent math.
 -   `calculatePortfolioSummary()`: Sums up market value, gain/loss, and invested capital.
 -   `calculateUnifiedPortfolioSummary()`: Handles multi-currency normalization.
 -   `calculateFifoMetrics()`: Implements First-In-First-Out logic for tax/realized P&L calculations.
+
+### Formatting (`lib/utils.ts`)
+-   `formatCurrency()`: Handles currency symbol placement and decimal precision.
+-   `formatCompactNumber()`: Converts large numbers to '1.2M', '500k'.
 
 ### Auth Context (`lib/auth/auth-context.tsx`)
 Global provider wrapping the application.
@@ -58,7 +78,7 @@ Global provider wrapping the application.
 | Directory | Purpose | Key Components |
 |:---|:---|:---|
 | `components/ui` | Atomic Design Elements | `button.tsx`, `card.tsx`, `input.tsx` (Shadcn based) |
-| `components/charts` | Reusable Chart Wrappers | `price-chart.tsx`, `allocation-pie-chart.tsx` (Chart.js / Recharts wrappers) |
+| `components/charts` | Reusable Chart Wrappers | `price-chart.tsx`, `liquidity-map-section.tsx` (Chart.js / Recharts wrappers) |
 | `components/portfolio` | Portfolio-specific Features | `transactions-view.tsx`, `add-transaction-dialog.tsx` |
 | `components/dashboard` | Main Risk Dashboard Widgets | `summary-panel.tsx`, `risk-needle.tsx` |
 

@@ -37,8 +37,17 @@ export function usePortfolioStats() {
         const prevVal = previous ? (previous.marketValue || previous.value || 0) : currentVal;
 
         // If prevVal is 0 (new portfolio), change is 0.
-        const changeValue = currentVal - prevVal;
-        const changePercent = prevVal > 0 ? (changeValue / prevVal) * 100 : 0;
+        // TWR Logic: Account for cash flow (deposits/withdrawals) in the denominator
+        const flow = latest.cashFlow || 0;
+        const adjustedStart = prevVal + flow;
+
+        const changePercent = adjustedStart !== 0 ? ((currentVal / adjustedStart) - 1) * 100 : 0;
+
+        // For absolute change display relative to previous day (excluding deposit)
+        // If we want to show pure PnL change: Current - (Start + Flow)
+        // But usually 'Change' on a value card implies simple diff. 
+        // However, for proper "Return" indication, percentage should be TWR.
+        // We will keep the percentage as TWR.
 
         return {
             value: `₨ ${Math.round(currentVal).toLocaleString()}`,

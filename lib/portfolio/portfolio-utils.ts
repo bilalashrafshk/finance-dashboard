@@ -886,6 +886,16 @@ export interface AdjustedDailyReturn {
  * @param history - Raw portfolio history from API
  * @returns Array of adjusted history entries
  */
+/**
+ * Calculate adjusted portfolio history (TWR Wealth Index)
+ * 
+ * Instead of subtracting cumulative cash flows (which breaks returns),
+ * this calculates a "Wealth Index" based on Time-Weighted Returns.
+ * This represents the growth of $1 invested at the start.
+ * 
+ * @param history - Raw portfolio history from API
+ * @returns Array of adjusted history entries (adjustedValue = TWR Wealth Index)
+ */
 export function calculateAdjustedPortfolioHistory(
   history: PortfolioHistoryEntry[]
 ): AdjustedPortfolioHistoryEntry[] {
@@ -898,19 +908,44 @@ export function calculateAdjustedPortfolioHistory(
     new Date(a.date).getTime() - new Date(b.date).getTime()
   )
 
-  let cumulativeCashFlows = 0
   const adjustedHistory: AdjustedPortfolioHistoryEntry[] = []
 
-  for (const entry of sortedHistory) {
-    const cashFlow = entry.cashFlow || 0
-    cumulativeCashFlows += cashFlow
+  // Calculate Daily TWRs first
+  const returns = calculateDailyTWR(sortedHistory);
+  const returnsMap = new Map(returns.map(r => [r.date, r.return]));
+
+  // Initialize Index
+  // We start with the actual first value to assume a "Price" series
+  // Or we can construct a normalized index. 
+  // For 'adjustedValue' to be useful for charts and CAGR, it should act like the portfolio value "if no deposits/withdrawals happened".
+
+  let currentIndexValue = sortedHistory[0].invested || 0;
+  if (currentIndexValue === 0 && sortedHistory.length > 1) {
+    // If start is 0, find first non-zero
+    const firstNonZero = sortedHistory.find(h => (h.invested || 0) > 0);
+    currentIndexValue = firstNonZero ? firstNonZero.invested : 100;
+  }
+
+  let cumulativeCashFlows = 0;
+
+  for (let i = 0; i < sortedHistory.length; i++) {
+    const entry = sortedHistory[i];
+    const cashFlow = entry.cashFlow || 0;
+    cumulativeCashFlows += cashFlow;
+
+    // Apply Return to update Index
+    // Index_t = Index_{t-1} * (1 + r_t)
+    if (i > 0) {
+      const dailyRetPct = returnsMap.get(entry.date) || 0;
+      currentIndexValue = currentIndexValue * (1 + (dailyRetPct / 100));
+    }
 
     adjustedHistory.push({
       date: entry.date,
       rawValue: entry.invested || 0,
       cashFlow,
       cumulativeCashFlows,
-      adjustedValue: (entry.invested || 0) - cumulativeCashFlows
+      adjustedValue: currentIndexValue
     })
   }
 
@@ -918,51 +953,79 @@ export function calculateAdjustedPortfolioHistory(
 }
 
 /**
- * Calculate adjusted daily returns from adjusted portfolio history
- * Excludes days with cash flows to avoid showing deposits/withdrawals as returns
+ * Internal helper to calculate TWR for raw history
+ * Formula: Return = (End) / (Start + Flow) - 1
+ */
+function calculateDailyTWR(sortedHistory: PortfolioHistoryEntry[]): { date: string, return: number }[] {
+  const returns: { date: string, return: number }[] = [];
+  if (sortedHistory.length < 2) return returns;
+
+  for (let i = 1; i < sortedHistory.length; i++) {
+    const today = sortedHistory[i];
+    const yesterday = sortedHistory[i - 1];
+
+    const startVal = yesterday.invested || 0;
+    const endVal = today.invested || 0;
+    const flow = today.cashFlow || 0; // Net Flow on 'today'
+
+    // Denominator: Capital available to earn return
+    // Assuming flow happens at START of day (or contributes to day's PnL)
+    const adjustedStart = startVal + flow;
+
+    let ret = 0;
+    if (adjustedStart !== 0) {
+      ret = (endVal / adjustedStart) - 1;
+    }
+
+    returns.push({
+      date: today.date,
+      return: ret * 100 // Convert to Percentage
+    });
+  }
+  return returns;
+}
+
+/**
+ * Calculate adjusted daily returns from history
+ * Now delegates to the correct TWR logic.
  * 
- * @param adjustedHistory - Adjusted portfolio history (from calculateAdjustedPortfolioHistory)
- * @param rawHistory - Raw portfolio history (to check for cash flows)
+ * @param adjustedHistory - Ignored (legacy signature)
+ * @param rawHistory - Raw portfolio history (required)
  * @returns Array of daily return entries
  */
 export function calculateAdjustedDailyReturns(
   adjustedHistory: AdjustedPortfolioHistoryEntry[],
   rawHistory: PortfolioHistoryEntry[]
 ): AdjustedDailyReturn[] {
-  if (adjustedHistory.length < 2) {
+  if (!rawHistory || rawHistory.length < 2) {
     return []
   }
 
-  // Create a map of raw history for cash flow lookup
-  const rawHistoryMap = new Map(
-    rawHistory.map(entry => [entry.date, entry])
+  // Ensure sorted
+  const sortedHistory = [...rawHistory].sort((a, b) =>
+    new Date(a.date).getTime() - new Date(b.date).getTime()
   )
 
-  const dailyReturns: AdjustedDailyReturn[] = []
+  const twrReturns = calculateDailyTWR(sortedHistory);
 
-  for (let i = 1; i < adjustedHistory.length; i++) {
-    const prev = adjustedHistory[i - 1]
-    const curr = adjustedHistory[i]
+  // We need to match the signature of AdjustedDailyReturn
+  // which includes adjustedValue (the Index) and rawValue
 
-    // Get raw entry to check for cash flows
-    const rawEntry = rawHistoryMap.get(curr.date)
-    const cashFlow = rawEntry?.cashFlow || 0
+  // We can re-use the passed adjustedHistory if it's already the Index (since we updated calculateAdjustedPortfolioHistory)
+  // Or we map from the calculated TWR.
 
-    // Skip days with cash flows (deposits/withdrawals) to avoid showing them as returns
-    // Use small epsilon to handle floating point precision
-    if (prev.adjustedValue > 0 && Math.abs(cashFlow) < 0.01) {
-      const dailyReturn = ((curr.adjustedValue - prev.adjustedValue) / prev.adjustedValue) * 100
+  // To be safe and consistent with the new Index logic:
+  const indexMap = new Map(adjustedHistory.map(h => [h.date, h]));
 
-      dailyReturns.push({
-        date: curr.date,
-        return: dailyReturn,
-        adjustedValue: curr.adjustedValue,
-        rawValue: curr.rawValue
-      })
+  return twrReturns.map(r => {
+    const adjEntry = indexMap.get(r.date);
+    return {
+      date: r.date,
+      return: r.return,
+      adjustedValue: adjEntry ? adjEntry.adjustedValue : 0,
+      rawValue: adjEntry ? adjEntry.rawValue : 0
     }
-  }
-
-  return dailyReturns
+  });
 }
 
 export async function calculateTotalDividendsCollected(
@@ -971,4 +1034,5 @@ export async function calculateTotalDividendsCollected(
   const holdingDividends = await calculateDividendsCollected(holdings)
   return holdingDividends.reduce((sum, hd) => sum + hd.totalCollected, 0)
 }
+
 
