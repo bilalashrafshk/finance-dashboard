@@ -141,10 +141,21 @@ const LandingPage = () => {
           {/* Desktop Nav Links */}
           <nav className="hidden md:flex items-center gap-8">
             {['Platform', 'Markets', 'Pricing'].map((item) => (
-              <a key={item} href={`#${item.toLowerCase()}`} className="text-sm font-medium text-slate-400 hover:text-white transition-colors relative group">
-                {item}
-                <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-cyan-400 transition-all group-hover:w-full"></span>
-              </a>
+              item === 'Markets' ? (
+                <button
+                  key={item}
+                  onClick={handleOpenAuth}
+                  className="text-sm font-medium text-slate-400 hover:text-white transition-colors relative group"
+                >
+                  {item}
+                  <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-cyan-400 transition-all group-hover:w-full"></span>
+                </button>
+              ) : (
+                <a key={item} href={`#${item.toLowerCase()}`} className="text-sm font-medium text-slate-400 hover:text-white transition-colors relative group">
+                  {item}
+                  <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-cyan-400 transition-all group-hover:w-full"></span>
+                </a>
+              )
             ))}
           </nav>
 
@@ -174,7 +185,7 @@ const LandingPage = () => {
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-white/10 bg-[#020617] p-6 space-y-4 animate-in slide-in-from-top-5">
             <a href="#platform" className="block text-slate-300 hover:text-white">Platform</a>
-            <a href="#markets" className="block text-slate-300 hover:text-white">Markets</a>
+            <button onClick={handleOpenAuth} className="block text-slate-300 hover:text-white text-left w-full">Markets</button>
             <a href="#pricing" className="block text-slate-300 hover:text-white">Pricing</a>
             <div className="pt-4 border-t border-white/10 flex flex-col gap-3">
               <button onClick={handleOpenAuth} className="w-full text-center text-white font-medium py-2">Log In</button>
