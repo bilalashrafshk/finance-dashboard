@@ -442,7 +442,7 @@ const LandingPage = () => {
             <div className="h-full p-8 rounded-3xl bg-slate-900/50 border border-white/10 hover:bg-slate-900 transition-colors hover:border-white/20 shadow-2xl">
               <h3 className="font-bold text-2xl text-white mb-2">Scout</h3>
               <p className="text-slate-400 text-sm mb-6">Start your journey today</p>
-              <div className="text-5xl font-extrabold text-white mb-8">Free <span className="text-lg font-normal text-slate-500">forever</span></div>
+              <div className="text-5xl font-extrabold text-white mb-8">Free </div>
 
               <ul className="space-y-4 mb-8 text-left max-w-md mx-auto">
                 {[
