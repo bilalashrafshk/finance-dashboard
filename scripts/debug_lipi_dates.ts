@@ -1,5 +1,5 @@
 
-import { ensureLipiData } from '../lib/portfolio/scstrade-lipi-service'
+import { fetchLipiData } from '../lib/portfolio/market-liquidity-service'
 import { getPostgresClient } from '../lib/portfolio/db-client'
 
 async function debugLipiDates() {
@@ -16,7 +16,7 @@ async function debugLipiDates() {
         for (const date of dates) {
             console.log(`\nChecking date: ${date}`)
             try {
-                const data = await ensureLipiData(date)
+                const data    // await fetchLipiData(start, end)
                 console.log(`Records found: ${data.length}`)
                 if (data.length > 0) {
                     console.log('Sample:', JSON.stringify(data[0]))

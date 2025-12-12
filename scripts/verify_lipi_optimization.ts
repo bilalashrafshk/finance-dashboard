@@ -1,5 +1,5 @@
 
-import { fetchLipiData } from '../lib/portfolio/scstrade-lipi-service';
+import { fetchLipiData } from '../lib/portfolio/market-liquidity-service';
 import { format, subDays } from 'date-fns';
 
 async function run() {

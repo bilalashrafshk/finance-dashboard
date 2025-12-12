@@ -8,7 +8,7 @@
 
 import { fetchDividendData } from './dividend-api'
 import { insertDividendData, hasDividendData, getCompanyFaceValue } from './db-client'
-import { fetchFaceValue } from '@/lib/scraper/scstrade'
+import { fetchFaceValue } from '@/lib/scraper/manual-equity-source'
 
 /**
  * Fetch and store dividend data for a PK equity asset
@@ -63,7 +63,7 @@ export async function fetchAndStoreDividends(
     }
 
     // Store in database
-    const result = await insertDividendData(assetType, tickerUpper, dividendData, 'scstrade')
+    const result = await insertDividendData(assetType, tickerUpper, dividendData, 'manual-source')
 
   } catch (error: any) {
     // Log error but don't throw - price fetching should continue

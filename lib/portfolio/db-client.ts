@@ -472,7 +472,7 @@ async function insertChunk(
   assetType: string,
   symbol: string,
   chunk: HistoricalPriceRecord[],
-  source: 'stockanalysis' | 'binance' | 'investing' | 'manual' | 'scstrade'
+  source: 'stockanalysis' | 'binance' | 'investing' | 'manual' | 'scstrade' | 'manual-source' | 'kse-source'
 ): Promise<number> {
   const values: any[] = []
   const placeholders: string[] = []
@@ -525,7 +525,7 @@ export async function insertHistoricalData(
   assetType: string,
   symbol: string,
   data: HistoricalPriceRecord[],
-  source: 'scstrade' | 'stockanalysis' | 'binance' | 'investing' | 'manual'
+  source: 'scstrade' | 'stockanalysis' | 'binance' | 'investing' | 'manual' | 'manual-source' | 'kse-source'
 ): Promise<{ inserted: number; skipped: number }> {
   if (!data || data.length === 0) {
     return { inserted: 0, skipped: 0 }
@@ -676,7 +676,7 @@ export async function insertDividendData(
   assetType: string,
   symbol: string,
   data: DividendRecord[],
-  source: string = 'scstrade'
+  source: string = 'manual-source'
 ): Promise<{ inserted: number; skipped: number }> {
   if (!data || data.length === 0) {
     return { inserted: 0, skipped: 0 }

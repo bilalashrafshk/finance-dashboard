@@ -1,10 +1,10 @@
 /**
- * SCSTrade Indices API Client
- * Fetches historical indices data (KSE100) directly from SCSTrade.com API
+ * KSE Index API Client
+ * Fetches historical indices data (KSE100) directly from KSE Source API
  * This is a server-side API client.
  */
 
-export interface SCSTradeIndexDataPoint {
+export interface IndexSourceDataPoint {
     kse_index_id: number
     kse_index_type_id: number
     kse_index_date: string // Format: "/Date(1704049200000)/"
@@ -43,7 +43,7 @@ function parseAspDate(aspDate: string): string {
 }
 
 /**
- * Fetch historical KSE100 data from SCSTrade
+ * Fetch historical KSE100 data from KSE Source
  * @param startDate - Start date in YYYY-MM-DD format
  * @param endDate - End date in YYYY-MM-DD format
  */
@@ -54,7 +54,7 @@ export async function fetchKSE100Data(
     try {
         const url = 'https://scstrade.com/MarketStatistics/MS_HistoricalIndices.aspx/chart'
 
-        // Convert YYYY-MM-DD to MM/DD/YYYY for SCSTrade
+        // Convert YYYY-MM-DD to MM/DD/YYYY for Source
         const formatDateForApi = (dateStr: string) => {
             const [y, m, d] = dateStr.split('-')
             return `${m}/${d}/${y}`
@@ -82,18 +82,18 @@ export async function fetchKSE100Data(
         })
 
         if (!response.ok) {
-            console.error(`SCSTrade API error: ${response.status} ${response.statusText}`)
+            console.error(`KSE Source API error: ${response.status} ${response.statusText}`)
             return null
         }
 
         const data = await response.json()
 
         if (!data.d || !Array.isArray(data.d)) {
-            console.error('Unexpected SCSTrade API response format:', data)
+            console.error('Unexpected KSE Source API response format:', data)
             return null
         }
 
-        const records: HistoricalPriceRecord[] = data.d.map((item: SCSTradeIndexDataPoint) => ({
+        const records: HistoricalPriceRecord[] = data.d.map((item: IndexSourceDataPoint) => ({
             date: parseAspDate(item.kse_index_date),
             open: item.kse_index_open,
             high: item.kse_index_high,
@@ -106,7 +106,7 @@ export async function fetchKSE100Data(
 
         return records
     } catch (error) {
-        console.error('Error fetching KSE100 data from SCSTrade:', error)
+        console.error('Error fetching KSE100 data from KSE Source:', error)
         return null
     }
 }

@@ -1,11 +1,11 @@
 /**
- * SCSTrade Scraper
+ * Manual Equity Source Scraper
  * 
- * Helper functions to scrape data from scstrade.com
+ * Helper functions to scrape data from manual/secondary source
  */
 
 /**
- * Fetch Face Value from SCSTrade Company Snapshot
+ * Fetch Face Value from Company Snapshot
  * 
  * @param symbol - Stock symbol (e.g., 'ARPL')
  * @returns Face value as number (e.g., 10.0) or null if not found
@@ -15,7 +15,7 @@ export async function fetchFaceValue(symbol: string): Promise<number | null> {
     // Ensure symbol is uppercase
     const ticker = symbol.toUpperCase();
     const url = `https://scstrade.com/stockscreening/SS_CompanySnapShot.aspx?symbol=${ticker}`;
-    
+
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -25,15 +25,15 @@ export async function fetchFaceValue(symbol: string): Promise<number | null> {
     });
 
     if (!response.ok) {
-      console.error(`[SCSTrade] Error fetching face value for ${ticker}: ${response.status}`);
+      console.error(`[ManualSource] Error fetching face value for ${ticker}: ${response.status}`);
       return null;
     }
 
     const html = await response.text();
-    
+
     // Look for <span id="ContentPlaceHolder1_lbl_facevalue">10.00</span>
     const match = html.match(/id="ContentPlaceHolder1_lbl_facevalue"[^>]*>([\d.,]+)</);
-    
+
     if (match && match[1]) {
       const valueStr = match[1].replace(/,/g, ''); // Remove commas if any
       const value = parseFloat(valueStr);
@@ -41,12 +41,12 @@ export async function fetchFaceValue(symbol: string): Promise<number | null> {
         return value;
       }
     }
-    
-    console.warn(`[SCSTrade] Face value not found in HTML for ${ticker}`);
+
+    console.warn(`[ManualSource] Face value not found in HTML for ${ticker}`);
     return null;
 
   } catch (error: any) {
-    console.error(`[SCSTrade] Exception fetching face value for ${symbol}:`, error.message);
+    console.error(`[ManualSource] Exception fetching face value for ${symbol}:`, error.message);
     return null;
   }
 }

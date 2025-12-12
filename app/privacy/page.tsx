@@ -91,7 +91,7 @@ export default function PrivacyPolicyPage() {
                 <ul className="list-disc pl-6 space-y-2">
                   <li><strong>Database Services:</strong> We use Neon PostgreSQL for data storage</li>
                   <li><strong>Hosting:</strong> Our application is hosted on Vercel</li>
-                  <li><strong>External APIs:</strong> We fetch financial data from Binance, StockAnalysis.com, and Investing.com (these services may have their own privacy policies)</li>
+                  <li><strong>External APIs:</strong> We fetch financial data from reputable third-party providers (these services may have their own privacy policies)</li>
                 </ul>
                 <p className="mt-2">
                   We do not sell your personal information to third parties. We only share information as necessary to provide our services or as required by law.

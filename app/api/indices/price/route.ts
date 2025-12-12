@@ -169,7 +169,7 @@ export async function GET(request: NextRequest) {
     // So we can try to fetch it now
     if (assetType === 'kse100') {
       // This will trigger the background fetch in historical-data-service if needed
-      // ensuring we get fresh data from SCSTrade if DB is stale
+      // ensuring we get fresh data from Market Source if DB is stale
       const result = await ensureHistoricalData(assetType, symbolUpper)
       const data = result.data
 

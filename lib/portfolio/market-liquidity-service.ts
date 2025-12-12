@@ -11,7 +11,7 @@ const HEADERS = {
     'Referer': 'https://www.scstrade.com/FIPILIPI.aspx'
 }
 
-async function fetchFromSCSTrade(path: string, payload: any) {
+async function fetchFromSource(path: string, payload: any) {
     const response = await fetch(`${BASE_URL}/${path}`, {
         method: 'POST',
         headers: HEADERS,
@@ -19,7 +19,7 @@ async function fetchFromSCSTrade(path: string, payload: any) {
     })
 
     if (!response.ok) {
-        throw new Error(`SCSTrade API Error: ${response.status}`)
+        throw new Error(`Market Source API Error: ${response.status}`)
     }
 
     const data = await response.json()
@@ -177,7 +177,7 @@ async function fetchSingleDayFromAPI(date: string): Promise<LipiRecord[]> {
         sord: "desc"
     }
 
-    const sectorData = await fetchFromSCSTrade('loadfipisector', apiPayload)
+    const sectorData = await fetchFromSource('loadfipisector', apiPayload)
     return parseApiData(sectorData, date)
 }
 
@@ -199,7 +199,7 @@ async function fetchRangeFromAPI(startDate: string, endDate: string): Promise<Li
         sord: "desc"
     }
 
-    const sectorData = await fetchFromSCSTrade('loadfipisector', apiPayload)
+    const sectorData = await fetchFromSource('loadfipisector', apiPayload)
     // We attach the startDate as the 'date' for these records, 
     // effectively treating the aggregate as a transaction on the first day of the request.
     return parseApiData(sectorData, startDate)
@@ -216,6 +216,6 @@ function parseApiData(data: any, dateStr: string): LipiRecord[] {
         buy_value: parseFloat(item.FLBuyValue) || 0,
         sell_value: parseFloat(item.FLSellValue) || 0,
         net_value: (parseFloat(item.FLBuyValue) || 0) + (parseFloat(item.FLSellValue) || 0),
-        source: 'scstrade'
+        source: 'market-source'
     }))
 }

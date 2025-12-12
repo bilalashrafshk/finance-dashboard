@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchDividendData } from '@/lib/portfolio/dividend-api'
 import { insertDividendData, getDividendData, hasDividendData, getLatestDividendDate, getCompanyFaceValue } from '@/lib/portfolio/db-client'
-import { fetchFaceValue } from '@/lib/scraper/scstrade'
+import { fetchFaceValue } from '@/lib/scraper/manual-equity-source'
 import { cacheManager } from '@/lib/cache/cache-manager'
 import { getTodayInMarketTimezone } from '@/lib/portfolio/market-hours'
 
@@ -36,7 +36,7 @@ function getTTLUntilMidnight(): number {
  * Fetches and stores dividend data for PK equity assets.
  * - Returns stored dividend data if available
  * - Checks for new dividends once per day per ticker (rate-limited)
- * - Fetches from scstrade.com API if refresh=true, no data exists, or new data available
+ * - Fetches from manual source API if refresh=true, no data exists, or new data available
  * - Automatically stores fetched data in database
  * 
  * Rate Limiting:
@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
 
           // Store new dividends in database
           try {
-            const result = await insertDividendData(assetType, tickerUpper, apiDividendData, 'scstrade')
+            const result = await insertDividendData(assetType, tickerUpper, apiDividendData, 'manual-source')
 
 
             // Reload from database to get all data (including newly stored)

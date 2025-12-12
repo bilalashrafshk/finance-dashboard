@@ -33,7 +33,7 @@ The backend is built using **Next.js 14 API Routes** (App Router) and **PostgreS
 | `POST` | `/api/prices/batch` | Batch fetch prices for multiple assets | `{ tokens: [{symbol, type}, ...] }` | `{ results: { "TYPE:SYMBOL": { price, date } } }` |
 | `GET` | `/api/indices/price` | Get global index prices | Query: `symbol` | `{ price, change, ... }` |
 | `GET` | `/api/commodities/price` | Get commodity/metal prices | Query: `symbol` | `{ price, unit, ... }` |
-| `GET` | `/api/scstrade/lipi` | Get Aggregated Lipi/Fipi Data (Liquidity Map) | Query: `startDate`, `endDate` | `[{ sector, client_type, net_value, ... }]` |
+| `GET` | `/api/market-flows/lipi` | Get Aggregated Lipi/Fipi Data (Liquidity Map) | Query: `startDate`, `endDate` | `[{ sector, client_type, net_value, ... }]` |
 
 ### D. Asset Screener & Analysis
 | Method | Route | Description | Input | Output |
@@ -73,7 +73,7 @@ Represents the *current state* derived from trades.
 - `avg_purchase_price`: Weighted average cost basis
 
 ### `lipi_data`
-Stores daily Liquidity Map data from SCS Trade.
+Stores daily Liquidity Map data from Market Source.
 - `date`
 - `sector_name`
 - `client_type` (e.g., 'Foreign Corporates', 'Individuals')
@@ -82,4 +82,4 @@ Stores daily Liquidity Map data from SCS Trade.
 ## 4. Key Services
 - **`MarketDataService`**: Singleton service to handle batch price fetching and prevent duplicate requests.
 - **`BatchPriceService`**: Orchestrates fetching from different providers (Binance, PSX, Metals API).
-- **`SCSLipiService`**: Handles fetching and aggregating liquidity map data, with smart batching for date ranges.
+- **`MarketLiquidityService`**: Handles fetching and aggregating liquidity map data, with smart batching for date ranges.

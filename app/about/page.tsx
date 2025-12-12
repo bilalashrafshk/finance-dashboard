@@ -103,7 +103,7 @@ export default function AboutPage() {
                   ConvictionPays is built with modern web technologies to provide a fast, reliable, and secure experience. Our platform leverages:
                 </p>
                 <ul className="list-disc pl-6 space-y-2 mt-2">
-                  <li>Real-time data from multiple sources including StockAnalysis.com, Binance, and Investing.com</li>
+                  <li>Real-time data from leading global financial data providers and exchanges</li>
                   <li>Advanced database systems for efficient data storage and retrieval</li>
                   <li>Interactive charts and visualizations for better data comprehension</li>
                   <li>Secure authentication and data protection measures</li>

@@ -3,13 +3,15 @@ import {
     insertHistoricalData,
     type HistoricalPriceRecord
 } from '@/lib/portfolio/db-client'
-import { fetchStockAnalysisData } from '@/lib/portfolio/stockanalysis-api'
-import { fetchBinanceHistoricalData } from '@/lib/portfolio/binance-historical-api'
-import { fetchSCSTradeData } from '@/lib/portfolio/scstrade-api'
+import { fetchStockAnalysisData, getLatestPriceFromStockAnalysis } from './stock-analysis-api'
+import { fetchPKEquityData, getLatestPriceFromPKEquity } from './pk-equity-api'
+import { fetchKSE100Data } from './kse-index-api'
+// import { getLatestPriceFromYahoo } from './yahoo-finance-api'
+import { fetchBinanceHistoricalData } from './binance-historical-api'
 import { retryWithBackoff } from '@/lib/portfolio/retry-utils'
 import { getTodayInMarketTimezone, isMarketClosed } from '@/lib/portfolio/market-hours'
-import type { StockAnalysisDataPoint } from '@/lib/portfolio/stockanalysis-api'
-import type { BinanceHistoricalDataPoint } from '@/lib/portfolio/binance-historical-api'
+import type { StockAnalysisDataPoint } from './stockanalysis-api'
+import type { BinanceHistoricalDataPoint } from './binance-historical-api'
 import type { InvestingHistoricalDataPoint } from '@/lib/portfolio/investing-client-api'
 import { cacheManager } from '@/lib/cache/cache-manager'
 import { generateHistoricalCacheKey } from '@/lib/cache/cache-utils'
@@ -91,10 +93,10 @@ async function fetchNewDataInBackground(
         }
 
         let newData: HistoricalPriceRecord[] = []
-        let source: 'scstrade' | 'stockanalysis' | 'binance' | 'investing' = 'stockanalysis'
+        let source: 'scstrade' | 'stockanalysis' | 'binance' | 'investing' | 'manual-source' | 'kse-source' = 'stockanalysis'
 
         if (assetType === 'pk-equity') {
-            // Try StockAnalysis first (primary source), then fallback to SCSTrade
+            // Try StockAnalysis first (primary source), then fallback to Manual Source
             const apiData = await retryWithBackoff(
                 () => fetchStockAnalysisData(symbol, 'PSX'),
                 3,
@@ -109,22 +111,28 @@ async function fetchNewDataInBackground(
                 source = 'stockanalysis'
             }
 
-            // Fallback to SCSTrade
+            // Fallback to Manual Source
             if (newData.length === 0) {
+
+                /* Yahoo Finance Removed/Placeholder
+                // 3. Try Yahoo Finance (Backup)
+                const yahooPrice = await getLatestPriceFromYahoo(symbol + '.KA') // Accessing .KA for PSX
+                if (yahooPrice) return yahooPrice
+                */
                 try {
-                    const scstradeData = await retryWithBackoff(
-                        () => fetchSCSTradeData(symbol, fetchStartDate, today),
+                    const sourceData = await retryWithBackoff(
+                        () => fetchPKEquityData(symbol, fetchStartDate, today),
                         2,
                         1000,
                         5000
                     )
 
-                    if (scstradeData && scstradeData.length > 0) {
-                        newData = scstradeData
-                        source = 'scstrade'
+                    if (sourceData && sourceData.length > 0) {
+                        newData = sourceData
+                        source = 'manual-source'
                     }
-                } catch (scstradeError) {
-                    console.error(`[${assetType}-${symbol}] SCSTrade fetch failed:`, scstradeError)
+                } catch (sourceError) {
+                    console.error(`[${assetType}-${symbol}] KSE Source fetch failed:`, sourceError)
                 }
             }
         } else if (assetType === 'us-equity') {
@@ -158,7 +166,7 @@ async function fetchNewDataInBackground(
         } else if (assetType === 'kse100') {
             const kseStartDate = fetchStartDate || '2000-01-01'
 
-            const { fetchKSE100Data } = await import('@/lib/portfolio/scstrade-indices-api')
+            const { fetchKSE100Data } = await import('@/lib/portfolio/kse-index-api')
             const apiData = await retryWithBackoff(
                 () => fetchKSE100Data(kseStartDate, today),
                 3,
@@ -167,7 +175,7 @@ async function fetchNewDataInBackground(
             )
             if (apiData) {
                 newData = apiData
-                source = 'scstrade'
+                source = 'kse-source'
             }
         }
 

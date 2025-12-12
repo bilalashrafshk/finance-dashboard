@@ -25,7 +25,7 @@ export interface ScstradeDividendResponse {
 }
 
 /**
- * Fetch dividend data from scstrade.com API
+ * Fetch dividend data from manual source API
  * 
  * @param ticker - Stock ticker (e.g., "HBL", "PTC")
  * @param rows - Number of records to fetch (default: 100 for maximum history)

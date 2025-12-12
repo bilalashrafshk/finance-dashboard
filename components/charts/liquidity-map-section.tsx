@@ -57,7 +57,7 @@ export function LiquidityMapSection() {
             const startDate = format(range.from, "yyyy-MM-dd")
             const endDate = range.to ? format(range.to, "yyyy-MM-dd") : startDate
 
-            const res = await fetch(`/api/scstrade/lipi?startDate=${startDate}&endDate=${endDate}`)
+            const res = await fetch(`/api/market-flows/lipi?startDate=${startDate}&endDate=${endDate}`)
             if (!res.ok) throw new Error("Failed to fetch")
             const json = await res.json()
             setData(json)

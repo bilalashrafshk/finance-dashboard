@@ -1,5 +1,5 @@
 import { sql } from '@vercel/postgres';
-import { fetchFaceValue } from '@/lib/scraper/scstrade';
+import { fetchFaceValue } from '@/lib/scraper/manual-equity-source';
 import { updateMarketCapFromPrice } from './db-client';
 
 /**
@@ -384,7 +384,7 @@ async function updateCompanyProfile(symbol: string, assetType: string) {
 
   // We need the Profile page (Industry) and Statistics page (Float/Shares)
   // Sector is fetched from PSX API, not StockAnalysis
-  // Also fetch Face Value from SCSTrade
+  // Also fetch Face Value from Manual Source
   const [profileHtml, statsHtml, faceValue, psxSector] = await Promise.all([
     fetchHtml(`${baseUrl}/profile/`),
     fetchHtml(`${baseUrl}/statistics/`),

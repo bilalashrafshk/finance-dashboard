@@ -236,7 +236,7 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 title: "Liquidity Map (Lipi)",
                 icon: Map,
                 component: <LiquidityMapSection />,
-                keywords: ["liquidity", "map", "lipi", "nccpl", "scstrade", "foreign", "buying", "selling", "fipi", "invsetment", "sector"],
+                keywords: ["liquidity", "map", "lipi", "nccpl", "manual-source", "foreign", "buying", "selling", "fipi", "invsetment", "sector"],
                 explanation: "Heatmap showing net liquidity flows (FIPI/LIPI) across difference sectors. Green indicates net buying (inflow), red indicates net selling (outflow).",
             },
             {

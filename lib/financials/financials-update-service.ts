@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { scrapeCompanyProfile, scrapeFinancials } from '@/lib/scraper';
-import { fetchFaceValue } from '@/lib/scraper/scstrade';
+import { fetchFaceValue } from '@/lib/scraper/manual-equity-source';
 import { updateMarketCapFromPrice } from '@/lib/portfolio/db-client';
 
 // Initialize connection pool (reuse existing env vars)
