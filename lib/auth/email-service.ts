@@ -31,7 +31,7 @@ export async function sendPasswordResetEmail(email: string, resetToken: string):
   // Text: Slate-300/100
 
   await resend.emails.send({
-    from: process.env.EMAIL_FROM || 'support@convictionpays.com',
+    from: `Support ConvictionPays <${process.env.EMAIL_FROM || 'support@convictionpays.com'}>`,
     to: email,
     subject: 'Reset Your Password - Conviction Pays',
     html: `
