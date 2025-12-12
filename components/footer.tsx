@@ -30,6 +30,15 @@ export default function Footer() {
           </ul>
         </div>
       </div>
+
+      <div className="max-w-7xl mx-auto px-6 mb-8">
+        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+          <p className="text-yellow-200/80 text-xs leading-relaxed text-center">
+            <span className="font-bold text-yellow-500">DISCLAIMER:</span> The data and information provided on this platform are for informational purposes only and do not constitute financial advice. Investment decisions should be made based on your own research and consultation with a qualified financial advisor.
+          </p>
+        </div>
+      </div>
+
       <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center pt-8 border-t border-white/5">
         <div className="text-slate-600 text-sm mb-4 md:mb-0">
           &copy; 2025 Conviction Pays. All rights reserved.
