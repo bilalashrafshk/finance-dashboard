@@ -2,7 +2,7 @@ import { ImageResponse } from 'next/og'
 
 export const runtime = 'edge'
 
-export const alt = 'Conviction Pays - Risk Metric Dashboard'
+export const alt = 'ConvictionPays - Risk Metric Dashboard'
 export const size = {
     width: 1200,
     height: 630,
@@ -53,7 +53,7 @@ export default async function Image() {
                     </defs>
                 </svg>
                 <div style={{ marginTop: 40, fontSize: 60, fontWeight: 'bold' }}>
-                    Conviction Pays
+                    ConvictionPays
                 </div>
                 <div style={{ marginTop: 10, fontSize: 30, opacity: 0.8 }}>
                     Risk Analytics & Portfolio Management

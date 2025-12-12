@@ -11,11 +11,11 @@ import "./globals.css"
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.convictionpays.com"),
   title: {
-    default: "Conviction Pays - Risk Metric Dashboard",
-    template: "%s | Conviction Pays",
+    default: "ConvictionPays - Risk Metric Dashboard",
+    template: "%s | ConvictionPays",
   },
   description:
-    "Advanced investment risk analysis, portfolio management, and market screening tools. Track performance, analyze risk metrics, and optimize your investment strategy with Conviction Pays.",
+    "Advanced investment risk analysis, portfolio management, and market screening tools. Track performance, analyze risk metrics, and optimize your investment strategy with ConvictionPays.",
   keywords: [
     "Investment Analysis",
     "Risk Management",
@@ -24,23 +24,23 @@ export const metadata: Metadata = {
     "Financial Dashboard",
     "Market Analytics",
     "Risk Metrics",
-    "Conviction Pays",
+    "ConvictionPays",
   ],
-  authors: [{ name: "Conviction Pays Team" }],
-  creator: "Conviction Pays",
-  publisher: "Conviction Pays",
+  authors: [{ name: "ConvictionPays Team" }],
+  creator: "ConvictionPays",
+  publisher: "ConvictionPays",
   openGraph: {
     type: "website",
     locale: "en_US",
     url: "https://www.convictionpays.com",
-    title: "Conviction Pays - Risk Metric Dashboard",
+    title: "ConvictionPays - Risk Metric Dashboard",
     description:
       "Advanced investment risk analysis and portfolio management tools. Track performance and optimize your strategy.",
-    siteName: "Conviction Pays",
+    siteName: "ConvictionPays",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Conviction Pays - Risk Metric Dashboard",
+    title: "ConvictionPays - Risk Metric Dashboard",
     description:
       "Advanced investment risk analysis and portfolio management. Optimize your strategy with professional-grade tools.",
     creator: "@convictionpays",
@@ -91,9 +91,9 @@ html {
             __html: JSON.stringify({
               "@context": "https://schema.org",
               "@type": "Organization",
-              name: "Conviction Pays",
+              name: "ConvictionPays",
               url: "https://www.convictionpays.com",
-              logo: "https://www.convictionpays.com/logo",
+              logo: "https://www.convictionpays.com/convictionpaysfulllogoplustext.png",
               sameAs: [
                 "https://twitter.com/convictionpays",
                 // Add other social profiles here if available

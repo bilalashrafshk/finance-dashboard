@@ -17,7 +17,7 @@ export const Logo = ({ className = "" }: LogoProps) => {
                 </div>
             </div>
             <div className="font-bold text-xl tracking-tight text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-slate-400 transition-all">
-                CONVICTION <span className="text-cyan-400">PAYS</span>
+                Conviction<span className="text-cyan-400">Pays</span>
             </div>
         </div>
     );

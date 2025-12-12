@@ -2,8 +2,8 @@ import { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
     return {
-        name: 'Conviction Pays - Risk Metric Dashboard',
-        short_name: 'Conviction Pays',
+        name: 'ConvictionPays - Risk Metric Dashboard',
+        short_name: 'ConvictionPays',
         description: 'Advanced investment risk analysis and portfolio management tools.',
         start_url: '/',
         display: 'standalone',

@@ -41,7 +41,7 @@ export default function Footer() {
 
       <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center pt-8 border-t border-white/5">
         <div className="text-slate-600 text-sm mb-4 md:mb-0">
-          &copy; 2025 Conviction Pays. All rights reserved.
+          &copy; 2025 ConvictionPays. All rights reserved.
         </div>
       </div>
     </footer>

@@ -68,7 +68,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
           </h2>
           <p className="text-slate-400">
             {isSignUp
-              ? 'Start your investment journey with Conviction Pays'
+              ? 'Start your investment journey with ConvictionPays'
               : 'Sign in to access your portfolio'}
           </p>
         </div>

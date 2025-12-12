@@ -33,7 +33,7 @@ export async function sendPasswordResetEmail(email: string, resetToken: string):
   await resend.emails.send({
     from: `Support ConvictionPays <${process.env.EMAIL_FROM || 'support@convictionpays.com'}>`,
     to: email,
-    subject: 'Reset Your Password - Conviction Pays',
+    subject: 'Reset Your Password - ConvictionPays',
     html: `
       <!DOCTYPE html>
       <html>
@@ -47,7 +47,7 @@ export async function sendPasswordResetEmail(email: string, resetToken: string):
             
             <!-- Header -->
             <div style="padding: 30px; text-align: center; border-bottom: 1px solid #1e293b; background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);">
-              <h2 style="color: #f8fafc; margin: 0; font-size: 24px; letter-spacing: 0.5px; text-transform: uppercase; font-weight: 700;">Conviction Pays</h2>
+              <img src="https://www.convictionpays.com/convictionpaysfulllogoplustext.png" alt="ConvictionPays" style="height: 40px; width: auto;" />
             </div>
             
             <!-- Body -->
@@ -80,7 +80,7 @@ export async function sendPasswordResetEmail(email: string, resetToken: string):
             <!-- Footer -->
             <div style="background-color: #020617; padding: 20px; text-align: center; border-top: 1px solid #1e293b;">
               <p style="font-size: 12px; color: #475569; margin: 0;">
-                &copy; ${new Date().getFullYear()} Conviction Pays. All rights reserved.
+                &copy; ${new Date().getFullYear()} ConvictionPays. All rights reserved.
               </p>
               <p style="font-size: 12px; color: #475569; margin: 8px 0 0;">
                 If you didn't request this, you can safely ignore this email.
@@ -90,7 +90,7 @@ export async function sendPasswordResetEmail(email: string, resetToken: string):
         </body>
       </html>
     `,
-    text: `Reset Your Password - Conviction Pays
+    text: `Reset Your Password - ConvictionPays
     
 We received a request to reset your password. Use the link below to create a new password:
 

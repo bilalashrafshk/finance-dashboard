@@ -125,8 +125,8 @@ export default function AnalyticsShowcase() {
                     <td className="px-6 py-4 text-right font-medium text-cyan-400">{metric.riskAdjustedReturn}</td>
                     <td className="px-6 py-4 text-center">
                       <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${metric.trend === 'up'
-                          ? 'bg-emerald-400/20 text-emerald-300'
-                          : 'bg-red-400/20 text-red-300'
+                        ? 'bg-emerald-400/20 text-emerald-300'
+                        : 'bg-red-400/20 text-red-300'
                         }`}>
                         {metric.trend === 'up' ? (
                           <>
@@ -284,7 +284,7 @@ export default function AnalyticsShowcase() {
               Identify What <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">Works & What Doesn't</span>
             </h2>
             <p className="text-lg text-slate-400 max-w-2xl">
-              Conviction Pays reveals which assets consistently beat their benchmarks and which ones drag down your portfolio returns.
+              ConvictionPays reveals which assets consistently beat their benchmarks and which ones drag down your portfolio returns.
             </p>
           </div>
 

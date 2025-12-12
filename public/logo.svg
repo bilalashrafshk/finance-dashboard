@@ -10,8 +10,8 @@
     
     <!-- Text -->
     <text x="100" y="58" font-family="Arial, sans-serif" font-weight="800" font-size="48" letter-spacing="-0.02em">
-      <tspan fill="white">CONVICTION</tspan>
-      <tspan dx="10" fill="#22d3ee">PAYS</tspan>
+      <tspan fill="white">Conviction</tspan>
+      <tspan fill="#22d3ee">Pays</tspan>
     </text>
   </g>
   <defs>
