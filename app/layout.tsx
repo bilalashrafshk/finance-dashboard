@@ -46,7 +46,7 @@ export const metadata: Metadata = {
     creator: "@convictionpays",
   },
   icons: {
-    icon: "/favicon.png",
+    icon: "/icon-only-transparent.png",
     apple: "/apple-icon",
   },
 }
