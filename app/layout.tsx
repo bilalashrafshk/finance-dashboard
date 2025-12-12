@@ -93,7 +93,7 @@ html {
               "@type": "Organization",
               name: "Conviction Pays",
               url: "https://www.convictionpays.com",
-              logo: "https://www.convictionpays.com/favicon.png",
+              logo: "https://www.convictionpays.com/logo",
               sameAs: [
                 "https://twitter.com/convictionpays",
                 // Add other social profiles here if available
