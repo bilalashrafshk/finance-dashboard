@@ -5,23 +5,7 @@
  */
 
 import crypto from 'crypto'
-import { Pool } from 'pg'
-
-function getPool(): Pool {
-  const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
-
-  if (!connectionString) {
-    throw new Error('DATABASE_URL or POSTGRES_URL environment variable is required')
-  }
-
-  return new Pool({
-    connectionString,
-    ssl: connectionString.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
-    max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-  })
-}
+import { getPool } from '@/lib/db'
 
 /**
  * Generate a secure random token for password reset

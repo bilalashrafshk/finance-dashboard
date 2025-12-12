@@ -8,6 +8,7 @@ export interface PortfolioHistoryOptions {
     currency: string
     unified: boolean
     days: number | 'ALL'
+    assetType?: string // Optional filter for specific asset types (e.g. 'crypto', 'us-equity')
 }
 
 export interface PortfolioHistoryResult {
@@ -28,7 +29,8 @@ export async function getPortfolioHistory(
 
     try {
         // 1. Check if we have a valid cache
-        const { currency, unified, days } = options
+        const { currency, unified, days, assetType } = options
+        const cacheAssetType = assetType || 'ALL'
 
         // We always cache "ALL" history for the given currency/view
         // Then we slice it for the requested 'days'
@@ -55,11 +57,13 @@ export async function getPortfolioHistory(
         // Try to get from cache
         let cachedRecord = null
         if (!forceRefresh) {
+            // Check if column exists gracefully or assume migration run?
+            // Migration run confirmed.
             const cacheResult = await client.query(
                 `SELECT data, last_updated_at 
          FROM portfolio_history_cache 
-         WHERE user_id = $1 AND currency = $2 AND is_unified = $3`,
-                [userId, currency, unified]
+         WHERE user_id = $1 AND currency = $2 AND is_unified = $3 AND asset_type = $4`,
+                [userId, currency, unified, cacheAssetType]
             )
 
             if (cacheResult.rows.length > 0) {
@@ -136,14 +140,21 @@ export async function getPortfolioHistory(
         }
 
         // Fetch Trades
-        const tradesResult = await client.query(
-            `SELECT id, user_id, holding_id, trade_type, asset_type, symbol, name, quantity,
+        let tradesQuery = `SELECT id, user_id, holding_id, trade_type, asset_type, symbol, name, quantity,
               price, total_amount, currency, trade_date, notes, created_at
        FROM user_trades
-       WHERE user_id = $1
-       ORDER BY trade_date ASC, created_at ASC`,
-            [userId]
-        )
+       WHERE user_id = $1`
+        const queryParams: any[] = [userId]
+
+        // If specific asset type requested, filter trades
+        if (assetType) {
+            tradesQuery += ` AND asset_type = $2`
+            queryParams.push(assetType)
+        }
+
+        tradesQuery += ` ORDER BY trade_date ASC, created_at ASC`
+
+        const tradesResult = await client.query(tradesQuery, queryParams)
 
         const trades: Trade[] = tradesResult.rows.map(row => ({
             id: row.id,
@@ -163,6 +174,7 @@ export async function getPortfolioHistory(
         })).filter(t => t.tradeDate)
 
         if (trades.length === 0) {
+            // Cache empty result? Yes.
             return { history: [], isCached: false }
         }
 
@@ -180,18 +192,11 @@ export async function getPortfolioHistory(
         // Fetch Prices (Reusing DB functions directly for better performance than API calls if possible, 
         // but preserving API logic for consistency. Actually simpler to query DB directly here since we have client.)
 
-        // NOTE: ORIGINAL CODE CALLED API. To avoid self-referencing API calls inside a service (which is bad), 
-        // we should query the DB tables directly. The 'historical_price_data' table is available.
-
         const historicalPriceMap = new Map<string, Map<string, number>>()
         const todayStr = new Date().toISOString().split('T')[0]
 
         // Bulk fetch all relevant price history
-        const assetTypesToCheck = Array.from(new Set(Array.from(uniqueAssets.values()).map(a => a.assetType)))
-            .filter(t => t !== 'commodities')
-
-        // Optimized: Fetch all history for these assets in one go per type? Or strict per symbol.
-        // Let's iterate symbols to be safe.
+        // If assetType is filtered, uniqueAssets will only contain that type
 
         for (const [key, asset] of uniqueAssets.entries()) {
             if (asset.assetType === 'commodities') continue
@@ -220,9 +225,6 @@ export async function getPortfolioHistory(
             // Fallback for today if missing
             if (!priceMap.has(todayStr)) {
                 try {
-                    // If we have no price for today, try to get live price? 
-                    // Or just use latest DB price. Re-implementing live fetch here might be too heavy.
-                    // Let's use latest DB price as fallback.
                     let latestDate = ''
                     let latestPrice = 0
                     for (const [d, p] of priceMap.entries()) {
@@ -261,7 +263,13 @@ export async function getPortfolioHistory(
         const cashFlowsByDate = new Map<string, number>()
 
         for (const trade of trades) {
+            // Only process cash flows if we are NOT in specific asset mode, OR if the trade is 'buy/sell'.
+            // For general portfolio ('ALL'), add/remove affects cash balance and invested.
+
             if (trade.tradeType === 'add' || trade.tradeType === 'remove') {
+                // If assetType is set, we ignore Add/Remove cash.
+                if (assetType) continue;
+
                 if (!unified && trade.currency.toUpperCase() !== currency.toUpperCase()) continue
 
                 const dStr = trade.tradeDate
@@ -286,7 +294,6 @@ export async function getPortfolioHistory(
         }
 
         // Calculate Full History (from first trade ever)
-        // We calc ALL history then cache it.
         const sortedTrades = [...relevantTrades].sort((a, b) => new Date(a.tradeDate).getTime() - new Date(b.tradeDate).getTime())
         const firstTradeDate = new Date(sortedTrades[0].tradeDate)
         const today = new Date()
@@ -297,7 +304,7 @@ export async function getPortfolioHistory(
 
         // State
         const currentQty = new Map<string, number>()
-        const currentInvested = new Map<string, number>()
+        const currentInvested = new Map<string, number>() // Cost basis per position
         const currentAvgPrice = new Map<string, number>()
         const currentCash = new Map<string, number>()
 
@@ -309,9 +316,8 @@ export async function getPortfolioHistory(
             iterationCount++
             const dateStr = currentDate.toISOString().split('T')[0]
 
-
             // Daily Liquid Flow Tracker
-            let dailyLiquidFlowAdjustment = 0; // Net flow adjustment for liquid portfolio (Comm Buy = -, Comm Sell = +)
+            let dailyLiquidFlowAdjustment = 0;
 
             // Apply trades
             while (tradeIndex < sortedTrades.length) {
@@ -323,42 +329,52 @@ export async function getPortfolioHistory(
 
                     // Track Liquid Flows caused by Commodity Trades
                     if (t.assetType === 'commodities') {
+                        /* Logic mostly relevant for total portfolio mix */
                         let flowAmt = t.totalAmount;
                         if (unified && t.currency === 'PKR') {
                             const r = getExchangeRateForDate(dateStr)
                             if (r) flowAmt = flowAmt / r
                         } else if (!unified && t.currency.toUpperCase() !== currency.toUpperCase()) {
-                            flowAmt = 0 // Should not happen given filtered trades but safe check
+                            flowAmt = 0
                         }
 
                         if (t.tradeType === 'buy') {
-                            dailyLiquidFlowAdjustment -= flowAmt; // Withdrawal from Liquid
+                            dailyLiquidFlowAdjustment -= flowAmt;
                         } else if (t.tradeType === 'sell') {
-                            dailyLiquidFlowAdjustment += flowAmt; // Deposit to Liquid
+                            dailyLiquidFlowAdjustment += flowAmt;
                         }
                     }
 
                     if (t.assetType === 'cash') {
+                        // Only process cash if NOT asset specific view (or logic above ensures we don't have cash trades if filtered)
                         const bal = currentCash.get(ccy) || 0
                         currentCash.set(ccy, bal + (t.tradeType === 'add' ? t.totalAmount : -t.totalAmount))
                     } else {
                         const k = `${t.assetType}:${t.symbol.toUpperCase()}:${ccy}`
                         const q = currentQty.get(k) || 0
                         const i = currentInvested.get(k) || 0
-                        const cashBal = currentCash.get(ccy) || 0 // Cash balance in TRADE currency
+                        const cashBal = currentCash.get(ccy) || 0
 
                         if (t.tradeType === 'buy') {
                             currentQty.set(k, q + t.quantity)
                             currentInvested.set(k, i + t.totalAmount)
                             if (q + t.quantity > 0) currentAvgPrice.set(k, (i + t.totalAmount) / (q + t.quantity))
-                            currentCash.set(ccy, cashBal - t.totalAmount)
+
+                            // Deduct cash only if we are tracking cash (Total Portfolio)
+                            if (!assetType) {
+                                currentCash.set(ccy, cashBal - t.totalAmount)
+                            }
                         } else if (t.tradeType === 'sell') {
                             const newQ = Math.max(0, q - t.quantity)
                             currentQty.set(k, newQ)
                             let costRemoved = 0
                             if (q > 0) costRemoved = i * (t.quantity / q)
                             currentInvested.set(k, Math.max(0, i - costRemoved))
-                            currentCash.set(ccy, cashBal + t.totalAmount) // Proceeds added to cash
+
+                            // Add cash only if we are tracking cash
+                            if (!assetType) {
+                                currentCash.set(ccy, cashBal + t.totalAmount)
+                            }
                         }
                     }
                 }
@@ -367,7 +383,7 @@ export async function getPortfolioHistory(
 
             // Calculate Daily Value
             let dailyMarketVal = 0
-            let dailyLiquidVal = 0 // Value of Non-Commodity Assets
+            let dailyLiquidVal = 0
 
             for (const [k, qty] of currentQty.entries()) {
                 if (qty <= 0.000001) continue
@@ -415,24 +431,24 @@ export async function getPortfolioHistory(
                 dailyCashVal = currentCash.get(currency) || 0
             }
 
-            // Cash is always Liquid
+            // If assetType specific, we force cash to 0 in output just in case logic above left some
+            if (assetType) dailyCashVal = 0;
+
             const totalLiquidValue = dailyLiquidVal + dailyCashVal;
             const totalLiquidFlow = (cashFlowsByDate.get(dateStr) || 0) + dailyLiquidFlowAdjustment;
 
             dailyHoldings[dateStr] = {
                 date: dateStr,
                 cash: dailyCashVal,
-                invested: dailyMarketVal + dailyCashVal, // This is Total Value
-                cashFlow: cashFlowsByDate.get(dateStr) || 0, // Total External Flow
+                invested: dailyMarketVal + dailyCashVal, // Total Value (Bad naming in original code, but preserved for frontend compat)
+                cashFlow: cashFlowsByDate.get(dateStr) || 0,
                 marketValue: dailyMarketVal + dailyCashVal,
                 value: dailyMarketVal + dailyCashVal,
-                // Liquid Only Fields
                 liquidValue: totalLiquidValue,
                 liquidCashFlow: totalLiquidFlow
             }
 
             currentDate.setDate(currentDate.getDate() + 1)
-
         }
 
         // Sort
@@ -441,11 +457,11 @@ export async function getPortfolioHistory(
         // CACHE IT
         // Upsert cache
         await client.query(
-            `INSERT INTO portfolio_history_cache (user_id, currency, is_unified, data, last_updated_at)
-       VALUES ($1, $2, $3, $4, NOW())
-       ON CONFLICT (user_id, currency, is_unified)
+            `INSERT INTO portfolio_history_cache (user_id, currency, is_unified, asset_type, data, last_updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (user_id, currency, is_unified, asset_type)
        DO UPDATE SET data = EXCLUDED.data, last_updated_at = NOW()`,
-            [userId, currency, unified, JSON.stringify(fullHistory)]
+            [userId, currency, unified, cacheAssetType, JSON.stringify(fullHistory)]
         )
 
         return {

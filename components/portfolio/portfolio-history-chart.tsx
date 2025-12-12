@@ -16,9 +16,11 @@ interface PortfolioHistoryProps {
   unified?: boolean
   totalChange?: number
   totalChangePercent?: number
+  assetType?: string
+  title?: string
 }
 
-export function PortfolioHistoryChart({ currency = "USD", unified = false, totalChange, totalChangePercent }: PortfolioHistoryProps) {
+export function PortfolioHistoryChart({ currency = "USD", unified = false, totalChange, totalChangePercent, assetType, title }: PortfolioHistoryProps) {
   const [period, setPeriod] = useState("30") // Default to 30 days
   const [fullHistory, setFullHistory] = useState<any[]>([]) // Store complete history
   // const [data, setData] = useState<any[]>([]) // Removed in favor of useMemo
@@ -47,8 +49,9 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
         // Get token from localStorage to ensure we are authenticated
         const token = localStorage.getItem('auth_token')
         const unifiedParam = unified ? '&unified=true' : ''
+        const assetTypeParam = assetType ? `&assetType=${assetType}` : ''
         // Always fetch ALL history
-        const historyRes = await fetch(`/api/user/portfolio/history?days=ALL&currency=${currency}${unifiedParam}`, {
+        const historyRes = await fetch(`/api/user/portfolio/history?days=ALL&currency=${currency}${unifiedParam}${assetTypeParam}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -186,9 +189,9 @@ export function PortfolioHistoryChart({ currency = "USD", unified = false, total
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <CardTitle className="text-base font-normal">Total Portfolio Value</CardTitle>
+            <CardTitle className="text-base font-normal">{title || "Total Portfolio Value"}</CardTitle>
             <ChartInfo
-              title="Total Portfolio Value"
+              title={title || "Total Portfolio Value"}
               explanation="Tracks the daily total value of your portfolio, combining cached balances and the current market value of all holdings."
             />
           </div>

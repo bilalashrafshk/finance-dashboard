@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     const unified = url.searchParams.get('unified') === 'true'
     const daysParam = url.searchParams.get('days')
     const forceRefresh = url.searchParams.get('refresh') === 'true'
+    const assetType = url.searchParams.get('assetType') || undefined
 
     const days = daysParam && daysParam !== 'ALL' ? parseInt(daysParam) : 'ALL'
 
@@ -21,7 +22,8 @@ export async function GET(request: NextRequest) {
       {
         currency,
         unified,
-        days: days as number | 'ALL'
+        days: days as number | 'ALL',
+        assetType
       },
       forceRefresh
     )
