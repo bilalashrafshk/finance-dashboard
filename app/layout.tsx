@@ -90,13 +90,18 @@ html {
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
               "@context": "https://schema.org",
-              "@type": "WebSite",
+              "@type": "Organization",
               name: "Conviction Pays",
               url: "https://www.convictionpays.com",
-              potentialAction: {
-                "@type": "SearchAction",
-                target: "https://www.convictionpays.com/search?q={search_term_string}",
-                "query-input": "required name=search_term_string",
+              logo: "https://www.convictionpays.com/favicon.png",
+              sameAs: [
+                "https://twitter.com/convictionpays",
+                // Add other social profiles here if available
+              ],
+              contactPoint: {
+                "@type": "ContactPoint",
+                contactType: "customer support",
+                email: "support@convictionpays.com",
               },
             }),
           }}
