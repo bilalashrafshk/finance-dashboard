@@ -3,7 +3,7 @@ import {
     insertHistoricalData,
     type HistoricalPriceRecord
 } from '@/lib/portfolio/db-client'
-import { fetchStockAnalysisData, getLatestPriceFromStockAnalysis } from './stock-analysis-api'
+import { fetchStockAnalysisData, getLatestPriceFromStockAnalysis } from './stockanalysis-api'
 import { fetchPKEquityData, getLatestPriceFromPKEquity } from './pk-equity-api'
 import { fetchKSE100Data } from './kse-index-api'
 // import { getLatestPriceFromYahoo } from './yahoo-finance-api'
