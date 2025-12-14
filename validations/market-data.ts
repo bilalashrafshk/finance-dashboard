@@ -10,6 +10,7 @@ export const AssetCategoryEnum = z.enum([
     'financials',
     'dividend',
     'index',
+    'kse100', // New
     'spx500', // Legacy
     'metals', // Legacy
     'commodity',

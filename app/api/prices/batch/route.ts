@@ -66,6 +66,18 @@ export async function POST(request: NextRequest) {
           const res = await fetchIndicesPrice(symbolUpper, false, 0, baseUrl)
           return res ? { price: res.price, date: res.date } : null
         }
+      } else if (type === 'kse100') {
+        fetcher = async () => {
+          // Use historical data service which handles KSE100 gap detection and caching
+          const { ensureHistoricalData } = await import('@/lib/portfolio/historical-data-service')
+          const res = await ensureHistoricalData('kse100', symbolUpper, 1)
+
+          if (res && res.data && res.data.length > 0) {
+            const latest = res.data[res.data.length - 1]
+            return { price: latest.close, date: latest.date }
+          }
+          return null
+        }
       } else {
         // Fallback for unknown types
         fetcher = async () => null
