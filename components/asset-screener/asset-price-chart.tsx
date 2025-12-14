@@ -22,6 +22,18 @@ import {
   Legend,
   Filler,
 } from "chart.js"
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  LogarithmicScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+)
 import type { TrackedAsset } from "./add-asset-dialog"
 import type { PriceDataPoint } from "@/lib/asset-screener/metrics-calculations"
 import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
