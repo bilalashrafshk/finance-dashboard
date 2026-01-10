@@ -267,6 +267,70 @@ export async function GET(request: Request) {
 
         await Promise.all(updatePromises)
 
+        // --- NEW: Calculate Sector PE (Aggregate Method) ---
+        // Formula: Sum(Market Cap) / Sum(Net Income)
+        // This handles negative PE stocks correctly by Aggregating Earnings.
+
+        // 1. Fetch all metrics for the updated sectors to ensure we have a full picture
+        // (Optimized: In a real large DB, we might do this via pure SQL, but for <500 stocks, memory is fine)
+        const metricsRes = await client.query(`
+          SELECT symbol, sector, market_cap, pe_ratio 
+          FROM screener_metrics 
+          WHERE asset_type = 'pk-equity' 
+            AND sector IS NOT NULL 
+            AND market_cap > 0
+        `)
+
+        const sectorGroups: Record<string, { totalMCap: number, totalEarnings: number }> = {}
+
+        // 2. Aggregate Data
+        metricsRes.rows.forEach(row => {
+          const mcap = parseFloat(row.market_cap) || 0
+          const pe = parseFloat(row.pe_ratio) || 0
+          const sector = row.sector
+
+          if (!sectorGroups[sector]) {
+            sectorGroups[sector] = { totalMCap: 0, totalEarnings: 0 }
+          }
+
+          sectorGroups[sector].totalMCap += mcap
+
+          // Derive Net Income from PE: Net Income = Market Cap / PE
+          // If PE is 0 or null, we assume earnings are 0 (or unknown).
+          // For negative PE, this correctly subtracts from total earnings.
+          if (pe !== 0) {
+            const earnings = mcap / pe
+            sectorGroups[sector].totalEarnings += earnings
+          }
+        })
+
+        // 3. Update Database with Sector PE
+        // We can do this in parallel for all sectors
+        const sectorUpdates = Object.entries(sectorGroups).map(async ([sector, data]) => {
+          // Avoid division by zero
+          let sectorPE = 0
+          if (data.totalEarnings !== 0) {
+            sectorPE = data.totalMCap / data.totalEarnings
+          }
+
+          // Update all stocks in this sector with the new Sector PE
+          // Also recalculate Relative PE (Stock PE / Sector PE)
+          await client.query(`
+            UPDATE screener_metrics
+            SET 
+              sector_pe = $1,
+              relative_pe = CASE 
+                WHEN $1 != 0 AND pe_ratio IS NOT NULL THEN pe_ratio / $1 
+                ELSE NULL 
+              END,
+              updated_at = NOW()
+            WHERE sector = $2 AND asset_type = 'pk-equity'
+          `, [sectorPE, sector])
+        })
+
+        await Promise.all(sectorUpdates)
+        console.log(`[Screener Update] Updated Sector PE for ${sectorUpdates.length} sectors`)
+
       } catch (err) {
         console.error(`Batch failed`, err)
       }
