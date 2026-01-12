@@ -320,7 +320,7 @@ export async function GET(request: Request) {
             SET 
               sector_pe = $1,
               relative_pe = CASE 
-                WHEN $1 != 0 AND pe_ratio IS NOT NULL THEN pe_ratio / $1 
+                WHEN $1::numeric != 0 AND pe_ratio IS NOT NULL THEN pe_ratio / $1::numeric
                 ELSE NULL 
               END,
               updated_at = NOW()
