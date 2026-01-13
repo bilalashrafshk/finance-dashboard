@@ -32,7 +32,7 @@ export async function GET(request: Request) {
 
   const client = await pool.connect()
   const startTime = Date.now()
-  const TIME_LIMIT_MS = 25000 // 25 seconds safety limit
+  const TIME_LIMIT_MS = 50000 // 50 seconds safety limit (Max duration is 60s)
 
   try {
 
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     // Parse params
     const url = new URL(request.url)
     const limitParams = url.searchParams.get('limit')
-    const limit = limitParams ? parseInt(limitParams) : 50 // Default 50 symbols per run
+    const limit = limitParams ? parseInt(limitParams) : 100 // Default 100 symbols per run
 
     // 1. Get Stale Symbols (Prioritize oldest updated)
     //    Use GROUP BY instead of DISTINCT to allow ordering by joined column
