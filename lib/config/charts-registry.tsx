@@ -136,7 +136,7 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 icon: Activity,
                 component: <MarketCycleChart />,
                 keywords: ["kse100", "stocks", "cycle", "market"],
-                explanation: "Visualizes the KSE100 index market cycles, highlighting bull and bear phases. Cycles are measured from trough to peak. A cycle is only validated and closed after a >30% drawdown from the peak. If no such drawdown has occurred, the cycle remains 'Ongoing'.",
+                explanation: "Visualizes KSE100 market cycles (trough-to-peak). A cycle is validated only if followed by a >30% drawdown that takes >1 year (252 trading days) to recover. Otherwise, it remains 'Ongoing'.",
             },
             {
                 id: "market-heatmap",
