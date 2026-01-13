@@ -221,6 +221,12 @@ export async function ensureHistoricalData(
             ? new Date(new Date(storedData.latestStoredDate).getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
             : undefined
 
+        /* 
+         * No logs needed here anymore.
+         * Logic flow: 
+         * 1. If storedData has latest date, calculate fetchStartDate (next day).
+         * 2. If storedData missing or fetchStartDate <= today, proceed to gap check.
+         */
         if (!storedData.latestStoredDate || (fetchStartDate && fetchStartDate <= todayInMarketTimezone)) {
             let shouldFetch = false
             let tradingDays = 0

@@ -53,10 +53,18 @@ function parseSourceDate(dateStr: string): string {
   const match = dateStr.match(/\/Date\((\d+)\)\//)
   if (match) {
     const timestamp = parseInt(match[1])
-    const date = new Date(timestamp)
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
+    // The timestamp is 00:00 PKT, which is 19:00 UTC previous day.
+    // We want the date in PKT. 
+    // Add 5 hours (18,000,000 ms) to align with UTC mid-day or just treat as PKT.
+    // robust way: use Intl or manual offset.
+    // UTC+5 = 5 * 60 * 60 * 1000 = 18000000
+    const pktTimestamp = timestamp + 18000000
+    const date = new Date(pktTimestamp)
+
+    // Now use UTC methods to get the date components of the shifted timestamp
+    const year = date.getUTCFullYear()
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+    const day = String(date.getUTCDate()).padStart(2, '0')
     return `${year}-${month}-${day}`
   }
   throw new Error(`Invalid Source date format: ${dateStr}`)
@@ -83,7 +91,9 @@ function convertSourceToRecord(data: SourceDataPoint): {
     close: data.trading_close,
     volume: data.trading_vol,
     adjusted_close: null,
-    change_pct: data.trading_change,
+    change_pct: data.trading_change && data.trading_close
+      ? (data.trading_change / (data.trading_close - data.trading_change)) * 100
+      : 0,
   }
 }
 
