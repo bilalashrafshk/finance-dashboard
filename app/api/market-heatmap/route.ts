@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
                 WHERE symbol = 'KSE100' AND date = $1
             ),
             prev_idx AS (
-                SELECT close as price, JSON_AGG(close ORDER BY date ASC) as history 
+                SELECT JSON_AGG(close ORDER BY date ASC) as history 
                 FROM (
                     SELECT close, date FROM historical_price_data 
                     WHERE symbol = 'KSE100' AND date <= $1 
