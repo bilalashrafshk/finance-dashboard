@@ -134,10 +134,55 @@ export async function GET(request: NextRequest) {
         }
       })
 
+      // Fetch KSE100 Index Data for the same date
+      const indexQuery = `
+        WITH current_price AS (
+          SELECT close as price
+          FROM historical_price_data
+          WHERE asset_type = 'kse100' AND symbol = 'KSE100' AND date = $1
+        ),
+        previous_price AS (
+          SELECT close as price
+          FROM historical_price_data
+          WHERE asset_type = 'kse100' AND symbol = 'KSE100' AND date < $1
+          ORDER BY date DESC
+          LIMIT 1
+        )
+        SELECT 
+          c.price as current_price,
+          p.price as previous_price
+        FROM current_price c
+        LEFT JOIN previous_price p ON true
+      `
+
+      const indexResult = await client.query(indexQuery, [date])
+      let indexStatus = null
+
+      if (indexResult.rows.length > 0) {
+        const row = indexResult.rows[0]
+        const currentPrice = parseFloat(row.current_price)
+        const previousPrice = row.previous_price ? parseFloat(row.previous_price) : null
+
+        let change = null
+        let changePercent = null
+
+        if (previousPrice !== null) {
+          change = currentPrice - previousPrice
+          changePercent = (change / previousPrice) * 100
+        }
+
+        indexStatus = {
+          price: currentPrice,
+          change,
+          changePercent
+        }
+      }
+
       const response = NextResponse.json({
         success: true,
         date,
         stocks,
+        indexStatus, // Add index data to response
         count: stocks.length,
         missingStocks, // Include list of missing stocks
         totalRequested: limit,
