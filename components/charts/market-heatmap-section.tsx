@@ -114,7 +114,8 @@ export function MarketHeatmapSection() {
       setIndexStatus(null)
 
       try {
-        const response = await fetch(`/api/market-heatmap?date=${selectedDate}&limit=100`)
+        // v=2 busts the cache for the last few days where we had data issues
+        const response = await fetch(`/api/market-heatmap?date=${selectedDate}&limit=100&v=2`)
         const data = await response.json()
 
         if (!response.ok) {
