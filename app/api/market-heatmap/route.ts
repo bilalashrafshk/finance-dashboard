@@ -118,7 +118,7 @@ export async function GET(request: NextRequest) {
                 c.price, 
                 p.price as prev_close,
                 (SELECT history FROM prev_idx) as history
-            FROM current_idx c, (SELECT price FROM historical_price_data WHERE symbol = 'KSE100' AND date < $1 ORDER BY date DESC LIMIT 1) p
+            FROM current_idx c, (SELECT close as price FROM historical_price_data WHERE symbol = 'KSE100' AND date < $1 ORDER BY date DESC LIMIT 1) p
         `
       // Note: The index fetch is simplified. For production, we'd fetch multiple indices.
 
