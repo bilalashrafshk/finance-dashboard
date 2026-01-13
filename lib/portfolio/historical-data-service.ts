@@ -80,17 +80,11 @@ async function fetchNewDataInBackground(
     today: string
 ): Promise<void> {
     try {
-        // Check if market is closed and we're trying to fetch today's data
-        const marketForCheck = assetType === 'pk-equity' ? 'PSX' : assetType === 'us-equity' ? 'US' : null
-        if (marketForCheck) {
-            const marketClosed = isMarketClosed(marketForCheck)
-            const todayInMarketTimezone = getTodayInMarketTimezone(marketForCheck)
+        // Market closure check removed to allow fetching "Today's" final close data
+        // even if the market is currently closed.
+        // Previously, this prevented updating the DB with the final daily candle 
+        // if no fetch happened during market hours.
 
-            if (marketClosed && fetchStartDate === todayInMarketTimezone) {
-
-                return
-            }
-        }
 
         let newData: HistoricalPriceRecord[] = []
         let source: 'scstrade' | 'stockanalysis' | 'binance' | 'investing' | 'manual-source' | 'kse-source' = 'stockanalysis'
