@@ -22,7 +22,7 @@ const MarketCycleChart = dynamic(() => import("@/components/kse100/market-cycle-
 const EthRiskDashboard = dynamic(() => import("@/components/eth-risk-dashboard").then(mod => mod.EthRiskDashboard), {
     loading: () => <ChartLoader />,
 })
-const MarketHeatmapSection = dynamic(() => import("@/components/charts/market-heatmap-section").then(mod => mod.MarketHeatmapSection), {
+const MarketHeatmapLayout = dynamic(() => import("@/components/charts/market-heatmap-layout").then(mod => mod.MarketHeatmapLayout), {
     loading: () => <ChartLoader />,
 })
 const AdvanceDeclineSection = dynamic(() => import("@/components/charts/advance-decline-section").then(mod => mod.AdvanceDeclineSection), {
@@ -142,7 +142,7 @@ export const CHART_CATEGORIES: CategoryDefinition[] = [
                 id: "market-heatmap",
                 title: "Market Heatmap",
                 icon: LayoutGrid,
-                component: <MarketHeatmapSection />,
+                component: <MarketHeatmapLayout />,
                 keywords: ["heatmap", "treemap", "stocks", "performance"],
             },
             {
