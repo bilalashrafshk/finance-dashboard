@@ -14,6 +14,7 @@ import { getTodayInMarketTimezone } from "@/lib/portfolio/market-hours"
 
 export function MarketHeatmapSection() {
   const [stocks, setStocks] = useState<MarketHeatmapStock[]>([])
+  const [indexStatus, setIndexStatus] = useState<{ price: number; change: number | null; changePercent: number | null } | null>(null)
   const [allStocks, setAllStocks] = useState<MarketHeatmapStock[]>([]) // Store all stocks for filtering
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -23,8 +24,6 @@ export function MarketHeatmapSection() {
   // Significantly increase default height for better readability
   const [treemapSize, setTreemapSize] = useState({ width: 1200, height: 1200 })
   const containerRef = useRef<HTMLDivElement>(null)
-
-  const [indexStatus, setIndexStatus] = useState<{ price: number; change: number | null; changePercent: number | null } | null>(null)
 
   // Check if a date is a weekend
   const isWeekend = (dateString: string): boolean => {
@@ -194,35 +193,6 @@ export function MarketHeatmapSection() {
         </p>
       </div>
 
-      {/* KSE100 Index Status */}
-      {indexStatus && (
-        <Card className="bg-muted/30">
-          <CardContent className="pt-6 pb-6">
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-              <div>
-                <div className="text-sm text-muted-foreground font-medium mb-1">KSE100 Index</div>
-                <div className="flex items-baseline gap-3">
-                  <span className="text-3xl font-bold tabular-nums">
-                    {indexStatus.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                  <div className={`flex items-center text-lg font-medium tabular-nums ${(indexStatus.change || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-                    }`}>
-                    <span>{(indexStatus.change || 0) >= 0 ? '+' : ''}{indexStatus.change?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                    <span className="ml-2">
-                      ({(indexStatus.changePercent || 0) >= 0 ? '+' : ''}{indexStatus.changePercent?.toFixed(2)}%)
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div className="text-right hidden sm:block">
-                <div className="text-xs text-muted-foreground">Date</div>
-                <div className="font-medium">{selectedDate}</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Date Selector */}
       <Card>
         <CardHeader className="pb-3">
@@ -338,6 +308,35 @@ export function MarketHeatmapSection() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* KSE100 Index Status */}
+      {indexStatus && (
+        <Card className="bg-muted/30">
+          <CardContent className="pt-6 pb-6">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div>
+                <div className="text-sm text-muted-foreground font-medium mb-1">KSE100 Index</div>
+                <div className="flex items-baseline gap-3">
+                  <span className="text-3xl font-bold tabular-nums">
+                    {indexStatus.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                  <div className={`flex items-center text-lg font-medium tabular-nums ${(indexStatus.change || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                    }`}>
+                    <span>{(indexStatus.change || 0) >= 0 ? '+' : ''}{indexStatus.change?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="ml-2">
+                      ({(indexStatus.changePercent || 0) >= 0 ? '+' : ''}{indexStatus.changePercent?.toFixed(2)}%)
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="text-right hidden sm:block">
+                <div className="text-xs text-muted-foreground">Date</div>
+                <div className="font-medium">{selectedDate}</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Error Alert */}
