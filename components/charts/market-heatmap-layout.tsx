@@ -4,13 +4,12 @@ import React, { useState, useEffect, useRef } from "react"
 import { MarketHeatmapTreemap, type MarketHeatmapStock, type SizeMode } from "@/components/market-heatmap/treemap"
 import { MarketTickerStrip, type MarketIndex } from "./market-ticker-strip"
 import { MarketSectorSidebar, type SectorPerformance } from "./market-sector-sidebar"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { Loader2, Calendar as CalendarIcon, RefreshCw, Maximize2, Minimize2 } from "lucide-react"
+import { Loader2, RefreshCw, Maximize2, Minimize2 } from "lucide-react"
 import { getTodayInMarketTimezone } from "@/lib/portfolio/market-hours"
 
 type Timeframe = '1D' | '1W' | '1M' | 'YTD'
@@ -37,8 +36,6 @@ export function MarketHeatmapLayout() {
 
     // Initialize Date
     useEffect(() => {
-        // Helper to handle weekends logic if needed, but API also handles it.
-        // We start with Today.
         const today = getTodayInMarketTimezone('PSX')
         setSelectedDate(today)
     }, [])
@@ -65,11 +62,6 @@ export function MarketHeatmapLayout() {
             }
 
             if (result.success) {
-                // Transform API response to fit our components
-                // API returns indices inside indexStatus object or array?
-                // Let's check the API response shape in my route.ts... 
-                // It returns { success: true, stocks, indices: [...], sectors: [...] }
-
                 setData({
                     stocks: result.stocks || [],
                     indices: result.indices || [],
@@ -96,14 +88,21 @@ export function MarketHeatmapLayout() {
             if (containerRef.current) {
                 const { width, height } = containerRef.current.getBoundingClientRect()
                 // Ensure valid dimensions
+                // For Horizontal Layout, we give full width
+                // Height needs to be calculated or fixed. 
+                // Since container is fixed height (800/900), we can just subtract header space?
+                // Actually, resizing logic might fight with flex?
+                // We'll set dimensions based on the CONTAINER of the Heatmap.
+                // But containerRef is on root.
+                // Let's rely on a separate ref for the heatmap container for better precision?
+                // Or just use root width - padding.
                 setDimensions({
-                    width: Math.max(width - 32, 400),
-                    height: Math.max(height - 32, 400)
+                    width: Math.max(width - 32, 400), // Account for padding
+                    height: Math.max(height - 200, 400) // Rough estimate of top content height
                 })
             }
         }
 
-        // Initial delay to let layout settle
         const timeout = setTimeout(updateSize, 100)
         window.addEventListener('resize', updateSize)
 
@@ -144,7 +143,6 @@ export function MarketHeatmapLayout() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                    {/* Timeframe Tabs */}
                     <Tabs value={timeframe} onValueChange={(v) => setTimeframe(v as Timeframe)} className="w-[200px] md:w-auto">
                         <TabsList>
                             <TabsTrigger value="1D">1D</TabsTrigger>
@@ -154,7 +152,6 @@ export function MarketHeatmapLayout() {
                         </TabsList>
                     </Tabs>
 
-                    {/* Date Picker */}
                     <div className="relative">
                         <Input
                             type="date"
@@ -180,23 +177,24 @@ export function MarketHeatmapLayout() {
                 <MarketTickerStrip indices={data.indices} />
             )}
 
-            {/* 3. Main Content Grid */}
-            <div className="flex flex-col lg:flex-row gap-4 h-[800px] lg:h-[900px]">
-                {/* Left: Sector Sidebar */}
-                <div className="w-full lg:w-64 flex-shrink-0 h-[300px] lg:h-full">
+            {/* 3. Main Content Stack */}
+            <div className="flex flex-col gap-4 h-[900px]">
+                {/* Top: Sector Sidebar (Horizontal) */}
+                <div className="w-full flex-shrink-0">
                     {loading && !data ? (
-                        <div className="h-full w-full rounded-lg border bg-muted/10 animate-pulse" />
+                        <div className="h-[60px] w-full rounded-lg border bg-muted/10 animate-pulse" />
                     ) : (
                         <MarketSectorSidebar
                             sectors={data?.sectors || []}
                             selectedSector={selectedSector}
                             onSelectSector={setSelectedSector}
+                            orientation="horizontal"
                         />
                     )}
                 </div>
 
-                {/* Center: Heatmap */}
-                <Card className="flex-1 flex flex-col h-full overflow-hidden border-none shadow-none bg-transparent">
+                {/* Bottom: Heatmap (Full Width) */}
+                <Card className="flex-1 flex flex-col min-h-0 overflow-hidden border-none shadow-none bg-transparent">
                     {/* Heatmap Controls */}
                     <div className="flex items-center justify-between mb-2 px-1">
                         <div className="flex items-center gap-2">
@@ -228,7 +226,7 @@ export function MarketHeatmapLayout() {
                                 <p>{error}</p>
                             </div>
                         ) : (
-                            <div style={{ width: '100%', height: '100%', minHeight: '500px' }}>
+                            <div style={{ width: '100%', height: '100%' }}>
                                 <MarketHeatmapTreemap
                                     stocks={filteredStocks}
                                     width={dimensions.width}
