@@ -7,16 +7,19 @@ import { MarketSectorSidebar, type SectorPerformance } from "./market-sector-sid
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { Loader2, RefreshCw, Maximize2, Minimize2 } from "lucide-react"
+import { Loader2, RefreshCw, Maximize2, Minimize2, Calendar } from "lucide-react"
 import { getTodayInMarketTimezone } from "@/lib/portfolio/market-hours"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
-type Timeframe = '1D' | '1W' | '1M' | 'YTD'
+type Timeframe = '1D' | '1W' | '1M' | 'YTD' | 'Custom'
 
 export function MarketHeatmapLayout() {
     const [timeframe, setTimeframe] = useState<Timeframe>('1D')
-    const [selectedDate, setSelectedDate] = useState<string>("")
+    const [selectedDate, setSelectedDate] = useState<string>("") // End Date
+    const [startDate, setStartDate] = useState<string>("") // Start Date (for Custom)
     const [selectedSector, setSelectedSector] = useState<string>('all')
     const [sizeMode, setSizeMode] = useState<SizeMode>('marketCap')
 
@@ -24,7 +27,8 @@ export function MarketHeatmapLayout() {
         stocks: MarketHeatmapStock[],
         indices: MarketIndex[],
         sectors: SectorPerformance[],
-        lastUpdated: string | null
+        lastUpdated: string | null,
+        count: number
     } | null>(null)
 
     const [loading, setLoading] = useState(true)
@@ -50,9 +54,23 @@ export function MarketHeatmapLayout() {
         try {
             const params = new URLSearchParams({
                 date: selectedDate,
-                timeframe: timeframe,
                 limit: '100' // Top 100
             })
+
+            if (timeframe === 'Custom') {
+                if (startDate) {
+                    params.append('startDate', startDate)
+                    params.append('timeframe', 'Custom')
+                } else {
+                    // If custom but no start date, maybe default to 1M or warn? 
+                    // Let's default to logic handled by API if missing, or don't append.
+                    // But API needs startDate if timeframe is not standard.
+                    // We'll enforce it in UI? Or duplicate end date (0 change).
+                    params.append('startDate', selectedDate)
+                }
+            } else {
+                params.append('timeframe', timeframe)
+            }
 
             const response = await fetch(`/api/market-heatmap?${params.toString()}`)
             const result = await response.json()
@@ -66,7 +84,8 @@ export function MarketHeatmapLayout() {
                     stocks: result.stocks || [],
                     indices: result.indices || [],
                     sectors: result.sectors || [],
-                    lastUpdated: new Date().toLocaleTimeString()
+                    lastUpdated: new Date().toLocaleTimeString(),
+                    count: result.count || 0
                 })
             } else {
                 throw new Error(result.error || 'Unknown error')
@@ -80,25 +99,16 @@ export function MarketHeatmapLayout() {
 
     useEffect(() => {
         fetchData()
-    }, [selectedDate, timeframe])
+    }, [selectedDate, timeframe, startDate]) // Refetch on start date change too
 
     // Handle Resize for Treemap
     useEffect(() => {
         const updateSize = () => {
             if (containerRef.current) {
                 const { width, height } = containerRef.current.getBoundingClientRect()
-                // Ensure valid dimensions
-                // For Horizontal Layout, we give full width
-                // Height needs to be calculated or fixed. 
-                // Since container is fixed height (800/900), we can just subtract header space?
-                // Actually, resizing logic might fight with flex?
-                // We'll set dimensions based on the CONTAINER of the Heatmap.
-                // But containerRef is on root.
-                // Let's rely on a separate ref for the heatmap container for better precision?
-                // Or just use root width - padding.
                 setDimensions({
                     width: Math.max(width - 32, 400), // Account for padding
-                    height: Math.max(height - 200, 400) // Rough estimate of top content height
+                    height: Math.max(height - 240, 400) // Account for headers/sidebar
                 })
             }
         }
@@ -137,36 +147,64 @@ export function MarketHeatmapLayout() {
             <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight">Market Heatmap</h2>
-                    <p className="text-muted-foreground text-sm">
-                        PSX Top 100 Companies • Market Cap Weighted
-                    </p>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span>PSX Top 100 Companies</span>
+                        {data?.count !== undefined && (
+                            <>
+                                <span>•</span>
+                                <span>Showing {data.count} Stocks</span>
+                            </>
+                        )}
+                        <span>•</span>
+                        <span>Market Cap Weighted</span>
+                    </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
-                    <Tabs value={timeframe} onValueChange={(v) => setTimeframe(v as Timeframe)} className="w-[200px] md:w-auto">
+                    <Tabs value={timeframe} onValueChange={(v) => setTimeframe(v as Timeframe)} className="w-auto">
                         <TabsList>
                             <TabsTrigger value="1D">1D</TabsTrigger>
                             <TabsTrigger value="1W">1W</TabsTrigger>
                             <TabsTrigger value="1M">1M</TabsTrigger>
                             <TabsTrigger value="YTD">YTD</TabsTrigger>
+                            <TabsTrigger value="Custom">Custom</TabsTrigger>
                         </TabsList>
                     </Tabs>
 
+                    {timeframe === 'Custom' && (
+                        <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                            <div className="relative">
+                                <span className="absolute -top-3 left-0 text-[10px] text-muted-foreground">Start</span>
+                                <Input
+                                    type="date"
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                    max={selectedDate}
+                                    className="w-36 h-9 text-sm"
+                                />
+                            </div>
+                            <span className="text-muted-foreground">-</span>
+                        </div>
+                    )}
+
                     <div className="relative">
+                        <span className="absolute -top-3 left-0 text-[10px] text-muted-foreground">
+                            {timeframe === 'Custom' ? 'End' : 'Date'}
+                        </span>
                         <Input
                             type="date"
                             value={selectedDate}
                             onChange={(e) => setSelectedDate(e.target.value)}
                             max={new Date().toISOString().split('T')[0]}
-                            className="w-40 h-9 text-sm"
+                            className="w-36 h-9 text-sm"
                         />
                     </div>
 
-                    <Button variant="outline" size="icon" onClick={fetchData} disabled={loading} title="Refresh Data">
+                    <Button variant="outline" size="icon" onClick={fetchData} disabled={loading} title="Refresh Data" className="mt-2">
                         <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                     </Button>
 
-                    <Button variant="ghost" size="icon" onClick={toggleFullscreen} title="Toggle Fullscreen">
+                    <Button variant="ghost" size="icon" onClick={toggleFullscreen} title="Toggle Fullscreen" className="mt-2">
                         {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                     </Button>
                 </div>
@@ -203,7 +241,8 @@ export function MarketHeatmapLayout() {
                             </span>
                             <ToggleGroup type="single" value={sizeMode} onValueChange={(v) => v && setSizeMode(v as SizeMode)} size="sm">
                                 <ToggleGroupItem value="marketCap" className="text-xs h-7 px-2">Market Cap</ToggleGroupItem>
-                                <ToggleGroupItem value="marketCapChange" className="text-xs h-7 px-2">Change</ToggleGroupItem>
+                                <ToggleGroupItem value="marketCapChange" className="text-xs h-7 px-2">Market Cap Change</ToggleGroupItem>
+                                <ToggleGroupItem value="absoluteChange" className="text-xs h-7 px-2">Absolute Price Change</ToggleGroupItem>
                             </ToggleGroup>
                         </div>
 

@@ -29,14 +29,14 @@ export function MarketSectorSidebar({ sectors, onSelectSector, selectedSector, o
                         <span className="text-[10px] text-muted-foreground">(M-Cap Weighted)</span>
                     </div>
                 </div>
-                <ScrollArea className="w-full whitespace-nowrap">
-                    <div className="flex w-max p-2 gap-2">
+                <div className="w-full overflow-x-auto pb-2">
+                    <div className="flex w-max px-3 pt-2 gap-2">
                         {/* 'All' Option */}
                         <button
                             onClick={() => onSelectSector && onSelectSector('all')}
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs border transition-all duration-200 ${selectedSector === 'all'
-                                    ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                                    : "bg-background hover:bg-muted text-foreground border-transparent hover:border-border"
+                                ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                                : "bg-background hover:bg-muted text-foreground border-transparent hover:border-border"
                                 }`}
                         >
                             <span className="font-medium">All</span>
@@ -52,8 +52,8 @@ export function MarketSectorSidebar({ sectors, onSelectSector, selectedSector, o
                                     key={sector.name}
                                     onClick={() => onSelectSector && onSelectSector(sector.name)}
                                     className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs border transition-all duration-200 ${isSelected
-                                            ? "bg-primary/10 ring-1 ring-primary/20 border-primary/20"
-                                            : "bg-background hover:bg-muted/50 border-border/40 hover:border-border"
+                                        ? "bg-primary/10 ring-1 ring-primary/20 border-primary/20"
+                                        : "bg-background hover:bg-muted/50 border-border/40 hover:border-border"
                                         }`}
                                 >
                                     <span className={`font-medium ${isSelected ? "text-primary" : "text-foreground"}`}>
@@ -73,7 +73,7 @@ export function MarketSectorSidebar({ sectors, onSelectSector, selectedSector, o
                             )
                         })}
                     </div>
-                </ScrollArea>
+                </div>
             </div>
         )
     }
@@ -91,8 +91,8 @@ export function MarketSectorSidebar({ sectors, onSelectSector, selectedSector, o
                     <button
                         onClick={() => onSelectSector && onSelectSector('all')}
                         className={`flex items-center justify-between p-3 rounded-md text-sm transition-all duration-200 ${selectedSector === 'all'
-                                ? "bg-primary text-primary-foreground shadow-md"
-                                : "hover:bg-muted text-foreground"
+                            ? "bg-primary text-primary-foreground shadow-md"
+                            : "hover:bg-muted text-foreground"
                             }`}
                     >
                         <span className="font-medium">All Sectors</span>
@@ -108,8 +108,8 @@ export function MarketSectorSidebar({ sectors, onSelectSector, selectedSector, o
                                 key={sector.name}
                                 onClick={() => onSelectSector && onSelectSector(sector.name)}
                                 className={`flex items-center justify-between p-3 rounded-md text-sm transition-all duration-200 group ${isSelected
-                                        ? "bg-primary/10 ring-1 ring-primary/20"
-                                        : "hover:bg-muted/50"
+                                    ? "bg-primary/10 ring-1 ring-primary/20"
+                                    : "hover:bg-muted/50"
                                     }`}
                             >
                                 <div className="flex flex-col items-start gap-0.5 overflow-hidden">

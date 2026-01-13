@@ -14,7 +14,7 @@ export interface MarketHeatmapStock {
   industry: string | null
 }
 
-export type SizeMode = 'marketCap' | 'marketCapChange'
+export type SizeMode = 'marketCap' | 'marketCapChange' | 'absoluteChange'
 
 interface TreemapProps {
   stocks: MarketHeatmapStock[]
@@ -360,6 +360,13 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
           value = Math.abs(stock.marketCap - previousMarketCap)
         } else {
           value = stock.marketCap * 0.001
+        }
+      } else if (sizeMode === 'absoluteChange') {
+        if (stock.previousPrice) {
+          // Absolute price change (unweighted). Very small for low priced stocks.
+          value = Math.abs(stock.price - stock.previousPrice)
+        } else {
+          value = 0.001
         }
       } else {
         value = stock.marketCap

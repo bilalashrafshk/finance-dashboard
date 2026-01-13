@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
     const date = searchParams.get('date')
     const limit = parseInt(searchParams.get('limit') || '100', 10)
     const timeframe = searchParams.get('timeframe') || '1D' // 1D, 1W, 1M, YTD
+    const startDateParam = searchParams.get('startDate')
 
     if (!date) {
       return NextResponse.json({ error: 'Date parameter is required (YYYY-MM-DD)' }, { status: 400 })
@@ -38,11 +39,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid date format' }, { status: 400 })
     }
 
-    // Calculate Start Date based on timeframe
+    // Calculate Start Date based on timeframe or param
     const targetDateObj = new Date(date)
     let startDate = ''
 
-    if (timeframe === '1D') {
+    if (startDateParam && /^\d{4}-\d{2}-\d{2}$/.test(startDateParam)) {
+      startDate = startDateParam
+    } else if (timeframe === '1D') {
       // For 1D, we want the *strictly previous* data point, handled by "< date" SQL logic usually
       // But to be consistent with our new logic, we calculate a "compare date"
       targetDateObj.setDate(targetDateObj.getDate() - 1)
@@ -100,7 +103,6 @@ export async function GET(request: NextRequest) {
         `
 
       // 2. Fetch Indices (KSE-100, KSE-30, etc.)
-      // Simple fetch for now - just KSE-100 for the tape
       const indexQuery = `
             WITH current_idx AS (
                 SELECT close as price, date FROM historical_price_data 
@@ -118,13 +120,13 @@ export async function GET(request: NextRequest) {
                 c.price, 
                 p.price as prev_close,
                 (SELECT history FROM prev_idx) as history
-            FROM current_idx c, (SELECT close as price FROM historical_price_data WHERE symbol = 'KSE100' AND date < $1 ORDER BY date DESC LIMIT 1) p
+            FROM current_idx c, (SELECT close as price FROM historical_price_data WHERE symbol = 'KSE100' AND date <= $2 ORDER BY date DESC LIMIT 1) p
         `
       // Note: The index fetch is simplified. For production, we'd fetch multiple indices.
 
       const [heatmapRes, indexRes] = await Promise.all([
         client.query(heatmapQuery, [limit, date, startDate]),
-        client.query(indexQuery, [date])
+        client.query(indexQuery, [date, startDate])
       ])
 
       // Process Stocks
