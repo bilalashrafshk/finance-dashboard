@@ -148,10 +148,15 @@ export async function GET(request: NextRequest) {
 
       let cacheControl = 'public, max-age=300, stale-while-revalidate=600' // Default: 5 min cache
 
-      if (isHistoricalParams) {
+      if (stocks.length === 0) {
+        // No data found - Do NOT cache this failure for long!
+        // This allows immediate retry once data is populated.
+        cacheControl = 'no-store, max-age=0'
+      } else if (missingStocks.length > 0) {
+        // Partial data - Cache briefly (1 min) to allow filling gaps
+        cacheControl = 'public, max-age=60, stale-while-revalidate=60'
+      } else if (isHistoricalParams) {
         // Historical data: Only cache forever if we have COMPLETE data.
-        // If we are missing stocks (missingStocks.length > 0), it might be a temporary data gap 
-        // that the cron job will fix later. In that case, keep it semi-fresh (1 hour).
         if (missingStocks.length === 0) {
           cacheControl = 'public, max-age=31536000, immutable' // 1 Year (Locked)
         } else {
