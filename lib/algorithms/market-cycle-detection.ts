@@ -116,12 +116,6 @@ function validatePeak(
 
   // If drawdown is less than 30%, it's not a valid cycle peak
   if (maxDrawdown < DRAWDOWN_THRESHOLD) {
-    const remainingData = data.length - peakIndex
-    if (remainingData < 100 && recoveryIndex === -1) {
-      // Near end of data, treat as valid ongoing cycle
-      return { isValid: true, recoveryIndex: null }
-    }
-
     // Drawdown wasn't deep enough to be a cycle peak.
     // We should NOT jump to recovery, because we want to find the HIGHER peak 
     // that might occur before or after that recovery.
