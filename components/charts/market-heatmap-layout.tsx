@@ -216,7 +216,7 @@ export function MarketHeatmapLayout() {
             )}
 
             {/* 3. Main Content Stack */}
-            <div className="flex flex-col gap-4 h-[900px]">
+            <div className="flex flex-col gap-4 h-[calc(100vh-220px)] min-h-[700px]">
                 {/* Top: Sector Sidebar (Horizontal) */}
                 <div className="w-full flex-shrink-0">
                     {loading && !data ? (
