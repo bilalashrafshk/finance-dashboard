@@ -96,43 +96,37 @@ async function fetchNewDataInBackground(
         let source: 'scstrade' | 'stockanalysis' | 'binance' | 'investing' | 'manual-source' | 'kse-source' = 'stockanalysis'
 
         if (assetType === 'pk-equity') {
-            // Try StockAnalysis first (primary source), then fallback to Manual Source
-            const apiData = await retryWithBackoff(
-                () => fetchStockAnalysisData(symbol, 'PSX'),
-                3,
-                1000,
-                10000
-            )
-            if (apiData) {
-                const filtered = fetchStartDate
-                    ? apiData.filter(d => d.t >= fetchStartDate)
-                    : apiData
-                newData = filtered.map(convertStockAnalysisToRecord)
-                source = 'stockanalysis'
+            // 1. Try Manual/KSE Source (SCSTrade) first (Primary Source)
+            try {
+                const sourceData = await retryWithBackoff(
+                    () => fetchPKEquityData(symbol, fetchStartDate, today),
+                    2,
+                    1000,
+                    5000
+                )
+
+                if (sourceData && sourceData.length > 0) {
+                    newData = sourceData
+                    source = 'manual-source'
+                }
+            } catch (sourceError) {
+                console.error(`[${assetType}-${symbol}] KSE Source fetch failed, trying fallback:`, sourceError)
             }
 
-            // Fallback to Manual Source
+            // 2. Fallback to StockAnalysis if SCSTrade failed or returned no data
             if (newData.length === 0) {
-
-                /* Yahoo Finance Removed/Placeholder
-                // 3. Try Yahoo Finance (Backup)
-                const yahooPrice = await getLatestPriceFromYahoo(symbol + '.KA') // Accessing .KA for PSX
-                if (yahooPrice) return yahooPrice
-                */
-                try {
-                    const sourceData = await retryWithBackoff(
-                        () => fetchPKEquityData(symbol, fetchStartDate, today),
-                        2,
-                        1000,
-                        5000
-                    )
-
-                    if (sourceData && sourceData.length > 0) {
-                        newData = sourceData
-                        source = 'manual-source'
-                    }
-                } catch (sourceError) {
-                    console.error(`[${assetType}-${symbol}] KSE Source fetch failed:`, sourceError)
+                const apiData = await retryWithBackoff(
+                    () => fetchStockAnalysisData(symbol, 'PSX'),
+                    3,
+                    1000,
+                    10000
+                )
+                if (apiData) {
+                    const filtered = fetchStartDate
+                        ? apiData.filter(d => d.t >= fetchStartDate)
+                        : apiData
+                    newData = filtered.map(convertStockAnalysisToRecord)
+                    source = 'stockanalysis'
                 }
             }
         } else if (assetType === 'us-equity') {
