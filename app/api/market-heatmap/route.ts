@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDbClient } from '@/lib/portfolio/db-client'
 
-export const revalidate = 3600 // Cache for 1 hour
+import { getTodayInMarketTimezone } from '@/lib/portfolio/market-hours'
+
+// Dynamic route (relying on cache headers)
 
 export interface MarketHeatmapStock {
   symbol: string
@@ -141,9 +143,34 @@ export async function GET(request: NextRequest) {
         totalRequested: limit,
       })
 
-      // Add cache headers
-      response.headers.set('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400')
-      
+      // Dynamic Cache Control
+      const isHistoricalParams = date < getTodayInMarketTimezone('PSX') // Simple string comparison for YYYY-MM-DD works
+
+      let cacheControl = 'public, max-age=300, stale-while-revalidate=600' // Default: 5 min cache
+
+      if (isHistoricalParams) {
+        // Historical data: Only cache forever if we have COMPLETE data.
+        // If we are missing stocks (missingStocks.length > 0), it might be a temporary data gap 
+        // that the cron job will fix later. In that case, keep it semi-fresh (1 hour).
+        if (missingStocks.length === 0) {
+          cacheControl = 'public, max-age=31536000, immutable' // 1 Year (Locked)
+        } else {
+          cacheControl = 'public, max-age=3600, stale-while-revalidate=7200' // 1 Hour (Retry later)
+        }
+      } else {
+        // Today's data
+        const { isMarketClosed, getTodayInMarketTimezone } = await import('@/lib/portfolio/market-hours')
+        const marketClosed = isMarketClosed('PSX')
+
+        if (marketClosed) {
+          // Market is closed - Data is final for the day, cache for longer (1 hour)
+          // to prevent needless re-calculation
+          cacheControl = 'public, max-age=3600, stale-while-revalidate=7200'
+        }
+      }
+
+      response.headers.set('Cache-Control', cacheControl)
+
       return response
     } finally {
       client.release()
