@@ -185,6 +185,23 @@ export async function syncAllPSXLivePrices(): Promise<number> {
 
                 await client.query('COMMIT');
                 totalUpdated += rows.length;
+
+                // 3. Check for Breakouts / Events (Async)
+                // Use the scraped data to detect new ATHs immediately
+                try {
+                    const { processBreakouts } = await import('@/lib/events/event-processor');
+                    const candidates = rows.map(r => ({
+                        symbol: r.symbol,
+                        price: r.close,
+                        dayHigh: r.high > 0 ? r.high : r.close // Use Close if High is 0/missing
+                    }));
+
+                    // Run event processing (Awaited to ensure completion within serverless timeout)
+                    await processBreakouts(candidates);
+                } catch (eventErr) {
+                    console.error('[PSX Bulk] Event processing failed:', eventErr);
+                }
+
             } catch (e) {
                 await client.query('ROLLBACK');
                 throw e;
