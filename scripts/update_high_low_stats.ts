@@ -37,24 +37,23 @@ async function updateStats() {
             let athChanged = false;
 
             if (!all_time_high) {
+
                 // Full scan if no cache
                 const athRes = await client.query(`
           SELECT MAX(high) as val FROM historical_price_data 
-          WHERE symbol = $1 AND asset_type = 'pk-equity'
+          WHERE symbol = $1 AND asset_type = 'pk-equity' AND date < CURRENT_DATE
         `, [symbol]);
                 if (athRes.rows[0].val) {
                     newATH = parseFloat(athRes.rows[0].val);
                     athChanged = true;
                 }
             } else {
-                // Incremental scan: Only check for prices higher than current ATH since last update
-                // Actually, we should check *all* dates if last_updated is old, 
-                // but to be safe and simple: just check if there is ANY record > current ATH
-                // This covers the case where we might have backfilled data too.
+                // Incremental scan
                 const betterRes = await client.query(`
           SELECT MAX(high) as val FROM historical_price_data 
-          WHERE symbol = $1 AND asset_type = 'pk-equity' AND high > $2
+          WHERE symbol = $1 AND asset_type = 'pk-equity' AND high > $2 AND date < CURRENT_DATE
         `, [symbol, newATH]);
+
 
                 if (betterRes.rows[0].val) {
                     newATH = parseFloat(betterRes.rows[0].val);

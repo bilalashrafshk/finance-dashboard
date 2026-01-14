@@ -17,34 +17,39 @@ const pool = new Pool({
 export async function GET() {
   const client = await pool.connect()
   try {
+
     // Get all PK Equity symbols that have price data (same query as screener update)
     const { rows } = await client.query(`
       SELECT DISTINCT 
         hpd.symbol,
         COALESCE(cp.name, hpd.symbol) as name,
         COALESCE(cp.sector, 'Unknown') as sector,
-        COALESCE(cp.industry, 'Unknown') as industry
+        COALESCE(cp.industry, 'Unknown') as industry,
+        cp.all_time_high,
+        cp.fifty_two_week_high
       FROM historical_price_data hpd
       LEFT JOIN company_profiles cp ON cp.symbol = hpd.symbol AND cp.asset_type = 'pk-equity'
       WHERE hpd.asset_type = 'pk-equity'
       ORDER BY hpd.symbol
     `)
-    
-    return NextResponse.json({ 
+
+    return NextResponse.json({
       success: true,
       stocks: rows.map(row => ({
         symbol: row.symbol,
         name: row.name,
         sector: row.sector,
-        industry: row.industry
+        industry: row.industry,
+        all_time_high: row.all_time_high,
+        fifty_two_week_high: row.fifty_two_week_high
       }))
     })
   } catch (error: any) {
     console.error('[Screener Stocks] Error:', error)
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: false,
       error: 'Failed to fetch stocks',
-      details: error.message 
+      details: error.message
     }, { status: 500 })
   } finally {
     client.release()

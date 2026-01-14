@@ -30,6 +30,8 @@ interface AssetDetailViewProps {
 interface AssetMetrics extends CalculatedMetrics {
   currentPrice?: number
   peRatio?: number
+  allTimeHigh?: number
+  fiftyTwoWeekHigh?: number
 }
 
 type MaxDrawdownTimeframe = '1Y' | '3Y' | '5Y' | 'All'
@@ -253,241 +255,282 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
           }
 
           // Calculate P/E Ratio for PK Equities
-          let peRatio: number | undefined
-          if (asset.assetType === 'pk-equity' && currentPrice) {
-            try {
+        }
+
+
+        // Calculate P/E Ratio for PK Equities
+        let peRatio: number | undefined
+        let allTimeHigh: number | undefined
+        let fiftyTwoWeekHigh: number | undefined
+
+        if (asset.assetType === 'pk-equity') {
+          try {
+            // Fetch Financials
+            if (currentPrice) {
               const financialsRes = await fetch(`/api/financials?symbol=${asset.symbol}&period=quarterly`)
               if (financialsRes.ok) {
                 const data = await financialsRes.json()
                 const financials = data.financials
-                // Sum EPS of last 4 quarters for TTM EPS
                 if (financials && financials.length >= 4) {
                   const ttmEps = financials.slice(0, 4).reduce((sum: number, f: any) => sum + (parseFloat(f.eps_diluted) || 0), 0)
-                  // Calculate PE ratio even if EPS is negative (negative PE is valid for loss-making companies)
-                  // Only skip if EPS is exactly 0 to avoid division by zero
                   if (ttmEps !== 0) {
                     peRatio = currentPrice / ttmEps
                   }
                 }
               }
-            } catch (e) {
-              console.error('Error fetching financials for P/E:', e)
             }
-          }
 
-          setMaxDrawdown(maxDD)
-          setMetrics({
-            currentPrice,
-            peRatio,
-            ...calculatedMetrics,
-            maxDrawdown: maxDD // Override with timeframe-specific max drawdown
-          })
-        } else if (currentPrice !== undefined) {
-          // Just set current price if no historical data
-          setMetrics({ currentPrice })
-        } else {
-          setError('Failed to fetch price data')
+            // Fetch Company Profile for ATH/52W High
+            const profileRes = await fetch(`/api/screener/stocks`) // We reused this endpoint as it returns all with stats
+            if (profileRes.ok) {
+              const data = await profileRes.json()
+              const stockProfile = data.stocks?.find((s: any) => s.symbol === asset.symbol)
+              if (stockProfile) {
+                allTimeHigh = stockProfile.all_time_high ? parseFloat(stockProfile.all_time_high) : undefined
+                fiftyTwoWeekHigh = stockProfile.fifty_two_week_high ? parseFloat(stockProfile.fifty_two_week_high) : undefined
+              }
+            }
+
+          } catch (e) {
+            console.error('Error fetching supplementary data:', e)
+          }
         }
-      } catch (err: any) {
-        console.error('Error fetching metrics:', err)
-        setError(err.message || 'Failed to fetch metrics')
-      } finally {
-        setLoading(false)
+
+        setMaxDrawdown(maxDD)
+        setMetrics({
+          currentPrice,
+          peRatio,
+          ...calculatedMetrics,
+          maxDrawdown: maxDD // Override with timeframe-specific max drawdown
+        })
+      } else if (currentPrice !== undefined) {
+        // Just set current price if no historical data
+        setMetrics({ currentPrice })
+      } else {
+        setError('Failed to fetch price data')
       }
+    } catch (err: any) {
+      console.error('Error fetching metrics:', err)
+      setError(err.message || 'Failed to fetch metrics')
+    } finally {
+      setLoading(false)
     }
+  }
 
     fetchMetrics()
   }, [asset, effectiveRiskFreeRates])
 
-  // Recalculate max drawdown when timeframe changes
-  useEffect(() => {
-    const recalculateMaxDrawdown = async () => {
-      if (fullHistoricalDataForMaxDD.length > 0) {
-        const { calculateMaxDrawdown } = await import('@/lib/asset-screener/metrics-calculations')
+// Recalculate max drawdown when timeframe changes
+useEffect(() => {
+  const recalculateMaxDrawdown = async () => {
+    if (fullHistoricalDataForMaxDD.length > 0) {
+      const { calculateMaxDrawdown } = await import('@/lib/asset-screener/metrics-calculations')
 
-        let filteredData = fullHistoricalDataForMaxDD
-        const now = new Date()
-        if (maxDrawdownTimeframe === '1Y') {
-          const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
-          filteredData = fullHistoricalDataForMaxDD.filter(point => new Date(point.date) >= oneYearAgo)
-        } else if (maxDrawdownTimeframe === '3Y') {
-          const threeYearsAgo = new Date(now.getFullYear() - 3, now.getMonth(), now.getDate())
-          filteredData = fullHistoricalDataForMaxDD.filter(point => new Date(point.date) >= threeYearsAgo)
-        } else if (maxDrawdownTimeframe === '5Y') {
-          const fiveYearsAgo = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate())
-          filteredData = fullHistoricalDataForMaxDD.filter(point => new Date(point.date) >= fiveYearsAgo)
-        }
-        // 'All' uses all data, no filtering needed
+      let filteredData = fullHistoricalDataForMaxDD
+      const now = new Date()
+      if (maxDrawdownTimeframe === '1Y') {
+        const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
+        filteredData = fullHistoricalDataForMaxDD.filter(point => new Date(point.date) >= oneYearAgo)
+      } else if (maxDrawdownTimeframe === '3Y') {
+        const threeYearsAgo = new Date(now.getFullYear() - 3, now.getMonth(), now.getDate())
+        filteredData = fullHistoricalDataForMaxDD.filter(point => new Date(point.date) >= threeYearsAgo)
+      } else if (maxDrawdownTimeframe === '5Y') {
+        const fiveYearsAgo = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate())
+        filteredData = fullHistoricalDataForMaxDD.filter(point => new Date(point.date) >= fiveYearsAgo)
+      }
+      // 'All' uses all data, no filtering needed
 
-        if (filteredData.length > 0) {
-          const maxDD = calculateMaxDrawdown(filteredData)
-          setMaxDrawdown(maxDD)
-          setMetrics(prev => {
-            if (prev) {
-              return {
-                ...prev,
-                maxDrawdown: maxDD
-              }
+      if (filteredData.length > 0) {
+        const maxDD = calculateMaxDrawdown(filteredData)
+        setMaxDrawdown(maxDD)
+        setMetrics(prev => {
+          if (prev) {
+            return {
+              ...prev,
+              maxDrawdown: maxDD
             }
-            return prev
-          })
-        }
+          }
+          return prev
+        })
       }
     }
-
-    recalculateMaxDrawdown()
-  }, [maxDrawdownTimeframe, fullHistoricalDataForMaxDD])
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
   }
 
-  if (error) {
-    return (
-      <div className="text-sm text-destructive py-4">
-        Error: {error}
-      </div>
-    )
-  }
+  recalculateMaxDrawdown()
+}, [maxDrawdownTimeframe, fullHistoricalDataForMaxDD])
 
+if (loading) {
   return (
-    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-      <TabsList className="mb-6">
-        <TabsTrigger value="analytics">Analytics</TabsTrigger>
-        {asset.assetType === 'pk-equity' && (
-          <TabsTrigger value="financials">Financials</TabsTrigger>
-        )}
-        {asset.assetType === 'pk-equity' && (
-          <TabsTrigger value="dividends">Dividends</TabsTrigger>
-        )}
-        <TabsTrigger value="prices">Prices & Ratios</TabsTrigger>
-        <TabsTrigger value="seasonality">Seasonality</TabsTrigger>
-      </TabsList>
-
-      <TabsContent value="analytics" className="space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {metrics?.currentPrice !== undefined && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Current Price</CardDescription>
-                <CardTitle className="text-lg">
-                  {formatCurrency(metrics.currentPrice, asset.currency, asset.assetType === 'crypto' ? 8 : 2)}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-          )}
-
-          {metrics?.peRatio !== undefined && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>P/E Ratio (TTM)</CardDescription>
-                <CardTitle className="text-lg">
-                  {Number(metrics.peRatio).toFixed(2)}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-          )}
-
-          {metrics?.ytdReturnPercent !== undefined && metrics.ytdReturnPercent !== null && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>YTD Return</CardDescription>
-                <CardTitle className={`text-lg ${metrics.ytdReturnPercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {formatPercentage(metrics.ytdReturnPercent)}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-          )}
-
-          {metrics?.cagr1Year !== undefined && metrics.cagr1Year !== null && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>1-Year CAGR</CardDescription>
-                <CardTitle className={`text-lg ${metrics.cagr1Year >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {formatPercentage(metrics.cagr1Year)}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-          )}
-
-          {metrics?.cagr3Year !== undefined && metrics.cagr3Year !== null && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>3-Year CAGR</CardDescription>
-                <CardTitle className={`text-lg ${metrics.cagr3Year >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {formatPercentage(metrics.cagr3Year)}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-          )}
-
-          {metrics?.cagr5Year !== undefined && metrics.cagr5Year !== null && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>5-Year CAGR</CardDescription>
-                <CardTitle className={`text-lg ${metrics.cagr5Year >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {formatPercentage(metrics.cagr5Year)}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-          )}
-        </div>
-
-        {asset.notes && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Notes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">{asset.notes}</p>
-            </CardContent>
-          </Card>
-        )}
-      </TabsContent>
-
-      {asset.assetType === 'pk-equity' && (
-        <TabsContent value="financials" className="space-y-4">
-          <AssetFinancialsView symbol={asset.symbol} assetType={asset.assetType} />
-        </TabsContent>
-      )}
-
-      {asset.assetType === 'pk-equity' && (
-        <TabsContent value="dividends" className="space-y-4">
-          <DividendTable assetType={asset.assetType} symbol={asset.symbol} />
-        </TabsContent>
-      )}
-
-      <TabsContent value="prices" className="space-y-4">
-        <AssetPriceChart asset={asset} />
-
-        <HistoricPEChart asset={asset} />
-
-        <RiskMetricsDisplay
-          assetType={asset.assetType}
-          historicalData={fullHistoricalDataForMaxDD.length > 0 ? fullHistoricalDataForMaxDD : []}
-          benchmarkData={fullBenchmarkData}
-          riskFreeRates={effectiveRiskFreeRates}
-        />
-      </TabsContent>
-
-      <TabsContent value="seasonality" className="space-y-4">
-        {metrics?.monthlySeasonality ? (
-          <SeasonalityTable
-            monthlySeasonality={metrics.monthlySeasonality}
-          />
-        ) : (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground">No seasonality data available</p>
-            </CardContent>
-          </Card>
-        )}
-      </TabsContent>
-    </Tabs>
+    <div className="flex items-center justify-center py-8">
+      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    </div>
   )
+}
+
+if (error) {
+  return (
+    <div className="text-sm text-destructive py-4">
+      Error: {error}
+    </div>
+  )
+}
+
+return (
+  <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+    <TabsList className="mb-6">
+      <TabsTrigger value="analytics">Analytics</TabsTrigger>
+      {asset.assetType === 'pk-equity' && (
+        <TabsTrigger value="financials">Financials</TabsTrigger>
+      )}
+      {asset.assetType === 'pk-equity' && (
+        <TabsTrigger value="dividends">Dividends</TabsTrigger>
+      )}
+      <TabsTrigger value="prices">Prices & Ratios</TabsTrigger>
+      <TabsTrigger value="seasonality">Seasonality</TabsTrigger>
+    </TabsList>
+
+    <TabsContent value="analytics" className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {metrics?.currentPrice !== undefined && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Current Price</CardDescription>
+              <CardTitle className="text-lg">
+                {formatCurrency(metrics.currentPrice, asset.currency, asset.assetType === 'crypto' ? 8 : 2)}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        )}
+
+        {metrics?.peRatio !== undefined && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>P/E Ratio (TTM)</CardDescription>
+              <CardTitle className="text-lg">
+                {Number(metrics.peRatio).toFixed(2)}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        )}
+
+        {metrics?.allTimeHigh !== undefined && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>All-Time High</CardDescription>
+              <CardTitle className="text-lg">
+                {formatCurrency(metrics.allTimeHigh, asset.currency, 2)}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        )}
+
+        {metrics?.fiftyTwoWeekHigh !== undefined && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>52-Week High</CardDescription>
+              <CardTitle className="text-lg">
+                {formatCurrency(metrics.fiftyTwoWeekHigh, asset.currency, 2)}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        )}
+
+        {metrics?.ytdReturnPercent !== undefined && metrics.ytdReturnPercent !== null && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>YTD Return</CardDescription>
+              <CardTitle className={`text-lg ${metrics.ytdReturnPercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {formatPercentage(metrics.ytdReturnPercent)}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        )}
+
+        {metrics?.cagr1Year !== undefined && metrics.cagr1Year !== null && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>1-Year CAGR</CardDescription>
+              <CardTitle className={`text-lg ${metrics.cagr1Year >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {formatPercentage(metrics.cagr1Year)}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        )}
+
+        {metrics?.cagr3Year !== undefined && metrics.cagr3Year !== null && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>3-Year CAGR</CardDescription>
+              <CardTitle className={`text-lg ${metrics.cagr3Year >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {formatPercentage(metrics.cagr3Year)}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        )}
+
+        {metrics?.cagr5Year !== undefined && metrics.cagr5Year !== null && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>5-Year CAGR</CardDescription>
+              <CardTitle className={`text-lg ${metrics.cagr5Year >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {formatPercentage(metrics.cagr5Year)}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        )}
+      </div>
+
+      {asset.notes && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Notes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">{asset.notes}</p>
+          </CardContent>
+        </Card>
+      )}
+    </TabsContent>
+
+    {asset.assetType === 'pk-equity' && (
+      <TabsContent value="financials" className="space-y-4">
+        <AssetFinancialsView symbol={asset.symbol} assetType={asset.assetType} />
+      </TabsContent>
+    )}
+
+    {asset.assetType === 'pk-equity' && (
+      <TabsContent value="dividends" className="space-y-4">
+        <DividendTable assetType={asset.assetType} symbol={asset.symbol} />
+      </TabsContent>
+    )}
+
+    <TabsContent value="prices" className="space-y-4">
+      <AssetPriceChart asset={asset} />
+
+      <HistoricPEChart asset={asset} />
+
+      <RiskMetricsDisplay
+        assetType={asset.assetType}
+        historicalData={fullHistoricalDataForMaxDD.length > 0 ? fullHistoricalDataForMaxDD : []}
+        benchmarkData={fullBenchmarkData}
+        riskFreeRates={effectiveRiskFreeRates}
+      />
+    </TabsContent>
+
+    <TabsContent value="seasonality" className="space-y-4">
+      {metrics?.monthlySeasonality ? (
+        <SeasonalityTable
+          monthlySeasonality={metrics.monthlySeasonality}
+        />
+      ) : (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground">No seasonality data available</p>
+          </CardContent>
+        </Card>
+      )}
+    </TabsContent>
+  </Tabs>
+)
 }
 

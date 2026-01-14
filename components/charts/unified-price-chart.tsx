@@ -115,7 +115,7 @@ export function UnifiedPriceChart() {
     // State
     const [assetType, setAssetType] = useState<AssetType>('pk-equity')
     const [selectedSymbol, setSelectedSymbol] = useState<string>('')
-    const [availableSymbols, setAvailableSymbols] = useState<Array<{ symbol: string; name?: string }>>([])
+    const [availableSymbols, setAvailableSymbols] = useState<Array<{ symbol: string; name?: string; all_time_high?: number; fifty_two_week_high?: number }>>([])
     const [loading, setLoading] = useState(false)
     const [loadingSymbols, setLoadingSymbols] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -174,6 +174,8 @@ export function UnifiedPriceChart() {
                             symbols = data.stocks.map((stock: any) => ({
                                 symbol: stock.symbol,
                                 name: stock.name,
+                                all_time_high: stock.all_time_high ? parseFloat(stock.all_time_high) : undefined,
+                                fifty_two_week_high: stock.fifty_two_week_high ? parseFloat(stock.fifty_two_week_high) : undefined,
                             }))
                         }
                     }
