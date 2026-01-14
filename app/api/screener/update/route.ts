@@ -342,18 +342,51 @@ export async function GET(request: Request) {
       console.error('[Screener Update] Sector PE aggregation failed:', sectorErr)
     }
 
-    // 4. Update Macros (Only if we have time, or skipped if frequent updates)
-    //    We can make this conditional or separate cron
+    // 4. Update Macros (THROTTLED & PRIORITIZED)
+    //    Use existing DB connection to find stale keys, then update top 5.
     if (Date.now() - startTime < TIME_LIMIT_MS) {
-
       try {
         const { ensureSBPEconomicData, MACRO_KEYS } = await import('@/lib/portfolio/sbp-service')
-        // Only update one macro key per run to save time? Or check all if fast
-        // For now, check all but handle errors
-        await Promise.all(MACRO_KEYS.map(async (key) => {
-          try { await ensureSBPEconomicData(key) } catch (e) { }
-        }))
-      } catch (e) { console.error('Macro update failed', e) }
+
+        // Fetch metadata for all keys to determine staleness
+        // We use the existing 'client' from the pool
+        const metaRes = await client.query(
+          `SELECT series_key, last_updated FROM sbp_economic_metadata WHERE series_key = ANY($1)`,
+          [MACRO_KEYS]
+        )
+
+        const lastUpdatedMap = new Map<string, number>()
+        metaRes.rows.forEach((row: any) => {
+          // updated_at is likely a Date object from pg, but handle string case safely
+          const dateVal = row.last_updated instanceof Date ? row.last_updated : new Date(row.last_updated)
+          lastUpdatedMap.set(row.series_key, dateVal.getTime())
+        })
+
+        // Sort keys by staleness (oldest/missing first)
+        const sortedKeys = [...MACRO_KEYS].sort((a, b) => {
+          const timeA = lastUpdatedMap.get(a) || 0 // 0 if missing (highest priority)
+          const timeB = lastUpdatedMap.get(b) || 0
+          return timeA - timeB
+        })
+
+        // Pick top 10 stale keys to update
+        const keysToUpdate = sortedKeys.slice(0, 10)
+
+        if (keysToUpdate.length > 0) {
+          console.log(`[Screener Update] Prioritized Macro Update: Updating ${keysToUpdate.length} keys: ${keysToUpdate.join(', ')}`)
+
+          await Promise.all(keysToUpdate.map(async (key) => {
+            try {
+              // ensureSBPEconomicData checks cache internally too, effectively double-checking but harmless
+              await ensureSBPEconomicData(key)
+            } catch (e) {
+              console.error(`[Screener Update] Failed to update macro ${key}`, e)
+            }
+          }))
+        }
+      } catch (e) {
+        console.error('[Screener Update] Macro update block failed', e)
+      }
     }
 
     const duration = Date.now() - startTime

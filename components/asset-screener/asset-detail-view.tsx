@@ -300,6 +300,8 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
           setMetrics({
             currentPrice,
             peRatio,
+            allTimeHigh,
+            fiftyTwoWeekHigh,
             ...calculatedMetrics,
             maxDrawdown: maxDD // Override with timeframe-specific max drawdown
           })
