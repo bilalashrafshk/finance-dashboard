@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { TrendingUp, Menu, X, LogOut, BarChart3, Wallet, Search, User, Settings, Crown, Filter, Grid3x3, Bell } from 'lucide-react'
+import { TrendingUp, Menu, X, LogOut, BarChart3, Wallet, Search, User, Settings, Crown, Filter, Grid3x3, Bell, Bot } from 'lucide-react'
 import { Logo } from '@/components/logo'
 import { useAuth } from '@/lib/auth/auth-context'
 import LoginModal from '@/components/landing/login-modal'
@@ -156,6 +156,12 @@ export function SharedNavbar() {
                           <Link href="/admin/price-viewer" className="flex items-center">
                             <BarChart3 className="mr-2 h-4 w-4" />
                             <span>Price Viewer</span>
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="cursor-pointer" asChild>
+                          <Link href="/admin/prompts" className="flex items-center">
+                            <Bot className="mr-2 h-4 w-4" />
+                            <span>AI Prompts</span>
                           </Link>
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
@@ -317,6 +323,12 @@ export function SharedNavbar() {
                               <Link href="/admin/price-viewer" className="flex items-center">
                                 <BarChart3 className="mr-2 h-4 w-4" />
                                 <span>Price Viewer</span>
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="cursor-pointer" asChild>
+                              <Link href="/admin/prompts" className="flex items-center">
+                                <Bot className="mr-2 h-4 w-4" />
+                                <span>AI Prompts</span>
                               </Link>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />

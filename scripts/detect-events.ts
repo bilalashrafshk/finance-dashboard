@@ -81,7 +81,7 @@ async function checkAndLogEvent(client: any, symbol: string, currentPrice: numbe
             console.log(`🚀 Event Detected: ${symbol} ${eventType} (Price: ${currentPrice}, Prev: ${previousValue})`);
 
             // Generate Headline
-            const prompt = getEventHeadlinePrompt(symbol, eventType, currentPrice, previousValue, closePrice);
+            const prompt = await getEventHeadlinePrompt(symbol, eventType, currentPrice, previousValue, closePrice);
             const headline = await generateHeadline(prompt);
 
             console.log(`📰 Headline: ${headline}`);

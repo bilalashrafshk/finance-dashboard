@@ -54,7 +54,7 @@ export async function GET(request: Request) {
 
                 // B. Generate Headline (AI)
                 const eventTypeLabel = event.event_type === 'ATH' ? 'ATH' : '52W_HIGH';
-                const prompt = getEventHeadlinePrompt(
+                const prompt = await getEventHeadlinePrompt(
                     event.symbol,
                     eventTypeLabel,
                     parseFloat(event.trigger_value),

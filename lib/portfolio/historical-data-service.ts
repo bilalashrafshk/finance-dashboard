@@ -113,27 +113,7 @@ async function fetchNewDataInBackground(
                     source = 'scstrade' // Explicitly mark as SCSTrade
                 }
             } catch (sourceError) {
-                console.error(`[${assetType}-${symbol}] SCSTrade fetch failed, trying fallback:`, sourceError)
-            }
-
-
-            // Priority 3: StockAnalysis (Backup only)
-            // Only if SCSTrade failed entirely and we have NO data yet.
-            if (newData.length === 0) {
-                console.warn(`[${assetType}-${symbol}] SCSTrade failed. Falling back to StockAnalysis (may lack wicks).`);
-                const apiData = await retryWithBackoff(
-                    () => fetchStockAnalysisData(symbol, 'PSX'),
-                    2, // Lower retries for backup to avoid timeout buildup
-                    1000,
-                    5000
-                )
-                if (apiData) {
-                    const filtered = fetchStartDate
-                        ? apiData.filter(d => d.t >= fetchStartDate)
-                        : apiData
-                    newData = filtered.map(convertStockAnalysisToRecord)
-                    source = 'stockanalysis'
-                }
+                console.error(`[${assetType}-${symbol}] SCSTrade fetch failed:`, sourceError)
             }
         } else if (assetType === 'us-equity') {
 
