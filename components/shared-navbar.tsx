@@ -141,13 +141,20 @@ export function SharedNavbar() {
                       <span>Subscription & Tiers</span>
                     </DropdownMenuItem>
                     {user.role === 'admin' && (
-                      // Added to mobile dropdown since we removed it from the main list
-                      <DropdownMenuItem className="cursor-pointer" asChild>
-                        <Link href="/admin/users" className="flex items-center">
-                          <User className="mr-2 h-4 w-4" />
-                          <span>Admin Dashboard</span>
-                        </Link>
-                      </DropdownMenuItem>
+                      <>
+                        <DropdownMenuItem className="cursor-pointer" asChild>
+                          <Link href="/admin/users" className="flex items-center">
+                            <User className="mr-2 h-4 w-4" />
+                            <span>User Management</span>
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="cursor-pointer" asChild>
+                          <Link href="/admin/price-viewer" className="flex items-center">
+                            <BarChart3 className="mr-2 h-4 w-4" />
+                            <span>Price Viewer</span>
+                          </Link>
+                        </DropdownMenuItem>
+                      </>
                     )}
 
                     <DropdownMenuItem
@@ -290,12 +297,20 @@ export function SharedNavbar() {
                           <span>Subscription & Tiers</span>
                         </DropdownMenuItem>
                         {user.role === 'admin' && (
-                          <DropdownMenuItem className="cursor-pointer" asChild>
-                            <Link href="/admin/users" className="flex items-center">
-                              <User className="mr-2 h-4 w-4" />
-                              <span>Admin Dashboard</span>
-                            </Link>
-                          </DropdownMenuItem>
+                          <>
+                            <DropdownMenuItem className="cursor-pointer" asChild>
+                              <Link href="/admin/users" className="flex items-center">
+                                <User className="mr-2 h-4 w-4" />
+                                <span>User Management</span>
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="cursor-pointer" asChild>
+                              <Link href="/admin/price-viewer" className="flex items-center">
+                                <BarChart3 className="mr-2 h-4 w-4" />
+                                <span>Price Viewer</span>
+                              </Link>
+                            </DropdownMenuItem>
+                          </>
                         )}
                         <DropdownMenuItem
                           className="cursor-pointer"
