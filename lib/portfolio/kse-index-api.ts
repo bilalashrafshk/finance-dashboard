@@ -35,7 +35,16 @@ function parseAspDate(aspDate: string): string {
     try {
         const timestamp = parseInt(aspDate.replace(/\/Date\((-?\d+)\)\//, '$1'))
         if (isNaN(timestamp)) return ''
-        return new Date(timestamp).toISOString().split('T')[0]
+
+        // Match logic from pk-equity-api.ts:
+        // Assume timestamp is PKT midnight, which is 19:00 UTC previous day.
+        // Adding 5 hours (18,000,000 ms) shifts it to local PKT date.
+        const pktDate = new Date(timestamp + 18000000)
+
+        const year = pktDate.getUTCFullYear()
+        const month = String(pktDate.getUTCMonth() + 1).padStart(2, '0')
+        const day = String(pktDate.getUTCDate()).padStart(2, '0')
+        return `${year}-${month}-${day}`
     } catch (e) {
         console.error('Error parsing ASP date:', aspDate, e)
         return ''

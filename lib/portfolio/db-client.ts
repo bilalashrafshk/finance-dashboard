@@ -534,6 +534,14 @@ export async function insertHistoricalData(
     return { inserted: 0, skipped: 0 }
   }
 
+  // Deduplicate data by date (keep last occurrence)
+  const dedupedData = Array.from(
+    data.reduce((map, item) => {
+      map.set(item.date, item);
+      return map;
+    }, new Map<string, HistoricalPriceRecord>()).values()
+  ).sort((a, b) => a.date.localeCompare(b.date));
+
   try {
     const client = await getPool().connect()
 
@@ -541,14 +549,11 @@ export async function insertHistoricalData(
       // Start transaction
       await client.query('BEGIN')
 
-      // Chunk data into batches of 1000 to avoid PostgreSQL parameter limits
-      // PostgreSQL max: 65,535 parameters
-      // 1000 records × 11 params = 11,000 params (safe margin)
       const CHUNK_SIZE = 1000
       let totalInserted = 0
 
-      for (let i = 0; i < data.length; i += CHUNK_SIZE) {
-        const chunk = data.slice(i, i + CHUNK_SIZE)
+      for (let i = 0; i < dedupedData.length; i += CHUNK_SIZE) {
+        const chunk = dedupedData.slice(i, i + CHUNK_SIZE)
         const inserted = await insertChunk(client, assetType, symbol, chunk, source)
         totalInserted += inserted
       }
