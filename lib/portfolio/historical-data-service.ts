@@ -90,8 +90,17 @@ async function fetchNewDataInBackground(
         let source: 'scstrade' | 'stockanalysis' | 'binance' | 'investing' | 'manual-source' | 'kse-source' = 'stockanalysis'
 
         if (assetType === 'pk-equity') {
-            // 1. Try Manual/KSE Source (SCSTrade) first (Primary Source)
+            // Priority 1: Check if we are fetching "Today's" data
+            // If fetching strictly today (or gap including today), PSX Market Watch is best/fastest source for EOD.
+            const isFetchingToday = fetchStartDate === today;
+
+            // Priority 2: SCSTrade (Primary for History)
+            // Use SCSTrade for anything historical (wicks are needed).
+            // Also use for today if we fail to get it from other sources.
             try {
+                // If it's today, we might want to try PSX direct scrape first (if we had a single-symbol scraper exposed)
+                // But generally SCSTrade is our gold standard for wicks.
+
                 const sourceData = await retryWithBackoff(
                     () => fetchPKEquityData(symbol, fetchStartDate, today),
                     2,
@@ -101,20 +110,22 @@ async function fetchNewDataInBackground(
 
                 if (sourceData && sourceData.length > 0) {
                     newData = sourceData
-                    source = 'manual-source'
+                    source = 'scstrade' // Explicitly mark as SCSTrade
                 }
             } catch (sourceError) {
-                console.error(`[${assetType}-${symbol}] KSE Source fetch failed, trying fallback:`, sourceError)
+                console.error(`[${assetType}-${symbol}] SCSTrade fetch failed, trying fallback:`, sourceError)
             }
 
 
-            // 2. Fallback to StockAnalysis if SCSTrade failed or returned no data
+            // Priority 3: StockAnalysis (Backup only)
+            // Only if SCSTrade failed entirely and we have NO data yet.
             if (newData.length === 0) {
+                console.warn(`[${assetType}-${symbol}] SCSTrade failed. Falling back to StockAnalysis (may lack wicks).`);
                 const apiData = await retryWithBackoff(
                     () => fetchStockAnalysisData(symbol, 'PSX'),
-                    3,
+                    2, // Lower retries for backup to avoid timeout buildup
                     1000,
-                    10000
+                    5000
                 )
                 if (apiData) {
                     const filtered = fetchStartDate
