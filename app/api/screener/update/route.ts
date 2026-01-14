@@ -277,111 +277,35 @@ export async function GET(request: Request) {
       }
     }
 
-    // --- NEW: Calculate Sector PE (Aggregate Method) ---
-    // Moved outside the main loop to run only once per job, significantly improving performance.
-    // Formula: Sum(Market Cap) / Sum(Net Income)
-    // This handles negative PE stocks correctly by Aggregating Earnings.
+    // --- NEW: Calculate Sector PE (Atomic SQL Method) ---
+    // This replaces Node.js loops with a single DB-native aggregation.
+    // Efficiently handles negative earnings by aggregating totals before division.
     try {
-      // 1. Fetch all metrics for the updated sectors to ensure we have a full picture
-      const metricsRes = await client.query(`
-          SELECT symbol, sector, market_cap, pe_ratio 
-          FROM screener_metrics 
-          WHERE asset_type = 'pk-equity' 
-            AND sector IS NOT NULL 
-            AND market_cap > 0
-        `)
-
-      const sectorGroups: Record<string, { totalMCap: number, totalEarnings: number }> = {}
-
-      // 2. Aggregate Data
-      metricsRes.rows.forEach(row => {
-        const mcap = parseFloat(row.market_cap) || 0
-        const pe = parseFloat(row.pe_ratio) || 0
-        const sector = row.sector
-
-        if (!sectorGroups[sector]) {
-          sectorGroups[sector] = { totalMCap: 0, totalEarnings: 0 }
-        }
-
-        sectorGroups[sector].totalMCap += mcap
-
-        if (pe !== 0) {
-          const earnings = mcap / pe
-          sectorGroups[sector].totalEarnings += earnings
-        }
-      })
-
-      // 3. Update Database with Sector PE
-      const sectorUpdates = Object.entries(sectorGroups).map(async ([sector, data]) => {
-        let sectorPE = 0
-        if (data.totalEarnings !== 0) {
-          sectorPE = data.totalMCap / data.totalEarnings
-        }
-
-        await client.query(`
-            UPDATE screener_metrics
-            SET 
-              sector_pe = $1,
-              relative_pe = CASE 
-                WHEN $1::numeric != 0 AND pe_ratio IS NOT NULL THEN pe_ratio / $1::numeric
-                ELSE NULL 
-              END,
-              updated_at = NOW()
-            WHERE sector = $2 AND asset_type = 'pk-equity'
-          `, [sectorPE, sector])
-      })
-
-      await Promise.all(sectorUpdates)
-      console.log(`[Screener Update] Optimized: Updated Sector PE for ${sectorUpdates.length} sectors once.`)
+      await client.query(`
+        WITH sector_stats AS (
+          SELECT 
+            sector,
+            SUM(market_cap) as total_mcap,
+            SUM(CASE WHEN pe_ratio != 0 THEN market_cap / pe_ratio ELSE 0 END) as total_earnings
+          FROM screener_metrics
+          WHERE asset_type = 'pk-equity' AND sector IS NOT NULL AND market_cap > 0
+          GROUP BY sector
+        )
+        UPDATE screener_metrics m
+        SET 
+          sector_pe = s.total_mcap / NULLIF(s.total_earnings, 0),
+          relative_pe = CASE 
+            WHEN s.total_earnings != 0 AND m.pe_ratio IS NOT NULL 
+            THEN m.pe_ratio / (s.total_mcap / s.total_earnings)
+            ELSE NULL 
+          END,
+          updated_at = NOW()
+        FROM sector_stats s
+        WHERE m.sector = s.sector AND m.asset_type = 'pk-equity'
+      `)
+      console.log(`[Screener Update] Optimized: Updated all Sector PE and Relative PE values via single SQL query.`)
     } catch (sectorErr) {
       console.error('[Screener Update] Sector PE aggregation failed:', sectorErr)
-    }
-
-    // 4. Update Macros (THROTTLED & PRIORITIZED)
-    //    Use existing DB connection to find stale keys, then update top 5.
-    if (Date.now() - startTime < TIME_LIMIT_MS) {
-      try {
-        const { ensureSBPEconomicData, MACRO_KEYS } = await import('@/lib/portfolio/sbp-service')
-
-        // Fetch metadata for all keys to determine staleness
-        // We use the existing 'client' from the pool
-        const metaRes = await client.query(
-          `SELECT series_key, last_updated FROM sbp_economic_metadata WHERE series_key = ANY($1)`,
-          [MACRO_KEYS]
-        )
-
-        const lastUpdatedMap = new Map<string, number>()
-        metaRes.rows.forEach((row: any) => {
-          // updated_at is likely a Date object from pg, but handle string case safely
-          const dateVal = row.last_updated instanceof Date ? row.last_updated : new Date(row.last_updated)
-          lastUpdatedMap.set(row.series_key, dateVal.getTime())
-        })
-
-        // Sort keys by staleness (oldest/missing first)
-        const sortedKeys = [...MACRO_KEYS].sort((a, b) => {
-          const timeA = lastUpdatedMap.get(a) || 0 // 0 if missing (highest priority)
-          const timeB = lastUpdatedMap.get(b) || 0
-          return timeA - timeB
-        })
-
-        // Pick top 1 stale key to update (reduced from 3 to prevent timeout)
-        const keysToUpdate = sortedKeys.slice(0, 1)
-
-        if (keysToUpdate.length > 0) {
-          console.log(`[Screener Update] Prioritized Macro Update: Updating ${keysToUpdate.length} keys: ${keysToUpdate.join(', ')}`)
-
-          await Promise.all(keysToUpdate.map(async (key) => {
-            try {
-              // ensureSBPEconomicData checks cache internally too, effectively double-checking but harmless
-              await ensureSBPEconomicData(key)
-            } catch (e) {
-              console.error(`[Screener Update] Failed to update macro ${key}`, e)
-            }
-          }))
-        }
-      } catch (e) {
-        console.error('[Screener Update] Macro update block failed', e)
-      }
     }
 
     const duration = Date.now() - startTime
