@@ -17,3 +17,18 @@ export async function updatePrompt(slug: string, content: string) {
     );
     revalidatePath('/admin/prompts');
 }
+
+export async function getAlertConfigs() {
+    const pool = getPool();
+    const { rows } = await pool.query('SELECT * FROM alert_configs ORDER BY key ASC');
+    return rows;
+}
+
+export async function updateAlertConfig(key: string, value: any) {
+    const pool = getPool();
+    await pool.query(
+        'UPDATE alert_configs SET value = $1, updated_at = NOW() WHERE key = $2',
+        [JSON.stringify(value), key]
+    );
+    revalidatePath('/admin/prompts');
+}

@@ -73,7 +73,7 @@ async function remediate() {
                     // Insert/Update records
                     const values: any[] = []
                     const placeholders = uniqueData.map((d, i) => {
-                        const offset = i * 9
+                        const offset = i * 10
                         values.push(
                             'pk-equity',
                             symbol,
@@ -83,15 +83,16 @@ async function remediate() {
                             d.low,
                             d.close,
                             d.volume ?? 0,
-                            'scstrade'
+                            'scstrade',
+                            d.change_pct ?? 0
                         )
-                        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9})`
+                        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10})`
                     }).join(',')
 
                     // We use ON CONFLICT to ensure we overwrite any remaining bad data
                     await client.query(`
             INSERT INTO historical_price_data 
-            (asset_type, symbol, date, open, high, low, close, volume, source)
+            (asset_type, symbol, date, open, high, low, close, volume, source, change_pct)
             VALUES ${placeholders}
             ON CONFLICT (asset_type, symbol, date) DO UPDATE SET
               open = EXCLUDED.open,
@@ -99,7 +100,8 @@ async function remediate() {
               low = EXCLUDED.low,
               close = EXCLUDED.close,
               volume = EXCLUDED.volume,
-              source = EXCLUDED.source
+              source = EXCLUDED.source,
+              change_pct = EXCLUDED.change_pct
           `, values)
 
                     console.log(`  ✅ Successfully updated ${symbol}.`)

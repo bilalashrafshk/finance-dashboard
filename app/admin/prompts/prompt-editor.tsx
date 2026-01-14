@@ -27,20 +27,21 @@ export function PromptEditor({ prompt }: { prompt: any }) {
     return (
         <div className="space-y-4">
             <textarea
-                className="w-full h-64 p-4 font-mono text-sm border rounded-md bg-background focus:ring-2 focus:ring-ring"
+                className="w-full h-64 p-4 font-mono text-sm border rounded-lg bg-background/50 focus:ring-2 focus:ring-blue-500/50 outline-none transition-all"
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
+                placeholder="Enter system prompt here..."
             />
             <div className="flex items-center justify-between">
                 <button
                     onClick={handleSave}
                     disabled={isSaving}
-                    className="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md disabled:opacity-50"
+                    className="px-6 py-2 bg-purple-600 text-white hover:bg-purple-700 rounded-lg disabled:opacity-50 transition-all font-medium text-sm shadow-sm hover:shadow-md"
                 >
                     {isSaving ? 'Saving...' : 'Save Changes'}
                 </button>
                 {message && (
-                    <span className={`text-sm ${message.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                    <span className={`text-sm font-medium ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
                         {message.text}
                     </span>
                 )}
