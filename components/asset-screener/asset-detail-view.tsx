@@ -281,7 +281,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
               }
 
               // Fetch Company Profile for ATH/52W High
-              const profileRes = await fetch(`/api/screener/stocks`) // We reused this endpoint as it returns all with stats
+              const profileRes = await fetch(`/api/screener/stocks`, { cache: 'no-store' }) // We reused this endpoint as it returns all with stats
               if (profileRes.ok) {
                 const data = await profileRes.json()
                 const stockProfile = data.stocks?.find((s: any) => s.symbol === asset.symbol)
