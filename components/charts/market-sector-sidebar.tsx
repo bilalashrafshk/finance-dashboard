@@ -29,8 +29,8 @@ export function MarketSectorSidebar({ sectors, onSelectSector, selectedSector, o
                         <span className="text-[10px] text-muted-foreground">(M-Cap Weighted)</span>
                     </div>
                 </div>
-                <div className="w-full overflow-x-auto pb-2">
-                    <div className="flex w-max px-3 pt-2 gap-2">
+                <div className="w-full">
+                    <div className="flex flex-wrap px-3 py-3 gap-2">
                         {/* 'All' Option */}
                         <button
                             onClick={() => onSelectSector && onSelectSector('all')}

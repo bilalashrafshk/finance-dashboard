@@ -4,6 +4,8 @@ import { fetchScreenerBatchData } from '@/lib/screener/batch-data-fetcher'
 import { calculateAllMetrics, PriceDataPoint } from '@/lib/asset-screener/metrics-calculations'
 import { fetchHistoricalData } from '@/lib/portfolio/unified-price-api'
 import { getHistoricalDataBatch, getDividendDataBatch, insertDividendData, DividendRecord } from '@/lib/portfolio/db-client'
+import { syncAllPSXLivePrices } from '@/lib/portfolio/psx-bulk-service'
+import { isMarketClosed } from '@/lib/portfolio/market-hours'
 
 // Re-use existing DB connection logic or create new for this batch job
 const pool = new Pool({
@@ -35,6 +37,15 @@ export async function GET(request: Request) {
   const TIME_LIMIT_MS = 50000 // 50 seconds safety limit (Max duration is 60s)
 
   try {
+    // 0. High-Speed Price Sync (Market Hours Only)
+    // If market is open, sync all PSX prices in one shot before processing metrics
+    if (!isMarketClosed('PSX')) {
+      console.log('[Screener Update] Market OPEN: Syncing all PSX prices via Bulk Scraper...');
+      const syncCount = await syncAllPSXLivePrices();
+      console.log(`[Screener Update] Bulk Sync complete. Updated ${syncCount} symbols.`);
+    } else {
+      console.log('[Screener Update] Market CLOSED: Skipping Bulk Sync, using historical batches.');
+    }
 
 
     // Parse params
@@ -92,8 +103,8 @@ export async function GET(request: Request) {
     }
 
     // 3. Process Symbols in Batches
-    // Reduced BATCH_SIZE to 5 to prevent timeouts if external fetches are slow
-    const BATCH_SIZE = 5
+    // Optimized: Increased batch size since heavy calculation moved out of loop
+    const BATCH_SIZE = 20
     let processedCount = 0
     let skippedCount = 0
 
@@ -266,14 +277,18 @@ export async function GET(request: Request) {
         })
 
         await Promise.all(updatePromises)
+      } catch (err) {
+        console.error(`Batch failed`, err)
+      }
+    }
 
-        // --- NEW: Calculate Sector PE (Aggregate Method) ---
-        // Formula: Sum(Market Cap) / Sum(Net Income)
-        // This handles negative PE stocks correctly by Aggregating Earnings.
-
-        // 1. Fetch all metrics for the updated sectors to ensure we have a full picture
-        // (Optimized: In a real large DB, we might do this via pure SQL, but for <500 stocks, memory is fine)
-        const metricsRes = await client.query(`
+    // --- NEW: Calculate Sector PE (Aggregate Method) ---
+    // Moved outside the main loop to run only once per job, significantly improving performance.
+    // Formula: Sum(Market Cap) / Sum(Net Income)
+    // This handles negative PE stocks correctly by Aggregating Earnings.
+    try {
+      // 1. Fetch all metrics for the updated sectors to ensure we have a full picture
+      const metricsRes = await client.query(`
           SELECT symbol, sector, market_cap, pe_ratio 
           FROM screener_metrics 
           WHERE asset_type = 'pk-equity' 
@@ -281,41 +296,34 @@ export async function GET(request: Request) {
             AND market_cap > 0
         `)
 
-        const sectorGroups: Record<string, { totalMCap: number, totalEarnings: number }> = {}
+      const sectorGroups: Record<string, { totalMCap: number, totalEarnings: number }> = {}
 
-        // 2. Aggregate Data
-        metricsRes.rows.forEach(row => {
-          const mcap = parseFloat(row.market_cap) || 0
-          const pe = parseFloat(row.pe_ratio) || 0
-          const sector = row.sector
+      // 2. Aggregate Data
+      metricsRes.rows.forEach(row => {
+        const mcap = parseFloat(row.market_cap) || 0
+        const pe = parseFloat(row.pe_ratio) || 0
+        const sector = row.sector
 
-          if (!sectorGroups[sector]) {
-            sectorGroups[sector] = { totalMCap: 0, totalEarnings: 0 }
-          }
+        if (!sectorGroups[sector]) {
+          sectorGroups[sector] = { totalMCap: 0, totalEarnings: 0 }
+        }
 
-          sectorGroups[sector].totalMCap += mcap
+        sectorGroups[sector].totalMCap += mcap
 
-          // Derive Net Income from PE: Net Income = Market Cap / PE
-          // If PE is 0 or null, we assume earnings are 0 (or unknown).
-          // For negative PE, this correctly subtracts from total earnings.
-          if (pe !== 0) {
-            const earnings = mcap / pe
-            sectorGroups[sector].totalEarnings += earnings
-          }
-        })
+        if (pe !== 0) {
+          const earnings = mcap / pe
+          sectorGroups[sector].totalEarnings += earnings
+        }
+      })
 
-        // 3. Update Database with Sector PE
-        // We can do this in parallel for all sectors
-        const sectorUpdates = Object.entries(sectorGroups).map(async ([sector, data]) => {
-          // Avoid division by zero
-          let sectorPE = 0
-          if (data.totalEarnings !== 0) {
-            sectorPE = data.totalMCap / data.totalEarnings
-          }
+      // 3. Update Database with Sector PE
+      const sectorUpdates = Object.entries(sectorGroups).map(async ([sector, data]) => {
+        let sectorPE = 0
+        if (data.totalEarnings !== 0) {
+          sectorPE = data.totalMCap / data.totalEarnings
+        }
 
-          // Update all stocks in this sector with the new Sector PE
-          // Also recalculate Relative PE (Stock PE / Sector PE)
-          await client.query(`
+        await client.query(`
             UPDATE screener_metrics
             SET 
               sector_pe = $1,
@@ -326,14 +334,12 @@ export async function GET(request: Request) {
               updated_at = NOW()
             WHERE sector = $2 AND asset_type = 'pk-equity'
           `, [sectorPE, sector])
-        })
+      })
 
-        await Promise.all(sectorUpdates)
-        console.log(`[Screener Update] Updated Sector PE for ${sectorUpdates.length} sectors`)
-
-      } catch (err) {
-        console.error(`Batch failed`, err)
-      }
+      await Promise.all(sectorUpdates)
+      console.log(`[Screener Update] Optimized: Updated Sector PE for ${sectorUpdates.length} sectors once.`)
+    } catch (sectorErr) {
+      console.error('[Screener Update] Sector PE aggregation failed:', sectorErr)
     }
 
     // 4. Update Macros (Only if we have time, or skipped if frequent updates)

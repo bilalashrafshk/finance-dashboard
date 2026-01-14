@@ -54,7 +54,7 @@ export function MarketHeatmapLayout() {
         try {
             const params = new URLSearchParams({
                 date: selectedDate,
-                limit: '100' // Top 100
+                limit: isFullscreen ? '500' : '100' // Show more stocks in fullscreen
             })
 
             if (timeframe === 'Custom') {
@@ -99,7 +99,7 @@ export function MarketHeatmapLayout() {
 
     useEffect(() => {
         fetchData()
-    }, [selectedDate, timeframe, startDate]) // Refetch on start date change too
+    }, [selectedDate, timeframe, startDate, isFullscreen]) // Refetch on fullscreen change to get more data
 
     // Handle Resize for Treemap
     useEffect(() => {
@@ -239,7 +239,7 @@ export function MarketHeatmapLayout() {
                             <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
                                 Map Size:
                             </span>
-                            <ToggleGroup type="single" value={sizeMode} onValueChange={(v) => v && setSizeMode(v as SizeMode)} size="sm">
+                            <ToggleGroup type="single" value={sizeMode} onValueChange={(v) => v && setSizeMode(v as SizeMode)} size="sm" className="gap-1.5">
                                 <ToggleGroupItem value="marketCap" className="text-xs h-7 px-2">Market Cap</ToggleGroupItem>
                                 <ToggleGroupItem value="marketCapChange" className="text-xs h-7 px-2">Market Cap Change</ToggleGroupItem>
                                 <ToggleGroupItem value="absoluteChange" className="text-xs h-7 px-2">Absolute Price Change</ToggleGroupItem>
@@ -272,6 +272,7 @@ export function MarketHeatmapLayout() {
                                     height={dimensions.height}
                                     sizeMode={sizeMode}
                                     sectorPerformance={data?.sectors || []}
+                                    portalContainer={containerRef.current}
                                 />
                             </div>
                         )}

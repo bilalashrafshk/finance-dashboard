@@ -22,6 +22,7 @@ interface StockListPopoverProps {
   sector: string | null
   industry: string | null
   children: React.ReactNode
+  portalContainer?: HTMLElement | null
 }
 
 interface SparklineData {
@@ -30,7 +31,7 @@ interface SparklineData {
   dates: string[]
 }
 
-export function StockListPopover({ stocks, sector, industry, children }: StockListPopoverProps) {
+export function StockListPopover({ stocks, sector, industry, children, portalContainer }: StockListPopoverProps) {
   const [sparklineData, setSparklineData] = useState<Map<string, SparklineData>>(new Map())
   const [loading, setLoading] = useState(false)
 
@@ -156,6 +157,7 @@ export function StockListPopover({ stocks, sector, industry, children }: StockLi
         avoidCollisions={true}
         collisionPadding={{ top: 20, bottom: 20, left: 20, right: 20 }}
         onOpenAutoFocus={(e) => e.preventDefault()}
+        container={portalContainer}
       >
         {/* Category Header - Red background */}
         <div className="sticky top-0 z-10 bg-[#dc2626] text-white px-4 py-3 font-bold text-sm leading-tight tracking-wider shadow-sm">
@@ -184,8 +186,8 @@ export function StockListPopover({ stocks, sector, industry, children }: StockLi
                   </div>
                   <div
                     className={`text-lg font-extrabold leading-tight ${mainStock.changePercent !== null && mainStock.changePercent >= 0
-                        ? 'text-green-600 dark:text-green-500'
-                        : 'text-red-600 dark:text-red-500'
+                      ? 'text-green-600 dark:text-green-500'
+                      : 'text-red-600 dark:text-red-500'
                       }`}
                   >
                     {mainStock.changePercent !== null
@@ -220,8 +222,8 @@ export function StockListPopover({ stocks, sector, industry, children }: StockLi
                     </div>
                     <div
                       className={`text-sm font-extrabold leading-tight ${stock.changePercent !== null && stock.changePercent >= 0
-                          ? 'text-green-600 dark:text-green-500'
-                          : 'text-red-600 dark:text-red-500'
+                        ? 'text-green-600 dark:text-green-500'
+                        : 'text-red-600 dark:text-red-500'
                         }`}
                     >
                       {stock.changePercent !== null

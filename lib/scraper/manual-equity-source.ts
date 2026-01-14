@@ -12,7 +12,6 @@
  */
 export async function fetchFaceValue(symbol: string): Promise<number | null> {
   try {
-    // Ensure symbol is uppercase
     const ticker = symbol.toUpperCase();
     const url = `https://scstrade.com/stockscreening/SS_CompanySnapShot.aspx?symbol=${ticker}`;
 
@@ -24,10 +23,7 @@ export async function fetchFaceValue(symbol: string): Promise<number | null> {
       }
     });
 
-    if (!response.ok) {
-      console.error(`[ManualSource] Error fetching face value for ${ticker}: ${response.status}`);
-      return null;
-    }
+    if (!response.ok) return null;
 
     const html = await response.text();
 
@@ -35,19 +31,12 @@ export async function fetchFaceValue(symbol: string): Promise<number | null> {
     const match = html.match(/id="ContentPlaceHolder1_lbl_facevalue"[^>]*>([\d.,]+)</);
 
     if (match && match[1]) {
-      const valueStr = match[1].replace(/,/g, ''); // Remove commas if any
-      const value = parseFloat(valueStr);
-      if (!isNaN(value)) {
-        return value;
-      }
+      return parseFloat(match[1].replace(/,/g, ''));
     }
 
-    console.warn(`[ManualSource] Face value not found in HTML for ${ticker}`);
     return null;
-
   } catch (error: any) {
-    console.error(`[ManualSource] Exception fetching face value for ${symbol}:`, error.message);
+    console.error(`[ManualSource] Face value error for ${symbol}:`, error.message);
     return null;
   }
 }
-

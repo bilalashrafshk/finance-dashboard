@@ -22,6 +22,7 @@ interface TreemapProps {
   height: number
   sizeMode?: SizeMode
   sectorPerformance?: { name: string; change: number }[]
+  portalContainer?: HTMLElement | null
 }
 
 interface SectorGroup {
@@ -336,7 +337,7 @@ function squarify(
 }
 
 
-export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'marketCap', sectorPerformance = [] }: TreemapProps) {
+export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'marketCap', sectorPerformance = [], portalContainer }: TreemapProps) {
   // 1. Group stocks by sector
   const stocksBySector = useMemo(() => {
     const groups = new Map<string, MarketHeatmapStock[]>()
@@ -630,6 +631,7 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
             stocks={sectorStocks}
             sector={node.stock.sector}
             industry={node.stock.industry}
+            portalContainer={portalContainer}
           >
             <div
               className="absolute border border-white/10 hover:border-white/60 hover:z-10 cursor-pointer transition-colors flex flex-col items-center justify-center text-center overflow-hidden select-none"

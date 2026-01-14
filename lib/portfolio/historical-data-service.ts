@@ -107,6 +107,7 @@ async function fetchNewDataInBackground(
                 console.error(`[${assetType}-${symbol}] KSE Source fetch failed, trying fallback:`, sourceError)
             }
 
+
             // 2. Fallback to StockAnalysis if SCSTrade failed or returned no data
             if (newData.length === 0) {
                 const apiData = await retryWithBackoff(
@@ -229,15 +230,10 @@ export async function ensureHistoricalData(
          */
         if (!storedData.latestStoredDate || (fetchStartDate && fetchStartDate <= todayInMarketTimezone)) {
             let shouldFetch = false
-            let tradingDays = 0
-
-            if (!storedData.latestStoredDate) {
+            // Allow fetch if latest stored date is before today
+            // fetchStartDate is already (latestStoredDate + 1 day)
+            if (!storedData.latestStoredDate || (fetchStartDate && fetchStartDate <= todayInMarketTimezone)) {
                 shouldFetch = true
-            } else if (fetchStartDate) {
-                tradingDays = calculateTradingDaysBetween(fetchStartDate, todayInMarketTimezone)
-                if (tradingDays > 0) {
-                    shouldFetch = true
-                }
             }
 
             if (shouldFetch) {
