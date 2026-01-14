@@ -22,6 +22,7 @@ export function MarketHeatmapLayout() {
     const [startDate, setStartDate] = useState<string>("") // Start Date (for Custom)
     const [selectedSector, setSelectedSector] = useState<string>('all')
     const [sizeMode, setSizeMode] = useState<SizeMode>('marketCap')
+    const [stockLimit, setStockLimit] = useState<'100' | '500'>('100')
 
     const [data, setData] = useState<{
         stocks: MarketHeatmapStock[],
@@ -54,7 +55,7 @@ export function MarketHeatmapLayout() {
         try {
             const params = new URLSearchParams({
                 date: selectedDate,
-                limit: isFullscreen ? '500' : '100' // Show more stocks in fullscreen
+                limit: stockLimit
             })
 
             if (timeframe === 'Custom') {
@@ -99,20 +100,23 @@ export function MarketHeatmapLayout() {
 
     useEffect(() => {
         fetchData()
-    }, [selectedDate, timeframe, startDate, isFullscreen]) // Refetch on fullscreen change to get more data
+    }, [selectedDate, timeframe, startDate, stockLimit]) // Refetch on limit change
 
     // Handle Resize for Treemap
     useEffect(() => {
         const updateSize = () => {
             if (containerRef.current) {
-                const { width, height } = containerRef.current.getBoundingClientRect()
+                const { width } = containerRef.current.getBoundingClientRect()
+                const hPadding = isFullscreen ? 48 : 2
+
                 setDimensions({
-                    width: Math.max(width - 32, 400), // Account for padding
-                    height: Math.max(height - 240, 400) // Account for headers/sidebar
+                    width: width - hPadding,
+                    height: isFullscreen ? 1200 : 900
                 })
             }
         }
 
+        updateSize()
         const timeout = setTimeout(updateSize, 100)
         window.addEventListener('resize', updateSize)
 
@@ -121,6 +125,8 @@ export function MarketHeatmapLayout() {
             window.removeEventListener('resize', updateSize)
         }
     }, [data, isFullscreen])
+
+    // ... rest of component
 
     const filteredStocks = React.useMemo(() => {
         if (!data?.stocks) return []
@@ -141,14 +147,17 @@ export function MarketHeatmapLayout() {
     }
 
     return (
-        <div className={`flex flex-col gap-4 font-sans ${isFullscreen ? 'bg-background p-4' : ''}`} ref={containerRef}>
+        <div
+            className={`flex flex-col gap-4 font-sans ${isFullscreen ? 'bg-background p-6 overflow-y-auto h-screen w-full' : 'w-full'}`}
+            ref={containerRef}
+        >
 
             {/* 1. Header & Controls */}
             <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight">Market Heatmap</h2>
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>PSX Top 100 Companies</span>
+                        <span>PSX {stockLimit === '100' ? 'Top 100' : 'All'} Companies</span>
                         {data?.count !== undefined && (
                             <>
                                 <span>•</span>
@@ -200,6 +209,25 @@ export function MarketHeatmapLayout() {
                         />
                     </div>
 
+                    <div className="flex items-center border rounded-md px-1 bg-muted/20 h-9 mt-2">
+                        <Button
+                            variant={stockLimit === '100' ? 'secondary' : 'ghost'}
+                            size="sm"
+                            className="h-7 text-xs px-3"
+                            onClick={() => setStockLimit('100')}
+                        >
+                            Top 100
+                        </Button>
+                        <Button
+                            variant={stockLimit === '500' ? 'secondary' : 'ghost'}
+                            size="sm"
+                            className="h-7 text-xs px-3"
+                            onClick={() => setStockLimit('500')}
+                        >
+                            All
+                        </Button>
+                    </div>
+
                     <Button variant="outline" size="icon" onClick={fetchData} disabled={loading} title="Refresh Data" className="mt-2">
                         <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                     </Button>
@@ -232,7 +260,7 @@ export function MarketHeatmapLayout() {
                 </div>
 
                 {/* Bottom: Heatmap (Full Width) */}
-                <Card className="flex-1 flex flex-col overflow-hidden border-none shadow-none bg-transparent h-[900px]">
+                <Card className={`flex-1 flex flex-col overflow-hidden border-none shadow-none bg-transparent ${isFullscreen ? 'h-full' : 'h-[900px]'}`}>
                     {/* Heatmap Controls */}
                     <div className="flex items-center justify-between mb-2 px-1">
                         <div className="flex items-center gap-2">
@@ -241,8 +269,8 @@ export function MarketHeatmapLayout() {
                             </span>
                             <ToggleGroup type="single" value={sizeMode} onValueChange={(v) => v && setSizeMode(v as SizeMode)} size="sm" className="gap-1.5">
                                 <ToggleGroupItem value="marketCap" className="text-xs h-7 px-2">Market Cap</ToggleGroupItem>
-                                <ToggleGroupItem value="marketCapChange" className="text-xs h-7 px-2">Market Cap Change</ToggleGroupItem>
-                                <ToggleGroupItem value="absoluteChange" className="text-xs h-7 px-2">Absolute Price Change</ToggleGroupItem>
+                                <ToggleGroupItem value="marketCapChange" className="text-xs h-7 px-2">Price Change (Weight)</ToggleGroupItem>
+                                <ToggleGroupItem value="absoluteChange" className="text-xs h-7 px-2">Abs. Price Change</ToggleGroupItem>
                             </ToggleGroup>
                         </div>
 

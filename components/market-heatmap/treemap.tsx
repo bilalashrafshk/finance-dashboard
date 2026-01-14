@@ -520,8 +520,8 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
     <div
       className="relative bg-white dark:bg-gray-900"
       style={{
-        width: maxBounds.width,
-        height: maxBounds.height,
+        width: '100%',
+        height: '100%',
         minWidth: width,
         minHeight: height,
         overflow: 'auto'
