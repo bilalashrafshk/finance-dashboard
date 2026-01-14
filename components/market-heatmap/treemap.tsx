@@ -559,31 +559,41 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
           ? sectorStats.change > 0 ? 'text-green-400' : sectorStats.change < 0 ? 'text-red-400' : 'text-gray-300'
           : 'text-gray-300'
 
+        const sectorStocks = stocksBySector.get(sectorName) || []
+
         return (
-          <div
+          <StockListPopover
             key={`sector-${i}`}
-            className="absolute border-b border-r border-white/20 bg-slate-800 text-white px-2 flex items-center font-bold tracking-wider"
-            style={{
-              left: sector.bounds.x,
-              top: sector.bounds.y,
-              width: sector.bounds.width,
-              height: headerHeight,
-              zIndex: 5,
-              overflow: 'hidden',
-              whiteSpace: 'nowrap',
-              textOverflow: 'ellipsis',
-              fontSize: `${fontSize}px`,
-              lineHeight: 1
-            }}
-            title={isTruncated ? displayName : undefined}
+            stocks={sectorStocks}
+            sector={sectorName}
+            industry={null} // Sector header doesn't have a specific industry
+            portalContainer={portalContainer}
+            sectorChange={sectorStats?.change}
           >
-            <span className="mr-1">{sectorName}</span>
-            {sectorStats && (
-              <span className={changeColor} style={{ opacity: 0.9 }}>
-                {sectorStats.change > 0 ? '+' : ''}{sectorStats.change.toFixed(2)}%
-              </span>
-            )}
-          </div>
+            <div
+              className="absolute border-b border-r border-white/20 bg-slate-800 text-white px-2 flex items-center font-bold tracking-wider hover:bg-slate-700 cursor-pointer transition-colors"
+              style={{
+                left: sector.bounds.x,
+                top: sector.bounds.y,
+                width: sector.bounds.width,
+                height: headerHeight,
+                zIndex: 5,
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+                textOverflow: 'ellipsis',
+                fontSize: `${fontSize}px`,
+                lineHeight: 1
+              }}
+              title={isTruncated ? displayName : undefined}
+            >
+              <span className="mr-1">{sectorName}</span>
+              {sectorStats && (
+                <span className={changeColor} style={{ opacity: 0.9 }}>
+                  {sectorStats.change > 0 ? '+' : ''}{sectorStats.change.toFixed(2)}%
+                </span>
+              )}
+            </div>
+          </StockListPopover>
         )
       })}
 
@@ -625,6 +635,8 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
 
         const sectorStocks = stocksBySector.get(node.sector) || [node.stock]
 
+        const sectorChange = sectorPerformance.find(s => s.name === node.stock.sector)?.change
+
         return (
           <StockListPopover
             key={`stock-${node.stock.symbol}-${i}`}
@@ -632,6 +644,7 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
             sector={node.stock.sector}
             industry={node.stock.industry}
             portalContainer={portalContainer}
+            sectorChange={sectorChange}
           >
             <div
               className="absolute border border-white/10 hover:border-white/60 hover:z-10 cursor-pointer transition-colors flex flex-col items-center justify-center text-center overflow-hidden select-none"

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useCallback } from "react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { formatCurrency } from "@/lib/asset-screener/metrics-calculations"
 import { Line } from "react-chartjs-2"
@@ -23,6 +23,7 @@ interface StockListPopoverProps {
   industry: string | null
   children: React.ReactNode
   portalContainer?: HTMLElement | null
+  sectorChange?: number
 }
 
 interface SparklineData {
@@ -31,65 +32,47 @@ interface SparklineData {
   dates: string[]
 }
 
-export function StockListPopover({ stocks, sector, industry, children, portalContainer }: StockListPopoverProps) {
+export function StockListPopover({ stocks, sector, industry, children, portalContainer, sectorChange }: StockListPopoverProps) {
   const [sparklineData, setSparklineData] = useState<Map<string, SparklineData>>(new Map())
   const [loading, setLoading] = useState(false)
 
-  // Fetch sparkline data for all stocks
-  useEffect(() => {
-    if (stocks.length === 0) return
+  // Fetch sparkline data for all stocks in the popover when it opens
+  const fetchAllSparklines = useCallback(async () => {
+    if (loading || stocks.length === 0) return
+    setLoading(true)
 
-    async function fetchSparklines() {
-      setLoading(true)
-      const dataMap = new Map<string, SparklineData>()
+    const results = new Map<string, SparklineData>()
+    const symbols = stocks.slice(0, 15).map(s => s.symbol) // Limit to 15 to avoid overload
 
-      // Fetch last 20 days of data for each stock
-      await Promise.all(
-        stocks.slice(0, 20).map(async (stock) => { // Limit to first 20 to avoid too many requests
-          try {
-            const response = await fetch(
-              `/api/market/price?type=pk-equity&symbol=${stock.symbol}&startDate=${getDateNDaysAgo(20)}&endDate=${getDateNDaysAgo(0)}`
-            )
-            if (response.ok) {
-              const data = await response.json()
-              // Handle different response formats
-              let priceData: any[] = []
-              if (data.data && Array.isArray(data.data)) {
-                priceData = data.data
-              } else if (data.historicalData && Array.isArray(data.historicalData)) {
-                priceData = data.historicalData
-              } else if (data.prices && Array.isArray(data.prices)) {
-                priceData = data.prices
-              }
+    try {
+      await Promise.all(symbols.map(async (symbol) => {
+        try {
+          const res = await fetch(`/api/market/price?type=pk-equity&symbol=${symbol}&startDate=${getDateNDaysAgo(7)}&endDate=${getDateNDaysAgo(0)}`)
+          if (res.ok) {
+            const data = await res.json()
+            const priceData = data.data || data.historicalData || data.prices || []
 
-              if (priceData.length > 0) {
-                // Sort by date ascending
-                priceData.sort((a: any, b: any) => {
-                  const dateA = a.date || a.t || ''
-                  const dateB = b.date || b.t || ''
-                  return dateA.localeCompare(dateB)
-                })
+            if (Array.isArray(priceData) && priceData.length > 0) {
+              const prices = priceData.map((d: any) => parseFloat(d.close || d.c || 0)).filter(p => !isNaN(p))
+              const dates = priceData.map((d: any) => d.date || d.t || '')
 
-                const prices = priceData.map((d: any) => parseFloat(d.close || d.c || 0)).filter((p: number) => !isNaN(p) && p > 0)
-                const dates = priceData.map((d: any) => d.date || d.t || '').filter((d: string) => d)
-
-                if (prices.length > 0 && dates.length > 0 && prices.length === dates.length) {
-                  dataMap.set(stock.symbol, { symbol: stock.symbol, prices, dates })
-                }
-              }
+              results.set(symbol, {
+                symbol,
+                prices,
+                dates
+              })
             }
-          } catch (error) {
-            // Silently fail for sparklines - not critical
           }
-        })
-      )
+        } catch (e) {
+          console.error(`Failed to fetch sparkline for ${symbol}:`, e)
+        }
+      }))
 
-      setSparklineData(dataMap)
+      setSparklineData(results)
+    } finally {
       setLoading(false)
     }
-
-    fetchSparklines()
-  }, [stocks])
+  }, [stocks, loading])
 
   // Sort stocks by market cap (largest first)
   const sortedStocks = [...stocks].sort((a, b) => b.marketCap - a.marketCap)
@@ -102,21 +85,16 @@ export function StockListPopover({ stocks, sector, industry, children, portalCon
       return null
     }
 
-    // Normalize prices to percentage (start from 100)
-    const startPrice = data.prices[0]
-    const normalizedPrices = data.prices.map((p) => (p / startPrice) * 100)
-
     const chartData = {
       labels: data.dates,
       datasets: [
         {
-          data: normalizedPrices,
+          data: data.prices,
           borderColor: stock.changePercent !== null && stock.changePercent >= 0 ? '#22c55e' : '#ef4444',
-          backgroundColor: stock.changePercent !== null && stock.changePercent >= 0 ? '#22c55e20' : '#ef444420',
-          borderWidth: 1.5,
-          fill: true,
+          backgroundColor: 'transparent',
+          borderWidth: 2,
           pointRadius: 0,
-          tension: 0.3,
+          tension: 0.4,
         },
       ],
     }
@@ -132,21 +110,13 @@ export function StockListPopover({ stocks, sector, industry, children, portalCon
         x: { display: false },
         y: { display: false },
       },
-      elements: {
-        point: { radius: 0 },
-      },
     }
 
     return <Line data={chartData} options={options} />
   }
 
-  // Format category name: "SECTOR - INDUSTRY" or just "SECTOR"
-  const categoryName = industry && sector
-    ? `${sector} - ${industry}`
-    : (sector || "Stocks")
-
   return (
-    <Popover>
+    <Popover onOpenChange={(open) => open && fetchAllSparklines()}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
         className="w-[500px] max-h-[min(600px,calc(100vh-40px))] overflow-y-auto p-0 border-0 shadow-2xl bg-white dark:bg-gray-900"
@@ -160,8 +130,13 @@ export function StockListPopover({ stocks, sector, industry, children, portalCon
         container={portalContainer}
       >
         {/* Category Header - Red background */}
-        <div className="sticky top-0 z-10 bg-[#dc2626] text-white px-4 py-3 font-bold text-sm leading-tight tracking-wider shadow-sm">
-          {categoryName.toUpperCase()}
+        <div className="sticky top-0 z-10 bg-[#dc2626] text-white px-4 py-3 font-bold text-sm leading-tight tracking-wider shadow-sm flex justify-between items-center">
+          <span>{sector?.toUpperCase() || 'MARKET'}</span>
+          {typeof sectorChange === 'number' && (
+            <span className="text-xs font-black bg-white/20 px-2 py-0.5 rounded">
+              {sectorChange > 0 ? '+' : ''}{sectorChange.toFixed(2)}%
+            </span>
+          )}
         </div>
 
         {/* Main Stock (Largest) - Red background highlight */}
@@ -252,4 +227,3 @@ function getDateNDaysAgo(n: number): string {
   date.setDate(date.getDate() - n)
   return date.toISOString().split('T')[0]
 }
-
