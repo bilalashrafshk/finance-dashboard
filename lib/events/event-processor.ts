@@ -88,12 +88,12 @@ export async function processBreakouts(candidates: BreakoutCandidate[]) {
                 // This ensures detection is accurate on next run even if queue processor is slow
                 if (update.type === 'ATH') {
                     await client.query(`
-                        UPDATE company_profiles SET all_time_high = $1, fifty_two_week_high = $1, updated_at = NOW()
+                        UPDATE company_profiles SET all_time_high = $1, fifty_two_week_high = $1
                         WHERE symbol = $2 AND asset_type = 'pk-equity'
                      `, [update.value, update.symbol]);
                 } else {
                     await client.query(`
-                        UPDATE company_profiles SET fifty_two_week_high = $1, updated_at = NOW()
+                        UPDATE company_profiles SET fifty_two_week_high = $1
                         WHERE symbol = $2 AND asset_type = 'pk-equity'
                      `, [update.value, update.symbol]);
                 }
