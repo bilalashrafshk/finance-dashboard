@@ -14,10 +14,12 @@ export const MARKET_TIMEZONES = {
 
 /**
  * Market close times (local time)
+ * PSX Friday has different hours (two sessions with Jummah break, closes at 4:30 PM)
  */
 export const MARKET_CLOSE_TIMES = {
   'US': { hour: 16, minute: 0 }, // 4:00 PM ET
-  'PSX': { hour: 15, minute: 30 }, // 3:30 PM PKT
+  'PSX': { hour: 15, minute: 30 }, // 3:30 PM PKT (Mon-Thu)
+  'PSX_FRIDAY': { hour: 16, minute: 30 }, // 4:30 PM PKT (Friday - after 2nd session)
   'crypto': null, // 24/7, never closes
 } as const
 
@@ -32,39 +34,44 @@ export function isMarketClosed(market: 'US' | 'PSX' | 'crypto'): boolean {
   }
 
   const timezone = MARKET_TIMEZONES[market]
-  const closeTime = MARKET_CLOSE_TIMES[market]
-  
-  if (!closeTime) {
-    return false
-  }
 
   // Get current time in market timezone
   const now = new Date()
   const marketTime = new Date(now.toLocaleString('en-US', { timeZone: timezone }))
-  
+
   const currentHour = marketTime.getHours()
   const currentMinute = marketTime.getMinutes()
   const currentDay = marketTime.getDay() // 0 = Sunday, 6 = Saturday
-  
+
   // Markets are closed on weekends
   if (currentDay === 0 || currentDay === 6) {
     return true
   }
-  
+
+  // Determine close time based on day
+  // PSX: Friday closes at 4:30 PM, Mon-Thu closes at 3:30 PM
+  let closeTime: { hour: number; minute: number }
+  if (market === 'PSX' && currentDay === 5) {
+    // Friday
+    closeTime = MARKET_CLOSE_TIMES['PSX_FRIDAY']
+  } else {
+    closeTime = MARKET_CLOSE_TIMES[market]!
+  }
+
   // Check if current time is after market close
   if (currentHour > closeTime.hour || (currentHour === closeTime.hour && currentMinute >= closeTime.minute)) {
     return true
   }
-  
+
   // Markets typically open at 9:30 AM (US) or 9:15 AM (PSX)
   // Before market open, consider it closed
   const marketOpenHour = market === 'US' ? 9 : 9
   const marketOpenMinute = market === 'US' ? 30 : 15
-  
+
   if (currentHour < marketOpenHour || (currentHour === marketOpenHour && currentMinute < marketOpenMinute)) {
     return true
   }
-  
+
   return false
 }
 
@@ -77,11 +84,11 @@ export function getTodayInMarketTimezone(market: 'US' | 'PSX' | 'crypto'): strin
   const timezone = MARKET_TIMEZONES[market]
   const now = new Date()
   const marketDate = new Date(now.toLocaleString('en-US', { timeZone: timezone }))
-  
+
   const year = marketDate.getFullYear()
   const month = String(marketDate.getMonth() + 1).padStart(2, '0')
   const day = String(marketDate.getDate()).padStart(2, '0')
-  
+
   return `${year}-${month}-${day}`
 }
 
@@ -99,17 +106,17 @@ export function shouldFetchCurrentPrice(
   if (market === 'crypto') {
     return true
   }
-  
+
   // If market is closed and we have today's data, use database
   if (isMarketClosed(market) && hasTodayData) {
     return false
   }
-  
+
   // If market is open, always fetch (prices are changing)
   if (!isMarketClosed(market)) {
     return true
   }
-  
+
   // Market is closed but we don't have today's data - fetch it
   return true
 }

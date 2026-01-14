@@ -5,7 +5,6 @@ import { calculateAllMetrics, PriceDataPoint } from '@/lib/asset-screener/metric
 import { fetchHistoricalData } from '@/lib/portfolio/unified-price-api'
 import { getHistoricalDataBatch, getDividendDataBatch, insertDividendData, DividendRecord } from '@/lib/portfolio/db-client'
 import { syncAllPSXLivePrices } from '@/lib/portfolio/psx-bulk-service'
-import { isMarketClosed } from '@/lib/portfolio/market-hours'
 
 // Re-use existing DB connection logic or create new for this batch job
 const pool = new Pool({
@@ -37,21 +36,18 @@ export async function GET(request: Request) {
   const TIME_LIMIT_MS = 50000 // 50 seconds safety limit (Max duration is 60s)
 
   try {
-    // 0. High-Speed Price Sync (Market Hours Only)
-    // If market is open, sync all PSX prices in one shot before processing metrics
-    if (!isMarketClosed('PSX')) {
-      console.log('[Screener Update] Market OPEN: Syncing all PSX prices via Bulk Scraper...');
-      const syncCount = await syncAllPSXLivePrices();
-      console.log(`[Screener Update] Bulk Sync complete. Updated ${syncCount} symbols.`);
-    } else {
-      console.log('[Screener Update] Market CLOSED: Skipping Bulk Sync, using historical batches.');
-    }
+    // 0. High-Speed Price Sync (Always Run)
+    // Sync all PSX prices via Market Watch - works during AND after market hours
+    // PSX Market Watch data becomes static/EOD after market close, still valid for today's prices
+    console.log('[Screener Update] Syncing all PSX prices via Bulk Scraper...');
+    const syncCount = await syncAllPSXLivePrices();
+    console.log(`[Screener Update] Bulk Sync complete. Updated ${syncCount} symbols.`);
 
 
     // Parse params
     const url = new URL(request.url)
     const limitParams = url.searchParams.get('limit')
-    const limit = limitParams ? parseInt(limitParams) : 100 // Default 100 symbols per run
+    const limit = limitParams ? parseInt(limitParams) : 60 // Default 60 symbols per run (reduced to prevent timeout)
 
     // 1. Get Stale Symbols (Prioritize oldest updated)
     //    Use GROUP BY instead of DISTINCT to allow ordering by joined column
