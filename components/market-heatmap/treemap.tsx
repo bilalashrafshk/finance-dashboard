@@ -91,145 +91,248 @@ interface TreemapNode {
  * row: array of values
  * length: length of the side along which the row is laid out
  */
-// --- User Provided Squarify Algorithm (D3 Logic) ---
+function worstRatio(row: number[], length: number) {
+  if (row.length === 0) return Infinity
+  const min = Math.min(...row)
+  const max = Math.max(...row)
+  const sum = row.reduce((a, b) => a + b, 0)
+  if (sum === 0 || length === 0) return Infinity
 
-/**
- * Calculates the worst aspect ratio of a row of rectangles given a specific width
- */
-function worstRatio(row: TreemapItem[], width: number) {
-  if (row.length === 0) return Number.MAX_VALUE;
-
-  const sum = row.reduce((acc, item) => acc + item.value, 0);
-  const max = Math.max(...row.map(i => i.value));
-  const min = Math.min(...row.map(i => i.value));
-
-  // Based on Bruls et al. Formula: max(w^2 * r_max / R^2, R^2 / (w^2 * r_min))
-  return Math.max(
-    (width * width * max) / (sum * sum),
-    (sum * sum) / (width * width * min)
-  );
+  // Formula: max(w^2 * r_max / s^2, s^2 / (w^2 * r_min))
+  // Simplified: max((length^2 * max) / sum^2, sum^2 / (length^2 * min))
+  const s2 = sum * sum
+  const l2 = length * length
+  return Math.max((l2 * max) / s2, s2 / (l2 * min))
 }
 
 /**
- * Helper to calculate exact coordinates for items in a "finalized" row
+ * Recursive function to layout items
  */
 function layoutRow(
   row: TreemapItem[],
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  result: TreemapNode[]
-) {
-  const rowValue = row.reduce((acc, c) => acc + c.value, 0);
+  container: Rect,
+  isVertical: boolean // true if laying out along width (vertical cuts), false if along height
+): TreemapNode[] {
+  const nodes: TreemapNode[] = []
+  const sum = row.reduce((s, i) => s + i.value, 0)
 
-  // Determine if the ROW itself is horizontal or vertical based on the container shape passed in
-  // If height is the fixed dimension (horizontal strip), items stack horizontally (change X).
-  const rowIsHorizontal = width > height;
+  // The total width/height of the row
+  const rowSize = isVertical ? container.height : container.width
+  const rowBreadth = sum / rowSize
 
-  let currentX = x;
-  let currentY = y;
+  // No complex logic needed here for the return, as logic is handled in squarify loop
+  // This helper might be redundant in this specific implementation 
+  // but kept for completeness of algorithm structure reference if needed.
 
-  row.forEach(child => {
-    // (ChildValue / RowValue) * RowArea
-    // Since RowArea = width * height, we can simplify:
-    const childRatio = child.value / rowValue;
-
-    let childW, childH;
-
-    if (rowIsHorizontal) {
-      // Row is a wide strip. Items split the width. Height is full row height.
-      childW = width * childRatio;
-      childH = height;
-      result.push({
-        bounds: { x: currentX, y: currentY, width: childW, height: childH },
-        data: child.data
-      });
-      currentX += childW;
-    } else {
-      // Row is a tall strip. Items split the height. Width is full row width.
-      childW = width;
-      childH = height * childRatio;
-      result.push({
-        bounds: { x: currentX, y: currentY, width: childW, height: childH },
-        data: child.data
-      });
-      currentY += childH;
-    }
-  });
+  return nodes
 }
 
 /**
- * Recursive function to layout rectangles
+ * Standard Squarify Algorithm
+ * Based on Bruls, Mark, Kees Huizing, and Jarke J. Van Wijk. "Squarified treemaps."
  */
 function squarify(
-  children: TreemapItem[], // Assumes descending sort is done BEFORE calling this
+  items: TreemapItem[],
   x: number,
   y: number,
   width: number,
-  height: number,
-  result: TreemapNode[] = []
+  height: number
 ): TreemapNode[] {
-  if (children.length === 0) return result;
+  if (items.length === 0) return []
 
-  // IMPORTANT: We layout along the SHORTEST side of the remaining rectangle
-  const vertical = width < height; // "Vertical" means the short side is Width. We create a horizontal row.
-  const sideLength = vertical ? width : height;
+  // 1. Normalize values so they fill the area
+  // We don't need to normalize if we assume input values map proportionally to area,
+  // but typically we scale them so sum(values) = width * height.
+  const totalValue = items.reduce((acc, item) => acc + item.value, 0)
+  const totalArea = width * height
 
-  // We need the total value to convert values to area pixels
-  const totalValue = children.reduce((acc, c) => acc + c.value, 0);
-  const totalArea = width * height;
+  if (totalValue === 0) return [] // Avoid division by zero
 
-  // Avoid division by zero
-  if (totalValue === 0) return result;
+  const multiplier = totalArea / totalValue
 
-  let row: TreemapItem[] = [];
-  let rowValue = 0;
+  const scaledItems = items.map(item => ({
+    ...item,
+    scaledValue: item.value * multiplier
+  })).sort((a, b) => b.scaledValue - a.scaledValue) // Sort descending
 
-  // We process children one by one
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i];
-    const nextRow = [...row, child];
-    const nextRowValue = rowValue + child.value;
+  const result: TreemapNode[] = []
 
-    // Convert Value -> Area -> Length of the row (Breadth)
-    // Breadth = Area / SideLength
-    const currentBreadth = (rowValue / totalValue) * totalArea / sideLength;
-    const nextBreadth = (nextRowValue / totalValue) * totalArea / sideLength;
+  let container = { x, y, width, height }
+  let currentRow: typeof scaledItems = []
 
-    const currentWorst = worstRatio(row, currentBreadth); // Ratio with current items
-    const nextWorst = worstRatio(nextRow, nextBreadth);   // Ratio if we add the new item
+  function layout(row: typeof scaledItems, container: Rect) {
+    const sideLength = Math.min(container.width, container.height)
+    const rowValue = row.reduce((acc, item) => acc + item.scaledValue, 0)
 
-    // If adding the item makes the aspect ratio WORSE, we stop this row.
-    if (row.length > 0 && nextWorst > currentWorst) {
-      // 1. Finalize the current row
-      layoutRow(row, x, y, vertical ? width : currentBreadth, vertical ? currentBreadth : height, result);
+    // Determine orientation:
+    // If width >= height, we stack columns (vertical cuts), i.e., row fills full height
+    const vertical = container.width >= container.height
 
-      // 2. Calculate remaining space
-      const usedBreadth = currentBreadth;
+    const breadth = vertical ? container.height : container.width
+    // Breadth of the row (the fixed dimension for the row)
 
-      const nextX = vertical ? x : x + usedBreadth;
-      const nextY = vertical ? y + usedBreadth : y;
-      const nextW = vertical ? width : width - usedBreadth;
-      const nextH = vertical ? height - usedBreadth : height;
+    // The other dimension (thickness of the row)
+    const thickness = rowValue / breadth
 
-      // 3. Recurse with remaining children
-      return squarify(children.slice(i), nextX, nextY, nextW, nextH, result);
+    let currentOffset = 0
+
+    row.forEach((item, idx) => {
+      const itemLength = item.scaledValue / thickness // This is the dimension along the 'breadth'
+
+      let itemX = 0, itemY = 0, itemW = 0, itemH = 0
+
+      if (vertical) {
+        // Stacking vertically in a column on the left
+        itemX = container.x
+        itemY = container.y + currentOffset
+        itemW = thickness
+        // For the last item in the row, ensure it fills remaining space to avoid gaps
+        if (idx === row.length - 1) {
+          itemH = container.height - currentOffset
+        } else {
+          itemH = itemLength
+        }
+      } else {
+        // Stacking horizontally in a row on top
+        itemX = container.x + currentOffset
+        itemY = container.y
+        // For the last item in the row, ensure it fills remaining space to avoid gaps
+        if (idx === row.length - 1) {
+          itemW = container.width - currentOffset
+        } else {
+          itemW = itemLength
+        }
+        itemH = thickness
+      }
+
+      // Ensure minimum dimensions
+      itemW = Math.max(0.5, itemW)
+      itemH = Math.max(0.5, itemH)
+
+      result.push({
+        bounds: { x: itemX, y: itemY, width: itemW, height: itemH },
+        data: item.data
+      })
+
+      currentOffset += itemLength
+    })
+  }
+
+  // Recursive function to process items
+  function processItems(remainingItems: typeof scaledItems, currentContainer: Rect) {
+    if (remainingItems.length === 0) return
+
+    // If container is too small, still try to fit items (they'll be tiny but visible)
+    // Only skip if both dimensions are essentially zero
+    if (currentContainer.width < 0.1 && currentContainer.height < 0.1) {
+      // If we have remaining items but no space, still try to render them as tiny boxes
+      // This ensures all sectors are shown
+      remainingItems.forEach((item, idx) => {
+        result.push({
+          bounds: {
+            x: currentContainer.x + (idx * 1),
+            y: currentContainer.y,
+            width: Math.max(0.5, currentContainer.width / remainingItems.length),
+            height: Math.max(0.5, currentContainer.height)
+          },
+          data: item.data
+        })
+      })
+      return
     }
 
-    // Otherwise, accept the item into the row and continue
-    row.push(child);
-    rowValue += child.value;
+    let row: typeof scaledItems = [remainingItems[0]]
+    let rest = remainingItems.slice(1)
+
+    // Try adding items to row
+    for (let i = 0; i < rest.length; i++) {
+      const item = rest[i]
+      const newRow = [...row, item]
+
+      // Calculate worst ratios
+      const side = Math.min(currentContainer.width, currentContainer.height)
+
+      const currentWorst = worstRatio(row.map(r => r.scaledValue), side)
+      const newWorst = worstRatio(newRow.map(r => r.scaledValue), side)
+
+      if (newWorst <= currentWorst) {
+        // Ratio improved or stayed same, add to row
+        row = newRow
+      } else {
+        // Ratio worsened, stop this row
+        // Break loop and process this row, then recurse
+        rest = rest.slice(i) // Remaining items start from current one
+        break
+      }
+
+      // If we added the last item
+      if (i === rest.length - 1) {
+        rest = []
+      }
+    }
+
+    // Layout the current row
+    layout(row, currentContainer)
+
+    // Update container for remaining items
+    const rowValue = row.reduce((acc, item) => acc + item.scaledValue, 0)
+    const vertical = currentContainer.width >= currentContainer.height
+
+    let nextContainer: Rect
+
+    if (vertical) {
+      // We used a column on the left of width = rowValue / height
+      const colWidth = rowValue / currentContainer.height
+      nextContainer = {
+        x: currentContainer.x + colWidth,
+        y: currentContainer.y,
+        width: Math.max(0, currentContainer.width - colWidth),
+        height: currentContainer.height
+      }
+    } else {
+      // We used a row on top of height = rowValue / width
+      const rowHeight = rowValue / currentContainer.width
+      nextContainer = {
+        x: currentContainer.x,
+        y: currentContainer.y + rowHeight,
+        width: currentContainer.width,
+        height: Math.max(0, currentContainer.height - rowHeight)
+      }
+    }
+
+    if (rest.length > 0) {
+      processItems(rest, nextContainer)
+    }
   }
 
-  // Layout the final row
-  if (row.length > 0) {
-    // For the last row, the "breadth" is just whatever space is left
-    const remainingBreadth = vertical ? height : width;
-    layoutRow(row, x, y, vertical ? width : remainingBreadth, vertical ? remainingBreadth : height, result);
+  processItems(scaledItems, container)
+
+  // Verify all items were processed - if not, ensure they're added
+  if (result.length < items.length) {
+    const processedData = new Set(result.map(r => r.data))
+    scaledItems.forEach((item) => {
+      if (!processedData.has(item.data)) {
+        // Add as a tiny box - find available space
+        const existingMaxY = result.length > 0
+          ? Math.max(...result.map(r => r.bounds.y + r.bounds.height))
+          : 0
+        const existingMaxX = result.length > 0
+          ? Math.max(...result.map(r => r.bounds.x + r.bounds.width))
+          : 0
+        result.push({
+          bounds: {
+            x: Math.min(existingMaxX + 2, width - 10),
+            y: Math.min(existingMaxY + 2, height - 10),
+            width: Math.max(2, width / 50),
+            height: Math.max(2, height / 50)
+          },
+          data: item.data
+        })
+      }
+    })
   }
 
-  return result;
+  return result
 }
 
 
@@ -342,7 +445,7 @@ export function MarketHeatmapTreemap({ stocks, width, height, sizeMode = 'market
         const stockItems = group.stocks.map(stock => {
           const val = stockValues.find(s => s.stock.symbol === stock.symbol)?.value || 0.00001
           return { value: val, data: stock }
-        }).sort((a, b) => b.value - a.value) // CRITICAL: Sort descending for squarify
+        })
 
         // Use minimum height to ensure stocks are rendered even in very small sectors
         const effectiveStockAreaHeight = Math.max(1, stockAreaHeight)
