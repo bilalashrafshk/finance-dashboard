@@ -56,51 +56,81 @@ export async function processBreakouts(candidates: BreakoutCandidate[]) {
 
         if (updates.length === 0) return;
 
-        console.log(`[Event Processor] Found ${updates.length} potential breakouts. Queuing...`);
+        console.log(`[Event Processor] Found ${updates.length} potential breakouts. Processing in batch...`);
 
-        // 3. Queue Updates & Refresh Stats (Transactional or Parallel)
-        // We do this quickly. No AI generation here.
-        await Promise.all(updates.map(async (update) => {
-            try {
-                // A. Check persistence (Daily limit check remains relevant to avoid queue spam)
-                const existing = await client.query(`
-                    SELECT id FROM notable_events 
-                    WHERE symbol = $1 AND event_type = $2 AND created_at::date = CURRENT_DATE
-                `, [update.symbol, update.type === 'ATH' ? 'ATH' : '52W_HIGH']);
+        // 3. Batch Check Persistence & Queue Status
+        const updateSymbols = updates.map(u => u.symbol);
+        const updateTypes = updates.map(u => u.type === 'ATH' ? 'ATH' : '52W_HIGH');
 
-                // Also check if already in queue preventing duplicates there
-                const existingQueue = await client.query(`
-                    SELECT id FROM event_queue 
-                    WHERE symbol = $1 AND event_type = $2 AND status = 'PENDING'
-                `, [update.symbol, update.type]);
+        // Check notable_events and event_queue in parallel for all symbols
+        const [existingEventsRes, existingQueueRes] = await Promise.all([
+            client.query(`
+                SELECT symbol, event_type FROM notable_events 
+                WHERE symbol = ANY($1) AND created_at::date = CURRENT_DATE
+            `, [updateSymbols]),
+            client.query(`
+                SELECT symbol, event_type FROM event_queue 
+                WHERE symbol = ANY($1) AND status = 'PENDING'
+            `, [updateSymbols])
+        ]);
 
-                if (existing.rowCount === 0 && existingQueue.rowCount === 0) {
-                    // B. Insert into Queue (include close_price for headline generation)
-                    await client.query(`
-                        INSERT INTO event_queue (symbol, event_type, trigger_value, previous_value, close_price, status)
-                        VALUES ($1, $2, $3, $4, $5, 'PENDING')
-                    `, [update.symbol, update.type, update.value, update.old, update.close]);
+        const existingEventsMap = new Set(existingEventsRes.rows.map(r => `${r.symbol}:${r.event_type}`));
+        const existingQueueMap = new Set(existingQueueRes.rows.map(r => `${r.symbol}:${r.event_type}`));
 
-                    console.log(`[Event Queued] ${update.symbol} ${update.type}`);
-                }
+        // 4. Filter and Batch Queue Updates
+        const validUpdates = updates.filter(u => {
+            const eventKey = `${u.symbol}:${u.type === 'ATH' ? 'ATH' : '52W_HIGH'}`;
+            // For queue, it's stored as 'ATH' or '52W'
+            const queueKey = `${u.symbol}:${u.type}`;
+            return !existingEventsMap.has(eventKey) && !existingQueueMap.has(queueKey);
+        });
 
-                // C. Update Profile (Always update stats immediately)
-                // This ensures detection is accurate on next run even if queue processor is slow
-                if (update.type === 'ATH') {
-                    await client.query(`
-                        UPDATE company_profiles SET all_time_high = $1, fifty_two_week_high = $1
-                        WHERE symbol = $2 AND asset_type = 'pk-equity'
-                     `, [update.value, update.symbol]);
-                } else {
-                    await client.query(`
-                        UPDATE company_profiles SET fifty_two_week_high = $1
-                        WHERE symbol = $2 AND asset_type = 'pk-equity'
-                     `, [update.value, update.symbol]);
-                }
-            } catch (err) {
-                console.error(`[Event Processor] Failed to queue ${update.symbol}:`, err);
-            }
-        }));
+        if (validUpdates.length > 0) {
+            const queueValues = validUpdates.flatMap(u => [u.symbol, u.type, u.value, u.old, u.close]);
+            const queuePlaceholders = validUpdates.map((_, i) =>
+                `($${i * 5 + 1}, $${i * 5 + 2}, $${i * 5 + 3}, $${i * 5 + 4}, $${i * 5 + 5}, 'PENDING')`
+            ).join(',');
+
+            await client.query(`
+                INSERT INTO event_queue (symbol, event_type, trigger_value, previous_value, close_price, status)
+                VALUES ${queuePlaceholders}
+            `, queueValues);
+
+            validUpdates.forEach(u => console.log(`[Event Queued] ${u.symbol} ${u.type}`));
+        }
+
+        // 5. Batch Update Company Profiles (Always update stats immediately)
+        // We use a temporary table or a VALUES join for bulk update
+        const profileValues = updates.flatMap(u => [u.symbol, u.value]);
+        const profilePlaceholders = updates.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2}::numeric)`).join(',');
+
+        // We need separate logic for ATH vs 52W because ATH updates both
+        const athUpdates = updates.filter(u => u.type === 'ATH');
+        const w52Updates = updates.filter(u => u.type === '52W');
+
+        if (athUpdates.length > 0) {
+            const athVals = athUpdates.flatMap(u => [u.symbol, u.value]);
+            const athPlaceholders = athUpdates.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2}::numeric)`).join(',');
+            await client.query(`
+                UPDATE company_profiles AS c
+                SET 
+                    all_time_high = v.val,
+                    fifty_two_week_high = v.val
+                FROM (VALUES ${athPlaceholders}) AS v(symbol, val)
+                WHERE c.symbol = v.symbol AND c.asset_type = 'pk-equity'
+            `, athVals);
+        }
+
+        if (w52Updates.length > 0) {
+            const w52Vals = w52Updates.flatMap(u => [u.symbol, u.value]);
+            const w52Placeholders = w52Updates.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2}::numeric)`).join(',');
+            await client.query(`
+                UPDATE company_profiles AS c
+                SET fifty_two_week_high = v.val
+                FROM (VALUES ${w52Placeholders}) AS v(symbol, val)
+                WHERE c.symbol = v.symbol AND c.asset_type = 'pk-equity'
+            `, w52Vals);
+        }
 
     } catch (e) {
         console.error('[Event Processor] Error:', e);

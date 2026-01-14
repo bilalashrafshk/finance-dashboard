@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 
   const client = await pool.connect()
   const startTime = Date.now()
-  const TIME_LIMIT_MS = 50000 // 50 seconds safety limit (Max duration is 60s)
+  const TIME_LIMIT_MS = 45000 // 45 seconds safety limit (Max duration is 60s)
 
   try {
     // 0. High-Speed Price Sync (Always Run)
@@ -141,7 +141,9 @@ export async function GET(request: Request) {
 
 
         // Process each symbol in memory (CPU bound, fast)
-        const updatePromises = batchSymbols.map(async (symbol) => {
+        const batchUpsertData: any[] = []
+
+        batchSymbols.forEach((symbol) => {
           try {
             const data = batchBasicData[symbol]
             // Skip if critical price data missing
@@ -151,43 +153,31 @@ export async function GET(request: Request) {
             const historicalData = batchHistory[symbol] || []
             let dividends = (batchDividends[symbol] || []).map(d => ({ ...d, dividend_amount: d.dividend_amount || 0 }))
 
-            // Dividend Logic: If DB empty, try fetching api (fallback), but don't block heavily
-            // For now, we rely on DB being populated by separate workers or lazy loading. 
-            // If missing, we skip dividend calc or assume 0 until next run. 
-            // (To keep it fast, we do NOT fetch from API here individually unless absolutely necessary)
-
             // Calculate Dividend Metrics
             let dividendYield = 0
             let dividendPayoutRatio = null
 
             if (dividends.length > 0) {
-              // Sort descending
               dividends.sort((a, b) => b.date.localeCompare(a.date))
-
               const oneYearAgoDate = new Date()
               oneYearAgoDate.setFullYear(oneYearAgoDate.getFullYear() - 1)
               const oneYearAgoStr = oneYearAgoDate.toISOString().split('T')[0]
-
               const lastYearDividends = dividends.filter(d => d.date >= oneYearAgoStr)
               const totalDividend = lastYearDividends.reduce((sum, d) => sum + d.dividend_amount, 0)
-
               if (price.price > 0) {
                 dividendYield = (totalDividend / price.price) * 100
               }
             }
 
-            // Calculate Financial Metrics
+            // Calculate Financial Metrics (TTM EPS)
             let ttmEps = 0
             let peRatio = null
-
             if (financials && financials.length > 0) {
               const last4 = financials.slice(0, 4)
               ttmEps = last4.reduce((sum, row) => sum + (row.eps_diluted || row.eps_basic || 0), 0)
-
               if (ttmEps !== 0) {
                 peRatio = price.price / ttmEps
               }
-
               if (ttmEps > 0 && dividendYield > 0 && price.price > 0) {
                 const ttmDividend = (dividendYield / 100) * price.price
                 dividendPayoutRatio = (ttmDividend / ttmEps) * 100
@@ -202,20 +192,16 @@ export async function GET(request: Request) {
             let ytdReturn = null
 
             if (historicalData.length > 0) {
-              // Convert to PriceDataPoint format
               const histPoints: PriceDataPoint[] = historicalData.map(h => ({ date: h.date, close: h.close }))
-
-              // Run calculations
               const metricsFull = calculateAllMetrics(
                 price.price,
-                histPoints, // Full history (filtered by query)
+                histPoints,
                 'pk-equity',
                 benchmarkData,
                 { us: 2.5, pk: 15.0 },
                 undefined,
-                histPoints // We passed 3y range
+                histPoints
               )
-
               beta3y = metricsFull.beta3Year || null
               sharpe3y = metricsFull.sharpeRatio3Year || null
               sortino3y = metricsFull.sortinoRatio3Year || null
@@ -223,37 +209,12 @@ export async function GET(request: Request) {
               ytdReturn = metricsFull.ytdReturn || null
             }
 
-            // UPSERT Query
-            await client.query(`
-              INSERT INTO screener_metrics 
-              (
-                asset_type, symbol, sector, industry, price, price_date, 
-                pe_ratio, dividend_yield, dividend_payout_ratio,
-                beta_3y, sharpe_3y, sortino_3y, max_drawdown_3y, ytd_return,
-                market_cap, updated_at
-              )
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
-              ON CONFLICT (asset_type, symbol)
-              DO UPDATE SET
-                price = EXCLUDED.price,
-                price_date = EXCLUDED.price_date,
-                pe_ratio = EXCLUDED.pe_ratio,
-                dividend_yield = EXCLUDED.dividend_yield,
-                dividend_payout_ratio = EXCLUDED.dividend_payout_ratio,
-                beta_3y = EXCLUDED.beta_3y,
-                sharpe_3y = EXCLUDED.sharpe_3y,
-                sortino_3y = EXCLUDED.sortino_3y,
-                max_drawdown_3y = EXCLUDED.max_drawdown_3y,
-                ytd_return = EXCLUDED.ytd_return,
-                market_cap = EXCLUDED.market_cap,
-                updated_at = NOW()
-            `, [
-              'pk-equity',
+            batchUpsertData.push({
               symbol,
-              profile?.sector || 'Unknown',
-              profile?.industry || 'Unknown',
-              price.price,
-              price.date,
+              sector: profile?.sector || 'Unknown',
+              industry: profile?.industry || 'Unknown',
+              price: price.price,
+              price_date: price.date,
               peRatio,
               dividendYield,
               dividendPayoutRatio,
@@ -262,17 +223,55 @@ export async function GET(request: Request) {
               sortino3y,
               maxDrawdown3y,
               ytdReturn,
-              profile?.market_cap
-            ])
+              marketCap: profile?.market_cap
+            })
 
             processedCount++
           } catch (err) {
-            console.error(`Error processing ${symbol}`, err)
+            console.error(`Error calculating metrics for ${symbol}`, err)
             skippedCount++
           }
         })
 
-        await Promise.all(updatePromises)
+        // BATCH UPSERT: One query instead of N
+        if (batchUpsertData.length > 0) {
+          const values = batchUpsertData.flatMap(d => [
+            'pk-equity', d.symbol, d.sector, d.industry, d.price, d.price_date,
+            d.peRatio, d.dividendYield, d.dividendPayoutRatio,
+            d.beta3y, d.sharpe3y, d.sortino3y, d.maxDrawdown3y, d.ytdReturn,
+            d.marketCap
+          ]);
+
+          const placeholders = batchUpsertData.map((_, idx) => {
+            const offset = idx * 15;
+            return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, NOW())`;
+          }).join(',');
+
+          await client.query(`
+            INSERT INTO screener_metrics 
+            (
+              asset_type, symbol, sector, industry, price, price_date, 
+              pe_ratio, dividend_yield, dividend_payout_ratio,
+              beta_3y, sharpe_3y, sortino_3y, max_drawdown_3y, ytd_return,
+              market_cap, updated_at
+            )
+            VALUES ${placeholders}
+            ON CONFLICT (asset_type, symbol)
+            DO UPDATE SET
+              price = EXCLUDED.price,
+              price_date = EXCLUDED.price_date,
+              pe_ratio = EXCLUDED.pe_ratio,
+              dividend_yield = EXCLUDED.dividend_yield,
+              dividend_payout_ratio = EXCLUDED.dividend_payout_ratio,
+              beta_3y = EXCLUDED.beta_3y,
+              sharpe_3y = EXCLUDED.sharpe_3y,
+              sortino_3y = EXCLUDED.sortino_3y,
+              max_drawdown_3y = EXCLUDED.max_drawdown_3y,
+              ytd_return = EXCLUDED.ytd_return,
+              market_cap = EXCLUDED.market_cap,
+              updated_at = NOW()
+          `, values);
+        }
       } catch (err) {
         console.error(`Batch failed`, err)
       }
