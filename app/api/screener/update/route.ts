@@ -47,7 +47,7 @@ export async function GET(request: Request) {
     // Parse params
     const url = new URL(request.url)
     const limitParams = url.searchParams.get('limit')
-    const limit = limitParams ? parseInt(limitParams) : 60 // Default 60 symbols per run (reduced to prevent timeout)
+    const limit = limitParams ? parseInt(limitParams) : 30 // Default 30 symbols per run (reduced to prevent timeout)
 
     // 1. Get Stale Symbols (Prioritize oldest updated)
     //    Use GROUP BY instead of DISTINCT to allow ordering by joined column
@@ -365,8 +365,8 @@ export async function GET(request: Request) {
           return timeA - timeB
         })
 
-        // Pick top 10 stale keys to update
-        const keysToUpdate = sortedKeys.slice(0, 10)
+        // Pick top 3 stale keys to update (reduced from 10 to prevent timeout)
+        const keysToUpdate = sortedKeys.slice(0, 3)
 
         if (keysToUpdate.length > 0) {
           console.log(`[Screener Update] Prioritized Macro Update: Updating ${keysToUpdate.length} keys: ${keysToUpdate.join(', ')}`)
