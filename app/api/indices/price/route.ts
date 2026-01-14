@@ -144,17 +144,25 @@ export async function GET(request: NextRequest) {
 
     // Check database first if not forcing refresh
     if (!refresh) {
-      const todayPrice = await getTodayPriceFromDatabase(assetType, symbolUpper, today)
+      const dbPrice = await getTodayPriceFromDatabase(assetType, symbolUpper, today)
 
       // If market is closed and we have today's data, use it
-      if (marketClosed && todayPrice !== null) {
+      if (marketClosed && dbPrice !== null) {
+        // If the source is live sync, we want a shorter cache because it might change 
+        // to official data later. If it's kse-source, we can cache long.
         const response = {
           symbol: symbolUpper,
-          price: todayPrice,
+          price: dbPrice.price,
           date: today,
-          source: 'database',
+          source: dbPrice.source,
         }
-        cacheManager.set(cacheKey, response, assetType as any, cacheContext)
+
+        // Pass source info to cache context if we want to be fancy, 
+        // but for now let's just use a shorter TTL if it's live-sync
+        const isOfficial = dbPrice.source === 'kse-source' || dbPrice.source === 'investing'
+        const customContext = { ...cacheContext, isOfficial }
+
+        cacheManager.set(cacheKey, response, assetType as any, customContext)
         return NextResponse.json(response, {
           headers: {
             'X-Cache': 'MISS',

@@ -41,6 +41,11 @@ export interface CacheContext {
    * Specific date being queried (for historical queries)
    */
   date?: string
+
+  /**
+   * Whether the data is confirmed official (e.g. historical source)
+   */
+  isOfficial?: boolean
 }
 
 /**
@@ -163,6 +168,11 @@ class DefaultCacheConfig implements CacheConfig {
       const marketClosed = context?.marketClosed ?? isMarketClosed(market)
 
       if (marketClosed) {
+        // If it's market-closed but the data is NOT official yet (e.g. live-sync), 
+        // we only cache for 1 hour to allow official catch-up later.
+        if (assetType === 'kse100' && context?.isOfficial === false) {
+          return 60 * 60 * 1000 // 1 hour
+        }
         return this.getMarketClosedTTL(market)
       }
 

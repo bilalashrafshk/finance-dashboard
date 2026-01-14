@@ -350,20 +350,23 @@ export async function getTodayPriceFromDatabase(
   assetType: string,
   symbol: string,
   marketDate: string
-): Promise<number | null> {
+): Promise<{ price: number; source: string } | null> {
   try {
     const client = await getPool().connect()
 
     try {
       const result = await client.query(
-        `SELECT close 
+        `SELECT close, source 
          FROM historical_price_data
          WHERE asset_type = $1 AND symbol = $2 AND date = $3`,
         [assetType, symbol.toUpperCase(), marketDate]
       )
 
       if (result.rows.length > 0) {
-        return parseFloat(result.rows[0].close)
+        return {
+          price: parseFloat(result.rows[0].close),
+          source: result.rows[0].source
+        }
       }
 
       return null
