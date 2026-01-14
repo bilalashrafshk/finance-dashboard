@@ -18,18 +18,34 @@ const pool = new Pool({
 // List of stocks to watch (simplified for now, could be dynamic)
 const WATCHLIST = ['OGDC', 'PPL', 'MARI', 'HBL', 'UBL', 'MCB', 'LUCK', 'ENGRO', 'SYS', 'TRG'];
 
+
 async function getHistoricalStats(client: any, symbol: string) {
-    // Get All Time High and 52 Week High from historical_price_data
+    // Get stats from company_profiles (efficient cache)
     const query = `
-    SELECT 
-      MAX(high) as all_time_high,
-      MAX(CASE WHEN date > NOW() - INTERVAL '1 year' THEN high ELSE 0 END) as year_high
-    FROM historical_price_data 
-    WHERE symbol = $1 AND asset_type = 'pk-equity'
+    SELECT all_time_high, fifty_two_week_high as year_high
+    FROM company_profiles 
+    WHERE symbol = $1
   `;
     const res = await client.query(query, [symbol]);
+
+    // If not found in profiles, fallback to checking history directly
+    // This handles cases where a new stock hasn't been cached yet
+    if (!res.rows[0] || !res.rows[0].all_time_high) {
+        console.log(`Cache miss for ${symbol}, fetching from history...`);
+        const histQuery = `
+        SELECT 
+          MAX(high) as all_time_high,
+          MAX(CASE WHEN date > NOW() - INTERVAL '1 year' THEN high ELSE 0 END) as year_high
+        FROM historical_price_data 
+        WHERE symbol = $1 AND asset_type = 'pk-equity'
+      `;
+        const histRes = await client.query(histQuery, [symbol]);
+        return histRes.rows[0];
+    }
+
     return res.rows[0];
 }
+
 
 async function checkAndLogEvent(client: any, symbol: string, currentPrice: number, stats: any) {
     const { all_time_high, year_high } = stats;
