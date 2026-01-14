@@ -140,8 +140,12 @@ export function SharedNavbar() {
                       <Crown className="mr-2 h-4 w-4 text-yellow-500" />
                       <span>Subscription & Tiers</span>
                     </DropdownMenuItem>
+                    <DropdownMenuSeparator />
                     {user.role === 'admin' && (
                       <>
+                        <DropdownMenuLabel className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest px-2 py-1.5">
+                          Admin Panel
+                        </DropdownMenuLabel>
                         <DropdownMenuItem className="cursor-pointer" asChild>
                           <Link href="/admin/users" className="flex items-center">
                             <User className="mr-2 h-4 w-4" />
@@ -154,6 +158,7 @@ export function SharedNavbar() {
                             <span>Price Viewer</span>
                           </Link>
                         </DropdownMenuItem>
+                        <DropdownMenuSeparator />
                       </>
                     )}
 
@@ -298,6 +303,10 @@ export function SharedNavbar() {
                         </DropdownMenuItem>
                         {user.role === 'admin' && (
                           <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuLabel className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest px-2 py-1.5">
+                              Admin Panel
+                            </DropdownMenuLabel>
                             <DropdownMenuItem className="cursor-pointer" asChild>
                               <Link href="/admin/users" className="flex items-center">
                                 <User className="mr-2 h-4 w-4" />
@@ -310,6 +319,7 @@ export function SharedNavbar() {
                                 <span>Price Viewer</span>
                               </Link>
                             </DropdownMenuItem>
+                            <DropdownMenuSeparator />
                           </>
                         )}
                         <DropdownMenuItem
