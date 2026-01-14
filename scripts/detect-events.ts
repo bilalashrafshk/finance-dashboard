@@ -47,7 +47,7 @@ async function getHistoricalStats(client: any, symbol: string) {
 }
 
 
-async function checkAndLogEvent(client: any, symbol: string, currentPrice: number, stats: any) {
+async function checkAndLogEvent(client: any, symbol: string, currentPrice: number, closePrice: number, stats: any) {
     const { all_time_high, year_high } = stats;
     // Fallback if no history
     const ATH = parseFloat(all_time_high) || 0;
@@ -81,7 +81,7 @@ async function checkAndLogEvent(client: any, symbol: string, currentPrice: numbe
             console.log(`🚀 Event Detected: ${symbol} ${eventType} (Price: ${currentPrice}, Prev: ${previousValue})`);
 
             // Generate Headline
-            const prompt = getEventHeadlinePrompt(symbol, eventType, currentPrice, previousValue);
+            const prompt = getEventHeadlinePrompt(symbol, eventType, currentPrice, previousValue, closePrice);
             const headline = await generateHeadline(prompt);
 
             console.log(`📰 Headline: ${headline}`);
@@ -127,7 +127,7 @@ async function main() {
                 const stats = await getHistoricalStats(client, symbol);
 
                 // 3. Check for events
-                await checkAndLogEvent(client, symbol, priceToCheck, stats);
+                await checkAndLogEvent(client, symbol, priceToCheck, quote.lastPrice, stats);
 
             } catch (err) {
                 console.error(`Error processing ${symbol}:`, err);

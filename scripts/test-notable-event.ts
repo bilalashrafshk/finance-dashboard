@@ -24,7 +24,7 @@ async function runTest() {
     const price = 500.50;
     const prevRecord = 500.00;
 
-    const prompt = getEventHeadlinePrompt(symbol, eventType, price, prevRecord);
+    const prompt = getEventHeadlinePrompt(symbol, eventType, price, prevRecord, price); // Test with close = high
     const headline = await generateHeadline(prompt);
 
     console.log('📝 Generated Headline:', headline);

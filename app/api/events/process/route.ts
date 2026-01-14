@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     try {
         // 1. Fetch Pending Events
         const pendingRes = await client.query(`
-            SELECT id, symbol, event_type, trigger_value, previous_value 
+            SELECT id, symbol, event_type, trigger_value, previous_value, close_price
             FROM event_queue 
             WHERE status = 'PENDING' 
             ORDER BY created_at ASC 
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
                     WHERE symbol = $1 AND event_type = $2 AND created_at::date = CURRENT_DATE
                 `, [event.symbol, event.event_type === 'ATH' ? 'ATH' : '52W_HIGH']);
 
-                if (existing.rowCount > 0) {
+                if (existing && existing.rowCount && existing.rowCount > 0) {
                     // Already logged, just mark queue as processed or skipped
                     await client.query(`UPDATE event_queue SET status = 'SKIPPED', processed_at = NOW() WHERE id = $1`, [event.id]);
                     continue;
@@ -54,7 +54,13 @@ export async function GET(request: Request) {
 
                 // B. Generate Headline (AI)
                 const eventTypeLabel = event.event_type === 'ATH' ? 'ATH' : '52W_HIGH';
-                const prompt = getEventHeadlinePrompt(event.symbol, eventTypeLabel, parseFloat(event.trigger_value), parseFloat(event.previous_value));
+                const prompt = getEventHeadlinePrompt(
+                    event.symbol,
+                    eventTypeLabel,
+                    parseFloat(event.trigger_value),
+                    parseFloat(event.previous_value),
+                    event.close_price ? parseFloat(event.close_price) : null
+                );
 
                 let headline = `${event.symbol} hits new ${event.event_type} of ${event.trigger_value}`;
                 try {

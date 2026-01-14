@@ -34,7 +34,7 @@ export async function processBreakouts(candidates: BreakoutCandidate[]) {
         });
 
         // 2. Identify Breakouts
-        const updates: { symbol: string, type: 'ATH' | '52W', value: number, old: number }[] = [];
+        const updates: { symbol: string, type: 'ATH' | '52W', value: number, old: number, close: number }[] = [];
 
         for (const cand of candidates) {
             const stat = statsMap.get(cand.symbol);
@@ -43,14 +43,14 @@ export async function processBreakouts(candidates: BreakoutCandidate[]) {
             // Check ATH
             // Logic: Intraday High > Stored ATH
             if (cand.dayHigh > stat.ath && stat.ath > 0) {
-                updates.push({ symbol: cand.symbol, type: 'ATH', value: cand.dayHigh, old: stat.ath });
+                updates.push({ symbol: cand.symbol, type: 'ATH', value: cand.dayHigh, old: stat.ath, close: cand.price });
                 // If new ATH, it's automatically new 52W High too, but let's log the biggest event
                 continue;
             }
 
             // Check 52W
             if (cand.dayHigh > stat.w52 && stat.w52 > 0) {
-                updates.push({ symbol: cand.symbol, type: '52W', value: cand.dayHigh, old: stat.w52 });
+                updates.push({ symbol: cand.symbol, type: '52W', value: cand.dayHigh, old: stat.w52, close: cand.price });
             }
         }
 
@@ -75,11 +75,11 @@ export async function processBreakouts(candidates: BreakoutCandidate[]) {
                 `, [update.symbol, update.type]);
 
                 if (existing.rowCount === 0 && existingQueue.rowCount === 0) {
-                    // B. Insert into Queue
+                    // B. Insert into Queue (include close_price for headline generation)
                     await client.query(`
-                        INSERT INTO event_queue (symbol, event_type, trigger_value, previous_value, status)
-                        VALUES ($1, $2, $3, $4, 'PENDING')
-                    `, [update.symbol, update.type, update.value, update.old]);
+                        INSERT INTO event_queue (symbol, event_type, trigger_value, previous_value, close_price, status)
+                        VALUES ($1, $2, $3, $4, $5, 'PENDING')
+                    `, [update.symbol, update.type, update.value, update.old, update.close]);
 
                     console.log(`[Event Queued] ${update.symbol} ${update.type}`);
                 }
