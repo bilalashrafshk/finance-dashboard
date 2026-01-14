@@ -176,9 +176,10 @@ export default function PriceViewerPage() {
         setPage(1)
     }
 
-    const formatNumber = (val: number | null, decimals = 2) => {
-        if (val === null || isNaN(val)) return "-"
-        return val.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+    const formatNumber = (val: any, decimals = 2) => {
+        const num = Number(val)
+        if (val === null || isNaN(num)) return "-"
+        return num.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
     }
 
     const formatVolume = (val: number | null) => {
@@ -397,9 +398,11 @@ export default function PriceViewerPage() {
                                                 <TableCell className="text-right font-mono text-xs">{formatVolume(row.volume)}</TableCell>
                                                 <TableCell className={cn(
                                                     "text-right font-mono text-xs",
-                                                    row.change_pct && row.change_pct > 0 ? "text-green-500" : row.change_pct && row.change_pct < 0 ? "text-red-500" : ""
+                                                    row.change_pct && Number(row.change_pct) > 0 ? "text-green-500" : row.change_pct && Number(row.change_pct) < 0 ? "text-red-500" : ""
                                                 )}>
-                                                    {row.change_pct ? `${row.change_pct > 0 ? '+' : ''}${row.change_pct.toFixed(2)}%` : '0.00%'}
+                                                    {row.change_pct !== null && !isNaN(Number(row.change_pct))
+                                                        ? `${Number(row.change_pct) > 0 ? '+' : ''}${Number(row.change_pct).toFixed(2)}%`
+                                                        : '0.00%'}
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <span className="text-[10px] uppercase tracking-wider bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
