@@ -364,8 +364,8 @@ export async function GET(request: Request) {
           return timeA - timeB
         })
 
-        // Pick top 3 stale keys to update (reduced from 10 to prevent timeout)
-        const keysToUpdate = sortedKeys.slice(0, 3)
+        // Pick top 1 stale key to update (reduced from 3 to prevent timeout)
+        const keysToUpdate = sortedKeys.slice(0, 1)
 
         if (keysToUpdate.length > 0) {
           console.log(`[Screener Update] Prioritized Macro Update: Updating ${keysToUpdate.length} keys: ${keysToUpdate.join(', ')}`)
