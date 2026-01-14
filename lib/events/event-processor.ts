@@ -56,62 +56,51 @@ export async function processBreakouts(candidates: BreakoutCandidate[]) {
 
         if (updates.length === 0) return;
 
-        console.log(`[Event Processor] Found ${updates.length} potential breakouts.`);
+        console.log(`[Event Processor] Found ${updates.length} potential breakouts. Queuing...`);
 
-        // 3. Process Updates (Log Event + Update Profile)
-        for (const update of updates) {
-            // A. Check if event already logged TODAY to avoid spam
-            // (e.g. price 304.8 -> 305.0 -> 305.5 in same day)
-            // We only want to announce the *first* break, or major milestones.
-            // Simplified: One log per type per day.
-            const existing = await client.query(`
-                SELECT id FROM notable_events 
-                WHERE symbol = $1 AND event_type = $2 AND created_at::date = CURRENT_DATE
-            `, [update.symbol, update.type === 'ATH' ? 'ATH' : '52W_HIGH']);
+        // 3. Queue Updates & Refresh Stats (Transactional or Parallel)
+        // We do this quickly. No AI generation here.
+        await Promise.all(updates.map(async (update) => {
+            try {
+                // A. Check persistence (Daily limit check remains relevant to avoid queue spam)
+                const existing = await client.query(`
+                    SELECT id FROM notable_events 
+                    WHERE symbol = $1 AND event_type = $2 AND created_at::date = CURRENT_DATE
+                `, [update.symbol, update.type === 'ATH' ? 'ATH' : '52W_HIGH']);
 
-            if (existing.rowCount === 0) {
-                // B. Generate Headline (Async, but we await to ensure log)
-                const eventTypeLabel = update.type === 'ATH' ? 'ATH' : '52W_HIGH';
-                const prompt = getEventHeadlinePrompt(update.symbol, eventTypeLabel, update.value, update.old);
+                // Also check if already in queue preventing duplicates there
+                const existingQueue = await client.query(`
+                    SELECT id FROM event_queue 
+                    WHERE symbol = $1 AND event_type = $2 AND status = 'PENDING'
+                `, [update.symbol, update.type]);
 
-                // Fire AI generation optimistically (don't block loop too long if possible, but here we await for safety)
-                let headline = `${update.symbol} hits new ${update.type} of ${update.value}`;
-                try {
-                    headline = await generateHeadline(prompt);
-                } catch (e) {
-                    console.error('AI Headline failed, using default');
+                if (existing.rowCount === 0 && existingQueue.rowCount === 0) {
+                    // B. Insert into Queue
+                    await client.query(`
+                        INSERT INTO event_queue (symbol, event_type, trigger_value, previous_value, status)
+                        VALUES ($1, $2, $3, $4, 'PENDING')
+                    `, [update.symbol, update.type, update.value, update.old]);
+
+                    console.log(`[Event Queued] ${update.symbol} ${update.type}`);
                 }
 
-                // C. Insert Event
-                await client.query(`
-                    INSERT INTO notable_events (symbol, event_type, headline, description, created_at, metadata)
-                    VALUES ($1, $2, $3, $4, NOW(), $5)
-                `, [
-                    update.symbol,
-                    eventTypeLabel,
-                    headline,
-                    `Price reached ${update.value}, breaking previous ${update.type} of ${update.old}`,
-                    { old: update.old, new: update.value }
-                ]);
-
-                console.log(`[Event Logged] ${update.symbol} ${update.type} ${update.value}`);
+                // C. Update Profile (Always update stats immediately)
+                // This ensures detection is accurate on next run even if queue processor is slow
+                if (update.type === 'ATH') {
+                    await client.query(`
+                        UPDATE company_profiles SET all_time_high = $1, fifty_two_week_high = $1, updated_at = NOW()
+                        WHERE symbol = $2 AND asset_type = 'pk-equity'
+                     `, [update.value, update.symbol]);
+                } else {
+                    await client.query(`
+                        UPDATE company_profiles SET fifty_two_week_high = $1, updated_at = NOW()
+                        WHERE symbol = $2 AND asset_type = 'pk-equity'
+                     `, [update.value, update.symbol]);
+                }
+            } catch (err) {
+                console.error(`[Event Processor] Failed to queue ${update.symbol}:`, err);
             }
-
-            // D. Update Profile (Persistence)
-            // Always update the Stats to the new High so subsequent checks are accurate
-            // AND so the UI shows the new High immediately.
-            if (update.type === 'ATH') {
-                await client.query(`
-                    UPDATE company_profiles SET all_time_high = $1, fifty_two_week_high = $1, updated_at = NOW()
-                    WHERE symbol = $2 AND asset_type = 'pk-equity'
-                 `, [update.value, update.symbol]);
-            } else {
-                await client.query(`
-                    UPDATE company_profiles SET fifty_two_week_high = $1, updated_at = NOW()
-                    WHERE symbol = $2 AND asset_type = 'pk-equity'
-                 `, [update.value, update.symbol]);
-            }
-        }
+        }));
 
     } catch (e) {
         console.error('[Event Processor] Error:', e);
