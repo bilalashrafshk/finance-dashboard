@@ -129,19 +129,11 @@ export function MarketHeatmapLayout() {
     }, [data?.stocks, selectedSector])
 
     const toggleFullscreen = () => {
-        if (!document.fullscreenElement) {
-            containerRef.current?.requestFullscreen().catch(err => {
-                console.error(`Error attempting to enable fullscreen: ${err.message}`);
-            });
-            setIsFullscreen(true)
-        } else {
-            document.exitFullscreen();
-            setIsFullscreen(false)
-        }
+        setIsFullscreen(!isFullscreen)
     }
 
     return (
-        <div className={`flex flex-col gap-4 font-sans ${isFullscreen ? 'bg-background p-4' : ''}`} ref={containerRef}>
+        <div className={`flex flex-col gap-4 font-sans ${isFullscreen ? 'fixed inset-0 z-50 bg-background p-4 overflow-y-auto' : ''}`} ref={containerRef}>
 
             {/* 1. Header & Controls */}
             <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
@@ -216,7 +208,7 @@ export function MarketHeatmapLayout() {
             )}
 
             {/* 3. Main Content Stack */}
-            <div className="flex flex-col gap-4">
+            <div className={`flex flex-col gap-4 ${isFullscreen ? 'min-h-[900px] flex-1' : ''}`}>
                 {/* Top: Sector Sidebar (Horizontal) */}
                 <div className="w-full flex-shrink-0">
                     {loading && !data ? (
@@ -232,7 +224,7 @@ export function MarketHeatmapLayout() {
                 </div>
 
                 {/* Bottom: Heatmap (Full Width) */}
-                <Card className="flex-1 flex flex-col overflow-hidden border-none shadow-none bg-transparent h-[900px]">
+                <Card className={`flex-1 flex flex-col overflow-hidden border-none shadow-none bg-transparent ${isFullscreen ? 'h-auto min-h-[800px]' : 'h-[900px]'}`}>
                     {/* Heatmap Controls */}
                     <div className="flex items-center justify-between mb-2 px-1">
                         <div className="flex items-center gap-2">
