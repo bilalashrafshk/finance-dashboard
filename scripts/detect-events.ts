@@ -117,13 +117,17 @@ async function main() {
                     continue;
                 }
 
-                const currentPrice = quote.lastPrice;
+                // Check both Last Price AND Intraday High for breakouts
+                let priceToCheck = quote.lastPrice;
+                if (quote.high && quote.high > priceToCheck) {
+                    priceToCheck = quote.high;
+                }
 
                 // 2. Get Stats
                 const stats = await getHistoricalStats(client, symbol);
 
                 // 3. Check for events
-                await checkAndLogEvent(client, symbol, currentPrice, stats);
+                await checkAndLogEvent(client, symbol, priceToCheck, stats);
 
             } catch (err) {
                 console.error(`Error processing ${symbol}:`, err);
