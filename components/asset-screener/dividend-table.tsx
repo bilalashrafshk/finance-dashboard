@@ -42,76 +42,76 @@ export function DividendTable({ assetType, symbol }: DividendTableProps) {
   const DISPLAY_INCREMENT = 10 // Load 10 more years at a time
 
   const groupDividendsByYear = (dividendRecords: DividendRecord[], priceRecords: any[]) => {
-      // Group dividends by year
-      const yearMap = new Map<number, DividendRecord[]>()
-      
-      dividendRecords.forEach(dividend => {
-        const year = new Date(dividend.date).getFullYear()
-        if (!yearMap.has(year)) {
-          yearMap.set(year, [])
-        }
-        yearMap.get(year)!.push(dividend)
-      })
+    // Group dividends by year
+    const yearMap = new Map<number, DividendRecord[]>()
 
-      // Calculate yearly data with yields
-      const yearly: YearlyDividendData[] = []
-      
-      yearMap.forEach((yearDividends, year) => {
-        // Sort dividends by date within year (ascending)
-        yearDividends.sort((a, b) => a.date.localeCompare(b.date))
-        
-        // Calculate total dividends for the year
-        const totalDividends = yearDividends.reduce((sum, d) => sum + d.dividend_amount, 0)
-        
-        // Find last available price for this year
-        const yearEndDate = `${year}-12-31`
-        const yearStartDate = `${year}-01-01`
-        
-        // Get all prices for this year
-        const yearPrices = priceRecords
-          .filter((p: any) => p.date >= yearStartDate && p.date <= yearEndDate)
-          .sort((a: any, b: any) => b.date.localeCompare(a.date)) // Descending (most recent first)
-        
-        const lastPriceRecord = yearPrices[0] // Most recent price in the year
-        
-        let yieldValue: number | undefined
-        let lastPrice: number | undefined
-        let lastPriceDate: string | undefined
-        
-        if (lastPriceRecord && lastPriceRecord.close) {
-          lastPrice = parseFloat(lastPriceRecord.close)
-          lastPriceDate = lastPriceRecord.date
-          
-          // Calculate yield: Total Dividends Paid (in Rs.) / Share Price * 100
-          // In Pakistan, dividends are typically % of face value (usually Rs. 10)
-          // dividend_amount is stored as percent/10 (e.g., 20% = 2.0)
-          // To convert to rupees: if 20% = Rs. 2, then face value is Rs. 10
-          // Formula: (percent/100) * face_value = rupees
-          // Since we store percent/10, and face value is typically Rs. 10:
-          // (percent/10) * 1 = rupees
-          // Example: 20% stored as 2.0, so 2.0 * 1 = Rs. 2 per share
-          if (lastPrice > 0) {
-            // Convert dividend_amount to rupees using centralized utility
-            const totalDividendRupees = convertDividendToRupees(totalDividends)
-            // Yield = (Total Dividends in Rs. / Price) * 100
-            yieldValue = (totalDividendRupees / lastPrice) * 100
-          }
-        }
-        
-        yearly.push({
-          year,
-          dividends: yearDividends,
-          totalDividends,
-          yield: yieldValue,
-          lastPrice,
-          lastPriceDate
-        })
-      })
+    let minYear = new Date().getFullYear()
+    const currentYear = new Date().getFullYear()
 
-      // Sort by year descending (most recent first)
-      yearly.sort((a, b) => b.year - a.year)
-      setYearlyData(yearly)
+    dividendRecords.forEach(dividend => {
+      const year = new Date(dividend.date).getFullYear()
+      if (year < minYear) minYear = year
+      if (!yearMap.has(year)) {
+        yearMap.set(year, [])
+      }
+      yearMap.get(year)!.push(dividend)
+    })
+
+    // Calculate yearly data with yields
+    const yearly: YearlyDividendData[] = []
+
+    // Iterate from current year down to minYear to include all years, even those with 0 dividends
+    for (let year = currentYear; year >= minYear; year--) {
+      const yearDividends = yearMap.get(year) || []
+
+      // Sort dividends by date within year (ascending)
+      yearDividends.sort((a, b) => a.date.localeCompare(b.date))
+
+      // Calculate total dividends for the year
+      const totalDividends = yearDividends.reduce((sum, d) => sum + d.dividend_amount, 0)
+
+      // Find last available price for this year
+      const yearEndDate = `${year}-12-31`
+      const yearStartDate = `${year}-01-01`
+
+      // Get all prices for this year
+      const yearPrices = priceRecords
+        .filter((p: any) => p.date >= yearStartDate && p.date <= yearEndDate)
+        .sort((a: any, b: any) => b.date.localeCompare(a.date)) // Descending (most recent first)
+
+      const lastPriceRecord = yearPrices[0] // Most recent price in the year
+
+      let yieldValue: number | undefined
+      let lastPrice: number | undefined
+      let lastPriceDate: string | undefined
+
+      if (lastPriceRecord && lastPriceRecord.close) {
+        lastPrice = parseFloat(lastPriceRecord.close)
+        lastPriceDate = lastPriceRecord.date
+
+        if (lastPrice > 0) {
+          // Convert dividend_amount to rupees using centralized utility
+          const totalDividendRupees = convertDividendToRupees(totalDividends)
+          // Yield = (Total Dividends in Rs. / Price) * 100
+          yieldValue = (totalDividendRupees / lastPrice) * 100
+        } else if (totalDividends === 0) {
+          // If price is 0 (shouldn't happen) but dividends are 0, yield is 0
+          yieldValue = 0
+        }
+      }
+
+      yearly.push({
+        year,
+        dividends: yearDividends,
+        totalDividends,
+        yield: yieldValue,
+        lastPrice,
+        lastPriceDate
+      })
     }
+
+    setYearlyData(yearly)
+  }
 
   const fetchDividendsAndPrices = async (forceRefresh: boolean = false) => {
     if (forceRefresh) {
@@ -138,13 +138,13 @@ export function DividendTable({ assetType, symbol }: DividendTableProps) {
       // Fetch dividends with refresh parameter if needed
       const refreshParam = forceRefresh ? '&refresh=true' : ''
       const dividendResponse = await fetch(`/api/pk-equity/dividend?ticker=${encodeURIComponent(symbol)}${refreshParam}`)
-        
+
       if (!dividendResponse.ok) {
         throw new Error('Failed to fetch dividend data')
       }
 
       const dividendData = await dividendResponse.json()
-      
+
       let dividendRecords: DividendRecord[] = []
       if (dividendData.dividends && Array.isArray(dividendData.dividends)) {
         // Sort by date descending (most recent first)
@@ -160,7 +160,7 @@ export function DividendTable({ assetType, symbol }: DividendTableProps) {
 
       // Fetch historical price data to calculate yields
       const priceResponse = await fetch(`/api/historical-data?assetType=pk-equity&symbol=${encodeURIComponent(symbol)}&market=PSX`)
-      
+
       if (!priceResponse.ok) {
         // If price data fetch fails, still show dividends without yields
         console.warn('Failed to fetch price data for yield calculation')
@@ -239,12 +239,12 @@ export function DividendTable({ assetType, symbol }: DividendTableProps) {
   const averageDividend = dividends.length > 0
     ? dividends.reduce((sum, d) => sum + d.dividend_amount, 0) / dividends.length
     : 0
-  
+
   // Calculate average dividend amount per year
   const averageDividendPerYear = yearlyData.length > 0
     ? yearlyData.reduce((sum, y) => sum + y.totalDividends, 0) / yearlyData.length
     : 0
-  
+
   // Calculate average dividend yield per year
   const yieldsWithData = yearlyData.filter(y => y.yield !== undefined).map(y => y.yield!)
   const averageYieldPerYear = yieldsWithData.length > 0
@@ -280,10 +280,10 @@ export function DividendTable({ assetType, symbol }: DividendTableProps) {
               )}
             </CardDescription>
           </div>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={handleRefresh} 
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleRefresh}
             disabled={refreshing || loading}
             title="Refresh and recalculate dividends with correct face value"
           >
@@ -347,8 +347,8 @@ export function DividendTable({ assetType, symbol }: DividendTableProps) {
                   rows.push(
                     <TableRow key={`${yearData.year}-${dividend.date}-${index}`}>
                       {isFirstInYear && (
-                        <TableCell 
-                          className="font-semibold align-top" 
+                        <TableCell
+                          className="font-semibold align-top"
                           rowSpan={yearData.dividends.length}
                         >
                           {yearData.year}
@@ -367,8 +367,8 @@ export function DividendTable({ assetType, symbol }: DividendTableProps) {
                         {formatDividend(dividend.dividend_amount)}
                       </TableCell>
                       {isFirstInYear && (
-                        <TableCell 
-                          className="text-right font-semibold align-top" 
+                        <TableCell
+                          className="text-right font-semibold align-top"
                           rowSpan={yearData.dividends.length}
                         >
                           {yearData.yield !== undefined ? (
