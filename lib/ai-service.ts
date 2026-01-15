@@ -52,9 +52,9 @@ export async function analyzeAnnouncement(
     systemPrompt: string,
     context: any,
     announcement: any
-): Promise<string> {
+): Promise<{ text: string; debugMetadata?: any }> {
     initAI();
-    if (!model) return JSON.stringify({ error: 'AI Unavailable' });
+    if (!model) return { text: JSON.stringify({ error: 'AI Unavailable' }) };
 
     // 1. Prepare text prompt
     const textPrompt = `
@@ -70,6 +70,7 @@ Company: ${announcement.company} (${announcement.symbol})
 
     // 2. Prepare Multimodal Parts (Images/PDFs)
     const parts: any[] = [{ text: textPrompt }];
+    const attachedFiles: any[] = [];
 
     for (const url of announcement.attachments || []) {
         try {
@@ -95,6 +96,7 @@ Company: ${announcement.company} (${announcement.symbol})
                         mimeType: mimeType === 'image/gif' ? 'image/png' : mimeType
                     }
                 });
+                attachedFiles.push({ url, mimeType, size: `${sizeInMb} MB` });
                 console.log(`✅ Attached ${mimeType} (${sizeInMb} MB) to AI request.`);
             } else {
                 console.warn(`⚠️ Unsupported mime type: ${mimeType} for ${url}`);
@@ -109,15 +111,21 @@ Company: ${announcement.company} (${announcement.symbol})
     try {
         const result = await model.generateContent(parts);
         const response = await result.response;
-        return response.text().trim();
+        return {
+            text: response.text().trim(),
+            debugMetadata: { attachedFiles, textPrompt }
+        };
     } catch (error: any) {
         if (error.status === 400 || error.message?.includes('400')) {
             console.error('❌ Gemini 400 Error: Possible payload limit or format issue. Falling back to text-only.');
             const textOnlyResult = await model.generateContent(textPrompt + "\nAnalyze the announcement details provided in text.");
             const resp = await textOnlyResult.response;
-            return resp.text().trim();
+            return {
+                text: resp.text().trim(),
+                debugMetadata: { attachedFiles: [], textPrompt, error: 'Multimodal failed, fell back to text-only' }
+            };
         }
         console.error('Error in multimodal analysis:', error);
-        return "Analysis failed due to model error.";
+        return { text: "Analysis failed due to model error." };
     }
 }

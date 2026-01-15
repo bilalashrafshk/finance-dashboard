@@ -11,9 +11,9 @@ export const PROMPT_SLUGS = {
 export function getPromptSlugByTitle(title: string): string {
     const titleLower = title.toLowerCase();
 
-    // 1. FINANCIALS & PAYOUTS (The "Numbers" Brain)
+    // 1. FINANCIALS (Strict Check)
     if (
-        titleLower.includes("financial results") ||
+        (titleLower.includes("financial results") && !titleLower.includes("other than")) ||
         titleLower.includes("dividend") ||
         titleLower.includes("bonus") ||
         titleLower.includes("right shares")
@@ -21,7 +21,16 @@ export function getPromptSlugByTitle(title: string): string {
         return PROMPT_SLUGS.FINANCIAL_ANALYST;
     }
 
-    // 2. GOVERNANCE & INSIDERS (The "People" Brain)
+    // 2. EVENTS & NEWS (The "Wildcard" Brain)
+    else if (
+        titleLower.includes("material information") ||
+        titleLower.includes("board meeting") ||
+        titleLower.includes("unusual movement")
+    ) {
+        return PROMPT_SLUGS.EVENT_ANALYST;
+    }
+
+    // 3. GOVERNANCE & INSIDERS (The "People" Brain)
     else if (
         titleLower.includes("disclosure of interest") ||
         titleLower.includes("appointment") ||
@@ -30,8 +39,7 @@ export function getPromptSlugByTitle(title: string): string {
         return PROMPT_SLUGS.GOVERNANCE_ANALYST;
     }
 
-    // 3. NEWS & EVENTS (The "Wildcard" Brain)
-    // Covers "Material Information" and "Board Meeting"
+    // Default
     else {
         return PROMPT_SLUGS.EVENT_ANALYST;
     }

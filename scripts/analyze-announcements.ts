@@ -164,7 +164,7 @@ async function runAnalysis(targetDate?: string) {
                 }
 
                 // AI Synthesis
-                const aiResult = await analyzeAnnouncement(systemPrompt, context, task);
+                const { text: aiResult } = await analyzeAnnouncement(systemPrompt, context, task);
 
                 // Send Discord Alert
                 await sendToDiscord(task, aiResult);

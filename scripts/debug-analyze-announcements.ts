@@ -138,18 +138,20 @@ Attachments: ${announcement.attachments.join(', ')}
 Analyze the above and provide the output in the format requested in the system instruction.
 `;
 
-                debugPayloads.push({
-                    symbol,
-                    title,
-                    status,
-                    reason,
-                    prompt_slug: promptSlug,
-                    exact_ai_payload: exactPayload
-                });
-
                 // AI Response
                 try {
-                    const aiResult = await analyzeAnnouncement(systemPrompt, context, announcement);
+                    const { text: aiResult, debugMetadata } = await analyzeAnnouncement(systemPrompt, context, announcement);
+
+                    debugPayloads.push({
+                        symbol,
+                        title,
+                        status,
+                        reason,
+                        prompt_slug: promptSlug,
+                        exact_ai_payload: debugMetadata?.textPrompt || exactPayload,
+                        multimodal_attachments: debugMetadata?.attachedFiles || []
+                    });
+
                     debugResponses.push({
                         symbol,
                         title,
