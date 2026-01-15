@@ -5,6 +5,8 @@ import * as dotenv from 'dotenv';
 import path from 'path';
 import { generateHeadline } from '../lib/ai-service';
 import { getEventHeadlinePrompt } from '../lib/ai-prompts';
+import { sendMarketEventAlert } from '../lib/notifications/discord';
+
 
 // Load env
 const envPath = path.resolve(__dirname, '../.env.local');
@@ -97,7 +99,17 @@ async function checkAndLogEvent(client: any, symbol: string, currentPrice: numbe
                 `Price reached ${currentPrice}, surpassing previous ${eventType} of ${previousValue}`,
                 { currentPrice, previousValue, time: new Date().toISOString() }
             ]);
+
+            // 4. Send Discord Alert
+            await sendMarketEventAlert({
+                symbol,
+                type: eventType,
+                headline,
+                price: currentPrice,
+                prevValue: previousValue
+            });
         } else {
+
             console.log(`ℹ️  Event ${eventType} for ${symbol} already logged today.`);
         }
     }
