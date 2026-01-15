@@ -71,9 +71,16 @@ ${task.attachments.length > 0 ? `[📄 Open Document](${task.attachments[0]})` :
     }
 }
 
-async function runAnalysis(targetDate?: string) {
+// Execution
+const args = process.argv.slice(2);
+const isQueueMode = args.includes('--queue');
+const dateArg = args.find(a => /^\d{4}-\d{2}-\d{2}$/.test(a));
+
+runAnalysis(dateArg, isQueueMode);
+
+async function runAnalysis(targetDate?: string, queueMode: boolean = false) {
     const pool = getPool();
-    console.log(`\n🚀 Starting End-to-End Analysis ${targetDate ? `for ${targetDate}` : '(Live)'}...`);
+    console.log(`\n🚀 Starting Announcement Pipeline ${targetDate ? `for ${targetDate}` : '(Live)'} [Mode: ${queueMode ? 'QUEUE' : 'ANALYZE'}]...`);
 
     try {
         // 1. Fetch Configs & Top Symbols
@@ -146,18 +153,12 @@ async function runAnalysis(targetDate?: string) {
 
             // Extract attachments
             const attachments: string[] = [];
-
-            // 1. PDF Links
             $(cols[5]).find('a[href$=".pdf"]').each((_, el) => {
                 const href = $(el).attr('href');
                 if (href) attachments.push(BASE_URL + href);
             });
-
-            // 2. Image/Gif Links (from data-images attribute)
             const imgData = $(cols[5]).find('a[data-images]').attr('data-images');
             if (imgData) {
-                // If the link text or data indicates an image, use /download/image/
-                // Most GIFs/PNGs on PSX use the -1.gif suffix in the data-images attribute
                 attachments.push(`${BASE_URL}/download/image/${imgData}`);
             }
 
@@ -172,14 +173,45 @@ async function runAnalysis(targetDate?: string) {
             });
         }
 
-        console.log(`✅ Filtered down to ${tasks.length} actionable announcements.`);
+        console.log(`✅ Scraped ${tasks.length} priority announcements.`);
 
-        // 4. Intelligence Processing
+        if (queueMode) {
+            console.log(`📥 Queuing ${tasks.length} tasks for processing...`);
+            for (const task of tasks) {
+                try {
+                    // Check if already in queue or already processed
+                    const existing = await pool.query(
+                        `SELECT id FROM notable_events WHERE symbol = $1 AND metadata->>'psx_title' = $2
+                         UNION
+                         SELECT id FROM event_queue WHERE symbol = $1 AND metadata->>'psx_title' = $2`,
+                        [task.symbol, task.title]
+                    );
+
+                    if (existing.rows.length > 0) {
+                        console.log(`⏩ ${task.symbol}: Already queued/processed.`);
+                        continue;
+                    }
+
+                    await pool.query(
+                        `INSERT INTO event_queue (symbol, event_type, trigger_value, previous_value, metadata, status)
+                         VALUES ($1, $2, $3, $4, $5, $6)`,
+                        [task.symbol, 'fundamental_alert', 0, 0, JSON.stringify(task), 'PENDING']
+                    );
+                    console.log(`✅ Queued: ${task.symbol} - ${task.title}`);
+                } catch (err: any) {
+                    console.error(`❌ Queue Error (${task.symbol}):`, err.message);
+                }
+            }
+            console.log(`\n🏁 Queuing complete.`);
+            return;
+        }
+
+        // 4. Intelligence Processing (Analyze Mode)
         const finalResults = [];
         for (const task of tasks) {
             console.log(`\n🧠 Analyzing ${task.symbol}: ${task.title}...`);
 
-            // Deduplication: Check if already processed
+            // Deduplication
             try {
                 const checkRes = await pool.query(
                     "SELECT id FROM notable_events WHERE symbol = $1 AND metadata->>'psx_title' = $2",
@@ -194,12 +226,9 @@ async function runAnalysis(targetDate?: string) {
             }
 
             try {
-                // Get Prompt
                 const promptSlug = getPromptSlugByTitle(task.title);
                 const promptRes = await pool.query("SELECT content FROM ai_prompts WHERE slug = $1", [promptSlug]);
                 const systemPrompt = promptRes.rows[0]?.content || "Analyze this financial announcement.";
-
-                // Get Context
                 let context = {};
                 try {
                     context = await AIContextService.getContext(task.symbol);
@@ -207,61 +236,48 @@ async function runAnalysis(targetDate?: string) {
                     console.warn(`⚠️ No context found for ${task.symbol}`);
                 }
 
-                // AI Synthesis
                 const { text: rawAiResult } = await analyzeAnnouncement(systemPrompt, context, task);
                 const aiResult = parseAIResponse(rawAiResult);
-
-                // Send Discord Alert
                 await sendToDiscord(task, aiResult, context);
 
-                // Persist to Database
-                try {
-                    await pool.query(
-                        `INSERT INTO notable_events (symbol, event_type, headline, description, metadata, created_at)
-                         VALUES ($1, $2, $3, $4, $5, $6)`,
-                        [
-                            task.symbol,
-                            'fundamental_alert',
-                            aiResult.headline,
-                            aiResult.verdict,
-                            JSON.stringify({
-                                ai_analysis: aiResult,
-                                attachments: task.attachments,
-                                psx_title: task.title,
-                                company: task.company
-                            }),
-                            new Date()
-                        ]
-                    );
-                    console.log(`✅ Event persisted to database.`);
-                } catch (dbErr: any) {
-                    console.error(`❌ Database Error (${task.symbol}):`, dbErr.message);
-                }
+                await pool.query(
+                    `INSERT INTO notable_events (symbol, event_type, headline, description, metadata, created_at)
+                     VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [
+                        task.symbol,
+                        'fundamental_alert',
+                        aiResult.headline,
+                        aiResult.verdict,
+                        JSON.stringify({
+                            ai_analysis: aiResult,
+                            attachments: task.attachments,
+                            psx_title: task.title,
+                            company: task.company
+                        }),
+                        new Date()
+                    ]
+                );
+                console.log(`✅ Event persisted to database.`);
 
                 finalResults.push({
                     ...task,
                     ai_analysis: aiResult,
                     processed_at: new Date().toISOString()
                 });
-
                 console.log(`✨ AI Output Generated & Alert Sent.`);
             } catch (err: any) {
                 console.error(`❌ Error analyzing ${task.symbol}:`, err.message);
             }
         }
 
-        // 5. Save Output
         const dir = path.dirname(OUTPUT_FILE);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(OUTPUT_FILE, JSON.stringify(finalResults, null, 2));
-
         console.log(`\n🏁 Done! Final analysis saved to ${OUTPUT_FILE}`);
 
     } catch (error: any) {
         console.error("Pipeline Error:", error.message);
+    } finally {
+        await pool.end();
     }
 }
-
-// Execution
-const dateArg = process.argv[2]; // Optional: YYYY-MM-DD
-runAnalysis(dateArg);

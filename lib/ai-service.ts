@@ -129,3 +129,61 @@ Company: ${announcement.company} (${announcement.symbol})
         return { text: "Analysis failed due to model error." };
     }
 }
+
+/**
+ * Helper to parse AI JSON response
+ */
+export function parseAIResponse(rawText: string) {
+    try {
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
+        return JSON.parse(jsonStr);
+    } catch (e) {
+        console.warn("⚠️ Failed to parse AI JSON, falling back to raw text.");
+        return {
+            sentiment: "Neutral",
+            headline: "New Announcement",
+            scoop: [rawText.substring(0, 300)],
+            verdict: "Parse failed.",
+            market_context: { valuation: "N/A", momentum: "N/A", price: "N/A" }
+        };
+    }
+}
+
+/**
+ * Send fundamental alert to Discord
+ */
+export async function sendToFundamentalDiscord(task: any, aiResult: any, sector: string) {
+    const webhookUrl = process.env.DISCORD_FUNDAMENTAL_WEBHOOK;
+    if (!webhookUrl) return;
+
+    const sentimentEmoji = aiResult.sentiment === 'Bullish' ? '🟢' : (aiResult.sentiment === 'Bearish' ? '🔴' : '⚪');
+
+    const scoopText = Array.isArray(aiResult.scoop)
+        ? aiResult.scoop.map((item: string) => `> ${item}`).join('\n')
+        : `> ${aiResult.scoop}`;
+
+    const content = `
+**${sentimentEmoji} ${task.symbol}: ${aiResult.headline.replace(/^[^\w\s]+/, '').trim()}**
+*(${sector || 'General'})*
+
+> **EVENT BRIEF**
+${scoopText}
+
+**📝 ANALYST NOTE**
+${aiResult.verdict}
+
+**📊 MARKET CONTEXT**
+• **Valuation:** ${aiResult.market_context?.valuation || 'N/A'}
+• **Momentum:** ${aiResult.market_context?.momentum || 'N/A'}
+• **Price:** ${aiResult.market_context?.price || 'N/A'}
+
+${task.attachments?.length > 0 ? `[📄 Open Document](${task.attachments[0]})` : ''}
+`;
+
+    try {
+        await axios.post(webhookUrl, { content });
+    } catch (err: any) {
+        console.error(`❌ Discord Error (${task.symbol}):`, err.message);
+    }
+}

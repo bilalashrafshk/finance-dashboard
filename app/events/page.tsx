@@ -2,14 +2,20 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SharedNavbar } from '@/components/shared-navbar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, X } from 'lucide-react';
+import { CalendarIcon, X, ExternalLink, Zap, TrendingUp, BarChart3, Info } from 'lucide-react';
 import { format } from 'date-fns';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+} from "@/components/ui/dialog";
 
 interface Event {
     id: number;
@@ -25,6 +31,7 @@ export default function EventsPage() {
     const [events, setEvents] = useState<Event[]>([]);
     const [eventTypes, setEventTypes] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
+    const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
 
     // Filters
     const [selectedCategory, setSelectedCategory] = useState<string>('fundamental');
@@ -100,7 +107,7 @@ export default function EventsPage() {
                             <SelectTrigger className="bg-zinc-900 border-zinc-800">
                                 <SelectValue placeholder="All types" />
                             </SelectTrigger>
-                            <SelectContent className="bg-zinc-900 border-zinc-800">
+                            <SelectContent className="bg-zinc-900 border-zinc-800 text-white">
                                 <SelectItem value="all">All Types</SelectItem>
                                 {eventTypes.filter(t => selectedCategory === 'fundamental' ? t === 'fundamental_alert' : t !== 'fundamental_alert').map(type => (
                                     <SelectItem key={type} value={type}>
@@ -132,7 +139,7 @@ export default function EventsPage() {
                     )}
                 </div>
 
-                <div className="grid gap-6">
+                <div className="grid gap-4">
                     {loading ? (
                         <div className="flex items-center justify-center py-20">
                             <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-500 border-t-white"></div>
@@ -154,79 +161,55 @@ export default function EventsPage() {
                                         'text-yellow-400 bg-yellow-400/10 border-yellow-400/20';
 
                                 return (
-                                    <div key={event.id} className="group relative bg-[#0a0a0a] border border-zinc-800/50 rounded-2xl overflow-hidden hover:border-zinc-700 transition-all duration-300">
-                                        <div className={`absolute top-4 right-4 px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-tighter ${sentimentColor}`}>
-                                            {sentiment}
-                                        </div>
-
-                                        <div className="p-5 md:p-6 space-y-4">
-                                            <div className="space-y-1">
+                                    <div
+                                        key={event.id}
+                                        onClick={() => setSelectedEvent(event)}
+                                        className="group cursor-pointer relative bg-zinc-900/30 border border-zinc-800/50 rounded-2xl p-5 hover:bg-zinc-900/50 hover:border-zinc-700 transition-all duration-300"
+                                    >
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="space-y-3 flex-1">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-sm font-bold text-white tracking-widest">{event.symbol}</span>
-                                                    <span className="text-zinc-600">•</span>
-                                                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{meta.sector || meta.company || 'Market'}</span>
+                                                    <Badge variant="outline" className="bg-zinc-900 font-bold tracking-widest text-zinc-200 border-zinc-700 uppercase">
+                                                        {event.symbol}
+                                                    </Badge>
+                                                    <span className="text-xs font-bold text-zinc-500 uppercase tracking-tighter">
+                                                        {meta.sector || meta.company || 'Market'}
+                                                    </span>
                                                 </div>
                                                 <h2 className="text-xl md:text-2xl font-bold text-white leading-tight group-hover:text-zinc-200 transition-colors">
                                                     {analysis.headline.replace(/^[^\w\s]+/, '').trim()}
                                                 </h2>
-                                            </div>
-
-                                            <div className="space-y-2">
-                                                {analysis.scoop.slice(0, 2).map((item: string, i: number) => (
-                                                    <p key={i} className="text-sm text-zinc-400 font-medium leading-relaxed line-clamp-1">
-                                                        • {item}
-                                                    </p>
-                                                ))}
-                                            </div>
-
-                                            <div className="pt-4 flex flex-wrap items-center justify-between gap-4 border-t border-zinc-800/50">
-                                                <div className="font-mono text-[10px] text-zinc-500 tracking-tighter flex items-center gap-3">
-                                                    <span className="bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800/50">
-                                                        VALUATION: <span className="text-zinc-300">{analysis.market_context?.valuation || 'N/A'}</span>
-                                                    </span>
-                                                    <span className="bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800/50">
-                                                        MOMENTUM: <span className="text-zinc-300">{analysis.market_context?.momentum || 'N/A'}</span>
-                                                    </span>
-                                                    <span className="bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800/50">
-                                                        PRICE: <span className="text-zinc-300">{analysis.market_context?.price || 'N/A'}</span>
-                                                    </span>
-                                                </div>
-
-                                                <div className="flex items-center gap-4">
-                                                    {meta.attachments?.length > 0 && (
-                                                        <a
-                                                            href={meta.attachments[0]}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="text-[10px] font-bold text-zinc-400 hover:text-white transition-colors underline decoration-zinc-800 underline-offset-4"
-                                                        >
-                                                            OPEN FILING
-                                                        </a>
-                                                    )}
-                                                    <span className="text-[10px] text-zinc-600 font-medium whitespace-nowrap">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`px-2 py-0.5 rounded border text-[9px] font-bold uppercase tracking-widest ${sentimentColor}`}>
+                                                        {sentiment}
+                                                    </div>
+                                                    <span className="text-[10px] text-zinc-600 font-medium">
                                                         {format(new Date(event.created_at), 'MMM dd • HH:mm')}
                                                     </span>
                                                 </div>
+                                            </div>
+                                            <div className="hidden md:flex h-12 w-12 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900/50 group-hover:bg-zinc-800 transition-colors">
+                                                <Info className="h-5 w-5 text-zinc-500" />
                                             </div>
                                         </div>
                                     </div>
                                 );
                             }
 
-                            // Technical Card (Fallthrough or explicit check)
+                            // Technical Card
                             return (
-                                <div key={event.id} className="bg-[#0a0a0a] border border-zinc-800/50 rounded-xl p-4 md:p-5 flex items-center justify-between gap-4">
+                                <div key={event.id} className="bg-zinc-900/20 border border-zinc-800/50 rounded-xl p-4 flex items-center justify-between gap-4 hover:border-zinc-700 transition-colors">
                                     <div className="flex items-center gap-4">
                                         <div className="bg-zinc-900 p-2 rounded-lg border border-zinc-800">
-                                            <Badge variant="outline" className="font-mono text-zinc-300 border-zinc-700">{event.symbol}</Badge>
+                                            <Badge variant="outline" className="font-mono text-zinc-400 border-zinc-800">{event.symbol}</Badge>
                                         </div>
                                         <div>
-                                            <h3 className="font-bold text-zinc-100">{event.headline}</h3>
-                                            <span className="text-[10px] text-zinc-500 uppercase tracking-widest">{event.event_type.replace(/_/g, ' ')}</span>
+                                            <h3 className="font-bold text-zinc-200 text-sm md:text-base">{event.headline}</h3>
+                                            <span className="text-[10px] text-zinc-600 uppercase tracking-widest leading-none block mt-1">{event.event_type.replace(/_/g, ' ')}</span>
                                         </div>
                                     </div>
                                     <div className="text-right">
-                                        <span className="text-[10px] text-zinc-500 font-mono">
+                                        <span className="text-[10px] text-zinc-600 font-mono">
                                             {format(new Date(event.created_at), 'MMM dd, HH:mm')}
                                         </span>
                                     </div>
@@ -236,6 +219,112 @@ export default function EventsPage() {
                     )}
                 </div>
             </div>
+
+            {/* DETAIL MODAL */}
+            <Dialog open={!!selectedEvent} onOpenChange={(open) => !open && setSelectedEvent(null)}>
+                <DialogContent className="max-w-3xl bg-[#0a0a0a] border-zinc-800 text-white overflow-hidden p-0 gap-0">
+                    {selectedEvent && (() => {
+                        const meta = typeof selectedEvent.metadata === 'string' ? JSON.parse(selectedEvent.metadata) : selectedEvent.metadata;
+                        const analysis = meta?.ai_analysis;
+                        const sentiment = analysis?.sentiment || 'Neutral';
+                        const sentimentColor = sentiment === 'Bullish' ? 'text-green-400 bg-green-400/10 border-green-400/20' :
+                            sentiment === 'Bearish' ? 'text-red-400 bg-red-400/10 border-red-400/20' :
+                                'text-yellow-400 bg-yellow-400/10 border-yellow-400/20';
+
+                        return (
+                            <div className="max-h-[85vh] overflow-y-auto custom-scrollbar">
+                                <div className="p-6 md:p-8 space-y-8">
+                                    {/* Header Section */}
+                                    <div className="space-y-4">
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            <Badge variant="outline" className="bg-zinc-900 px-3 py-1 text-lg font-black tracking-widest text-white border-zinc-800 rounded-lg">
+                                                {selectedEvent.symbol}
+                                            </Badge>
+                                            <div className={`px-2 py-1 rounded border text-xs font-bold uppercase tracking-widest ${sentimentColor}`}>
+                                                {sentiment}
+                                            </div>
+                                            <span className="text-zinc-500 font-medium tracking-tight">
+                                                {format(new Date(selectedEvent.created_at), 'MMMM dd, yyyy • HH:mm')}
+                                            </span>
+                                        </div>
+
+                                        <DialogHeader>
+                                            <DialogTitle className="text-3xl md:text-4xl font-black leading-tight tracking-tight text-white mb-2">
+                                                {analysis?.headline.replace(/^[^\w\s]+/, '').trim()}
+                                            </DialogTitle>
+                                            <DialogDescription className="text-zinc-400 font-medium text-lg leading-relaxed">
+                                                {selectedEvent.description}
+                                            </DialogDescription>
+                                        </DialogHeader>
+                                    </div>
+
+                                    {/* Detailed Sections */}
+                                    <div className="grid gap-6">
+                                        {/* The Scoop */}
+                                        <div className="bg-zinc-900/30 border border-zinc-800/50 rounded-2xl p-6 space-y-4">
+                                            <h3 className="text-sm font-bold uppercase tracking-[0.2em] text-zinc-500 flex items-center gap-2">
+                                                <Zap className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                                                The Intelligence Scoop
+                                            </h3>
+                                            <div className="grid gap-3">
+                                                {analysis?.scoop.map((item: string, i: number) => (
+                                                    <div key={i} className="flex gap-4 group">
+                                                        <span className="text-zinc-700 group-hover:text-zinc-500 transition-colors mt-1">•</span>
+                                                        <p className="text-zinc-300 font-medium leading-relaxed">{item}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Market Analysis Grid */}
+                                        <div className="grid md:grid-cols-2 gap-4">
+                                            <div className="bg-zinc-900/30 border border-zinc-800/50 rounded-2xl p-5 space-y-3">
+                                                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 flex items-center gap-2">
+                                                    <TrendingUp className="h-3 w-3 text-blue-400" />
+                                                    Valuation Insight
+                                                </h3>
+                                                <p className="text-sm text-zinc-400 leading-relaxed font-medium italic">
+                                                    "{analysis?.market_context?.valuation || 'Metric currently under review.'}"
+                                                </p>
+                                            </div>
+                                            <div className="bg-zinc-900/30 border border-zinc-800/50 rounded-2xl p-5 space-y-3">
+                                                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 flex items-center gap-2">
+                                                    <BarChart3 className="h-3 w-3 text-purple-400" />
+                                                    Momentum Pulse
+                                                </h3>
+                                                <p className="text-sm text-zinc-400 leading-relaxed font-medium italic">
+                                                    "{analysis?.market_context?.momentum || 'Market depth pending update.'}"
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Action Footer */}
+                                    <div className="pt-6 border-t border-zinc-800 flex items-center justify-between">
+                                        <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">
+                                            Source: PSX Corporate Filing Database
+                                        </p>
+                                        {meta.attachments?.length > 0 && (
+                                            <Button
+                                                asChild
+                                                variant="outline"
+                                                size="sm"
+                                                className="bg-zinc-900 border-zinc-800 hover:bg-white hover:text-black transition-all font-bold"
+                                            >
+                                                <a href={meta.attachments[0]} target="_blank" rel="noopener noreferrer">
+                                                    <ExternalLink className="h-3.5 w-3.5 mr-2" />
+                                                    View Original Filing
+                                                </a>
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
+                </DialogContent>
+            </Dialog>
+
         </div>
     );
 }
