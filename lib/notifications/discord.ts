@@ -14,13 +14,15 @@ export interface DiscordEmbed {
     thumbnail?: { url: string };
 }
 
-export async function sendDiscordNotification(payload: { content?: string; embeds?: DiscordEmbed[] }) {
-    const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+export async function sendDiscordNotification(payload: { content?: string; embeds?: DiscordEmbed[] }, wait = false) {
+    const baseUrl = process.env.DISCORD_WEBHOOK_URL;
 
-    if (!webhookUrl) {
+    if (!baseUrl) {
         console.warn('⚠️  DISCORD_WEBHOOK_URL is not defined in environment variables. Skipping notification.');
-        return;
+        return null;
     }
+
+    const webhookUrl = wait ? `${baseUrl}?wait=true` : baseUrl;
 
     try {
         const response = await fetch(webhookUrl, {
@@ -34,11 +36,17 @@ export async function sendDiscordNotification(payload: { content?: string; embed
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`❌ Discord Webhook failed: ${response.status} ${response.statusText}`, errorText);
+            return null;
         } else {
             console.log('✅ Discord notification sent successfully.');
+            if (wait) {
+                return await response.json();
+            }
+            return true;
         }
     } catch (error) {
         console.error('❌ Error sending Discord notification:', error);
+        return null;
     }
 }
 
