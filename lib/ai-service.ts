@@ -19,6 +19,14 @@ function initAI() {
  * @returns The generated headline
  */
 export async function generateHeadline(prompt: string): Promise<string> {
+    const result = await generateAISynthesis(prompt);
+    return result.split('\n')[0].trim();
+}
+
+/**
+ * General purpose AI synthesis
+ */
+export async function generateAISynthesis(prompt: string): Promise<string> {
     initAI();
 
     if (!model) {
@@ -26,14 +34,40 @@ export async function generateHeadline(prompt: string): Promise<string> {
         return 'Market Event Detected (AI Unavailable)';
     }
 
-
     try {
         const result = await model.generateContent(prompt);
         const response = await result.response;
-        const text = response.text();
-        return text.trim();
+        return response.text().trim();
     } catch (error) {
-        console.error('Error generating headline:', error);
+        console.error('Error generating AI synthesis:', error);
         return 'Market Event Detected';
     }
+}
+
+/**
+ * Specifically for analyzing PSX Announcements with context
+ */
+export async function analyzeAnnouncement(
+    systemPrompt: string,
+    context: any,
+    announcement: any
+): Promise<string> {
+    initAI();
+    if (!model) return JSON.stringify({ error: 'AI Unavailable' });
+
+    const fullPrompt = `
+${systemPrompt}
+
+**CONTEXT DATA:**
+${JSON.stringify(context, null, 2)}
+
+**ANNOUNCEMENT:**
+Title: ${announcement.title}
+Company: ${announcement.company} (${announcement.symbol})
+Attachments: ${announcement.attachments.join(', ')}
+
+Analyze the above and provide the output in the format requested in the system instruction.
+`;
+
+    return generateAISynthesis(fullPrompt);
 }
