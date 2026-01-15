@@ -65,7 +65,20 @@ export async function updateFinancials(symbol: string, force: boolean = false): 
         const [profile, faceValue] = await Promise.all([
             scrapeCompanyProfile(symbol),
             fetchFaceValue(symbol)
-        ]);
+        ]).catch(err => {
+            if (err.message && err.message.includes('404')) {
+                // Return nulls if 404 (handled below)
+                return [null, null];
+            }
+            throw err;
+        });
+
+        if (!profile) {
+            return {
+                success: false,
+                error: `StockAnalysis returned 404 for ${symbol}`
+            };
+        }
 
 
 

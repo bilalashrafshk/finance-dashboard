@@ -18,7 +18,21 @@ export default async function AdminPromptsPage() {
                     <h2 className="text-2xl font-semibold">Alert Filtering & Thresholds</h2>
                 </div>
                 <div className="grid gap-6">
-                    {alertConfigs.map((config: any) => (
+                    {alertConfigs.filter((c: any) => c.key !== 'ai_context_payload').map((config: any) => (
+                        <div key={config.key} className="border rounded-xl p-6 bg-card/50 backdrop-blur-sm shadow-sm hover:shadow-md transition-all">
+                            <AlertConfigEditor config={config} />
+                        </div>
+                    ))}
+                </div>
+            </section>
+
+            <section className="mb-12">
+                <div className="flex items-center gap-2 mb-6">
+                    <div className="h-8 w-1 bg-emerald-600 rounded-full" />
+                    <h2 className="text-2xl font-semibold">AI Context & Structure</h2>
+                </div>
+                <div className="grid gap-6">
+                    {alertConfigs.filter((c: any) => c.key === 'ai_context_payload').map((config: any) => (
                         <div key={config.key} className="border rounded-xl p-6 bg-card/50 backdrop-blur-sm shadow-sm hover:shadow-md transition-all">
                             <AlertConfigEditor config={config} />
                         </div>
