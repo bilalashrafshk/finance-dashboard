@@ -13,6 +13,34 @@ const API_URL = 'https://dps.psx.com.pk/announcements';
 const BASE_URL = 'https://dps.psx.com.pk';
 const OUTPUT_FILE = path.join(process.cwd(), 'scripts/data/final_analysis.json');
 
+async function sendToDiscord(task: any, aiResult: string) {
+    const webhookUrl = process.env.DISCORD_FUNDAMENTAL_WEBHOOK;
+    if (!webhookUrl) return;
+
+    // Extract Headline from AI Result (usually the first line)
+    const lines = aiResult.split('\n');
+    let headline = lines[0].replace('**HEADLINE:**', '').replace('HEADLINE:', '').trim();
+    if (!headline) headline = `New Announcement: ${task.symbol}`;
+
+    const content = `
+**${headline}**
+> **Company:** ${task.company} (${task.symbol})
+> **Title:** ${task.title}
+> **Time:** ${task.date} @ ${task.time}
+
+${aiResult.split('\n').slice(1).join('\n').trim().substring(0, 1500)}
+
+**Sources:**
+${task.attachments.length > 0 ? task.attachments.join('\n') : 'No PDF Attachments'}
+`;
+
+    try {
+        await axios.post(webhookUrl, { content });
+    } catch (err: any) {
+        console.error(`❌ Discord Error (${task.symbol}):`, err.message);
+    }
+}
+
 async function runAnalysis(targetDate?: string) {
     const pool = getPool();
     console.log(`\n🚀 Starting End-to-End Analysis ${targetDate ? `for ${targetDate}` : '(Live)'}...`);
@@ -130,13 +158,16 @@ async function runAnalysis(targetDate?: string) {
                 // AI Synthesis
                 const aiResult = await analyzeAnnouncement(systemPrompt, context, task);
 
+                // Send Discord Alert
+                await sendToDiscord(task, aiResult);
+
                 finalResults.push({
                     ...task,
                     ai_analysis: aiResult,
                     processed_at: new Date().toISOString()
                 });
 
-                console.log(`✨ AI Output Generated.`);
+                console.log(`✨ AI Output Generated & Alert Sent.`);
             } catch (err: any) {
                 console.error(`❌ Error analyzing ${task.symbol}:`, err.message);
             }

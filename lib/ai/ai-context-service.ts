@@ -71,7 +71,7 @@ export class AIContextService {
             FROM financial_statements
             WHERE symbol = $1 AND period_type = 'quarterly'
             ORDER BY period_end_date DESC
-            LIMIT 4
+            LIMIT 8
         `, [upperSymbol]);
 
         // 4. Earnings - Annual
