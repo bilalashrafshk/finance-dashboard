@@ -179,6 +179,20 @@ async function runAnalysis(targetDate?: string) {
         for (const task of tasks) {
             console.log(`\n🧠 Analyzing ${task.symbol}: ${task.title}...`);
 
+            // Deduplication: Check if already processed
+            try {
+                const checkRes = await pool.query(
+                    "SELECT id FROM notable_events WHERE symbol = $1 AND metadata->>'psx_title' = $2",
+                    [task.symbol, task.title]
+                );
+                if (checkRes.rows.length > 0) {
+                    console.log(`⏩ Skipping ${task.symbol}: Already processed.`);
+                    continue;
+                }
+            } catch (err) {
+                console.error(`❌ Deduplication check failed for ${task.symbol}:`, err);
+            }
+
             try {
                 // Get Prompt
                 const promptSlug = getPromptSlugByTitle(task.title);
