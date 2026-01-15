@@ -11,39 +11,15 @@ require('dotenv').config({ path: '.env.local' });
 
 const API_URL = 'https://dps.psx.com.pk/announcements';
 const BASE_URL = 'https://dps.psx.com.pk';
-const OUTPUT_FILE = path.join(process.cwd(), 'scripts/data/final_analysis.json');
+const PAYLOADS_FILE = path.join(process.cwd(), 'scripts/data/debug_payloads.json');
+const RESPONSES_FILE = path.join(process.cwd(), 'scripts/data/debug_responses.json');
 
-async function sendToDiscord(task: any, aiResult: string) {
-    const webhookUrl = process.env.DISCORD_FUNDAMENTAL_WEBHOOK;
-    if (!webhookUrl) return;
-
-    // Extract Headline from AI Result (usually the first line)
-    const lines = aiResult.split('\n');
-    let headline = lines[0].replace('**HEADLINE:**', '').replace('HEADLINE:', '').trim();
-    if (!headline) headline = `New Announcement: ${task.symbol}`;
-
-    const content = `
-**${headline}**
-> **Company:** ${task.company} (${task.symbol})
-> **Title:** ${task.title}
-> **Time:** ${task.date} @ ${task.time}
-
-${aiResult.split('\n').slice(1).join('\n').trim().substring(0, 1500)}
-
-**Sources:**
-${task.attachments.length > 0 ? task.attachments.join('\n') : 'No PDF Attachments'}
-`;
-
-    try {
-        await axios.post(webhookUrl, { content });
-    } catch (err: any) {
-        console.error(`❌ Discord Error (${task.symbol}):`, err.message);
-    }
-}
-
-async function runAnalysis(targetDate?: string) {
+async function runDebugAnalysis(targetDate?: string) {
     const pool = getPool();
-    console.log(`\n🚀 Starting End-to-End Analysis ${targetDate ? `for ${targetDate}` : '(Live)'}...`);
+    console.log(`\n🔍 Starting AI Debugging Diagnostics ${targetDate ? `for ${targetDate}` : '(Live)'}...`);
+
+    const debugPayloads: any[] = [];
+    const debugResponses: any[] = [];
 
     try {
         // 1. Fetch Configs & Top Symbols
@@ -84,7 +60,6 @@ async function runAnalysis(targetDate?: string) {
 
         const $ = cheerio.load(response.data);
         const rows = $('tr');
-        const tasks: any[] = [];
 
         for (let i = 0; i < rows.length; i++) {
             const cols = $(rows[i]).find('td');
@@ -94,25 +69,24 @@ async function runAnalysis(targetDate?: string) {
             const title = $(cols[4]).text().trim();
             const titleLower = title.toLowerCase();
 
-            // 3. Filter Logic
-            let passed = false;
-            let reason = '';
+            // 3. Filter Logic Tracking
+            let status = 'FILTERED_OUT';
+            let reason = 'Normal Noise';
 
             const CRITICAL_KEYWORDS = ["Material Information"];
             if (CRITICAL_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
-                passed = true;
+                status = 'PASSED';
                 reason = "Critical Info";
             } else if (IGNORE_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
-                continue; // Skip noise
+                status = 'FILTERED_OUT';
+                reason = "Ignore Keyword Match";
             } else if (PRIORITY_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
-                passed = true;
-                reason = "Priority Keyword";
+                status = 'PASSED';
+                reason = "Priority Keyword Match";
             } else if (titleLower.includes("disclosure of interest") && topSymbols.includes(symbol)) {
-                passed = true;
-                reason = "Top 100 Insider";
+                status = 'PASSED';
+                reason = "Top 100 Insider Disclosure";
             }
-
-            if (!passed) continue;
 
             // Extract attachments
             const attachments: string[] = [];
@@ -123,76 +97,94 @@ async function runAnalysis(targetDate?: string) {
                 if (href) attachments.push(BASE_URL + href);
             });
 
-            // 2. Image/Gif Links (from data-images attribute)
+            // 2. Image/Gif Links
             const imgData = $(cols[5]).find('a[data-images]').attr('data-images');
             if (imgData) {
-                // If the link text or data indicates an image, use /download/image/
-                // Most GIFs/PNGs on PSX use the -1.gif suffix in the data-images attribute
                 attachments.push(`${BASE_URL}/download/image/${imgData}`);
             }
 
-            tasks.push({
+            const announcement = {
                 symbol,
                 company: $(cols[3]).text().trim(),
                 title,
-                date: $(cols[0]).text().trim(),
-                time: $(cols[1]).text().trim(),
-                attachments,
-                filterReason: reason
-            });
-        }
+                attachments
+            };
 
-        console.log(`✅ Filtered down to ${tasks.length} actionable announcements.`);
+            if (status === 'PASSED') {
+                console.log(`🧠 Processing ${symbol}: ${title}...`);
 
-        // 4. Intelligence Processing
-        const finalResults = [];
-        for (const task of tasks) {
-            console.log(`\n🧠 Analyzing ${task.symbol}: ${task.title}...`);
-
-            try {
-                // Get Prompt
-                const promptSlug = getPromptSlugByTitle(task.title);
+                // Get Intelligence Context
+                const promptSlug = getPromptSlugByTitle(title);
                 const promptRes = await pool.query("SELECT content FROM ai_prompts WHERE slug = $1", [promptSlug]);
-                const systemPrompt = promptRes.rows[0]?.content || "Analyze this financial announcement.";
+                const systemPrompt = promptRes.rows[0]?.content || "";
 
-                // Get Context
                 let context = {};
                 try {
-                    context = await AIContextService.getContext(task.symbol);
-                } catch (e) {
-                    console.warn(`⚠️ No context found for ${task.symbol}`);
-                }
+                    context = await AIContextService.getContext(symbol);
+                } catch (e) { }
 
-                // AI Synthesis
-                const aiResult = await analyzeAnnouncement(systemPrompt, context, task);
+                // Construct exact payload sent to AI (mirrors analyze-announcements.ts)
+                const exactPayload = `
+${systemPrompt}
 
-                // Send Discord Alert
-                await sendToDiscord(task, aiResult);
+**CONTEXT DATA:**
+${JSON.stringify(context, null, 2)}
 
-                finalResults.push({
-                    ...task,
-                    ai_analysis: aiResult,
-                    processed_at: new Date().toISOString()
+**ANNOUNCEMENT:**
+Title: ${announcement.title}
+Company: ${announcement.company} (${announcement.symbol})
+Attachments: ${announcement.attachments.join(', ')}
+
+Analyze the above and provide the output in the format requested in the system instruction.
+`;
+
+                debugPayloads.push({
+                    symbol,
+                    title,
+                    status,
+                    reason,
+                    prompt_slug: promptSlug,
+                    exact_ai_payload: exactPayload
                 });
 
-                console.log(`✨ AI Output Generated & Alert Sent.`);
-            } catch (err: any) {
-                console.error(`❌ Error analyzing ${task.symbol}:`, err.message);
+                // AI Response
+                try {
+                    const aiResult = await analyzeAnnouncement(systemPrompt, context, announcement);
+                    debugResponses.push({
+                        symbol,
+                        title,
+                        raw_ai_response: aiResult
+                    });
+                    console.log(`✨ AI Response Captured.`);
+                } catch (err: any) {
+                    console.error(`❌ AI Error:`, err.message);
+                }
+            } else {
+                debugPayloads.push({
+                    symbol,
+                    title,
+                    status,
+                    reason
+                });
             }
         }
 
-        // 5. Save Output
-        const dir = path.dirname(OUTPUT_FILE);
+        // 5. Save Debug Files
+        const dir = path.dirname(PAYLOADS_FILE);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(finalResults, null, 2));
 
-        console.log(`\n🏁 Done! Final analysis saved to ${OUTPUT_FILE}`);
+        fs.writeFileSync(PAYLOADS_FILE, JSON.stringify(debugPayloads, null, 2));
+        fs.writeFileSync(RESPONSES_FILE, JSON.stringify(debugResponses, null, 2));
+
+        console.log(`\n🏁 Diagnostics Complete!`);
+        console.log(`📁 Filtering & Payloads: ${PAYLOADS_FILE}`);
+        console.log(`📁 Raw AI Responses: ${RESPONSES_FILE}`);
 
     } catch (error: any) {
-        console.error("Pipeline Error:", error.message);
+        console.error("Debug Pipeline Error:", error.message);
     }
 }
 
 // Execution
-const dateArg = process.argv[2]; // Optional: YYYY-MM-DD
-runAnalysis(dateArg);
+const dateArg = process.argv[2];
+runDebugAnalysis(dateArg);

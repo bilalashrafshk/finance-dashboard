@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import axios from 'axios';
 
 
 let genAI: GoogleGenerativeAI | null = null;
@@ -55,7 +56,8 @@ export async function analyzeAnnouncement(
     initAI();
     if (!model) return JSON.stringify({ error: 'AI Unavailable' });
 
-    const fullPrompt = `
+    // 1. Prepare text prompt
+    const textPrompt = `
 ${systemPrompt}
 
 **CONTEXT DATA:**
@@ -64,10 +66,58 @@ ${JSON.stringify(context, null, 2)}
 **ANNOUNCEMENT:**
 Title: ${announcement.title}
 Company: ${announcement.company} (${announcement.symbol})
-Attachments: ${announcement.attachments.join(', ')}
-
-Analyze the above and provide the output in the format requested in the system instruction.
 `;
 
-    return generateAISynthesis(fullPrompt);
+    // 2. Prepare Multimodal Parts (Images/PDFs)
+    const parts: any[] = [{ text: textPrompt }];
+
+    for (const url of announcement.attachments || []) {
+        try {
+            console.log(`📥 Downloading attachment: ${url}`);
+            const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 10000 });
+
+            // Clean content type (remove charset=utf-8 etc)
+            let mimeType = response.headers['content-type']?.split(';')[0]?.trim();
+            const dataBase64 = Buffer.from(response.data).toString('base64');
+            const sizeInMb = (response.data.byteLength / (1024 * 1024)).toFixed(2);
+
+            console.log(`🔍 Mime: ${mimeType}, Size: ${sizeInMb} MB`);
+
+            // Gemini limitations: 
+            // - Images: png, jpeg, webp, heic, heif
+            // - Documents: application/pdf
+            const supportedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif'];
+
+            if (supportedTypes.includes(mimeType) || mimeType.startsWith('image/')) {
+                parts.push({
+                    inlineData: {
+                        data: dataBase64,
+                        mimeType: mimeType === 'image/gif' ? 'image/png' : mimeType
+                    }
+                });
+                console.log(`✅ Attached ${mimeType} (${sizeInMb} MB) to AI request.`);
+            } else {
+                console.warn(`⚠️ Unsupported mime type: ${mimeType} for ${url}`);
+            }
+        } catch (err: any) {
+            console.warn(`❌ Failed to download attachment ${url}:`, err.message);
+        }
+    }
+
+    parts.push({ text: "\nAnalyze the above (including any attached documents/images) and provide the output in the format requested in the system instruction." });
+
+    try {
+        const result = await model.generateContent(parts);
+        const response = await result.response;
+        return response.text().trim();
+    } catch (error: any) {
+        if (error.status === 400 || error.message?.includes('400')) {
+            console.error('❌ Gemini 400 Error: Possible payload limit or format issue. Falling back to text-only.');
+            const textOnlyResult = await model.generateContent(textPrompt + "\nAnalyze the announcement details provided in text.");
+            const resp = await textOnlyResult.response;
+            return resp.text().trim();
+        }
+        console.error('Error in multimodal analysis:', error);
+        return "Analysis failed due to model error.";
+    }
 }
