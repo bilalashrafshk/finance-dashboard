@@ -24,7 +24,8 @@ export async function GET(request: NextRequest) {
 
         if (date) {
             params.push(date);
-            conditions.push(`created_at::date = $${params.length}`);
+            // Convert created_at to PKT (Asia/Karachi) before extracting the date for comparison
+            conditions.push(`(created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Karachi')::date = $${params.length}`);
         }
 
         if (type && type !== 'all') {
