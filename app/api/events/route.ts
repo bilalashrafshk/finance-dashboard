@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
     const type = searchParams.get('type');
+    const category = searchParams.get('category');
     const limit = parseInt(searchParams.get('limit') || '50');
 
     const client = await pool.connect();
@@ -24,13 +25,18 @@ export async function GET(request: NextRequest) {
 
         if (date) {
             params.push(date);
-            // Convert created_at to PKT (Asia/Karachi) before extracting the date for comparison
             conditions.push(`(created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Karachi')::date = $${params.length}`);
         }
 
         if (type && type !== 'all') {
             params.push(type);
             conditions.push(`event_type = $${params.length}`);
+        }
+
+        if (category === 'fundamental') {
+            conditions.push(`event_type = 'fundamental_alert'`);
+        } else if (category === 'technical') {
+            conditions.push(`event_type != 'fundamental_alert'`);
         }
 
         if (conditions.length > 0) {
@@ -42,7 +48,7 @@ export async function GET(request: NextRequest) {
 
         const result = await client.query(query, params);
 
-        // Also fetch unique event types for the filter
+        // Also fetch unique event types
         const typesResult = await client.query('SELECT DISTINCT event_type FROM notable_events ORDER BY event_type');
         const eventTypes = typesResult.rows.map(row => row.event_type);
 
