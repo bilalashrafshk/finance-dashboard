@@ -23,8 +23,24 @@ export async function processBreakouts(candidates: BreakoutCandidate[]) {
 
     const client = await getPostgresClient();
     try {
+        // 0. Fetch Market Cap Threshold
+        const configRes = await client.query("SELECT value FROM alert_configs WHERE key = 'mc_threshold_rank'");
+        const mcThresholdRank = parseInt(configRes.rows[0]?.value || '100');
+
+        // Fetch Top X companies by Market Cap
+        const topSymbolsRes = await client.query(`
+            SELECT symbol FROM company_profiles 
+            WHERE asset_type = 'pk-equity' AND market_cap IS NOT NULL 
+            ORDER BY market_cap DESC LIMIT $1
+        `, [mcThresholdRank]);
+        const topSymbols = new Set(topSymbolsRes.rows.map(r => r.symbol));
+
+        // Filter candidates to only include those in top X
+        const filteredCandidates = candidates.filter(c => topSymbols.has(c.symbol));
+        if (filteredCandidates.length === 0) return;
+
         // 1. Fetch current stats for all candidates
-        const symbols = candidates.map(c => c.symbol);
+        const symbols = filteredCandidates.map(c => c.symbol);
         const statsRes = await client.query(`
             SELECT symbol, all_time_high, fifty_two_week_high 
             FROM company_profiles 
@@ -42,7 +58,7 @@ export async function processBreakouts(candidates: BreakoutCandidate[]) {
         // 2. Identify Breakouts
         const updates: { symbol: string, type: 'ATH' | '52W', value: number, old: number, close: number }[] = [];
 
-        for (const cand of candidates) {
+        for (const cand of filteredCandidates) {
             const stat = statsMap.get(cand.symbol);
             if (!stat) continue; // Skip if no profile (or handle new stock)
 
@@ -151,11 +167,30 @@ export async function processVolumeSurges(candidates: VolumeCandidate[]) {
     const client = await getPostgresClient();
     try {
         // 0. Fetch Settings from alert_configs
-        const configRes = await client.query("SELECT value FROM alert_configs WHERE key = 'volume_surge_settings'");
-        const config = configRes.rows[0]?.value || { multiplier: 2.0, period: 10, min_volume: 1000 };
-        const { multiplier, period, min_volume } = typeof config === 'string' ? JSON.parse(config) : config;
+        const configsRes = await client.query("SELECT key, value FROM alert_configs WHERE key IN ('volume_surge_settings', 'mc_threshold_rank')");
+        const configs = configsRes.rows.reduce((acc: any, row: any) => {
+            acc[row.key] = row.value;
+            return acc;
+        }, {});
 
-        const symbols = candidates.map(c => c.symbol);
+        const volConfig = configs.volume_surge_settings || { multiplier: 2.0, period: 10, min_volume: 1000 };
+        const { multiplier, period, min_volume } = typeof volConfig === 'string' ? JSON.parse(volConfig) : volConfig;
+
+        const mcThresholdRank = parseInt(configs.mc_threshold_rank || '100');
+
+        // Fetch Top X companies by Market Cap
+        const topSymbolsRes = await client.query(`
+            SELECT symbol FROM company_profiles 
+            WHERE asset_type = 'pk-equity' AND market_cap IS NOT NULL 
+            ORDER BY market_cap DESC LIMIT $1
+        `, [mcThresholdRank]);
+        const topSymbols = new Set(topSymbolsRes.rows.map(r => r.symbol));
+
+        // Filter candidates
+        const filteredCandidates = candidates.filter(c => topSymbols.has(c.symbol));
+        if (filteredCandidates.length === 0) return;
+
+        const symbols = filteredCandidates.map(c => c.symbol);
         const today = new Date().toISOString().split('T')[0];
 
         // 1. Fetch historical volume (using dynamic period)
@@ -181,7 +216,7 @@ export async function processVolumeSurges(candidates: VolumeCandidate[]) {
 
         const surges: { symbol: string, current: number, avg: number, price: number }[] = [];
 
-        for (const cand of candidates) {
+        for (const cand of filteredCandidates) {
             const vols = historyMap.get(cand.symbol);
             // Need at least 50% of the period for a meaningful average
             if (!vols || vols.length < Math.max(3, Math.floor(period / 2))) continue;
