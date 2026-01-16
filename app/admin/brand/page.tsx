@@ -19,6 +19,7 @@ export default function AdminBrandPage() {
     const [newExampleType, setNewExampleType] = useState<'short' | 'long'>('short');
     const [model, setModel] = useState('gemini-2.0-flash');
     const [enabledTools, setEnabledTools] = useState<Record<string, boolean>>({});
+    const [coordinatorInstructions, setCoordinatorInstructions] = useState('');
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -44,6 +45,7 @@ export default function AdminBrandPage() {
                 setExamples(data.examples || []);
                 setModel(data.default_model);
                 setEnabledTools(data.enabled_tools || {});
+                setCoordinatorInstructions(data.coordinator_instructions || '');
                 setLoading(false);
             })
             .catch(() => setLoading(false));
@@ -53,7 +55,13 @@ export default function AdminBrandPage() {
         const token = getAuthToken();
         const res = await fetch('/api/admin/brand', {
             method: 'POST',
-            body: JSON.stringify({ instructions, examples, default_model: model, enabled_tools: enabledTools }),
+            body: JSON.stringify({
+                instructions,
+                examples,
+                default_model: model,
+                enabled_tools: enabledTools,
+                coordinator_instructions: coordinatorInstructions
+            }),
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
@@ -90,10 +98,29 @@ export default function AdminBrandPage() {
                 </CardContent>
             </Card>
 
+            <Card className="border-blue-500/20 shadow-sm bg-blue-500/[0.02]">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <span className="text-blue-600">🧠</span> 2. The Brain (Coordinator Logic)
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <Textarea
+                        value={coordinatorInstructions}
+                        onChange={(e) => setCoordinatorInstructions(e.target.value)}
+                        className="h-48 font-mono text-sm bg-background/50 leading-relaxed border-blue-500/20 focus-visible:ring-blue-500/30"
+                        placeholder="Define how the AI should decide which tools to use. This controls the 'Balanced Brain' logic..."
+                    />
+                    <p className="mt-3 text-xs text-muted-foreground italic">
+                        This instruction is given to the agent FIRST. It determines if it should chase stats (P/E, Dividends) or focus solely on your provided news/notes.
+                    </p>
+                </CardContent>
+            </Card>
+
             <Card>
                 <CardHeader>
                     <div className="flex justify-between items-center">
-                        <CardTitle>2. Style Examples (Few-Shot)</CardTitle>
+                        <CardTitle>3. Style Examples (Few-Shot)</CardTitle>
                         <div className="flex gap-4 text-xs font-bold uppercase opacity-50">
                             <span>Short: {examples.filter(e => e.type === 'short').length}</span>
                             <span>Long: {examples.filter(e => e.type === 'long').length}</span>

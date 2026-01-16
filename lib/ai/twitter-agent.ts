@@ -126,14 +126,18 @@ export class TwitterAgentService {
 
         // --- STAGE 1: THE BRAIN (Thinking ENABLED, Tools DISABLED) ---
         // This stage captures the AI's internal reasoning and data plan.
+        const defaultCoordinatorPrompt = `You are the COORDINATOR of an investment agent. 
+        Analyze the user's input and current context carefully. 
+        Determine if existing info is sufficient or if tools are needed. 
+        DO NOT write the final tweet/reply yet.`;
+
         const brainModel = ai.getGenerativeModel({
             model: personality.default_model || 'gemini-2.0-flash',
-            systemInstruction: `You are the PLANNING brain of an investment agent. 
-            Your goal is to decide which internal financial tools (if any) are needed to fulfill the user's request with high-quality, signal-driven data.
-            If the request is simple or does not require specific stats, you may proceed without tools.
-            DO NOT write the final tweet/reply yet. 
-            Available tools include: Price metrics, P/E, Earnings, Dividends, or a Web Search.
-            ${userAskedForSearch ? 'The user has requested a web search. Include planning for Google Search.' : 'Do NOT plan for web search unless it is explicitly requested by the user or absolutely essential for current macro context.'}`
+            systemInstruction: `
+                ${personality.coordinator_instructions || defaultCoordinatorPrompt}
+                
+                ${userAskedForSearch ? 'The user has requested a web search. Include planning for Google Search.' : 'Do NOT plan for web search unless it is explicitly requested by the user or absolutely essential for current macro context.'}
+            `
         });
 
         const brainPrompt = `Request: Write a ${mode === 'reply' ? 'reply' : 'tweet'} for symbol ${symbol}. ${userNotes ? `User Note: ${userNotes}` : ''}. 
