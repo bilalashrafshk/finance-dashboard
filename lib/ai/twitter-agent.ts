@@ -86,7 +86,7 @@ export class TwitterAgentService {
         userNotes: string = '',
         mode: 'tweet' | 'reply' = 'tweet',
         targetTweet: string = ''
-    ): Promise<{ draft: string; reasoningLog: any[] }> {
+    ): Promise<{ draft: string; reasoningLog: any[]; trace?: any }> {
         const apiKey = process.env.GEMINI_API_KEY || '';
         if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
 
@@ -95,14 +95,37 @@ export class TwitterAgentService {
         if (!personality) throw new Error('Brand personality not found');
 
         // 2. Filter Tools based on settings
-        const enabledTools = this.tools.filter(t =>
+        const enabledTools: any[] = this.tools.filter(t =>
             personality.enabled_tools[t.functionDeclarations![0].name] !== false
         );
 
+        // Add Google Search Grounding if enabled
+        if (personality.enabled_tools.googleSearch !== false) {
+            enabledTools.push({
+                googleSearchRetrieval: {
+                    dynamicRetrievalConfig: {
+                        mode: "DYNAMIC",
+                        dynamicThreshold: 0.3,
+                    },
+                },
+            });
+        }
+
         const ai = initAI(apiKey);
+        const systemInstruction = `
+            ${personality.instructions}
+            
+            Current Mode: ${mode === 'reply' ? 'Reply to existing tweet' : 'New Tweet'}
+            Target Tweet (if reply): ${targetTweet || 'N/A'}
+            
+            Brand Examples:
+            ${personality.examples.join('\n---\n')}
+        `;
+
         const model = ai.getGenerativeModel({
             model: personality.default_model || 'gemini-2.0-flash',
-            tools: enabledTools.length > 0 ? (enabledTools as any) : undefined
+            tools: enabledTools.length > 0 ? enabledTools : undefined,
+            systemInstruction
         });
 
         // 2. Start Agentic Chat
@@ -110,42 +133,17 @@ export class TwitterAgentService {
             history: [],
         });
 
-        const systemInstruction = `
-            You are drafting a ${mode === 'reply' ? 'reply to a tweet' : 'new tweet'} for Bilal Ashraf. 
-            
-            BRAND GUIDELINES:
-            ${personality.instructions}
-            
-            CORE RULES:
-            - No emojis, no hashtags, no exclamation marks.
-            - Professional, calm, macro-focused analytical tone.
-            - Pick 1-2 key data points. Do NOT dump all data.
-            
-            YOUR CAPABILITIES:
-            - You have tools to fetch real-time database data for ANY symbol.
-            - ALWAYS state your internal thought process before calling a tool or drafting.
-        `;
-
-        const userPrompt = `
-            ASSET: ${symbol}
-            CONTEXT/NOTES: ${userNotes}
-            ${mode === 'reply' ? `REPLYING TO: ${targetTweet}` : ''}
-            
-            TASK: 
-            1. Use tools to find the most significant data points for ${symbol}.
-            2. Be selective. Choose figures that support a sharp, macro-style observation.
-            3. Final output must be ONLY the tweet text.
-        `;
-
         const reasoningLog: any[] = [];
-        let currentPrompt = `${systemInstruction}\n\n${userPrompt}`;
-        let responseDraft = '';
+        let currentPrompt = `Write a ${mode === 'reply' ? 'reply' : 'tweet'} for symbol ${symbol}. ${userNotes ? `User Note: ${userNotes}` : ''}. Start your thought process by identifying what data you need.`;
+        const history: any[] = [];
 
         // 3. Agentic Loop (Max 5 iterations to prevent infinite loops)
         for (let i = 0; i < 5; i++) {
+            history.push({ role: 'user', parts: [{ text: currentPrompt }] });
             const result = await chat.sendMessage(currentPrompt);
             const response = result.response;
             const content = response.candidates![0].content;
+            history.push({ role: 'model', parts: content.parts });
 
             // Extract thoughts and text from all parts
             for (const part of content.parts) {
@@ -174,15 +172,31 @@ export class TwitterAgentService {
                     }
                 });
             } else {
-                // No more tools needed, we have the final answer
-                responseDraft = content.parts[0].text || '';
-                break;
+                // Final answer reached
+                const draft = content.parts.find(p => p.text)?.text || '';
+                return {
+                    draft,
+                    reasoningLog,
+                    trace: {
+                        systemInstruction,
+                        model: personality.default_model,
+                        toolsSentToModel: enabledTools,
+                        history
+                    }
+                };
             }
         }
 
+        // If loop finishes without a final answer
         return {
-            draft: responseDraft.trim().replace(/^"|"$/g, ''),
-            reasoningLog
+            draft: '',
+            reasoningLog,
+            trace: {
+                systemInstruction,
+                model: personality.default_model,
+                toolsSentToModel: enabledTools,
+                history
+            }
         };
     }
 

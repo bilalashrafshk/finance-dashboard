@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Copy, Send, Sparkles, Loader2 } from 'lucide-react';
+import { Copy, Send, Sparkles, Loader2, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function XCopilotPage() {
@@ -19,7 +19,9 @@ export default function XCopilotPage() {
     const [targetTweet, setTargetTweet] = useState('');
     const [draft, setDraft] = useState('');
     const [reasoningLog, setReasoningLog] = useState<any[]>([]);
+    const [trace, setTrace] = useState<any>(null);
     const [loading, setLoading] = useState(false);
+    const [showAdvanced, setShowAdvanced] = useState(false);
 
     useEffect(() => {
         if (!authLoading) {
@@ -53,6 +55,7 @@ export default function XCopilotPage() {
             if (data.draft) {
                 setDraft(data.draft);
                 setReasoningLog(data.reasoningLog || []);
+                setTrace(data.trace || null);
             } else {
                 toast.error('Generation failed: ' + (data.error || 'Unknown error'));
             }
@@ -138,14 +141,24 @@ export default function XCopilotPage() {
                                 />
                             </div>
 
-                            <Button
-                                className="w-full h-14 text-lg font-black bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20 gap-2"
-                                onClick={generate}
-                                disabled={loading}
-                            >
-                                {loading ? <Loader2 className="animate-spin w-5 h-5" /> : <Sparkles className="w-5 h-5" />}
-                                {loading ? 'Agent is Thinking...' : `Generate ${mode === 'reply' ? 'Reply' : 'Tweet'}`}
-                            </Button>
+                            <div className="flex gap-2">
+                                <Button
+                                    className="flex-1 h-14 text-lg font-black bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20 gap-2"
+                                    onClick={generate}
+                                    disabled={loading}
+                                >
+                                    {loading ? <Loader2 className="animate-spin w-5 h-5" /> : <Sparkles className="w-5 h-5" />}
+                                    {loading ? 'Agent is Thinking...' : `Generate ${mode === 'reply' ? 'Reply' : 'Tweet'}`}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    className={`h-14 px-4 ${showAdvanced ? 'bg-zinc-800 text-white' : ''}`}
+                                    onClick={() => setShowAdvanced(!showAdvanced)}
+                                    title="Show Raw Payload Payload"
+                                >
+                                    <Settings2 className="w-5 h-5" />
+                                </Button>
+                            </div>
                         </CardContent>
                     </Card>
 
@@ -267,6 +280,30 @@ export default function XCopilotPage() {
                             </div>
                         </div>
                     </div>
+
+                    {/* --- Advanced: Raw Payload Trace --- */}
+                    {showAdvanced && trace && (
+                        <Card className="mt-8 border-red-500/20 bg-black text-zinc-400 font-mono text-[10px] overflow-hidden">
+                            <CardHeader className="bg-zinc-900 py-2 flex flex-row items-center justify-between">
+                                <CardTitle className="text-[10px] uppercase tracking-widest font-black text-red-500">Raw AI Payload Trace (Advanced)</CardTitle>
+                                <span className="text-[8px] bg-red-500/10 text-red-500 px-2 py-0.5 rounded">WIRE-LEVEL DATA</span>
+                            </CardHeader>
+                            <CardContent className="p-4 space-y-4 max-h-[600px] overflow-y-auto">
+                                <div>
+                                    <p className="text-zinc-200 mb-1 border-b border-zinc-800 pb-1">System Instruction:</p>
+                                    <pre className="whitespace-pre-wrap opacity-70 italic">{trace.systemInstruction}</pre>
+                                </div>
+                                <div>
+                                    <p className="text-zinc-200 mb-1 border-b border-zinc-800 pb-1">Conversation History JSON:</p>
+                                    <pre className="whitespace-pre-wrap">{JSON.stringify(trace.history, null, 2)}</pre>
+                                </div>
+                                <div>
+                                    <p className="text-zinc-200 mb-1 border-b border-zinc-800 pb-1">Tools Config Sent:</p>
+                                    <pre className="whitespace-pre-wrap">{JSON.stringify(trace.toolsSentToModel, null, 2)}</pre>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
                 </div>
             </div>
         </div>

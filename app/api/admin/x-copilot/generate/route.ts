@@ -22,14 +22,14 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
         }
 
-        const { draft, reasoningLog } = await TwitterAgentService.generate(
+        const { draft, reasoningLog, trace } = await TwitterAgentService.generate(
             symbol,
             notes,
             mode || 'tweet',
             targetTweet || ''
         );
 
-        return NextResponse.json({ draft, reasoningLog });
+        return NextResponse.json({ draft, reasoningLog, trace });
     } catch (error: any) {
         console.error('API Error in X-Copilot Generate:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });

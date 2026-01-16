@@ -156,6 +156,7 @@ export default function AdminBrandPage() {
                         { id: 'getQuarterlyEarnings', label: 'Quarterly Earnings (Last 8 Quarters)', desc: 'Recent EPS and Net Income performance.' },
                         { id: 'getAnnualEarnings', label: 'Annual Earnings (Last 3 Years)', desc: 'Long-term profitability trends.' },
                         { id: 'getDividendInfo', label: 'Dividend Info (Detailed History)', desc: 'Detailed dividend payments and yield tracking.' },
+                        { id: 'googleSearch', label: 'Google Search Grounding (Web Access)', desc: 'Allow AI to search the web for real-time news and macro data.' },
                     ].map(tool => (
                         <div key={tool.id} className="flex items-start gap-3 p-3 bg-secondary/50 rounded-lg border border-border">
                             <input
