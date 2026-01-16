@@ -208,7 +208,7 @@ export default function XCopilotPage() {
                                         <Sparkles className="w-12 h-12 mb-2 animate-pulse" />
                                         <p className="italic">Draft will materialize here...</p>
                                     </div>
-                                ) || <span className="text-muted-foreground italic">Draft will appear here...</span>}
+                                )}
                             </div>
 
                             {draft && (
