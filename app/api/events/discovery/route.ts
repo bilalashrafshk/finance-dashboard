@@ -20,6 +20,18 @@ export async function GET(request: Request) {
     const client = await pool.connect();
 
     try {
+        // --- CLEANUP STEP ---
+        // Clean up event_queue to prevent bloat. Keep only pending items.
+        // Delete PROCESSED or SKIPPED items older than 2 days.
+        const cleanupRes = await client.query(`
+            DELETE FROM event_queue 
+            WHERE status IN ('PROCESSED', 'SKIPPED') 
+            AND processed_at < NOW() - INTERVAL '48 hours'
+        `);
+        if (cleanupRes.rowCount && cleanupRes.rowCount > 0) {
+            console.log(`[Discovery] Cleaned up ${cleanupRes.rowCount} stale records from event_queue.`);
+        }
+
         // 1. Fetch Dynamic Configs
         const configRes = await client.query("SELECT key, value FROM alert_configs");
         const configs = configRes.rows.reduce((acc: any, row: any) => {
@@ -107,10 +119,10 @@ export async function GET(request: Request) {
             });
         }
 
-        console.log(`[Discovery] Scraped ${tasks.length} priority announcements.`);
-
         // 4. Queue Tasks
-        let queuedCount = 0;
+        let newlyQueuedCount = 0;
+        let skippedCount = 0;
+
         for (const task of tasks) {
             // Deduplication
             const existing = await client.query(
@@ -126,11 +138,20 @@ export async function GET(request: Request) {
                      VALUES ($1, $2, $3, $4, $5, $6)`,
                     [task.symbol, 'fundamental_alert', 0, 0, JSON.stringify(task), 'PENDING']
                 );
-                queuedCount++;
+                newlyQueuedCount++;
+            } else {
+                skippedCount++;
             }
         }
 
-        return NextResponse.json({ success: true, scraped: tasks.length, queued: queuedCount });
+        console.log(`[Discovery] Results: ${newlyQueuedCount} Newly Queued, ${skippedCount} Already Exists.`);
+
+        return NextResponse.json({
+            success: true,
+            scraped: tasks.length,
+            newlyQueued: newlyQueuedCount,
+            skipped: skippedCount
+        });
 
     } catch (error: any) {
         console.error('[Discovery] Error:', error.message);
