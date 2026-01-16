@@ -129,10 +129,11 @@ export class TwitterAgentService {
         const brainModel = ai.getGenerativeModel({
             model: personality.default_model || 'gemini-2.0-flash',
             systemInstruction: `You are the PLANNING brain of an investment agent. 
-            Your goal is to identify exactly what financial data from our internal tools is needed to fulfill the user's request.
+            Your goal is to decide which internal financial tools (if any) are needed to fulfill the user's request with high-quality, signal-driven data.
+            If the request is simple or does not require specific stats, you may proceed without tools.
             DO NOT write the final tweet/reply yet. 
-            Identify if you need: Price metrics, P/E, Earnings, Dividends, or a Web Search.
-            ${userAskedForSearch ? 'The user has requested a web search. Include planning for Google Search.' : 'Do NOT plan for web search unless it is absolutely essential for context not available in financial tools.'}`
+            Available tools include: Price metrics, P/E, Earnings, Dividends, or a Web Search.
+            ${userAskedForSearch ? 'The user has requested a web search. Include planning for Google Search.' : 'Do NOT plan for web search unless it is explicitly requested by the user or absolutely essential for current macro context.'}`
         });
 
         const brainPrompt = `Request: Write a ${mode === 'reply' ? 'reply' : 'tweet'} for symbol ${symbol}. ${userNotes ? `User Note: ${userNotes}` : ''}. 
