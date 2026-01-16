@@ -110,14 +110,27 @@ export default function AdminBrandPage() {
             </Card>
 
             <Card>
-                <CardHeader><CardTitle>Model Selection</CardTitle></CardHeader>
-                <CardContent>
-                    <Input
+                <CardHeader>
+                    <CardTitle>Model Selection</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <select
                         value={model}
                         onChange={(e) => setModel(e.target.value)}
-                        placeholder="gemini-2.0-flash"
-                    />
-                    <p className="text-xs text-muted-foreground mt-2">Default: gemini-2.0-flash. Use gemini-2.0-pro for high complexity.</p>
+                        className="w-full h-10 px-3 bg-secondary rounded-md border border-input text-sm focus:ring-2 focus:ring-ring"
+                    >
+                        <option value="gemini-2.0-flash">Gemini 2.0 Flash (Fast & Experimental)</option>
+                        <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite (Cheapest)</option>
+                        <option value="gemini-1.5-pro">Gemini 1.5 Pro (Steady)</option>
+                        <option value="gemini-2.0-pro-exp-02-05">Gemini 2.0 Pro Experimental (Deep Reasoning)</option>
+                    </select>
+                    <div className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-lg">
+                        <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                            {model.includes('2.0') ?
+                                "✨ You are using a 2.0 Agentic model. This supports high-speed tool-calling and reasoning loop." :
+                                "⚠️ Warning: This model may be slower or less capable in complex reasoning loops."}
+                        </p>
+                    </div>
                 </CardContent>
             </Card>
 
