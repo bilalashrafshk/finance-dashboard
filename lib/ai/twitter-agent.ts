@@ -102,12 +102,7 @@ export class TwitterAgentService {
         // Add Google Search Grounding if enabled
         if (personality.enabled_tools.googleSearch !== false) {
             enabledTools.push({
-                googleSearchRetrieval: {
-                    dynamicRetrievalConfig: {
-                        mode: "DYNAMIC",
-                        dynamicThreshold: 0.3,
-                    },
-                },
+                googleSearch: {}
             });
         }
 
