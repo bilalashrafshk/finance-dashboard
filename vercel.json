@@ -10,6 +10,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/events/discovery",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/sbp/macros/update",
       "schedule": "0 */6 * * *"
     }

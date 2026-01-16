@@ -2,7 +2,7 @@ import { getPrompts, getAlertConfigs } from './actions';
 import { PromptEditor } from './prompt-editor';
 import { AlertConfigEditor } from './alert-config-editor';
 import { SettingsZone } from './settings-zone';
-import { BarChart3, Users, Newspaper, ShieldAlert, Sliders } from 'lucide-react';
+import { BarChart3, Users, Newspaper, ShieldAlert, Sliders, Bell } from 'lucide-react';
 
 export default async function AdminPromptsPage() {
     const [prompts, alertConfigs] = await Promise.all([
@@ -113,6 +113,26 @@ export default async function AdminPromptsPage() {
                             if (!config) return null;
                             return (
                                 <div key={key} className={`border rounded-xl p-6 bg-card/50 transition-all ${key === 'ignore_keywords' ? 'md:col-span-2 border-red-500/10 bg-red-500/5' : ''}`}>
+                                    <AlertConfigEditor config={config} />
+                                </div>
+                            );
+                        })}
+                    </div>
+                </SettingsZone>
+
+                {/* --- NOTIFICATION CHANNELS --- */}
+                <SettingsZone
+                    title="Notification Channels"
+                    description="Discord Webhooks for alerts and reporting"
+                    icon={<Bell className="w-6 h-6" />}
+                    color="bg-pink-500"
+                >
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {['fundamental_webhook_url', 'technical_webhook_url'].map(key => {
+                            const config = getAlertConfig(key);
+                            if (!config) return null;
+                            return (
+                                <div key={key} className="border rounded-xl p-6 bg-card/50 transition-all">
                                     <AlertConfigEditor config={config} />
                                 </div>
                             );

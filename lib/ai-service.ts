@@ -150,11 +150,18 @@ export function parseAIResponse(rawText: string) {
     }
 }
 
+import { getWebhookFromDB } from './notifications/discord';
+
 /**
  * Send fundamental alert to Discord
  */
 export async function sendToFundamentalDiscord(task: any, aiResult: any, sector: string) {
-    const webhookUrl = process.env.DISCORD_FUNDAMENTAL_WEBHOOK;
+    let webhookUrl = await getWebhookFromDB('fundamental_webhook_url');
+
+    if (!webhookUrl || webhookUrl === '""') {
+        webhookUrl = process.env.DISCORD_FUNDAMENTAL_WEBHOOK || null;
+    }
+
     if (!webhookUrl) return;
 
     const sentimentEmoji = aiResult.sentiment === 'Bullish' ? '🟢' : (aiResult.sentiment === 'Bearish' ? '🔴' : '⚪');

@@ -14,18 +14,44 @@ export interface DiscordEmbed {
     thumbnail?: { url: string };
 }
 
-export async function sendDiscordNotification(payload: { content?: string; embeds?: DiscordEmbed[] }, wait = false) {
-    const baseUrl = process.env.DISCORD_WEBHOOK_URL;
+import { getPool } from '@/lib/db';
 
-    if (!baseUrl) {
-        console.warn('⚠️  DISCORD_WEBHOOK_URL is not defined in environment variables. Skipping notification.');
+export async function getWebhookFromDB(key: string): Promise<string | null> {
+    try {
+        const pool = getPool();
+        const { rows } = await pool.query('SELECT value FROM alert_configs WHERE key = $1', [key]);
+        if (rows.length > 0) {
+            const val = rows[0].value;
+            return typeof val === 'string' ? val : JSON.stringify(val).replace(/^"|"$/g, '');
+        }
+    } catch (err) {
+        console.error(`Error fetching webhook ${key} from DB:`, err);
+    }
+    return null;
+}
+
+export async function sendDiscordNotification(
+    payload: { content?: string; embeds?: DiscordEmbed[] },
+    wait = false,
+    overrideWebhook?: string
+) {
+    let webhookUrl: string | undefined = overrideWebhook || (process.env.DISCORD_WEBHOOK_URL as string);
+
+    if (!webhookUrl) {
+        // Fallback to fundamental if technical/default not provided
+        const dbUrl = await getWebhookFromDB('fundamental_webhook_url');
+        webhookUrl = dbUrl || undefined;
+    }
+
+    if (!webhookUrl || webhookUrl === '""') {
+        console.warn('⚠️  Discord Webhook URL is not defined. Skipping notification.');
         return null;
     }
 
-    const webhookUrl = wait ? `${baseUrl}?wait=true` : baseUrl;
+    const finalUrl = wait ? `${webhookUrl}?wait=true` : webhookUrl;
 
     try {
-        const response = await fetch(webhookUrl, {
+        const response = await fetch(finalUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -82,5 +108,7 @@ export async function sendMarketEventAlert(event: {
         }
     };
 
-    await sendDiscordNotification({ embeds: [embed] });
+    // Try to get technical webhook
+    const techWebhook = await getWebhookFromDB('technical_webhook_url');
+    await sendDiscordNotification({ embeds: [embed] }, false, techWebhook || undefined);
 }

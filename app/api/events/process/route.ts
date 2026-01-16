@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { Pool } from 'pg';
 import { getEventHeadlinePrompt } from '@/lib/ai-prompts';
 import { generateHeadline, analyzeAnnouncement, parseAIResponse, sendToFundamentalDiscord } from '@/lib/ai-service';
+import { sendMarketEventAlert } from '@/lib/notifications/discord';
 import { getPromptSlugByTitle } from '@/lib/ai/prompt-router';
 import { AIContextService } from '@/lib/ai/ai-context-service';
 
@@ -139,6 +140,19 @@ export async function GET(request: Request) {
                         `Price reached ${event.trigger_value}, breaking previous ${event.event_type} of ${event.previous_value}`,
                         { old: event.previous_value, new: event.trigger_value, queue_id: event.id }
                     ]);
+
+                    // Send to Discord
+                    try {
+                        await sendMarketEventAlert({
+                            symbol: event.symbol,
+                            type: eventTypeLabel,
+                            headline: headline,
+                            price: parseFloat(event.trigger_value),
+                            prevValue: parseFloat(event.previous_value)
+                        });
+                    } catch (discordErr) {
+                        console.error(`[Event Process] Discord notification failed for ${event.symbol}:`, discordErr);
+                    }
                 }
 
                 // E. Mark Processed
