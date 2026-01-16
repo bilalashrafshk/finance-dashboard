@@ -141,6 +141,7 @@ export class TwitterAgentService {
         });
 
         const brainPrompt = `Request: Write a ${mode === 'reply' ? 'reply' : 'tweet'} for symbol ${symbol}. ${userNotes ? `User Note: ${userNotes}` : ''}. 
+        ${symbol.toUpperCase() === 'N/A' ? 'This is a MACRO/GENERAL request. Do not force a stock symbol.' : ''}
         Plan the data acquisition. DO NOT provide the final draft.`;
 
         // @ts-ignore
@@ -158,6 +159,7 @@ export class TwitterAgentService {
         const brainParts = (brainResult.response.candidates?.[0]?.content?.parts || []) as any[];
         const internalThoughts = brainParts.find((p: any) => p.thought)?.thought;
         const planText = brainResult.response.text();
+        const planLower = planText.toLowerCase();
 
         if (internalThoughts) {
             reasoningLog.push({ type: 'thought', content: internalThoughts, isRawThinking: true });
@@ -171,8 +173,12 @@ export class TwitterAgentService {
             personality.enabled_tools[t.functionDeclarations![0].name] !== false
         );
 
+        // Enable Google Search if user asked OR if Brain planned it
+        const planMentionsSearch = planLower.includes('google search') || planLower.includes('web search') || planLower.includes('search the web');
+        const shouldEnableSearch = (userAskedForSearch || planMentionsSearch) && personality.enabled_tools.googleSearch !== false;
+
         let handTools: any[] = [];
-        if (userAskedForSearch && personality.enabled_tools.googleSearch !== false) {
+        if (shouldEnableSearch) {
             handTools = [{ googleSearch: {} }];
         } else {
             handTools = enabledCustomTools;

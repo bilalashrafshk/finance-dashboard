@@ -51,6 +51,12 @@ Sky47, launches Cloud & AI infrastructure platform. Platform located at Islamaba
         symbol: "MARI",
         notes: "MARI announced a tech pivot. This is huge. But how does its P/E look compared to the oil sector now?",
         expectedBehavior: "USE TOOLS - Requires P/E comparison data"
+    },
+    {
+        name: "Macro Analysis (No Symbol)",
+        symbol: "N/A",
+        notes: "Meezab Group is General Sales Agent (GSA) in Pakistan for FitsAir. FitsAir is planning to operate twice-a-week flights between Colombo and Lahore with Airbus A320.",
+        expectedBehavior: "SKIP TOOLS (or use Search) - Focus on macro commentary, no ticker forced"
     }
 ];
 
@@ -204,6 +210,7 @@ Available Tools:
 
         const handModel = genAI.getGenerativeModel({
             model: personality.default_model || 'gemini-2.0-flash',
+            // @ts-ignore
             tools: toolCallsPlanned ? toolDefinitions : undefined,
             systemInstruction
         });
