@@ -12,12 +12,81 @@ function initAI(apiKey: string) {
 }
 
 export class TwitterAgentService {
+    /**
+     * The "Tool Definitions" for Gemini 2.0
+     */
+    private static tools = [
+        {
+            functionDeclarations: [
+                {
+                    name: 'getCompanyProfile',
+                    description: 'Fetch basic company profile, sector, and valuation metrics (Price, P/E, etc).',
+                    parameters: {
+                        type: 'object',
+                        properties: { symbol: { type: 'string', description: 'The stock symbol to lookup' } },
+                        required: ['symbol']
+                    }
+                },
+                {
+                    name: 'getPriceHistoryMetrics',
+                    description: 'Fetch technical price metrics like the 52-week high.',
+                    parameters: {
+                        type: 'object',
+                        properties: { symbol: { type: 'string', description: 'The stock symbol' } },
+                        required: ['symbol']
+                    }
+                },
+                {
+                    name: 'getQuarterlyEarnings',
+                    description: 'Fetch last 8 quarterly EPS and Net Income data.',
+                    parameters: {
+                        type: 'object',
+                        properties: { symbol: { type: 'string', description: 'The stock symbol' } },
+                        required: ['symbol']
+                    }
+                },
+                {
+                    name: 'getAnnualEarnings',
+                    description: 'Fetch last 3 annual earnings reports.',
+                    parameters: {
+                        type: 'object',
+                        properties: { symbol: { type: 'string', description: 'The stock symbol' } },
+                        required: ['symbol']
+                    }
+                },
+                {
+                    name: 'getDividendInfo',
+                    description: 'Fetch the latest dividend payment and yield details.',
+                    parameters: {
+                        type: 'object',
+                        properties: { symbol: { type: 'string', description: 'The stock symbol' } },
+                        required: ['symbol']
+                    }
+                }
+            ]
+        }
+    ];
+
+    /**
+     * Router to map AI tool names to actual code
+     */
+    private static async callFunction(name: string, args: any) {
+        switch (name) {
+            case 'getCompanyProfile': return await AIContextService.getCompanyProfile(args.symbol);
+            case 'getPriceHistoryMetrics': return await AIContextService.getPriceHistoryMetrics(args.symbol);
+            case 'getQuarterlyEarnings': return await AIContextService.getQuarterlyEarnings(args.symbol);
+            case 'getAnnualEarnings': return await AIContextService.getAnnualEarnings(args.symbol);
+            case 'getDividendInfo': return await AIContextService.getDividendInfo(args.symbol);
+            default: throw new Error(`Unknown tool: ${name}`);
+        }
+    }
+
     static async generate(
         symbol: string,
         userNotes: string = '',
         mode: 'tweet' | 'reply' = 'tweet',
         targetTweet: string = ''
-    ): Promise<{ draft: string; contextData: any }> {
+    ): Promise<{ draft: string; reasoningLog: any[] }> {
         const apiKey = process.env.GEMINI_API_KEY || '';
         if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
 
@@ -25,66 +94,89 @@ export class TwitterAgentService {
         const personality = await PersonalityService.getPersonality('bilal-ashraf');
         if (!personality) throw new Error('Brand personality not found');
 
-        // 2. Fetch App Context (Price, RSI, Earnings, etc.)
-        let contextData = null;
-        try {
-            contextData = await AIContextService.getContext(symbol);
-        } catch (e) {
-            console.warn(`Context fetch failed for ${symbol}:`, e);
-        }
+        const ai = initAI(apiKey);
+        const model = ai.getGenerativeModel({
+            model: personality.default_model || 'gemini-2.0-flash',
+            tools: this.tools as any
+        });
 
-        // 3. Build Prompt
+        // 2. Start Agentic Chat
+        const chat = model.startChat({
+            history: [],
+        });
+
         const systemInstruction = `
             You are drafting a ${mode === 'reply' ? 'reply to a tweet' : 'new tweet'} for Bilal Ashraf. 
             
             BRAND GUIDELINES:
             ${personality.instructions}
             
-            EXAMPLES OF HIS STYLE:
-            ${personality.examples.map(ex => `- ${ex}`).join('\n')}
-            
             CORE RULES:
-            - No emojis.
-            - No hashtags.
-            - No exclamation marks.
-            - Short/medium sentences.
-            - Calm, analytical, professional analytical tone.
-            - Focus on macro, liquidity, and long-term context.
+            - No emojis, no hashtags, no exclamation marks.
+            - Professional, calm, macro-focused analytical tone.
+            - Pick 1-2 key data points. Do NOT dump all data.
+            
+            YOUR CAPABILITIES:
+            - You have tools to fetch real-time database data for ANY symbol.
+            - ALWAYS state your internal thought process before calling a tool or drafting.
         `;
 
-        const prompt = `
-            ${mode === 'reply' ? `TARGET TWEET TO REPLY TO: ${targetTweet}` : ''}
-            
-            USER'S ADDITIONAL NOTES/CONTEXT: ${userNotes}
-            
-            APP CONTEXT FOR ${symbol}:
-            ${contextData ? JSON.stringify(contextData, null, 2) : 'No specific app data found for this symbol.'}
+        const userPrompt = `
+            ASSET: ${symbol}
+            CONTEXT/NOTES: ${userNotes}
+            ${mode === 'reply' ? `REPLYING TO: ${targetTweet}` : ''}
             
             TASK: 
-            Generate a ${mode === 'reply' ? 'reply' : 'tweet'} based on the above that matches Bilal's brand guidelines. 
-            ${mode === 'reply' ? 'The reply should be thoughtful, adding value or a specialized perspective based on the data.' : 'The tweet should be a sharp, analytical observation.'}
-            Provide only the text. No preamble, no quotes.
+            1. Use tools to find the most significant data points for ${symbol}.
+            2. Be selective. Choose figures that support a sharp, macro-style observation.
+            3. Final output must be ONLY the tweet text.
         `;
 
-        // 4. Call Gemini
-        const ai = initAI(apiKey);
-        const model = ai.getGenerativeModel({ model: personality.default_model });
+        const reasoningLog: any[] = [];
+        let currentPrompt = `${systemInstruction}\n\n${userPrompt}`;
+        let responseDraft = '';
 
-        try {
-            const result = await model.generateContent([
-                { text: systemInstruction },
-                { text: prompt }
-            ]);
-            const response = await result.response;
-            const draft = response.text().trim().replace(/^"|"$/g, '');
-            return { draft, contextData };
-        } catch (error) {
-            console.error('Error in TwitterAgentService:', error);
-            throw error;
+        // 3. Agentic Loop (Max 5 iterations to prevent infinite loops)
+        for (let i = 0; i < 5; i++) {
+            const result = await chat.sendMessage(currentPrompt);
+            const response = result.response;
+            const content = response.candidates![0].content;
+
+            // Log thoughts if provided in text
+            if (content.parts[0].text) {
+                reasoningLog.push({ type: 'thought', content: content.parts[0].text });
+            }
+
+            const functionCalls = content.parts.find(p => p.functionCall);
+
+            if (functionCalls?.functionCall) {
+                const { name, args } = functionCalls.functionCall;
+                reasoningLog.push({ type: 'tool_call', name, args });
+
+                const toolResult = await this.callFunction(name, args);
+                reasoningLog.push({ type: 'tool_response', name, result: toolResult });
+
+                // Continue loop with tool result
+                currentPrompt = JSON.stringify({
+                    functionResponse: {
+                        name,
+                        response: { content: toolResult }
+                    }
+                });
+            } else {
+                // No more tools needed, we have the final answer
+                responseDraft = content.parts[0].text || '';
+                break;
+            }
         }
+
+        return {
+            draft: responseDraft.trim().replace(/^"|"$/g, ''),
+            reasoningLog
+        };
     }
 
-    // Keep the old method for backward compatibility (e.g. Discord integration)
+    // Keep the old method for backward compatibility
     static async generateTweetDraft(symbol: string, userNotes: string = ''): Promise<string> {
         const { draft } = await this.generate(symbol, userNotes, 'tweet');
         return draft;

@@ -18,7 +18,7 @@ export default function XCopilotPage() {
     const [mode, setMode] = useState<'tweet' | 'reply'>('tweet');
     const [targetTweet, setTargetTweet] = useState('');
     const [draft, setDraft] = useState('');
-    const [contextData, setContextData] = useState<any>(null);
+    const [reasoningLog, setReasoningLog] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
@@ -36,6 +36,8 @@ export default function XCopilotPage() {
             toast.error('Please enter a symbol (e.g. LUCK, BTC)');
             return;
         }
+        setDraft('');
+        setReasoningLog([]);
         setLoading(true);
         const token = getAuthToken();
         try {
@@ -50,9 +52,9 @@ export default function XCopilotPage() {
             const data = await res.json();
             if (data.draft) {
                 setDraft(data.draft);
-                setContextData(data.contextData);
+                setReasoningLog(data.reasoningLog || []);
             } else {
-                toast.error('Generation failed');
+                toast.error('Generation failed: ' + (data.error || 'Unknown error'));
             }
         } catch (e) {
             toast.error('API Error');
@@ -78,9 +80,9 @@ export default function XCopilotPage() {
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-4xl font-black flex items-center gap-3 tracking-tighter">
-                        <Sparkles className="text-blue-500 w-10 h-10" /> X-COPILOT
+                        <Sparkles className="text-blue-500 w-10 h-10" /> X-COPILOT <span className="text-xs bg-blue-500/10 text-blue-500 px-2 py-1 rounded-full uppercase tracking-widest font-bold">Agent v2.0</span>
                     </h1>
-                    <p className="text-muted-foreground mt-1">Generate data-backed drafts in your brand voice.</p>
+                    <p className="text-muted-foreground mt-1">AI Reasoning Agent powered by Gemini 2.0 Flash Tool-Calling.</p>
                 </div>
                 <div className="flex p-1 bg-muted rounded-lg w-fit border border-border">
                     <button
@@ -142,47 +144,59 @@ export default function XCopilotPage() {
                                 disabled={loading}
                             >
                                 {loading ? <Loader2 className="animate-spin w-5 h-5" /> : <Sparkles className="w-5 h-5" />}
-                                {loading ? 'Synthesizing...' : `Generate ${mode === 'reply' ? 'Reply' : 'Tweet'}`}
+                                {loading ? 'Agent is Thinking...' : `Generate ${mode === 'reply' ? 'Reply' : 'Tweet'}`}
                             </Button>
                         </CardContent>
                     </Card>
 
-                    {/* --- Data Stats Panel --- */}
-                    {contextData && (
-                        <Card className="bg-muted/30 border-dashed border-2">
-                            <CardHeader><CardTitle className="text-sm uppercase tracking-widest opacity-50 font-black">Agent Findings</CardTitle></CardHeader>
-                            <CardContent className="space-y-6">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="p-3 bg-background rounded-lg border">
-                                        <p className="text-[10px] uppercase font-bold text-muted-foreground">Price vs 52wH</p>
-                                        <p className="text-lg font-black text-blue-500">
-                                            {contextData.price_context.current} / {contextData.price_context.five_two_week_high}
-                                        </p>
-                                    </div>
-                                    <div className="p-3 bg-background rounded-lg border">
-                                        <p className="text-[10px] uppercase font-bold text-muted-foreground">P/E vs Sector</p>
-                                        <p className="text-lg font-black text-orange-500">
-                                            {contextData.valuation_context.company_pe.toFixed(1)}x / {contextData.valuation_context.sector_avg_pe.toFixed(1)}x
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <p className="text-[10px] uppercase font-bold text-muted-foreground">Recent Earnings (EPS)</p>
-                                    <div className="flex gap-2 overflow-x-auto pb-2">
-                                        {contextData.earnings.quarterly.slice(0, 4).map((q: any, i: number) => (
-                                            <div key={i} className="px-3 py-1 bg-background rounded border text-xs font-mono shrink-0">
-                                                {q.eps > 0 ? '+' : ''}{q.eps.toFixed(2)}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="p-3 bg-emerald-500/5 rounded-lg border border-emerald-500/20">
-                                    <p className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">Dividend Yield</p>
-                                    <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">
-                                        {contextData.dividend_history.yield_at_time}
-                                    </p>
+                    {/* --- Agentic Reasoning Log --- */}
+                    {reasoningLog.length > 0 && (
+                        <Card className="bg-muted/30 border-dashed border-2 overflow-hidden">
+                            <CardHeader className="bg-muted/50 py-3"><CardTitle className="text-[10px] uppercase tracking-[0.2em] opacity-70 font-black">Agentic Reasoning Log</CardTitle></CardHeader>
+                            <CardContent className="p-0 max-h-[500px] overflow-y-auto">
+                                <div className="divide-y divide-border/50">
+                                    {reasoningLog.map((log, i) => (
+                                        <div key={i} className="p-4 space-y-2 animate-in fade-in slide-in-from-top-1 duration-300">
+                                            {log.type === 'thought' && (
+                                                <div className="flex gap-3">
+                                                    <div className="w-6 h-6 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
+                                                        <Sparkles className="w-3 h-3 text-blue-500" />
+                                                    </div>
+                                                    <p className="text-xs italic text-muted-foreground leading-relaxed">
+                                                        {log.content}
+                                                    </p>
+                                                </div>
+                                            )}
+                                            {log.type === 'tool_call' && (
+                                                <div className="flex gap-3">
+                                                    <div className="w-6 h-6 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0">
+                                                        <div className="w-2 h-2 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.6)]" />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <p className="text-[10px] font-black uppercase text-orange-500 tracking-wider">Tool Call: {log.name}</p>
+                                                        <pre className="text-[9px] font-mono bg-background p-2 rounded border opacity-70 truncate max-w-[200px]">
+                                                            {JSON.stringify(log.args)}
+                                                        </pre>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {log.type === 'tool_response' && (
+                                                <div className="flex gap-3">
+                                                    <div className="w-6 h-6 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
+                                                        <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <p className="text-[10px] font-black uppercase text-emerald-500 tracking-wider">Tool Output Received</p>
+                                                        <div className="max-h-[100px] overflow-y-auto w-full">
+                                                            <pre className="text-[9px] font-mono bg-background/50 p-2 rounded border opacity-60">
+                                                                {JSON.stringify(log.result, null, 2)}
+                                                            </pre>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
                                 </div>
                             </CardContent>
                         </Card>
@@ -207,8 +221,12 @@ export default function XCopilotPage() {
                                     <div className="whitespace-pre-wrap">{draft}</div>
                                 ) : (
                                     <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground/30">
-                                        <Sparkles className="w-12 h-12 mb-2 animate-pulse" />
-                                        <p className="italic">Draft will materialize here...</p>
+                                        {loading ? (
+                                            <Loader2 className="w-12 h-12 mb-2 animate-spin text-blue-500" />
+                                        ) : (
+                                            <Sparkles className="w-12 h-12 mb-2" />
+                                        )}
+                                        <p className="italic">{loading ? 'Agent is synthesizing data...' : 'Draft will materialize here...'}</p>
                                     </div>
                                 )}
                             </div>
@@ -219,25 +237,33 @@ export default function XCopilotPage() {
                                         <Copy className="w-5 h-5 mr-3" /> Copy Text
                                     </Button>
                                     <Button className="h-14 flex-1 text-lg font-black bg-black hover:bg-zinc-900 text-white" onClick={openInX}>
-                                        <Send className="w-5 h-5 mr-3 text-[#1DA1F2]" /> Post Draft to X
+                                        <div className="w-5 h-5 mr-3 flex items-center justify-center bg-white rounded-full">
+                                            <span className="text-black text-[10px]">X</span>
+                                        </div> Post Draft to X
                                     </Button>
                                 </div>
                             )}
                         </CardContent>
                     </Card>
 
-                    <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="p-6 bg-card border rounded-xl">
-                            <h4 className="font-bold mb-2">Macro Grounding</h4>
-                            <p className="text-sm text-muted-foreground">The AI uses your database's long-term history to avoid short-term price noise.</p>
+                    <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-6 bg-card border rounded-xl flex gap-4">
+                            <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+                                <Sparkles className="w-5 h-5 text-blue-500" />
+                            </div>
+                            <div>
+                                <h4 className="font-bold mb-1">Agentic Reasoning</h4>
+                                <p className="text-sm text-muted-foreground">The agent doesn't just "see" data—it decides which database tables to query based on your inputs.</p>
+                            </div>
                         </div>
-                        <div className="p-6 bg-card border rounded-xl">
-                            <h4 className="font-bold mb-2">Zero Hype</h4>
-                            <p className="text-sm text-muted-foreground">Guidelines strictly prohibit emojis, hashtags, and "to the moon" language.</p>
-                        </div>
-                        <div className="p-6 bg-card border rounded-xl">
-                            <h4 className="font-bold mb-2">Contextual Memory</h4>
-                            <p className="text-sm text-muted-foreground">It compares stock P/E against the broader sector to find true "relative value" signals.</p>
+                        <div className="p-6 bg-card border rounded-xl flex gap-4">
+                            <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
+                                <Send className="w-5 h-5 text-emerald-500" />
+                            </div>
+                            <div>
+                                <h4 className="font-bold mb-1">Granular Tool Use</h4>
+                                <p className="text-sm text-muted-foreground">Prices, P/E, and Earnings are fetched as individual tools, allowing the AI to "drill down" where needed.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
