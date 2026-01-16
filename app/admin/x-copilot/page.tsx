@@ -158,11 +158,12 @@ export default function XCopilotPage() {
                                     {reasoningLog.map((log, i) => (
                                         <div key={i} className="p-4 space-y-2 animate-in fade-in slide-in-from-top-1 duration-300">
                                             {log.type === 'thought' && (
-                                                <div className="flex gap-3">
-                                                    <div className="w-6 h-6 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
-                                                        <Sparkles className="w-3 h-3 text-blue-500" />
+                                                <div className={`flex gap-3 p-2 rounded-lg ${log.isRawThinking ? 'bg-amber-500/5 border border-amber-500/10' : ''}`}>
+                                                    <div className={`w-6 h-6 rounded-full ${log.isRawThinking ? 'bg-amber-500/10' : 'bg-blue-500/10'} flex items-center justify-center shrink-0`}>
+                                                        {log.isRawThinking ? <div className="w-1.5 h-1.5 bg-amber-500 animate-pulse rounded-full" /> : <Sparkles className="w-3 h-3 text-blue-500" />}
                                                     </div>
-                                                    <p className="text-xs italic text-muted-foreground leading-relaxed">
+                                                    <p className={`text-xs italic leading-relaxed ${log.isRawThinking ? 'text-amber-700 dark:text-amber-200/70 font-mono text-[10px]' : 'text-muted-foreground'}`}>
+                                                        {log.isRawThinking && <span className="block not-italic font-black text-[8px] uppercase tracking-widest opacity-50 mb-1">Raw thinking block</span>}
                                                         {log.content}
                                                     </p>
                                                 </div>

@@ -142,9 +142,14 @@ export class TwitterAgentService {
             const response = result.response;
             const content = response.candidates![0].content;
 
-            // Log thoughts if provided in text
-            if (content.parts[0].text) {
-                reasoningLog.push({ type: 'thought', content: content.parts[0].text });
+            // Extract thoughts and text from all parts
+            for (const part of content.parts) {
+                if (part.text) {
+                    reasoningLog.push({ type: 'thought', content: part.text });
+                }
+                if ((part as any).thought) {
+                    reasoningLog.push({ type: 'thought', content: (part as any).thought, isRawThinking: true });
+                }
             }
 
             const functionCalls = content.parts.find(p => p.functionCall);
