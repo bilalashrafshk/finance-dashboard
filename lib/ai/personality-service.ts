@@ -5,6 +5,7 @@ export interface BrandPersonality {
     instructions: string;
     examples: string[];
     default_model: string;
+    enabled_tools: Record<string, boolean>;
 }
 
 export class PersonalityService {
@@ -27,8 +28,17 @@ export class PersonalityService {
                     instructions TEXT NOT NULL,
                     examples JSONB DEFAULT '[]',
                     default_model VARCHAR(50) DEFAULT 'gemini-2.0-flash',
+                    enabled_tools JSONB DEFAULT '{"getCompanyProfile":true,"getPriceHistoryMetrics":true,"getQuarterlyEarnings":true,"getAnnualEarnings":true,"getDividendInfo":true}',
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 );
+
+                -- Migration: Add enabled_tools if it doesn't exist (for existing tables)
+                DO $$ 
+                BEGIN 
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brand_personality' AND column_name='enabled_tools') THEN
+                        ALTER TABLE brand_personality ADD COLUMN enabled_tools JSONB DEFAULT '{"getCompanyProfile":true,"getPriceHistoryMetrics":true,"getQuarterlyEarnings":true,"getAnnualEarnings":true,"getDividendInfo":true}';
+                    END IF;
+                END $$;
 
                 -- Seed with default guidelines if empty
                 INSERT INTO brand_personality (slug, instructions, examples)
@@ -52,7 +62,8 @@ export class PersonalityService {
             slug: row.slug,
             instructions: row.instructions,
             examples: Array.isArray(row.examples) ? row.examples : JSON.parse(row.examples || '[]'),
-            default_model: row.default_model
+            default_model: row.default_model,
+            enabled_tools: typeof row.enabled_tools === 'string' ? JSON.parse(row.enabled_tools) : (row.enabled_tools || {})
         };
     }
 
@@ -73,6 +84,10 @@ export class PersonalityService {
         if (data.default_model) {
             fields.push(`default_model = $${i++}`);
             values.push(data.default_model);
+        }
+        if (data.enabled_tools) {
+            fields.push(`enabled_tools = $${i++}`);
+            values.push(JSON.stringify(data.enabled_tools));
         }
 
         if (fields.length === 0) return;

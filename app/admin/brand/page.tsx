@@ -17,6 +17,7 @@ export default function AdminBrandPage() {
     const [examples, setExamples] = useState<string[]>([]);
     const [newExample, setNewExample] = useState('');
     const [model, setModel] = useState('gemini-2.0-flash');
+    const [enabledTools, setEnabledTools] = useState<Record<string, boolean>>({});
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -41,6 +42,7 @@ export default function AdminBrandPage() {
                 setInstructions(data.instructions);
                 setExamples(data.examples || []);
                 setModel(data.default_model);
+                setEnabledTools(data.enabled_tools || {});
                 setLoading(false);
             })
             .catch(() => setLoading(false));
@@ -50,7 +52,7 @@ export default function AdminBrandPage() {
         const token = getAuthToken();
         const res = await fetch('/api/admin/brand', {
             method: 'POST',
-            body: JSON.stringify({ instructions, examples, default_model: model }),
+            body: JSON.stringify({ instructions, examples, default_model: model, enabled_tools: enabledTools }),
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
@@ -143,7 +145,36 @@ export default function AdminBrandPage() {
                 </CardContent>
             </Card>
 
-            <Button size="lg" className="w-full" onClick={save}>Save Brand Profile</Button>
+            <Card>
+                <CardHeader>
+                    <CardTitle>AI Data Tools / Skills</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {[
+                        { id: 'getCompanyProfile', label: 'Company Profile (Price, P/E, Sector PE, Div Yield)', desc: 'Fundamental basics and current market pricing.' },
+                        { id: 'getPriceHistoryMetrics', label: 'Price History (52w High/Low, History)', desc: 'Historical price action context.' },
+                        { id: 'getQuarterlyEarnings', label: 'Quarterly Earnings (Last 8 Quarters)', desc: 'Recent EPS and Net Income performance.' },
+                        { id: 'getAnnualEarnings', label: 'Annual Earnings (Last 3 Years)', desc: 'Long-term profitability trends.' },
+                        { id: 'getDividendInfo', label: 'Dividend Info (Detailed History)', desc: 'Detailed dividend payments and yield tracking.' },
+                    ].map(tool => (
+                        <div key={tool.id} className="flex items-start gap-3 p-3 bg-secondary/50 rounded-lg border border-border">
+                            <input
+                                type="checkbox"
+                                id={tool.id}
+                                checked={enabledTools[tool.id] !== false}
+                                onChange={(e) => setEnabledTools({ ...enabledTools, [tool.id]: e.target.checked })}
+                                className="mt-1 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <div>
+                                <label htmlFor={tool.id} className="text-sm font-bold block">{tool.label}</label>
+                                <p className="text-xs text-muted-foreground">{tool.desc}</p>
+                            </div>
+                        </div>
+                    ))}
+                </CardContent>
+            </Card>
+
+            <Button size="lg" className="w-full h-14 text-lg font-black bg-blue-600 hover:bg-blue-700" onClick={save}>Save Brand Profile</Button>
         </div>
     );
 }

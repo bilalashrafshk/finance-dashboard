@@ -94,10 +94,15 @@ export class TwitterAgentService {
         const personality = await PersonalityService.getPersonality('bilal-ashraf');
         if (!personality) throw new Error('Brand personality not found');
 
+        // 2. Filter Tools based on settings
+        const enabledTools = this.tools.filter(t =>
+            personality.enabled_tools[t.functionDeclarations![0].name] !== false
+        );
+
         const ai = initAI(apiKey);
         const model = ai.getGenerativeModel({
             model: personality.default_model || 'gemini-2.0-flash',
-            tools: this.tools as any
+            tools: enabledTools.length > 0 ? (enabledTools as any) : undefined
         });
 
         // 2. Start Agentic Chat
