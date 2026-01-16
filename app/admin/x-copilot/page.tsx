@@ -1,18 +1,30 @@
-'use client';
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth, getAuthToken } from '@/lib/auth/auth-context';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Copy, Send, Sparkles } from 'lucide-react';
+import { Copy, Send, Sparkles, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function XCopilotPage() {
+    const { user, loading: authLoading } = useAuth();
+    const router = useRouter();
     const [symbol, setSymbol] = useState('');
     const [notes, setNotes] = useState('');
     const [draft, setDraft] = useState('');
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (!authLoading) {
+            if (!user) {
+                router.push("/auth/login");
+            } else if (user.role !== "admin") {
+                router.push("/dashboard");
+            }
+        }
+    }, [user, authLoading, router]);
 
     const generate = async () => {
         if (!symbol) {
@@ -20,11 +32,15 @@ export default function XCopilotPage() {
             return;
         }
         setLoading(true);
+        const token = getAuthToken();
         try {
             const res = await fetch('/api/admin/x-copilot/generate', {
                 method: 'POST',
                 body: JSON.stringify({ symbol, notes }),
-                headers: { 'Content-Type': 'application/json' }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
             });
             const data = await res.json();
             if (data.draft) {

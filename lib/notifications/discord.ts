@@ -101,8 +101,16 @@ export async function sendMarketEventAlert(event: {
         fields: [
             { name: 'Symbol', value: event.symbol, inline: true },
             { name: 'Event', value: event.type, inline: true },
-            { name: 'Price', value: `Rs ${event.price.toFixed(2)}`, inline: true },
-            { name: isVolume ? 'Average Vol' : 'Prev High', value: isVolume ? event.prevValue.toLocaleString() : `Rs ${event.prevValue.toFixed(2)}`, inline: true },
+            {
+                name: isVolume ? 'Current Volume' : 'Price',
+                value: isVolume ? event.price.toLocaleString() : `Rs ${event.price.toFixed(2)}`,
+                inline: true
+            },
+            {
+                name: isVolume ? 'Average Vol (10D)' : 'Prev High',
+                value: isVolume ? event.prevValue.toLocaleString() : `Rs ${event.prevValue.toFixed(2)}`,
+                inline: true
+            },
         ],
         timestamp: new Date().toISOString(),
         footer: {

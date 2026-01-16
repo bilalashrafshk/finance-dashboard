@@ -1,13 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth, getAuthToken } from '@/lib/auth/auth-context';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 
 export default function AdminBrandPage() {
+    const { user, loading: authLoading } = useAuth();
+    const router = useRouter();
     const [instructions, setInstructions] = useState('');
     const [examples, setExamples] = useState<string[]>([]);
     const [newExample, setNewExample] = useState('');
@@ -15,22 +20,41 @@ export default function AdminBrandPage() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch('/api/admin/brand')
+        if (!authLoading) {
+            if (!user) {
+                router.push("/auth/login");
+            } else if (user.role !== "admin") {
+                router.push("/dashboard");
+            } else {
+                fetchData();
+            }
+        }
+    }, [user, authLoading, router]);
+
+    const fetchData = () => {
+        const token = getAuthToken();
+        fetch('/api/admin/brand', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
             .then(res => res.json())
             .then(data => {
                 setInstructions(data.instructions);
-                setExamples(data.examples);
+                setExamples(data.examples || []);
                 setModel(data.default_model);
                 setLoading(false);
             })
             .catch(() => setLoading(false));
-    }, []);
+    };
 
     const save = async () => {
+        const token = getAuthToken();
         const res = await fetch('/api/admin/brand', {
             method: 'POST',
             body: JSON.stringify({ instructions, examples, default_model: model }),
-            headers: { 'Content-Type': 'application/json' }
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            }
         });
         if (res.ok) toast.success('Brand personality updated');
         else toast.error('Failed to update');
