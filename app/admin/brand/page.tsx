@@ -20,6 +20,7 @@ export default function AdminBrandPage() {
     const [model, setModel] = useState('gemini-2.0-flash');
     const [enabledTools, setEnabledTools] = useState<Record<string, boolean>>({});
     const [coordinatorInstructions, setCoordinatorInstructions] = useState('');
+    const [humanizerInstructions, setHumanizerInstructions] = useState('');
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -46,6 +47,7 @@ export default function AdminBrandPage() {
                 setModel(data.default_model);
                 setEnabledTools(data.enabled_tools || {});
                 setCoordinatorInstructions(data.coordinator_instructions || '');
+                setHumanizerInstructions(data.humanizer_instructions || '');
                 setLoading(false);
             })
             .catch(() => setLoading(false));
@@ -60,7 +62,8 @@ export default function AdminBrandPage() {
                 examples,
                 default_model: model,
                 enabled_tools: enabledTools,
-                coordinator_instructions: coordinatorInstructions
+                coordinator_instructions: coordinatorInstructions,
+                humanizer_instructions: humanizerInstructions
             }),
             headers: {
                 'Content-Type': 'application/json',
@@ -117,10 +120,29 @@ export default function AdminBrandPage() {
                 </CardContent>
             </Card>
 
+            <Card className="border-green-500/20 shadow-sm bg-green-500/[0.02]">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <span className="text-green-600">✍️</span> 3. The Humanizer (Phase 3 Styling)
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <Textarea
+                        value={humanizerInstructions}
+                        onChange={(e) => setHumanizerInstructions(e.target.value)}
+                        className="h-64 font-mono text-sm bg-background/50 leading-relaxed border-green-500/20 focus-visible:ring-green-500/30"
+                        placeholder="Define stylistic rules like lowercase, grammar rules, robot word bans..."
+                    />
+                    <p className="mt-3 text-xs text-muted-foreground italic">
+                        This instruction is used in a SECOND AI pass. Use <code>{"{{tweet}}"}</code> to placeholder the draft from Phase 2.
+                    </p>
+                </CardContent>
+            </Card>
+
             <Card>
                 <CardHeader>
                     <div className="flex justify-between items-center">
-                        <CardTitle>3. Style Examples (Few-Shot)</CardTitle>
+                        <CardTitle>4. Style Examples (Few-Shot)</CardTitle>
                         <div className="flex gap-4 text-xs font-bold uppercase opacity-50">
                             <span>Short: {examples.filter(e => e.type === 'short').length}</span>
                             <span>Long: {examples.filter(e => e.type === 'long').length}</span>

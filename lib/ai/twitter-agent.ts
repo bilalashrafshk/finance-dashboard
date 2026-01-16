@@ -108,20 +108,26 @@ export class TwitterAgentService {
         const notesLower = userNotes.toLowerCase();
         const userAskedForSearch = notesLower.includes('search') || notesLower.includes('google') || notesLower.includes('latest news') || notesLower.includes('find on web');
 
-        const systemInstruction = `
+        // Stage 2 Instructions: Focus on Factual Assembly and Structural Logic
+        const stage2SystemDoc = `
             ${personality.instructions}
             
-            Current Mode: ${mode === 'reply' ? 'Reply to existing tweet' : 'New Tweet'}
-            Target Tweet (if reply): ${targetTweet || 'N/A'}
-            Desired Format: ${postFormat === 'short' ? 'Standard Tweet (under 280 characters)' : 'Long Post / Thread (detailed analysis)'}
+            CURRENT MODE: ${mode === 'reply' ? 'Reply to existing tweet' : 'New Tweet'}
+            TARGET TWEET: ${targetTweet || 'N/A'}
+            DESIRED FORMAT: ${postFormat === 'short' ? 'Standard Tweet (under 280 characters)' : 'Long Post / Thread (detailed analysis)'}
             
-            Format Constraints:
+            CONSTRAINTS:
             ${postFormat === 'short'
                 ? '- MUST be under 280 characters.\n- Be punchy and concise.\n- No threads.'
                 : '- Can be longer than 280 characters.\n- Use structured details.\n- Provide deep technical analysis.'}
 
-            Brand Examples for ${postFormat} format:
-            ${relevantExamples.length > 0 ? relevantExamples.join('\n---\n') : 'No specific examples provided for this format. Follow general instructions.'}
+            CORE MISSION:
+            Create a high-signal "Technical Draft" based on the Brain's plan. 
+            - Focus on FACTUAL ACCURACY.
+            - Provide data-driven insights from the tools provided.
+            - If no tools were used, rely ONLY on the user's provided context. 
+            - DO NOT hallucinate prices or sector info if not explicitly provided.
+            - Maintain an intelligent, expert tone, but keep it as a "Rough Draft" for final humanization.
         `;
 
         // --- STAGE 1: THE BRAIN (Thinking ENABLED, Tools DISABLED) ---
@@ -187,7 +193,7 @@ export class TwitterAgentService {
         const handModel = ai.getGenerativeModel({
             model: personality.default_model || 'gemini-2.0-flash',
             tools: handTools.length > 0 ? handTools : undefined,
-            systemInstruction: systemInstruction
+            systemInstruction: stage2SystemDoc
         });
 
         // Use thinkingBudget: 0 to avoid Tool conflict
@@ -222,7 +228,7 @@ export class TwitterAgentService {
                 }
             }
 
-            const functionCallPart = content.parts.find(p => p.functionCall);
+            const functionCallPart = content.parts.find(Part => Part.functionCall);
 
             if (functionCallPart?.functionCall) {
                 const { name, args } = functionCallPart.functionCall;
@@ -238,10 +244,45 @@ export class TwitterAgentService {
                         response: { content: toolResult }
                     }
                 });
-            } else {
-                // Final answer reached
-                finalDraft = content.parts.find(p => p.text)?.text || '';
+                finalDraft = content.parts.find(Part => Part.text)?.text || '';
                 break;
+            } else {
+                finalDraft = content.parts.find(Part => Part.text)?.text || '';
+                break;
+            }
+        }
+
+        // --- STAGE 3: THE HUMANIZER (Final Refinement) ---
+        // This stage applies precise stylistic rules (lowercase, imperfect grammar, etc).
+        if (finalDraft && personality.humanizer_instructions) {
+            const humanizerPrompt = personality.humanizer_instructions.replace('{{tweet}}', finalDraft);
+
+            const humanizerSystemInstruction = `
+                You are a professional humanizer/editor for Bilal Ashraf, a calm, analytical investor.
+                Your goal is to take a "Technical Draft" and refine it into Bilal's signature voice.
+                
+                BILAL'S BRAND EXAMPLES (${postFormat}):
+                ${relevantExamples.length > 0 ? relevantExamples.join('\n---\n') : 'No specific examples provided. Follow general style rules.'}
+                
+                HUMANIZATION RULES:
+                - Use lowercase for most things.
+                - Use the "I" rule for opinions/feelings.
+                - Avoid "robot words" (notable, crucial, delve, etc).
+                - Keep the facts from the draft, but change the "voice".
+            `;
+
+            const humanizerModel = ai.getGenerativeModel({
+                model: personality.default_model || 'gemini-2.0-flash',
+                systemInstruction: humanizerSystemInstruction
+            });
+
+            reasoningLog.push({ type: 'thought', content: "--- STAGE 3: HUMANIZING ---" });
+            const humanRes = await humanizerModel.generateContent(humanizerPrompt);
+            const humanText = humanRes.response.text();
+
+            if (humanText) {
+                reasoningLog.push({ type: 'thought', content: `REFINED DRAFT: ${humanText}` });
+                finalDraft = humanText;
             }
         }
 
@@ -249,7 +290,7 @@ export class TwitterAgentService {
             draft: finalDraft,
             reasoningLog,
             trace: {
-                systemInstruction,
+                systemInstruction: stage2SystemDoc,
                 model: personality.default_model,
                 toolsSentToModel: handTools,
                 history

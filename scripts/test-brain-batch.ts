@@ -131,13 +131,14 @@ async function runBatch() {
     if (!personality) throw new Error('Personality not found');
     const results = [];
 
-    const balancedBrainInstruction = `You are the COORDINATOR of an investment agent.
+    const defaultCoordinatorPrompt = `You are the COORDINATOR of an investment agent.
 Analyze the user's input and current context carefully.
 Your priority is to determine if the existing information is sufficient to create a high-quality post.
 
+- IF the user provides a symbol like "N/A" or "Macro", focus on broader market themes, industry analysis, or general commentary. DO NOT force a ticker request if the topic is macro-economic.
 - IF the user provides rich context (like a news announcement), your first instinct should be to use that.
-- ONLY plan a tool call if you need specific quantitative data (Price, P/E, etc.) that would significantly enhance the post's signal OR if the user explicitly asks for data.
-- DO NOT chase stats for the sake of it. If the news is the primary signal, skip the tools.
+- ONLY plan a tool call if you need specific quantitative data (Price, P/E, etc.) or web context (Google Search) that would significantly enhance the post's signal OR if the user explicitly asks for data.
+- DO NOT chase stats for the sake of it. If the news/macro theme is the primary signal, skip the tools.
 - DO NOT write the final tweet/reply yet.
 
 Available Tools:
@@ -145,14 +146,16 @@ Available Tools:
 2. P/E & Valuation: P/E vs Sector P/E. (Use if valuation is the core question).
 3. Earnings: Recent quarters/annual performance. (Use for deep financial analysis).
 4. Dividends: Yield and history. (Use if income is the focus).
-5. Google Search: Latest web info. (Use ONLY if explicitly asked or for missing macro news).`;
+5. Google Search: Latest web info. (Use if context is missing, for macro facts, or if explicitly asked).`;
+
+    const coordinatorInstructions = personality.coordinator_instructions || defaultCoordinatorPrompt;
 
     for (const tc of testCases) {
         process.stdout.write(`Running Stage 1 (Brain): ${tc.name}... `);
 
         const brainModel = genAI.getGenerativeModel({
             model: personality.default_model || 'gemini-2.0-flash',
-            systemInstruction: balancedBrainInstruction
+            systemInstruction: coordinatorInstructions
         });
 
         const brainPrompt = `Request: Write a tweet for symbol ${tc.symbol}. ${tc.notes ? `User Note: ${tc.notes}` : ''}.
@@ -191,11 +194,7 @@ Available Tools:
         // Stage 2: Hand (Execution)
         process.stdout.write(`  Stage 2 (Hand): Generating final tweet... `);
 
-        const relevantExamples = personality.examples
-            .filter(ex => ex.type === 'short')
-            .map(ex => ex.text);
-
-        const systemInstruction = `
+        const stage2SystemDoc = `
             ${personality.instructions}
             Current Mode: New Tweet
             Desired Format: Standard Tweet (under 280 characters)
@@ -204,15 +203,22 @@ Available Tools:
             - Be punchy and concise.
             - No threads.
 
-            Brand Examples:
-            ${relevantExamples.length > 0 ? relevantExamples.join('\n---\n') : 'No specific examples provided.'}
+            CORE MISSION:
+            Create a high-signal "Technical Draft" based on the Brain's plan. 
+            - Focus on FACTUAL ACCURACY.
+            - DO NOT hallucinate prices or sector info if not explicitly provided.
+            - Maintain an intelligent, expert tone.
         `;
+
+        const relevantExamples = (personality.examples || [])
+            .filter(ex => ex.type === 'short')
+            .map(ex => ex.text);
 
         const handModel = genAI.getGenerativeModel({
             model: personality.default_model || 'gemini-2.0-flash',
             // @ts-ignore
             tools: toolCallsPlanned ? toolDefinitions : undefined,
-            systemInstruction
+            systemInstruction: stage2SystemDoc
         });
 
         const chat = handModel.startChat({
@@ -256,6 +262,40 @@ Available Tools:
         }
 
         console.log(`Done.`);
+
+        // Stage 3: Humanizer
+        if (finalDraft && personality.humanizer_instructions) {
+            process.stdout.write(`  Stage 3 (Human): Refining style... `);
+            const humanizerPrompt = personality.humanizer_instructions.replace('{{tweet}}', finalDraft);
+
+            const humanizerSystemInstruction = `
+                You are a professional humanizer/editor for Bilal Ashraf.
+                Your goal is to take a "Technical Draft" and refine it into Bilal's signature voice.
+                
+                BILAL'S BRAND EXAMPLES:
+                ${relevantExamples.length > 0 ? relevantExamples.join('\n---\n') : 'No specific examples provided.'}
+                
+                HUMANIZATION RULES:
+                - Use lowercase mostly.
+                - Use the "I" rule for opinions.
+                - Avoid "robot words" (notable, crucial, delve, etc).
+            `;
+
+            const humanizerModel = genAI.getGenerativeModel({
+                model: personality.default_model || 'gemini-2.0-flash',
+                systemInstruction: humanizerSystemInstruction
+            });
+
+            const humanRes = await humanizerModel.generateContent(humanizerPrompt);
+            const humanText = humanRes.response.text();
+
+            if (humanText) {
+                finalDraft = humanText;
+                traceLog.push({ type: 'text', content: `--- HUMANIZED ---` });
+                traceLog.push({ type: 'text', content: humanText });
+            }
+            console.log(`Done.`);
+        }
 
         results.push({
             scenario: tc.name,
