@@ -214,10 +214,20 @@ Available Tools:
             .filter(ex => ex.type === 'short')
             .map(ex => ex.text);
 
+        const planMentionsSearch = planLower.includes('google search') || planLower.includes('web search') || planLower.includes('search the web');
+        const shouldEnableSearch = planMentionsSearch && personality.enabled_tools.googleSearch !== false;
+
+        let handTools: any[] | undefined = undefined;
+        if (shouldEnableSearch) {
+            handTools = [{ googleSearch: {} }];
+        } else if (toolCallsPlanned) {
+            handTools = toolDefinitions as any[];
+        }
+
         const handModel = genAI.getGenerativeModel({
             model: personality.default_model || 'gemini-2.0-flash',
             // @ts-ignore
-            tools: toolCallsPlanned ? toolDefinitions : undefined,
+            tools: handTools,
             systemInstruction: stage2SystemDoc
         });
 

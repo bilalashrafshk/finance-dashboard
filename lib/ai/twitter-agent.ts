@@ -265,10 +265,10 @@ export class TwitterAgentService {
                 ${relevantExamples.length > 0 ? relevantExamples.join('\n---\n') : 'No specific examples provided. Follow general style rules.'}
                 
                 HUMANIZATION RULES:
-                - Use lowercase for most things.
                 - Use the "I" rule for opinions/feelings.
                 - Avoid "robot words" (notable, crucial, delve, etc).
                 - Keep the facts from the draft, but change the "voice".
+                - Follow the precise instructions provided in the prompt.
             `;
 
             const humanizerModel = ai.getGenerativeModel({
