@@ -1,9 +1,14 @@
 import { getPool } from '@/lib/db';
 
+export interface Example {
+    text: string;
+    type: 'short' | 'long';
+}
+
 export interface BrandPersonality {
     slug: string;
     instructions: string;
-    examples: string[];
+    examples: Example[];
     default_model: string;
     enabled_tools: Record<string, boolean>;
 }
@@ -45,10 +50,21 @@ export class PersonalityService {
                 VALUES (
                     'bilal-ashraf',
                     'Core Persona: Calm, analytical, and confident investor. Slightly skeptical of hype. Focused on signal over noise. Tone: Intelligent, grounded, quietly opinionated. Direct but not aggressive. Writing Style: Short to medium sentences, no paragraphs. No emojis, no hashtags, no exclamation marks. Opinion Framing: "Worth thinking about...", "The market is focused on X, but Y is the real driver." Crypto: Focus on cycles, liquidity, narratives. Pakistan Finance: Realistic, policy-focused, avoid emotional hype.',
-                    '["Markets are noisy right now. Price is reacting to headlines. Positioning is reacting to liquidity. I trust the second more than the first.", "The valuation of ALTs against Silver is now below the 2022 low. We cannot manufacture market conditions that do not exist. Trade the market you have, not the market you want."]'
+                    '[{"text": "Markets are noisy right now. Price is reacting to headlines. Positioning is reacting to liquidity. I trust the second more than the first.", "type": "short"}, {"text": "The valuation of ALTs against Silver is now below the 2022 low. We cannot manufacture market conditions that do not exist. Trade the market you have, not the market you want.", "type": "short"}]'
                 ) ON CONFLICT (slug) DO NOTHING;
             `);
         }
+
+        // Migration: Check if examples need conversion from string[] to Example[]
+        // This SQL block will convert any examples that are still string arrays into the new object format.
+        await pool.query(`
+            UPDATE brand_personality 
+            SET examples = (
+                SELECT jsonb_agg(jsonb_build_object('text', elem, 'type', 'short'))
+                FROM jsonb_array_elements_text(examples) AS elem
+            )
+            WHERE jsonb_typeof(examples) = 'array' AND jsonb_array_length(examples) > 0 AND jsonb_typeof(examples->0) = 'string';
+        `);
     }
 
     static async getPersonality(slug: string = 'bilal-ashraf'): Promise<BrandPersonality | null> {
@@ -58,10 +74,21 @@ export class PersonalityService {
         if (res.rows.length === 0) return null;
 
         const row = res.rows[0];
+        let examples: Example[] = [];
+        try {
+            const rawExamples = Array.isArray(row.examples) ? row.examples : JSON.parse(row.examples || '[]');
+            examples = rawExamples.map((ex: any) => {
+                if (typeof ex === 'string') return { text: ex, type: 'short' };
+                return ex as Example;
+            });
+        } catch (e) {
+            examples = [];
+        }
+
         return {
             slug: row.slug,
             instructions: row.instructions,
-            examples: Array.isArray(row.examples) ? row.examples : JSON.parse(row.examples || '[]'),
+            examples,
             default_model: row.default_model,
             enabled_tools: typeof row.enabled_tools === 'string' ? JSON.parse(row.enabled_tools) : (row.enabled_tools || {})
         };

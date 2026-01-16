@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
         const admin = await verifyAdmin(req);
         if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const { symbol, notes, mode, targetTweet } = await req.json();
+        const { symbol, notes, mode, targetTweet, postFormat } = await req.json();
 
         if (!symbol) {
             return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
@@ -26,7 +26,8 @@ export async function POST(req: NextRequest) {
             symbol,
             notes,
             mode || 'tweet',
-            targetTweet || ''
+            targetTweet || '',
+            postFormat || 'short'
         );
 
         return NextResponse.json({ draft, reasoningLog, trace });

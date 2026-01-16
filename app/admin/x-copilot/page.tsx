@@ -22,6 +22,7 @@ export default function XCopilotPage() {
     const [trace, setTrace] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
+    const [postFormat, setPostFormat] = useState<'short' | 'long'>('short');
 
     useEffect(() => {
         if (!authLoading) {
@@ -45,7 +46,7 @@ export default function XCopilotPage() {
         try {
             const res = await fetch('/api/admin/x-copilot/generate', {
                 method: 'POST',
-                body: JSON.stringify({ symbol, notes, mode, targetTweet }),
+                body: JSON.stringify({ symbol, notes, mode, targetTweet, postFormat }),
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
@@ -130,6 +131,24 @@ export default function XCopilotPage() {
                                     />
                                 </div>
                             )}
+
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase text-muted-foreground italic">Tweet Format</label>
+                                <div className="grid grid-cols-2 gap-2 p-1 bg-muted/50 rounded-lg border">
+                                    <button
+                                        onClick={() => setPostFormat('short')}
+                                        className={`py-2 text-xs font-black uppercase tracking-widest rounded-md transition-all ${postFormat === 'short' ? 'bg-blue-600 text-white shadow-lg' : 'text-muted-foreground hover:bg-muted'}`}
+                                    >
+                                        Small Post <span className="block text-[8px] opacity-60 font-medium">Standard Limit</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setPostFormat('long')}
+                                        className={`py-2 text-xs font-black uppercase tracking-widest rounded-md transition-all ${postFormat === 'long' ? 'bg-purple-600 text-white shadow-lg' : 'text-muted-foreground hover:bg-muted'}`}
+                                    >
+                                        Long Post <span className="block text-[8px] opacity-60 font-medium">Threads / Detailed</span>
+                                    </button>
+                                </div>
+                            </div>
 
                             <div className="space-y-2">
                                 <label className="text-xs font-bold uppercase text-muted-foreground">Your Thoughts / Signal</label>

@@ -14,8 +14,9 @@ export default function AdminBrandPage() {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
     const [instructions, setInstructions] = useState('');
-    const [examples, setExamples] = useState<string[]>([]);
+    const [examples, setExamples] = useState<{ text: string; type: 'short' | 'long' }[]>([]);
     const [newExample, setNewExample] = useState('');
+    const [newExampleType, setNewExampleType] = useState<'short' | 'long'>('short');
     const [model, setModel] = useState('gemini-2.0-flash');
     const [enabledTools, setEnabledTools] = useState<Record<string, boolean>>({});
     const [loading, setLoading] = useState(true);
@@ -64,7 +65,7 @@ export default function AdminBrandPage() {
 
     const addExample = () => {
         if (!newExample) return;
-        setExamples([...examples, newExample]);
+        setExamples([...examples, { text: newExample, type: newExampleType }]);
         setNewExample('');
     };
 
@@ -72,41 +73,76 @@ export default function AdminBrandPage() {
 
     return (
         <div className="p-8 max-w-4xl mx-auto space-y-6">
-            <h1 className="text-3xl font-bold">X-Copilot Brand Training</h1>
+            <h1 className="text-3xl font-bold font-black tracking-tight flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-600/30">X</div>
+                Brand Identity Training
+            </h1>
 
             <Card>
-                <CardHeader><CardTitle>System Instructions</CardTitle></CardHeader>
+                <CardHeader><CardTitle>1. System Instructions & Persona</CardTitle></CardHeader>
                 <CardContent>
                     <Textarea
                         value={instructions}
                         onChange={(e) => setInstructions(e.target.value)}
-                        className="h-64 font-mono text-sm"
-                        placeholder="Enter brand guidelines here..."
+                        className="h-64 font-mono text-sm leading-relaxed"
+                        placeholder="Define how the AI should think and write..."
                     />
                 </CardContent>
             </Card>
 
             <Card>
-                <CardHeader><CardTitle>Style Examples (Few-Shot)</CardTitle></CardHeader>
-                <CardContent className="space-y-4">
-                    {examples.map((ex, i) => (
-                        <div key={i} className="p-3 bg-secondary rounded-lg relative group">
-                            <p className="text-sm italic">"{ex}"</p>
-                            <Button
-                                variant="destructive"
-                                size="sm"
-                                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100"
-                                onClick={() => setExamples(examples.filter((_, idx) => idx !== i))}
-                            >Delete</Button>
+                <CardHeader>
+                    <div className="flex justify-between items-center">
+                        <CardTitle>2. Style Examples (Few-Shot)</CardTitle>
+                        <div className="flex gap-4 text-xs font-bold uppercase opacity-50">
+                            <span>Short: {examples.filter(e => e.type === 'short').length}</span>
+                            <span>Long: {examples.filter(e => e.type === 'long').length}</span>
                         </div>
-                    ))}
-                    <div className="flex gap-2">
-                        <Input
-                            value={newExample}
-                            onChange={(e) => setNewExample(e.target.value)}
-                            placeholder="Add a new tweet example..."
-                        />
-                        <Button onClick={addExample}>Add</Button>
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-3">
+                        {examples.map((ex, i) => (
+                            <div key={i} className="p-4 bg-secondary/30 border rounded-xl relative group hover:bg-secondary/50 transition-colors">
+                                <div className="flex gap-2 mb-2">
+                                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${ex.type === 'long' ? 'bg-purple-500/10 text-purple-600' : 'bg-blue-500/10 text-blue-600'}`}>
+                                        {ex.type} Post
+                                    </span>
+                                </div>
+                                <p className="text-sm font-medium leading-relaxed">"{ex.text}"</p>
+                                <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    className="absolute top-4 right-4 h-7 text-[10px] uppercase font-bold opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={() => setExamples(examples.filter((_, idx) => idx !== i))}
+                                >Remove</Button>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-500/10 rounded-xl space-y-3">
+                        <div className="flex gap-4 mb-2">
+                            {['short', 'long'].map((t) => (
+                                <label key={t} className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name="type"
+                                        checked={newExampleType === t}
+                                        onChange={() => setNewExampleType(t as any)}
+                                    />
+                                    <span className="text-xs font-bold uppercase">{t} Example</span>
+                                </label>
+                            ))}
+                        </div>
+                        <div className="flex gap-2">
+                            <Input
+                                value={newExample}
+                                onChange={(e) => setNewExample(e.target.value)}
+                                placeholder="Paste a high-performing tweet sample here..."
+                                className="bg-background"
+                            />
+                            <Button onClick={addExample} className="bg-blue-600 font-bold">Add Example</Button>
+                        </div>
                     </div>
                 </CardContent>
             </Card>

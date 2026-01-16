@@ -85,7 +85,8 @@ export class TwitterAgentService {
         symbol: string,
         userNotes: string = '',
         mode: 'tweet' | 'reply' = 'tweet',
-        targetTweet: string = ''
+        targetTweet: string = '',
+        postFormat: 'short' | 'long' = 'short'
     ): Promise<{ draft: string; reasoningLog: any[]; trace?: any }> {
         const apiKey = process.env.GEMINI_API_KEY || '';
         if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
@@ -98,14 +99,25 @@ export class TwitterAgentService {
         const reasoningLog: any[] = [];
         const history: any[] = [];
 
+        // Filter examples based on format
+        const relevantExamples = personality.examples
+            .filter(ex => ex.type === postFormat)
+            .map(ex => ex.text);
+
         const systemInstruction = `
             ${personality.instructions}
             
             Current Mode: ${mode === 'reply' ? 'Reply to existing tweet' : 'New Tweet'}
             Target Tweet (if reply): ${targetTweet || 'N/A'}
+            Desired Format: ${postFormat === 'short' ? 'Standard Tweet (under 280 characters)' : 'Long Post / Thread (detailed analysis)'}
             
-            Brand Examples:
-            ${personality.examples.join('\n---\n')}
+            Format Constraints:
+            ${postFormat === 'short'
+                ? '- MUST be under 280 characters.\n- Be punchy and concise.\n- No threads.'
+                : '- Can be longer than 280 characters.\n- Use structured details.\n- Provide deep technical analysis.'}
+
+            Brand Examples for ${postFormat} format:
+            ${relevantExamples.length > 0 ? relevantExamples.join('\n---\n') : 'No specific examples provided for this format. Follow general instructions.'}
         `;
 
         // --- STAGE 1: THE BRAIN (Thinking ENABLED, Tools DISABLED) ---
