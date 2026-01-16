@@ -12,6 +12,11 @@ interface BreakoutCandidate {
     dayHigh: number; // Intraday High
 }
 
+export interface VolumeCandidate {
+    symbol: string;
+    volume: number; // Current Daily Volume
+}
+
 export async function processBreakouts(candidates: BreakoutCandidate[]) {
     if (candidates.length === 0) return;
 
@@ -134,6 +139,100 @@ export async function processBreakouts(candidates: BreakoutCandidate[]) {
 
     } catch (e) {
         console.error('[Event Processor] Error:', e);
+    } finally {
+        client.release();
+    }
+}
+
+export async function processVolumeSurges(candidates: VolumeCandidate[]) {
+    if (candidates.length === 0) return;
+
+    const client = await getPostgresClient();
+    try {
+        // 0. Fetch Settings from alert_configs
+        const configRes = await client.query("SELECT value FROM alert_configs WHERE key = 'volume_surge_settings'");
+        const config = configRes.rows[0]?.value || { multiplier: 2.0, period: 10, min_volume: 1000 };
+        const { multiplier, period, min_volume } = typeof config === 'string' ? JSON.parse(config) : config;
+
+        const symbols = candidates.map(c => c.symbol);
+        const today = new Date().toISOString().split('T')[0];
+
+        // 1. Fetch historical volume (using dynamic period)
+        const historyRes = await client.query(`
+            SELECT symbol, volume, date
+            FROM (
+                SELECT symbol, volume, date,
+                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
+                FROM historical_price_data
+                WHERE symbol = ANY($1) 
+                  AND asset_type = 'pk-equity'
+                  AND date < $2
+            ) t
+            WHERE rn <= $3
+        `, [symbols, today, period]);
+
+        const historyMap = new Map<string, number[]>();
+        historyRes.rows.forEach(r => {
+            const vols = historyMap.get(r.symbol) || [];
+            vols.push(parseFloat(r.volume));
+            historyMap.set(r.symbol, vols);
+        });
+
+        const surges: { symbol: string, current: number, avg: number }[] = [];
+
+        for (const cand of candidates) {
+            const vols = historyMap.get(cand.symbol);
+            // Need at least 50% of the period for a meaningful average
+            if (!vols || vols.length < Math.max(3, Math.floor(period / 2))) continue;
+
+            const avgVolume = vols.reduce((a, b) => a + b, 0) / vols.length;
+
+            // Use dynamic multiplier and min_volume
+            if (cand.volume > multiplier * avgVolume && avgVolume > min_volume) {
+                surges.push({ symbol: cand.symbol, current: cand.volume, avg: avgVolume });
+            }
+        }
+
+        if (surges.length === 0) return;
+
+        console.log(`[Event Processor] Found ${surges.length} potential volume surges.`);
+
+        // 2. Batch Check Persistence & Queue Status
+        const surgeSymbols = surges.map(s => s.symbol);
+
+        const [existingEventsRes, existingQueueRes] = await Promise.all([
+            client.query(`
+                SELECT symbol FROM notable_events 
+                WHERE symbol = ANY($1) AND event_type = 'VOLUME_SURGE' AND created_at::date = CURRENT_DATE
+            `, [surgeSymbols]),
+            client.query(`
+                SELECT symbol FROM event_queue 
+                WHERE symbol = ANY($1) AND event_type = 'VOLUME_SURGE' AND status = 'PENDING'
+            `, [surgeSymbols])
+        ]);
+
+        const existingEventsMap = new Set(existingEventsRes.rows.map(r => r.symbol));
+        const existingQueueMap = new Set(existingQueueRes.rows.map(r => r.symbol));
+
+        // 3. Filter and Queue
+        const validSurges = surges.filter(s => !existingEventsMap.has(s.symbol) && !existingQueueMap.has(s.symbol));
+
+        if (validSurges.length > 0) {
+            const queueValues = validSurges.flatMap(s => [s.symbol, 'VOLUME_SURGE', s.current, s.avg, null]);
+            const queuePlaceholders = validSurges.map((_, i) =>
+                `($${i * 5 + 1}, $${i * 5 + 2}, $${i * 5 + 3}, $${i * 5 + 4}, $${i * 5 + 5}, 'PENDING')`
+            ).join(',');
+
+            await client.query(`
+                INSERT INTO event_queue (symbol, event_type, trigger_value, previous_value, close_price, status)
+                VALUES ${queuePlaceholders}
+            `, queueValues);
+
+            validSurges.forEach(s => console.log(`[Event Queued] ${s.symbol} VOLUME_SURGE`));
+        }
+
+    } catch (e) {
+        console.error('[Event Processor] Volume Surge Error:', e);
     } finally {
         client.release();
     }

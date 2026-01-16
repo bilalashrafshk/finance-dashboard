@@ -103,7 +103,7 @@ export async function GET(request: Request) {
                     fundamentalProcessedCount++;
                 } else {
                     // ---- TECHNICAL ALERT FLOW ----
-                    const eventTypeLabel = event.event_type === 'ATH' ? 'ATH' : '52W_HIGH';
+                    const eventTypeLabel = event.event_type === 'ATH' ? 'ATH' : (event.event_type === 'VOLUME_SURGE' ? 'VOLUME_SURGE' : '52W_HIGH');
 
                     const existing = await client.query(`
                         SELECT id FROM notable_events 
@@ -115,19 +115,36 @@ export async function GET(request: Request) {
                         continue;
                     }
 
-                    const prompt = await getEventHeadlinePrompt(
-                        event.symbol,
-                        eventTypeLabel,
-                        parseFloat(event.trigger_value),
-                        parseFloat(event.previous_value),
-                        event.close_price ? parseFloat(event.close_price) : null
-                    );
+                    let headline = '';
+                    let description = '';
+                    let metadata = {};
 
-                    let headline = `${event.symbol} hits new ${event.event_type} of ${event.trigger_value}`;
-                    try {
-                        headline = await generateHeadline(prompt);
-                    } catch (e) {
-                        console.error(`AI Gen failed for ${event.symbol}, using default.`);
+                    if (eventTypeLabel === 'VOLUME_SURGE') {
+                        const currentVol = parseFloat(event.trigger_value);
+                        const avgVol = parseFloat(event.previous_value);
+                        const surgePct = ((currentVol / avgVol) - 1) * 100;
+
+                        headline = `🚀 Volume Surge: ${event.symbol} trading at ${surgePct.toFixed(0)}% above average`;
+                        description = `Current volume reached ${currentVol.toLocaleString()}, which is ${(currentVol / avgVol).toFixed(1)}x higher than the 10-day average of ${avgVol.toLocaleString()}`;
+                        metadata = { current: currentVol, avg: avgVol, surge_pct: surgePct, queue_id: event.id };
+                    } else {
+                        const prompt = await getEventHeadlinePrompt(
+                            event.symbol,
+                            eventTypeLabel,
+                            parseFloat(event.trigger_value),
+                            parseFloat(event.previous_value),
+                            event.close_price ? parseFloat(event.close_price) : null
+                        );
+
+                        headline = `${event.symbol} hits new ${event.event_type} of ${event.trigger_value}`;
+                        try {
+                            headline = await generateHeadline(prompt);
+                        } catch (e) {
+                            console.error(`AI Gen failed for ${event.symbol}, using default.`);
+                        }
+
+                        description = `Price reached ${event.trigger_value}, breaking previous ${event.event_type} of ${event.previous_value}`;
+                        metadata = { old: event.previous_value, new: event.trigger_value, queue_id: event.id };
                     }
 
                     await client.query(`
@@ -137,8 +154,8 @@ export async function GET(request: Request) {
                         event.symbol,
                         eventTypeLabel,
                         headline,
-                        `Price reached ${event.trigger_value}, breaking previous ${event.event_type} of ${event.previous_value}`,
-                        { old: event.previous_value, new: event.trigger_value, queue_id: event.id }
+                        description,
+                        JSON.stringify(metadata)
                     ]);
 
                     // Send to Discord
@@ -147,7 +164,7 @@ export async function GET(request: Request) {
                             symbol: event.symbol,
                             type: eventTypeLabel,
                             headline: headline,
-                            price: parseFloat(event.trigger_value),
+                            price: event.close_price ? parseFloat(event.close_price) : parseFloat(event.trigger_value),
                             prevValue: parseFloat(event.previous_value)
                         });
                     } catch (discordErr) {

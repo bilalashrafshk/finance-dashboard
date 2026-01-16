@@ -90,17 +90,19 @@ export async function sendMarketEventAlert(event: {
     // 52W High / ATH -> Green (3066993)
     // High Vol -> Blue (3447003)
     // Lows -> Red (15158332)
-    const color = (event.type.includes('HIGH') || event.type.includes('ATH')) ? 3066993 : 3447003;
+    const color = (event.type.includes('HIGH') || event.type.includes('ATH')) ? 3066993 : (event.type === 'VOLUME_SURGE' ? 3447003 : 3447003);
+
+    const isVolume = event.type === 'VOLUME_SURGE';
 
     const embed: DiscordEmbed = {
-        title: `🚀 ${event.type}: $${event.symbol}`,
+        title: `${isVolume ? '📊' : '🚀'} ${event.type}: $${event.symbol}`,
         description: event.headline,
         color: color,
         fields: [
             { name: 'Symbol', value: event.symbol, inline: true },
             { name: 'Event', value: event.type, inline: true },
             { name: 'Price', value: `Rs ${event.price.toFixed(2)}`, inline: true },
-            { name: 'Prev High', value: `Rs ${event.prevValue.toFixed(2)}`, inline: true },
+            { name: isVolume ? 'Average Vol' : 'Prev High', value: isVolume ? event.prevValue.toLocaleString() : `Rs ${event.prevValue.toFixed(2)}`, inline: true },
         ],
         timestamp: new Date().toISOString(),
         footer: {

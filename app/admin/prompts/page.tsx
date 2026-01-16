@@ -120,6 +120,26 @@ export default async function AdminPromptsPage() {
                     </div>
                 </SettingsZone>
 
+                {/* --- TECHNICAL ALERTS --- */}
+                <SettingsZone
+                    title="Technical Alerts"
+                    description="Signals based on price action and volume"
+                    icon={<Sliders className="w-6 h-6" />}
+                    color="bg-blue-600"
+                >
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {['volume_surge_settings'].map(key => {
+                            const config = getAlertConfig(key);
+                            if (!config) return null;
+                            return (
+                                <div key={key} className="border rounded-xl p-6 bg-card/50 transition-all md:col-span-2 border-blue-500/10 bg-blue-500/5">
+                                    <AlertConfigEditor config={config} />
+                                </div>
+                            );
+                        })}
+                    </div>
+                </SettingsZone>
+
                 {/* --- NOTIFICATION CHANNELS --- */}
                 <SettingsZone
                     title="Notification Channels"

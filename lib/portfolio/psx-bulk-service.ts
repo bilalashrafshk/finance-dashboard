@@ -95,7 +95,7 @@ export async function syncAllPSXLivePrices(): Promise<number> {
         const today = new Date().toISOString().split('T')[0];
 
         const rows: PSXBulkPrice[] = [];
-        const symbolMatches = html.matchAll(/<tr><td data-search="([A-Z0-9]+)"[^>]*>.*?<\/tr>/gs);
+        const symbolMatches = html.matchAll(/<tr><td data-search="([A-Z0-9]+)"[^>]*>([\s\S]*?)<\/tr>/g);
 
         for (const match of symbolMatches) {
             const symbol = match[1];
@@ -189,15 +189,23 @@ export async function syncAllPSXLivePrices(): Promise<number> {
                 // 3. Check for Breakouts / Events (Async)
                 // Use the scraped data to detect new ATHs immediately
                 try {
-                    const { processBreakouts } = await import('@/lib/events/event-processor');
+                    const { processBreakouts, processVolumeSurges } = await import('@/lib/events/event-processor');
                     const candidates = rows.map(r => ({
                         symbol: r.symbol,
                         price: r.close,
                         dayHigh: r.high > 0 ? r.high : r.close // Use Close if High is 0/missing
                     }));
 
+                    const volumeCandidates = rows.map(r => ({
+                        symbol: r.symbol,
+                        volume: r.volume
+                    }));
+
                     // Run event processing (Awaited to ensure completion within serverless timeout)
-                    await processBreakouts(candidates);
+                    await Promise.all([
+                        processBreakouts(candidates),
+                        processVolumeSurges(volumeCandidates)
+                    ]);
                 } catch (eventErr) {
                     console.error('[PSX Bulk] Event processing failed:', eventErr);
                 }
