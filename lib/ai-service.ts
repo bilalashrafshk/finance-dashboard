@@ -145,6 +145,7 @@ export function parseAIResponse(rawText: string) {
             headline: "New Announcement",
             scoop: [rawText.substring(0, 300)],
             verdict: "Parse failed.",
+            sector: "Unknown",
             market_context: { valuation: "N/A", momentum: "N/A", price: "N/A" }
         };
     }
@@ -164,26 +165,29 @@ export async function sendToFundamentalDiscord(task: any, aiResult: any, sector:
 
     if (!webhookUrl) return;
 
+    // Use AI-identified sector if the database one is "Unknown"
+    const finalSector = (sector === 'Unknown' || !sector) ? (aiResult.sector || sector || 'General') : sector;
+
     const sentimentEmoji = aiResult.sentiment === 'Bullish' ? '🟢' : (aiResult.sentiment === 'Bearish' ? '🔴' : '⚪');
 
+    // Format the Scoop bullets
     const scoopText = Array.isArray(aiResult.scoop)
-        ? aiResult.scoop.map((item: string) => `> ${item}`).join('\n')
-        : `> ${aiResult.scoop}`;
+        ? aiResult.scoop.map((item: string) => `• ${item}`).join('\n\n')
+        : `• ${aiResult.scoop}`;
 
-    const content = `
-**${sentimentEmoji} ${task.symbol}: ${aiResult.headline.replace(/^[^\w\s]+/, '').trim()}**
-*(${sector || 'General'})*
+    const content = `**${sentimentEmoji} ${task.symbol}: ${aiResult.headline.replace(/^[^\w\s]+/, '').trim()}**
+*(${finalSector})*
 
-> **EVENT BRIEF**
-${scoopText}
-
-**📝 ANALYST NOTE**
 ${aiResult.verdict}
 
-**📊 MARKET CONTEXT**
-• **Valuation:** ${aiResult.market_context?.valuation || 'N/A'}
-• **Momentum:** ${aiResult.market_context?.momentum || 'N/A'}
-• **Price:** ${aiResult.market_context?.price || 'N/A'}
+**The Intelligence Scoop**
+${scoopText}
+
+**Valuation Insight**
+"${aiResult.market_context?.valuation || 'N/A'}"
+
+**Momentum Pulse**
+"${aiResult.market_context?.momentum || 'N/A'}"
 
 ${task.attachments?.length > 0 ? `[📄 Open Document](${task.attachments[0]})` : ''}
 `;
