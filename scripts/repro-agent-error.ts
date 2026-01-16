@@ -21,6 +21,10 @@ async function test() {
 
         console.log('\n✅ SUCCESS!');
         console.log('Draft:', result.draft);
+        console.log('\n--- Reasoning Log ---');
+        console.log(JSON.stringify(result.reasoningLog, null, 2));
+        console.log('\n--- Tools Sent to Model (Hand) ---');
+        console.log(JSON.stringify(result.trace?.toolsSentToModel, null, 2));
     } catch (error: any) {
         console.error('\n❌ FAILED:');
         console.error(error.message);

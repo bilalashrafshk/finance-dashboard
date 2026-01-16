@@ -104,6 +104,10 @@ export class TwitterAgentService {
             .filter(ex => ex.type === postFormat)
             .map(ex => ex.text);
 
+        // Heuristic: Only use Google Search if the user explicitly asks for it in their notes
+        const notesLower = userNotes.toLowerCase();
+        const userAskedForSearch = notesLower.includes('search') || notesLower.includes('google') || notesLower.includes('latest news') || notesLower.includes('find on web');
+
         const systemInstruction = `
             ${personality.instructions}
             
@@ -124,10 +128,15 @@ export class TwitterAgentService {
         // This stage captures the AI's internal reasoning and data plan.
         const brainModel = ai.getGenerativeModel({
             model: personality.default_model || 'gemini-2.0-flash',
-            systemInstruction
+            systemInstruction: `You are the PLANNING brain of an investment agent. 
+            Your goal is to identify exactly what financial data from our internal tools is needed to fulfill the user's request.
+            DO NOT write the final tweet/reply yet. 
+            Identify if you need: Price metrics, P/E, Earnings, Dividends, or a Web Search.
+            ${userAskedForSearch ? 'The user has requested a web search. Include planning for Google Search.' : 'Do NOT plan for web search unless it is absolutely essential for context not available in financial tools.'}`
         });
 
-        const brainPrompt = `Write a ${mode === 'reply' ? 'reply' : 'tweet'} for symbol ${symbol}. ${userNotes ? `User Note: ${userNotes}` : ''}. Start your thought process by identifying what data you need.`;
+        const brainPrompt = `Request: Write a ${mode === 'reply' ? 'reply' : 'tweet'} for symbol ${symbol}. ${userNotes ? `User Note: ${userNotes}` : ''}. 
+        Plan the data acquisition. DO NOT provide the final draft.`;
 
         // @ts-ignore
         const brainResult = await brainModel.generateContent({
@@ -141,30 +150,24 @@ export class TwitterAgentService {
             }
         });
 
-        const brainParts = brainResult.response.candidates?.[0]?.content?.parts || [];
-        const internalThoughts = brainParts.find((p: any) => (p as any).thought)?.thought;
+        const brainParts = (brainResult.response.candidates?.[0]?.content?.parts || []) as any[];
+        const internalThoughts = brainParts.find((p: any) => p.thought)?.thought;
         const planText = brainResult.response.text();
 
         if (internalThoughts) {
             reasoningLog.push({ type: 'thought', content: internalThoughts, isRawThinking: true });
         }
-        reasoningLog.push({ type: 'thought', content: planText });
+        reasoningLog.push({ type: 'thought', content: `PLAN: ${planText}` });
 
         // --- STAGE 2: THE HAND (Thinking DISABLED, Tools ENABLED) ---
-        // We now execute the plan. We must decide which "Hand" to use: Search or Custom Tools.
-        // Mixing them currently causes a 400 error in v1beta.
+        // We now execute the plan.
 
         const enabledCustomTools: any[] = this.tools.filter(t =>
             personality.enabled_tools[t.functionDeclarations![0].name] !== false
         );
 
-        // Heuristic: If the plan mentions search or news, prioritize Google Search.
-        // Otherwise, use custom financial tools.
-        const planLower = planText.toLowerCase();
-        const needsSearch = planLower.includes('search') || planLower.includes('news') || planLower.includes('google');
-
         let handTools: any[] = [];
-        if (needsSearch && personality.enabled_tools.googleSearch !== false) {
+        if (userAskedForSearch && personality.enabled_tools.googleSearch !== false) {
             handTools = [{ googleSearch: {} }];
         } else {
             handTools = enabledCustomTools;
@@ -173,7 +176,7 @@ export class TwitterAgentService {
         const handModel = ai.getGenerativeModel({
             model: personality.default_model || 'gemini-2.0-flash',
             tools: handTools.length > 0 ? handTools : undefined,
-            systemInstruction
+            systemInstruction: systemInstruction
         });
 
         // Use thinkingBudget: 0 to avoid Tool conflict
