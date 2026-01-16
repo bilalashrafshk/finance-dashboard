@@ -120,7 +120,14 @@ export class TwitterAgentService {
         const model = ai.getGenerativeModel({
             model: personality.default_model || 'gemini-2.0-flash',
             tools: enabledTools.length > 0 ? enabledTools : undefined,
-            systemInstruction
+            systemInstruction,
+            generationConfig: enabledTools.length > 0 ? {
+                // @ts-ignore - Latest Gemini Thinking config
+                thinkingConfig: {
+                    includeThoughts: true,
+                    thinkingBudget: 0,
+                }
+            } : undefined
         });
 
         // 2. Start Agentic Chat
