@@ -2,7 +2,9 @@ import { getPrompts, getAlertConfigs } from './actions';
 import { PromptEditor } from './prompt-editor';
 import { AlertConfigEditor } from './alert-config-editor';
 import { SettingsZone } from './settings-zone';
-import { BarChart3, Users, Newspaper, ShieldAlert, Sliders, Bell } from 'lucide-react';
+import { BarChart3, Users, Newspaper, ShieldAlert, Sliders, Bell, Sparkles, PenTool, ExternalLink } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export default async function AdminPromptsPage() {
     const [prompts, alertConfigs] = await Promise.all([
@@ -19,18 +21,76 @@ export default async function AdminPromptsPage() {
 
     return (
         <div className="container mx-auto py-10 max-w-5xl">
-            <h1 className="text-4xl font-extrabold mb-10 tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-foreground to-foreground/70">
-                AI Intelligence Center
-            </h1>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">
+                <h1 className="text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-foreground to-foreground/70">
+                    AI Intelligence Center
+                </h1>
+                <div className="flex gap-2">
+                    <Link href="/admin/brand">
+                        <Button variant="outline" size="sm" className="gap-2">
+                            <PenTool className="w-4 h-4" /> Brand Settings
+                        </Button>
+                    </Link>
+                    <Link href="/admin/x-copilot">
+                        <Button size="sm" className="gap-2 bg-blue-600 hover:bg-blue-700">
+                            <Sparkles className="w-4 h-4" /> X-Copilot
+                        </Button>
+                    </Link>
+                </div>
+            </div>
 
             <div className="grid gap-6">
+                {/* --- PERSONALITY & SOCIAL --- */}
+                <SettingsZone
+                    title="Personality & Social"
+                    description="Personal brand guidelines and Twitter Copilot"
+                    icon={<Sparkles className="w-6 h-6" />}
+                    color="bg-blue-600"
+                    defaultOpen={true}
+                >
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="border rounded-xl p-6 bg-blue-600/5 border-blue-600/10 flex flex-col justify-between">
+                            <div>
+                                <h4 className="text-lg font-bold mb-2 flex items-center gap-2">
+                                    <PenTool className="w-5 h-5 text-blue-500" />
+                                    Brand Personality
+                                </h4>
+                                <p className="text-sm text-muted-foreground mb-6">
+                                    Configure your "AI Double" instructions, writing style, and few-shot examples.
+                                </p>
+                            </div>
+                            <Link href="/admin/brand">
+                                <Button variant="secondary" className="w-full gap-2">
+                                    Manage Brand Rules <ExternalLink className="w-4 h-4" />
+                                </Button>
+                            </Link>
+                        </div>
+
+                        <div className="border rounded-xl p-6 bg-blue-400/5 border-blue-400/10 flex flex-col justify-between">
+                            <div>
+                                <h4 className="text-lg font-bold mb-2 flex items-center gap-2">
+                                    <Sparkles className="w-5 h-5 text-blue-400" />
+                                    X-Copilot Playground
+                                </h4>
+                                <p className="text-sm text-muted-foreground mb-6">
+                                    Draft data-backed tweets using your brand persona and live market context.
+                                </p>
+                            </div>
+                            <Link href="/admin/x-copilot">
+                                <Button className="w-full gap-2 bg-blue-600 hover:bg-blue-700">
+                                    Open Copilot <ExternalLink className="w-4 h-4" />
+                                </Button>
+                            </Link>
+                        </div>
+                    </div>
+                </SettingsZone>
+
                 {/* --- FINANCIAL INTELLIGENCE --- */}
                 <SettingsZone
                     title="Financial Intelligence"
                     description="Performance metrics, Dividends, and Earnings trends"
                     icon={<BarChart3 className="w-6 h-6" />}
                     color="bg-emerald-500"
-                    defaultOpen={true}
                 >
                     <div className="grid gap-8">
                         {financialPrompt && (
