@@ -179,7 +179,7 @@ export async function processVolumeSurges(candidates: VolumeCandidate[]) {
             historyMap.set(r.symbol, vols);
         });
 
-        const surges: { symbol: string, current: number, avg: number }[] = [];
+        const surges: { symbol: string, current: number, avg: number, price: number }[] = [];
 
         for (const cand of candidates) {
             const vols = historyMap.get(cand.symbol);
@@ -190,7 +190,7 @@ export async function processVolumeSurges(candidates: VolumeCandidate[]) {
 
             // Use dynamic multiplier and min_volume
             if (cand.volume > multiplier * avgVolume && avgVolume > min_volume) {
-                surges.push({ symbol: cand.symbol, current: cand.volume, avg: avgVolume });
+                surges.push({ symbol: cand.symbol, current: cand.volume, avg: avgVolume, price: cand.price });
             }
         }
 
