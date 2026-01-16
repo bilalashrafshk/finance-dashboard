@@ -15,6 +15,7 @@ interface BreakoutCandidate {
 export interface VolumeCandidate {
     symbol: string;
     volume: number; // Current Daily Volume
+    price: number;  // Current Last Price
 }
 
 export async function processBreakouts(candidates: BreakoutCandidate[]) {
@@ -218,7 +219,7 @@ export async function processVolumeSurges(candidates: VolumeCandidate[]) {
         const validSurges = surges.filter(s => !existingEventsMap.has(s.symbol) && !existingQueueMap.has(s.symbol));
 
         if (validSurges.length > 0) {
-            const queueValues = validSurges.flatMap(s => [s.symbol, 'VOLUME_SURGE', s.current, s.avg, null]);
+            const queueValues = validSurges.flatMap(s => [s.symbol, 'VOLUME_SURGE', s.current, s.avg, s.price]);
             const queuePlaceholders = validSurges.map((_, i) =>
                 `($${i * 5 + 1}, $${i * 5 + 2}, $${i * 5 + 3}, $${i * 5 + 4}, $${i * 5 + 5}, 'PENDING')`
             ).join(',');

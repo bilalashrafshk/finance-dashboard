@@ -12,7 +12,12 @@ function initAI(apiKey: string) {
 }
 
 export class TwitterAgentService {
-    static async generateTweetDraft(symbol: string, userNotes: string = ''): Promise<string> {
+    static async generate(
+        symbol: string,
+        userNotes: string = '',
+        mode: 'tweet' | 'reply' = 'tweet',
+        targetTweet: string = ''
+    ): Promise<{ draft: string; contextData: any }> {
         const apiKey = process.env.GEMINI_API_KEY || '';
         if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
 
@@ -26,12 +31,11 @@ export class TwitterAgentService {
             contextData = await AIContextService.getContext(symbol);
         } catch (e) {
             console.warn(`Context fetch failed for ${symbol}:`, e);
-            // Continue without context if symbol not found
         }
 
         // 3. Build Prompt
         const systemInstruction = `
-            You are drafting a tweet for Bilal Ashraf. 
+            You are drafting a ${mode === 'reply' ? 'reply to a tweet' : 'new tweet'} for Bilal Ashraf. 
             
             BRAND GUIDELINES:
             ${personality.instructions}
@@ -49,14 +53,17 @@ export class TwitterAgentService {
         `;
 
         const prompt = `
-            INPUT TOPIC/DATA: ${userNotes}
+            ${mode === 'reply' ? `TARGET TWEET TO REPLY TO: ${targetTweet}` : ''}
+            
+            USER'S ADDITIONAL NOTES/CONTEXT: ${userNotes}
             
             APP CONTEXT FOR ${symbol}:
             ${contextData ? JSON.stringify(contextData, null, 2) : 'No specific app data found for this symbol.'}
             
             TASK: 
-            Generate a tweet based on the input and app context that matches the brand guidelines. 
-            Provide only the tweet text. No preamble, no quotes.
+            Generate a ${mode === 'reply' ? 'reply' : 'tweet'} based on the above that matches Bilal's brand guidelines. 
+            ${mode === 'reply' ? 'The reply should be thoughtful, adding value or a specialized perspective based on the data.' : 'The tweet should be a sharp, analytical observation.'}
+            Provide only the text. No preamble, no quotes.
         `;
 
         // 4. Call Gemini
@@ -69,10 +76,17 @@ export class TwitterAgentService {
                 { text: prompt }
             ]);
             const response = await result.response;
-            return response.text().trim().replace(/^"|"$/g, ''); // Remove wrapping quotes if AI adds them
+            const draft = response.text().trim().replace(/^"|"$/g, '');
+            return { draft, contextData };
         } catch (error) {
-            console.error('Error generating tweet draft:', error);
+            console.error('Error in TwitterAgentService:', error);
             throw error;
         }
+    }
+
+    // Keep the old method for backward compatibility (e.g. Discord integration)
+    static async generateTweetDraft(symbol: string, userNotes: string = ''): Promise<string> {
+        const { draft } = await this.generate(symbol, userNotes, 'tweet');
+        return draft;
     }
 }

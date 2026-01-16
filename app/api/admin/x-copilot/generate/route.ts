@@ -16,17 +16,22 @@ export async function POST(req: NextRequest) {
         const admin = await verifyAdmin(req);
         if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const { symbol, notes } = await req.json();
+        const { symbol, notes, mode, targetTweet } = await req.json();
 
         if (!symbol) {
             return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
         }
 
-        const draft = await TwitterAgentService.generateTweetDraft(symbol, notes);
+        const { draft, contextData } = await TwitterAgentService.generate(
+            symbol,
+            notes,
+            mode || 'tweet',
+            targetTweet || ''
+        );
 
-        return NextResponse.json({ draft });
+        return NextResponse.json({ draft, contextData });
     } catch (error: any) {
-        console.error('X-Copilot Error:', error);
+        console.error('API Error in X-Copilot Generate:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

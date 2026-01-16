@@ -198,7 +198,8 @@ export async function syncAllPSXLivePrices(): Promise<number> {
 
                     const volumeCandidates = rows.map(r => ({
                         symbol: r.symbol,
-                        volume: r.volume
+                        volume: r.volume,
+                        price: r.close
                     }));
 
                     // Run event processing (Awaited to ensure completion within serverless timeout)
