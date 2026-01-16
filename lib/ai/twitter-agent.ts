@@ -148,7 +148,10 @@ export class TwitterAgentService {
 
         const brainPrompt = `Request: Write a ${mode === 'reply' ? 'reply' : 'tweet'} for symbol ${symbol}. ${userNotes ? `User Note: ${userNotes}` : ''}. 
         ${symbol.toUpperCase() === 'N/A' ? 'This is a MACRO/GENERAL request. Do not force a stock symbol.' : ''}
-        Plan the data acquisition. DO NOT provide the final draft.`;
+        
+        TARGET FORMAT: ${postFormat === 'short' ? 'Standard Tweet (STRICTLY UNDER 280 characters)' : 'Long Post / Thread'}
+        
+        Plan the data acquisition and structure. DO NOT provide the final draft.`;
 
         // @ts-ignore
         const brainResult = await brainModel.generateContent({
@@ -268,6 +271,7 @@ export class TwitterAgentService {
                 - Use the "I" rule for opinions/feelings.
                 - Avoid "robot words" (notable, crucial, delve, etc).
                 - Keep the facts from the draft, but change the "voice".
+                - ${postFormat === 'short' ? 'STRICT CONSTRAINT: The final output MUST be under 280 characters.' : 'This is a Long Post/Thread format.'}
                 - Follow the precise instructions provided in the prompt.
             `;
 
