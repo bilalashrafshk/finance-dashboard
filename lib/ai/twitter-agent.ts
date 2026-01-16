@@ -94,19 +94,10 @@ export class TwitterAgentService {
         const personality = await PersonalityService.getPersonality('bilal-ashraf');
         if (!personality) throw new Error('Brand personality not found');
 
-        // 2. Filter Tools based on settings
-        const enabledTools: any[] = this.tools.filter(t =>
-            personality.enabled_tools[t.functionDeclarations![0].name] !== false
-        );
-
-        // Add Google Search Grounding if enabled
-        if (personality.enabled_tools.googleSearch !== false) {
-            enabledTools.push({
-                googleSearch: {}
-            });
-        }
-
         const ai = initAI(apiKey);
+        const reasoningLog: any[] = [];
+        const history: any[] = [];
+
         const systemInstruction = `
             ${personality.instructions}
             
@@ -117,20 +108,76 @@ export class TwitterAgentService {
             ${personality.examples.join('\n---\n')}
         `;
 
-        const model = ai.getGenerativeModel({
+        // --- STAGE 1: THE BRAIN (Thinking ENABLED, Tools DISABLED) ---
+        // This stage captures the AI's internal reasoning and data plan.
+        const brainModel = ai.getGenerativeModel({
             model: personality.default_model || 'gemini-2.0-flash',
-            tools: enabledTools.length > 0 ? enabledTools : undefined,
             systemInstruction
         });
 
-        // 2. Start Agentic Chat
-        const chat = model.startChat({
-            history: [],
+        const brainPrompt = `Write a ${mode === 'reply' ? 'reply' : 'tweet'} for symbol ${symbol}. ${userNotes ? `User Note: ${userNotes}` : ''}. Start your thought process by identifying what data you need.`;
+
+        // @ts-ignore
+        const brainResult = await brainModel.generateContent({
+            contents: [{ role: 'user', parts: [{ text: brainPrompt }] }],
+            generationConfig: {
+                // @ts-ignore
+                thinkingConfig: {
+                    includeThoughts: true,
+                    thinkingBudget: 1024
+                }
+            }
         });
 
-        const reasoningLog: any[] = [];
-        let currentPrompt = `Write a ${mode === 'reply' ? 'reply' : 'tweet'} for symbol ${symbol}. ${userNotes ? `User Note: ${userNotes}` : ''}. Start your thought process by identifying what data you need.`;
-        const history: any[] = [];
+        const brainParts = brainResult.response.candidates?.[0]?.content?.parts || [];
+        const internalThoughts = brainParts.find((p: any) => (p as any).thought)?.thought;
+        const planText = brainResult.response.text();
+
+        if (internalThoughts) {
+            reasoningLog.push({ type: 'thought', content: internalThoughts, isRawThinking: true });
+        }
+        reasoningLog.push({ type: 'thought', content: planText });
+
+        // --- STAGE 2: THE HAND (Thinking DISABLED, Tools ENABLED) ---
+        // We now execute the plan. We must decide which "Hand" to use: Search or Custom Tools.
+        // Mixing them currently causes a 400 error in v1beta.
+
+        const enabledCustomTools: any[] = this.tools.filter(t =>
+            personality.enabled_tools[t.functionDeclarations![0].name] !== false
+        );
+
+        // Heuristic: If the plan mentions search or news, prioritize Google Search.
+        // Otherwise, use custom financial tools.
+        const planLower = planText.toLowerCase();
+        const needsSearch = planLower.includes('search') || planLower.includes('news') || planLower.includes('google');
+
+        let handTools: any[] = [];
+        if (needsSearch && personality.enabled_tools.googleSearch !== false) {
+            handTools = [{ googleSearch: {} }];
+        } else {
+            handTools = enabledCustomTools;
+        }
+
+        const handModel = ai.getGenerativeModel({
+            model: personality.default_model || 'gemini-2.0-flash',
+            tools: handTools.length > 0 ? handTools : undefined,
+            systemInstruction
+        });
+
+        // Use thinkingBudget: 0 to avoid Tool conflict
+        const chat = handModel.startChat({
+            history: [],
+            generationConfig: {
+                // @ts-ignore
+                thinkingConfig: {
+                    includeThoughts: true,
+                    thinkingBudget: 0
+                }
+            }
+        });
+
+        let currentPrompt = `Execute this analysis plan: ${planText}`;
+        let finalDraft = '';
 
         // 3. Agentic Loop (Max 5 iterations to prevent infinite loops)
         for (let i = 0; i < 5; i++) {
@@ -140,7 +187,6 @@ export class TwitterAgentService {
             const content = response.candidates![0].content;
             history.push({ role: 'model', parts: content.parts });
 
-            // Extract thoughts and text from all parts
             for (const part of content.parts) {
                 if (part.text) {
                     reasoningLog.push({ type: 'thought', content: part.text });
@@ -150,10 +196,10 @@ export class TwitterAgentService {
                 }
             }
 
-            const functionCalls = content.parts.find(p => p.functionCall);
+            const functionCallPart = content.parts.find(p => p.functionCall);
 
-            if (functionCalls?.functionCall) {
-                const { name, args } = functionCalls.functionCall;
+            if (functionCallPart?.functionCall) {
+                const { name, args } = functionCallPart.functionCall;
                 reasoningLog.push({ type: 'tool_call', name, args });
 
                 const toolResult = await this.callFunction(name, args);
@@ -168,28 +214,18 @@ export class TwitterAgentService {
                 });
             } else {
                 // Final answer reached
-                const draft = content.parts.find(p => p.text)?.text || '';
-                return {
-                    draft,
-                    reasoningLog,
-                    trace: {
-                        systemInstruction,
-                        model: personality.default_model,
-                        toolsSentToModel: enabledTools,
-                        history
-                    }
-                };
+                finalDraft = content.parts.find(p => p.text)?.text || '';
+                break;
             }
         }
 
-        // If loop finishes without a final answer
         return {
-            draft: '',
+            draft: finalDraft,
             reasoningLog,
             trace: {
                 systemInstruction,
                 model: personality.default_model,
-                toolsSentToModel: enabledTools,
+                toolsSentToModel: handTools,
                 history
             }
         };
