@@ -122,15 +122,13 @@ export class TwitterAgentService {
                 : '- Can be longer than 280 characters.\n- Use structured details.\n- Provide deep technical analysis.'}
 
             CORE MISSION:
-            Create a high-signal "Technical Draft" based on the Brain''s plan. 
-            - SUBJECT CONTINUITY: Stay strictly grounded in the user''s provided topic/news. Any additional facts or tool data MUST directly support or relate to the primary subject. 
-            - NO STRATEGIC FLUFF: If you don''t have specific tool data (like P/E), DO NOT compensate by hallucinating general strategic theories or "benefits" not present in the user''s text. 
-            - NO APOLOGIES: Never apologize for missing data or tool errors in the draft. If data is missing, focus on the facts you DO have.
-            - Focus on FACTUAL ACCURACY.
-            - Provide data-driven insights from the tools provided.
-            - If no tools were used, rely ONLY on the user''s provided context. 
-            - DO NOT hallucinate prices or sector info if not explicitly provided.
-            - Maintain an intelligent, expert tone, but keep it as a "Rough Draft" for final humanization.
+            1. DATA COLLECTION FIRST: Your primary goal is to gather specific quantitative data, hard facts, and evidence using the provided tools (Google Search or Internal Database).
+            2. NO EARLY DRAFTING: Do not write the final tweet draft until you have executed all relevant tools and received specific results. If you skip tools and provide a generic draft, you have failed.
+            3. EVIDENCE EMBEDDING: Every technical draft MUST contain specific facts found from the tools (e.g., specific dollar amounts, percentages, dates, or named events).
+            4. SUBJECT CONTINUITY: Stay strictly grounded in the user's provided topic. Any additional facts or tool data MUST directly support the primary subject.
+            5. NO STRATEGIC FLUFF: If you don't have specific data (like P/E), focus on the facts you DO have. Never hallucinate generic "benefits."
+            6. NO APOLOGIES: Never apologize for missing data. Maintain an intelligent, expert tone.
+            7. TECHNICAL INTEGRITY: If no tools were used because the user context was sufficient, explicitly cite the facts provided by the user.
         `;
 
         // --- STAGE 1: THE BRAIN (Thinking ENABLED, Tools DISABLED) ---
@@ -172,10 +170,12 @@ export class TwitterAgentService {
             contents: [{ role: 'user', parts: [{ text: brainPrompt }] }],
             generationConfig: {
                 // @ts-ignore
-                thinkingConfig: {
-                    includeThoughts: true,
-                    thinkingBudget: 1024
-                }
+                ...(personality.default_model?.includes('thinking') ? {
+                    thinkingConfig: {
+                        includeThoughts: true,
+                        thinkingBudget: 1024
+                    }
+                } : {})
             }
         });
 
@@ -201,9 +201,22 @@ export class TwitterAgentService {
         const shouldEnableSearch = (userAskedForSearch || planMentionsSearch) && personality.enabled_tools.googleSearch !== false;
 
         let handTools: any[] = [];
+        const is25Flash = personality.default_model?.includes('2.5-flash');
+
         if (shouldEnableSearch) {
+            // Priority 1: Google Search
             handTools = [{ googleSearch: {} }];
+            // Note: On gemini-2.5-flash, mixing googleSearch with functionDeclarations is currently unsupported.
+            // If it's NOT 2.5-flash, we can potentially merge them, but for reliability we prioritize the search
+            // as per the "Search-First" directive.
+            if (!is25Flash) {
+                // For 2.0 or other models, we could theoretically add custom tools here:
+                // handTools.push(...enabledCustomTools);
+                // But for now, to follow the "Search-First" directive strictly and stay safe, 
+                // we keep it search-only if search is requested.
+            }
         } else {
+            // Priority 2: Custom Tools
             handTools = enabledCustomTools;
         }
 
@@ -218,10 +231,12 @@ export class TwitterAgentService {
             history: [],
             generationConfig: {
                 // @ts-ignore
-                thinkingConfig: {
-                    includeThoughts: true,
-                    thinkingBudget: 0
-                }
+                ...(personality.default_model?.includes('thinking') ? {
+                    thinkingConfig: {
+                        includeThoughts: true,
+                        thinkingBudget: 0
+                    }
+                } : {})
             }
         });
 

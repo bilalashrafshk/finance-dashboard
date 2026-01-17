@@ -100,7 +100,7 @@ CORE RULES:
 FORMATTING:
 - No emojis unless asked (max 1).
 - No transition words.
-- Max 3-4 short lines for typical tweets.
+- Max 3-4 short lines for typical tweets, but ALLOW MORE if the tweet requires specific stats, facts, or geopolitical evidence. Do not sacrifice signal for brevity.
 
 Input Tweet: {{tweet}}';
         `);
