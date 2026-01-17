@@ -152,9 +152,20 @@ export class TwitterAgentService {
         const brainPrompt = `Request: Write a ${mode === 'reply' ? 'reply' : 'tweet'} for symbol ${symbol}. ${userNotes ? `User Note: ${userNotes}` : ''}. 
         ${symbol.toUpperCase() === 'N/A' ? 'This is a MACRO/GENERAL request. Do not force a stock symbol.' : ''}
         
+        ${mode === 'reply' && targetTweet ? `TARGET TWEET TO REPLY TO:
+        ---
+        ${targetTweet}
+        ---
+        ` : ''}
+
+        TASK:
+        1. Analyze the core claims, entities (countries, companies, people), and logical arguments in the ${mode === 'reply' ? 'Target Tweet and User Note' : 'User Note'}.
+        2. Plan the data acquisition. If a web search is needed, the query MUST be specific to the entities and claims identified (e.g., "Impact of [Event] on [Entity]"). Never use generic queries.
+        3. Determine if tools are even needed. If the provided context is already rich in facts, focus on structuring the argument instead of chasing generic stats.
+        
         TARGET FORMAT: ${postFormat === 'short' ? 'Standard Tweet (STRICTLY UNDER 280 characters)' : 'Long Post / Thread'}
         
-        Plan the data acquisition and structure. DO NOT provide the final draft.`;
+        DO NOT provide the final draft. Provide only the analysis and data plan.`;
 
         // @ts-ignore
         const brainResult = await brainModel.generateContent({

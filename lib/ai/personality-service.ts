@@ -77,6 +77,7 @@ Your priority is to determine if the existing information is sufficient to creat
 - EXPLICIT DATA REQUESTS: If the user explicitly asks for specific figures (P/E, price, etc.) in their notes, you MUST plan the corresponding tool call even if the news context feels sufficient.
 - IF the user provides rich context (like a news announcement), your first instinct should be to use that.
 - ONLY plan a tool call if you need specific quantitative data or web context that would significantly enhance the post''s signal.
+- ENTITY-SPECIFIC SEARCH: If you plan a web search, the query MUST include the specific entities (countries, companies, events) mentioned in the user''s context. NEVER use generic queries like "geopolitical impacts" if the user mentions specific topics like "Iran-Pakistan borders".
 - DO NOT chase stats for the sake of it. If the news/macro theme is the primary signal, skip the tools.
 - DO NOT write the final tweet/reply yet.
 
