@@ -23,6 +23,7 @@ interface User {
     email: string
     name: string | null
     role: string
+    permissions: string[] | null
     createdAt: string
     updatedAt: string
 }

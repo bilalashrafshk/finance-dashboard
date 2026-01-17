@@ -30,6 +30,7 @@ export const userUpdateSchema = z.object({
     role: z.enum(['admin', 'staff', 'tier_1_customer', 'tier_2_customer', 'tier_3_customer']).optional(),
     subscriptionTier: z.enum(['free', 'pro', 'enterprise']).optional(),
     accountStatus: z.enum(['active', 'banned', 'suspended']).optional(),
+    permissions: z.array(z.string()).optional(),
 })
 
 // Forgot Password

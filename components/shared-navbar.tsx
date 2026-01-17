@@ -141,29 +141,47 @@ export function SharedNavbar() {
                       <span>Subscription & Tiers</span>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    {user.role === 'admin' && (
+                    {(user.role === 'admin' || user.role === 'staff') && (
                       <>
                         <DropdownMenuLabel className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest px-2 py-1.5">
-                          Admin Panel
+                          {user.role === 'admin' ? 'Admin Panel' : 'Staff Panel'}
                         </DropdownMenuLabel>
-                        <DropdownMenuItem className="cursor-pointer" asChild>
-                          <Link href="/admin/users" className="flex items-center">
-                            <User className="mr-2 h-4 w-4" />
-                            <span>User Management</span>
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="cursor-pointer" asChild>
-                          <Link href="/admin/price-viewer" className="flex items-center">
-                            <BarChart3 className="mr-2 h-4 w-4" />
-                            <span>Price Viewer</span>
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="cursor-pointer" asChild>
-                          <Link href="/admin/prompts" className="flex items-center">
-                            <Bot className="mr-2 h-4 w-4" />
-                            <span>AI Prompts</span>
-                          </Link>
-                        </DropdownMenuItem>
+
+                        {(user.role === 'admin' || user.permissions?.includes('x-copilot')) && (
+                          <DropdownMenuItem className="cursor-pointer" asChild>
+                            <Link href="/admin/x-copilot" className="flex items-center">
+                              <Bot className="mr-2 h-4 w-4 text-cyan-400" />
+                              <span>X-Copilot</span>
+                            </Link>
+                          </DropdownMenuItem>
+                        )}
+
+                        {user.role === 'admin' && (
+                          <DropdownMenuItem className="cursor-pointer" asChild>
+                            <Link href="/admin/users" className="flex items-center">
+                              <User className="mr-2 h-4 w-4" />
+                              <span>User Management</span>
+                            </Link>
+                          </DropdownMenuItem>
+                        )}
+
+                        {user.role === 'admin' && (
+                          <DropdownMenuItem className="cursor-pointer" asChild>
+                            <Link href="/admin/price-viewer" className="flex items-center">
+                              <BarChart3 className="mr-2 h-4 w-4" />
+                              <span>Price Viewer</span>
+                            </Link>
+                          </DropdownMenuItem>
+                        )}
+
+                        {(user.role === 'admin' || user.permissions?.includes('prompts')) && (
+                          <DropdownMenuItem className="cursor-pointer" asChild>
+                            <Link href="/admin/prompts" className="flex items-center">
+                              <Bot className="mr-2 h-4 w-4" />
+                              <span>AI Prompts</span>
+                            </Link>
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuSeparator />
                       </>
                     )}
@@ -307,30 +325,48 @@ export function SharedNavbar() {
                           <Crown className="mr-2 h-4 w-4 text-yellow-500" />
                           <span>Subscription & Tiers</span>
                         </DropdownMenuItem>
-                        {user.role === 'admin' && (
+                        {(user.role === 'admin' || user.role === 'staff') && (
                           <>
                             <DropdownMenuSeparator />
                             <DropdownMenuLabel className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest px-2 py-1.5">
-                              Admin Panel
+                              {user.role === 'admin' ? 'Admin Panel' : 'Staff Panel'}
                             </DropdownMenuLabel>
-                            <DropdownMenuItem className="cursor-pointer" asChild>
-                              <Link href="/admin/users" className="flex items-center">
-                                <User className="mr-2 h-4 w-4" />
-                                <span>User Management</span>
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="cursor-pointer" asChild>
-                              <Link href="/admin/price-viewer" className="flex items-center">
-                                <BarChart3 className="mr-2 h-4 w-4" />
-                                <span>Price Viewer</span>
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="cursor-pointer" asChild>
-                              <Link href="/admin/prompts" className="flex items-center">
-                                <Bot className="mr-2 h-4 w-4" />
-                                <span>AI Prompts</span>
-                              </Link>
-                            </DropdownMenuItem>
+
+                            {(user.role === 'admin' || user.permissions?.includes('x-copilot')) && (
+                              <DropdownMenuItem className="cursor-pointer" asChild>
+                                <Link href="/admin/x-copilot" className="flex items-center">
+                                  <Bot className="mr-2 h-4 w-4 text-cyan-400" />
+                                  <span>X-Copilot</span>
+                                </Link>
+                              </DropdownMenuItem>
+                            )}
+
+                            {user.role === 'admin' && (
+                              <DropdownMenuItem className="cursor-pointer" asChild>
+                                <Link href="/admin/users" className="flex items-center">
+                                  <User className="mr-2 h-4 w-4" />
+                                  <span>User Management</span>
+                                </Link>
+                              </DropdownMenuItem>
+                            )}
+
+                            {user.role === 'admin' && (
+                              <DropdownMenuItem className="cursor-pointer" asChild>
+                                <Link href="/admin/price-viewer" className="flex items-center">
+                                  <BarChart3 className="mr-2 h-4 w-4" />
+                                  <span>Price Viewer</span>
+                                </Link>
+                              </DropdownMenuItem>
+                            )}
+
+                            {(user.role === 'admin' || user.permissions?.includes('prompts')) && (
+                              <DropdownMenuItem className="cursor-pointer" asChild>
+                                <Link href="/admin/prompts" className="flex items-center">
+                                  <Bot className="mr-2 h-4 w-4" />
+                                  <span>AI Prompts</span>
+                                </Link>
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                           </>
                         )}

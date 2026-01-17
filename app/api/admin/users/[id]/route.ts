@@ -56,7 +56,8 @@ export async function PATCH(
             name: validated.name,
             role: validated.role,
             subscriptionTier: validated.subscriptionTier,
-            accountStatus: validated.accountStatus
+            accountStatus: validated.accountStatus,
+            permissions: validated.permissions
         })
 
         return NextResponse.json({ success: true, user: updatedUser })

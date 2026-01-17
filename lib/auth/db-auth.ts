@@ -31,6 +31,7 @@ export interface User {
   role: string // 'admin' | 'staff' | 'tier_1_customer', etc.
   subscriptionTier: string // 'free' | 'pro' | 'enterprise'
   accountStatus: string // 'active' | 'banned' | 'suspended'
+  permissions: string[] | null
   createdAt: string
   updatedAt: string
 }
@@ -74,11 +75,11 @@ export async function registerUser(input: RegisterInput): Promise<{ user: User; 
     const passwordHash = await hashPassword(input.password)
 
     // Insert user
-    // Defaults: role='tier_1_customer', subscription_tier='free', account_status='active'
+    // Defaults: role='tier_1_customer', subscription_tier='free', account_status='active', permissions='[]'
     const result = await client.query(
-      `INSERT INTO users (email, password_hash, name, role, subscription_tier, account_status)
-       VALUES ($1, $2, $3, COALESCE($4, 'tier_1_customer'), COALESCE($5, 'free'), COALESCE($6, 'active'))
-       RETURNING id, email, name, role, subscription_tier, account_status, created_at, updated_at`,
+      `INSERT INTO users (email, password_hash, name, role, subscription_tier, account_status, permissions)
+       VALUES ($1, $2, $3, COALESCE($4, 'tier_1_customer'), COALESCE($5, 'free'), COALESCE($6, 'active'), '[]'::jsonb)
+       RETURNING id, email, name, role, subscription_tier, account_status, permissions, created_at, updated_at`,
       [
         input.email.toLowerCase(),
         passwordHash,
@@ -101,6 +102,7 @@ export async function registerUser(input: RegisterInput): Promise<{ user: User; 
       role: userRow.role,
       subscriptionTier: userRow.subscription_tier,
       accountStatus: userRow.account_status,
+      permissions: userRow.permissions,
       createdAt: userRow.created_at.toISOString(),
       updatedAt: userRow.updated_at.toISOString(),
     }
@@ -111,7 +113,8 @@ export async function registerUser(input: RegisterInput): Promise<{ user: User; 
       email: user.email,
       role: user.role,
       subscriptionTier: user.subscriptionTier,
-      accountStatus: user.accountStatus
+      accountStatus: user.accountStatus,
+      permissions: user.permissions
     })
 
     return { user, token }
@@ -143,7 +146,7 @@ export async function loginUser(input: LoginInput): Promise<{ user: User; token:
   try {
     // Find user by email
     const result = await client.query(
-      `SELECT id, email, password_hash, name, role, subscription_tier, account_status, created_at, updated_at 
+      `SELECT id, email, password_hash, name, role, subscription_tier, account_status, permissions, created_at, updated_at 
        FROM users WHERE email = $1`,
       [input.email.toLowerCase()]
     )
@@ -172,6 +175,7 @@ export async function loginUser(input: LoginInput): Promise<{ user: User; token:
       role: userRow.role,
       subscriptionTier: userRow.subscription_tier,
       accountStatus: userRow.account_status,
+      permissions: userRow.permissions,
       createdAt: userRow.created_at.toISOString(),
       updatedAt: userRow.updated_at.toISOString(),
     }
@@ -182,7 +186,8 @@ export async function loginUser(input: LoginInput): Promise<{ user: User; token:
       email: user.email,
       role: user.role,
       subscriptionTier: user.subscriptionTier,
-      accountStatus: user.accountStatus
+      accountStatus: user.accountStatus,
+      permissions: user.permissions
     })
 
     return { user, token }
@@ -200,7 +205,7 @@ export async function getUserById(userId: number): Promise<User | null> {
 
   try {
     const result = await client.query(
-      `SELECT id, email, name, role, subscription_tier, account_status, created_at, updated_at 
+      `SELECT id, email, name, role, subscription_tier, account_status, permissions, created_at, updated_at 
        FROM users WHERE id = $1`,
       [userId]
     )
@@ -217,6 +222,7 @@ export async function getUserById(userId: number): Promise<User | null> {
       role: userRow.role,
       subscriptionTier: userRow.subscription_tier,
       accountStatus: userRow.account_status,
+      permissions: userRow.permissions,
       createdAt: userRow.created_at.toISOString(),
       updatedAt: userRow.updated_at.toISOString(),
     }
@@ -234,7 +240,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 
   try {
     const result = await client.query(
-      `SELECT id, email, name, role, subscription_tier, account_status, created_at, updated_at 
+      `SELECT id, email, name, role, subscription_tier, account_status, permissions, created_at, updated_at 
        FROM users WHERE email = $1`,
       [email.toLowerCase()]
     )
@@ -251,6 +257,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
       role: userRow.role,
       subscriptionTier: userRow.subscription_tier,
       accountStatus: userRow.account_status,
+      permissions: userRow.permissions,
       createdAt: userRow.created_at.toISOString(),
       updatedAt: userRow.updated_at.toISOString(),
     }
@@ -272,7 +279,7 @@ export async function getAllUsers(limit: number = 20, offset: number = 0): Promi
     const total = parseInt(countResult.rows[0].count)
 
     const result = await client.query(
-      `SELECT id, email, name, role, subscription_tier, account_status, created_at, updated_at 
+      `SELECT id, email, name, role, subscription_tier, account_status, permissions, created_at, updated_at 
          FROM users 
          ORDER BY created_at DESC 
          LIMIT $1 OFFSET $2`,
@@ -286,6 +293,7 @@ export async function getAllUsers(limit: number = 20, offset: number = 0): Promi
       role: row.role,
       subscriptionTier: row.subscription_tier,
       accountStatus: row.account_status,
+      permissions: row.permissions,
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     }))
@@ -311,7 +319,8 @@ export async function updateUser(userId: number, updates: {
   name?: string;
   role?: string;
   subscriptionTier?: string;
-  accountStatus?: string
+  accountStatus?: string;
+  permissions?: string[];
 }): Promise<User> {
   const pool = getPool()
   const client = await pool.connect()
@@ -342,6 +351,11 @@ export async function updateUser(userId: number, updates: {
       values.push(updates.accountStatus)
     }
 
+    if (updates.permissions !== undefined) {
+      sets.push(`permissions = $${paramIndex++}`)
+      values.push(JSON.stringify(updates.permissions))
+    }
+
     sets.push(`updated_at = NOW()`)
 
     if (sets.length === 1) { // Only updated_at
@@ -352,7 +366,7 @@ export async function updateUser(userId: number, updates: {
       `UPDATE users 
        SET ${sets.join(', ')} 
        WHERE id = $1 
-       RETURNING id, email, name, role, subscription_tier, account_status, created_at, updated_at`,
+       RETURNING id, email, name, role, subscription_tier, account_status, permissions, created_at, updated_at`,
       values
     )
 
@@ -368,6 +382,7 @@ export async function updateUser(userId: number, updates: {
       role: row.role,
       subscriptionTier: row.subscription_tier,
       accountStatus: row.account_status,
+      permissions: row.permissions,
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     }
@@ -396,4 +411,3 @@ export async function deleteUser(userId: number): Promise<void> {
     client.release()
   }
 }
-

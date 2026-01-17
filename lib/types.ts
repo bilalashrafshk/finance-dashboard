@@ -18,6 +18,7 @@ export interface UserDTO {
     tier: string
     status: string
     avatarUrl: string | null
+    permissions: string[] | null
     createdAt?: string
 }
 

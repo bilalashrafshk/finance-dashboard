@@ -16,6 +16,7 @@ export interface UserPayload {
   role: string
   subscriptionTier: string
   accountStatus: string
+  permissions: string[] | null
 }
 
 /**

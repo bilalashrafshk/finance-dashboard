@@ -28,7 +28,7 @@ export default function XCopilotPage() {
         if (!authLoading) {
             if (!user) {
                 router.push("/auth/login");
-            } else if (user.role !== "admin") {
+            } else if (user.role !== "admin" && !(user.role === "staff" && user.permissions?.includes("x-copilot"))) {
                 router.push("/dashboard");
             }
         }

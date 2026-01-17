@@ -5,9 +5,10 @@ import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
-import { Loader2, Pencil } from "lucide-react"
+import { Loader2, Pencil, Shield } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
     Dialog,
     DialogContent,
@@ -44,6 +45,7 @@ const formSchema = z.object({
     role: z.enum(["admin", "staff", "tier_1_customer", "tier_2_customer", "tier_3_customer"], {
         required_error: "Please select a role.",
     }),
+    permissions: z.array(z.string()).default([]),
 })
 
 interface EditUserDialogProps {
@@ -51,6 +53,7 @@ interface EditUserDialogProps {
         id: number
         name: string | null
         role: string
+        permissions: string[] | null
     }
     onUserUpdated: () => void
 }
@@ -65,6 +68,7 @@ export function EditUserDialog({ user, onUserUpdated }: EditUserDialogProps) {
         defaultValues: {
             name: user.name || "",
             role: user.role as any,
+            permissions: user.permissions || [],
         },
     })
 
@@ -162,6 +166,66 @@ export function EditUserDialog({ user, onUserUpdated }: EditUserDialogProps) {
                                 </FormItem>
                             )}
                         />
+
+                        {form.watch("role") === "staff" && (
+                            <FormField
+                                control={form.control}
+                                name="permissions"
+                                render={() => (
+                                    <FormItem>
+                                        <div className="mb-4">
+                                            <FormLabel className="text-base flex items-center gap-2">
+                                                <Shield className="h-4 w-4" /> Staff Permissions
+                                            </FormLabel>
+                                            <FormDescription>
+                                                Select the pages this staff member can access.
+                                            </FormDescription>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {[
+                                                { id: "x-copilot", label: "X-Copilot" },
+                                                { id: "brand", label: "Brand Settings" },
+                                                { id: "prompts", label: "AI Center" },
+                                            ].map((item) => (
+                                                <FormField
+                                                    key={item.id}
+                                                    control={form.control}
+                                                    name="permissions"
+                                                    render={({ field }) => {
+                                                        return (
+                                                            <FormItem
+                                                                key={item.id}
+                                                                className="flex flex-row items-start space-x-3 space-y-0"
+                                                            >
+                                                                <FormControl>
+                                                                    <Checkbox
+                                                                        checked={field.value?.includes(item.id)}
+                                                                        onCheckedChange={(checked) => {
+                                                                            return checked
+                                                                                ? field.onChange([...(field.value || []), item.id])
+                                                                                : field.onChange(
+                                                                                    field.value?.filter(
+                                                                                        (value: string) => value !== item.id
+                                                                                    )
+                                                                                )
+                                                                        }}
+                                                                    />
+                                                                </FormControl>
+                                                                <FormLabel className="font-normal cursor-pointer">
+                                                                    {item.label}
+                                                                </FormLabel>
+                                                            </FormItem>
+                                                        )
+                                                    }}
+                                                />
+                                            ))}
+                                        </div>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        )}
+
                         <DialogFooter>
                             <Button type="submit" disabled={loading}>
                                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
