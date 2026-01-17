@@ -250,8 +250,6 @@ export class TwitterAgentService {
                         response: { content: toolResult }
                     }
                 });
-                finalDraft = content.parts.find(Part => Part.text)?.text || '';
-                break;
             } else {
                 finalDraft = content.parts.find(Part => Part.text)?.text || '';
                 break;
