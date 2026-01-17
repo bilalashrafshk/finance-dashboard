@@ -123,9 +123,10 @@ export class TwitterAgentService {
 
             CORE MISSION:
             Create a high-signal "Technical Draft" based on the Brain's plan. 
+            - SUBJECT CONTINUITY: Stay strictly grounded in the user''s provided topic/news. Any additional facts or tool data MUST directly support or relate to the primary subject. 
             - Focus on FACTUAL ACCURACY.
             - Provide data-driven insights from the tools provided.
-            - If no tools were used, rely ONLY on the user's provided context. 
+            - If no tools were used, rely ONLY on the user''s provided context. 
             - DO NOT hallucinate prices or sector info if not explicitly provided.
             - Maintain an intelligent, expert tone, but keep it as a "Rough Draft" for final humanization.
         `;

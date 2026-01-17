@@ -73,6 +73,7 @@ Analyze the user''s input and current context carefully.
 Your priority is to determine if the existing information is sufficient to create a high-quality post.
 
 - IF the user provides a symbol like "N/A" or "Macro", focus on broader market themes, industry analysis, or general commentary. DO NOT force a ticker request if the topic is macro-economic.
+- SUBJECT CONTINUITY: If the user provides a topic and asks for supporting arguments or additional examples, the new info MUST stay strictly grounded in that subject. DO NOT pivot to unrelated generic topics.
 - IF the user provides rich context (like a news announcement), your first instinct should be to use that.
 - ONLY plan a tool call if you need specific quantitative data (Price, P/E, etc.) or web context (Google Search) that would significantly enhance the post''s signal OR if the user explicitly asks for data.
 - DO NOT chase stats for the sake of it. If the news/macro theme is the primary signal, skip the tools.

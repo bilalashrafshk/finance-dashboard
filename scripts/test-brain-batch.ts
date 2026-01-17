@@ -57,6 +57,18 @@ Sky47, launches Cloud & AI infrastructure platform. Platform located at Islamaba
         symbol: "N/A",
         notes: "Meezab Group is General Sales Agent (GSA) in Pakistan for FitsAir. FitsAir is planning to operate twice-a-week flights between Colombo and Lahore with Airbus A320.",
         expectedBehavior: "SKIP TOOLS (or use Search) - Focus on macro commentary, no ticker forced"
+    },
+    {
+        name: "Length & Flow Check (Canada/China)",
+        symbol: "N/A",
+        notes: "Canada agrees to cut 100% tariff on Chinese EVs in exchange for lower tariffs on Canadian farm products. My thought: US/Canada relations deteriorating. Better relation between Canada China because of that",
+        expectedBehavior: "STRICTLY UNDER 280 CHARS - No headers, natural flow"
+    },
+    {
+        name: "Subject Continuity Check (China Research)",
+        symbol: "N/A",
+        notes: "JUST IN: Chinese Universities now dominate global research rankings, taking seven of the top 10 spots. Add a supporting argument or example other than university rankings.",
+        expectedBehavior: "MAINTAIN SUBJECT - Additional info must relate to China R&D/Tech dominance, NOT unrelated tech."
     }
 ];
 
