@@ -69,6 +69,12 @@ Sky47, launches Cloud & AI infrastructure platform. Platform located at Islamaba
         symbol: "N/A",
         notes: "JUST IN: Chinese Universities now dominate global research rankings, taking seven of the top 10 spots. Add a supporting argument or example other than university rankings.",
         expectedBehavior: "MAINTAIN SUBJECT - Additional info must relate to China R&D/Tech dominance, NOT unrelated tech."
+    },
+    {
+        name: "Explicit Data Override (MARI)",
+        symbol: "MARI",
+        notes: "MARI Launches Cloud & AI Platform. Explain how it is good. Do use Mari's figures e.g. PE and other factors etc please incorporating in ur thesis.",
+        expectedBehavior: "CALL TOOLS - Explicitly asks for PE and figures, must override 'news is enough' rule."
     }
 ];
 
@@ -80,6 +86,7 @@ async function callFunction(name: string, args: any) {
         case 'getQuarterlyEarnings': return await AIContextService.getQuarterlyEarnings(args.symbol);
         case 'getAnnualEarnings': return await AIContextService.getAnnualEarnings(args.symbol);
         case 'getDividendInfo': return await AIContextService.getDividendInfo(args.symbol);
+        case 'googleSearch': return { text: "Search results indicating strong growth in China R&D and patent dominance." };
         default: throw new Error(`Unknown tool: ${name}`);
     }
 }

@@ -122,8 +122,10 @@ export class TwitterAgentService {
                 : '- Can be longer than 280 characters.\n- Use structured details.\n- Provide deep technical analysis.'}
 
             CORE MISSION:
-            Create a high-signal "Technical Draft" based on the Brain's plan. 
+            Create a high-signal "Technical Draft" based on the Brain''s plan. 
             - SUBJECT CONTINUITY: Stay strictly grounded in the user''s provided topic/news. Any additional facts or tool data MUST directly support or relate to the primary subject. 
+            - NO STRATEGIC FLUFF: If you don''t have specific tool data (like P/E), DO NOT compensate by hallucinating general strategic theories or "benefits" not present in the user''s text. 
+            - NO APOLOGIES: Never apologize for missing data or tool errors in the draft. If data is missing, focus on the facts you DO have.
             - Focus on FACTUAL ACCURACY.
             - Provide data-driven insights from the tools provided.
             - If no tools were used, rely ONLY on the user''s provided context. 
