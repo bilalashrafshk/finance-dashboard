@@ -5,11 +5,11 @@ import { hashPassword, verifyPassword } from '@/lib/auth/auth-utils'
 
 function getPool(): Pool {
   const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
-  
+
   if (!connectionString) {
     throw new Error('DATABASE_URL or POSTGRES_URL environment variable is required')
   }
-  
+
   return new Pool({
     connectionString,
     ssl: connectionString.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
@@ -25,20 +25,20 @@ export async function GET(request: NextRequest) {
     const user = await requireAuth(request)
     const pool = getPool()
     const client = await pool.connect()
-    
+
     try {
       const result = await client.query(
-        'SELECT id, email, name, created_at, updated_at FROM users WHERE id = $1',
+        'SELECT id, email, name, role, permissions, created_at, updated_at FROM users WHERE id = $1',
         [user.id]
       )
-      
+
       if (result.rows.length === 0) {
         return NextResponse.json(
           { success: false, error: 'User not found' },
           { status: 404 }
         )
       }
-      
+
       const row = result.rows[0]
       return NextResponse.json({
         success: true,
@@ -46,6 +46,8 @@ export async function GET(request: NextRequest) {
           id: row.id,
           email: row.email,
           name: row.name,
+          role: row.role,
+          permissions: row.permissions,
           createdAt: row.created_at.toISOString(),
           updatedAt: row.updated_at.toISOString(),
         },
@@ -60,7 +62,7 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       )
     }
-    
+
     console.error('Get profile error:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to get profile' },
@@ -74,22 +76,22 @@ export async function PUT(request: NextRequest) {
   try {
     const user = await requireAuth(request)
     const body = await request.json()
-    
+
     const { name, email, currentPassword, newPassword } = body
-    
+
     const pool = getPool()
     const client = await pool.connect()
-    
+
     try {
       // Start transaction
       await client.query('BEGIN')
-      
+
       // Get current user data
       const currentUser = await client.query(
         'SELECT email, password_hash FROM users WHERE id = $1',
         [user.id]
       )
-      
+
       if (currentUser.rows.length === 0) {
         await client.query('ROLLBACK')
         return NextResponse.json(
@@ -97,10 +99,10 @@ export async function PUT(request: NextRequest) {
           { status: 404 }
         )
       }
-      
+
       const currentEmail = currentUser.rows[0].email
       const currentPasswordHash = currentUser.rows[0].password_hash
-      
+
       // Update name if provided
       if (name !== undefined) {
         await client.query(
@@ -108,17 +110,17 @@ export async function PUT(request: NextRequest) {
           [name.trim() || null, user.id]
         )
       }
-      
+
       // Update email if provided and different
       if (email !== undefined && email.trim() !== currentEmail) {
         const newEmail = email.trim().toLowerCase()
-        
+
         // Check if email is already taken
         const emailCheck = await client.query(
           'SELECT id FROM users WHERE email = $1 AND id != $2',
           [newEmail, user.id]
         )
-        
+
         if (emailCheck.rows.length > 0) {
           await client.query('ROLLBACK')
           return NextResponse.json(
@@ -126,13 +128,13 @@ export async function PUT(request: NextRequest) {
             { status: 409 }
           )
         }
-        
+
         await client.query(
           'UPDATE users SET email = $1, updated_at = NOW() WHERE id = $2',
           [newEmail, user.id]
         )
       }
-      
+
       // Update password if provided
       if (newPassword !== undefined && newPassword.trim()) {
         if (!currentPassword) {
@@ -142,7 +144,7 @@ export async function PUT(request: NextRequest) {
             { status: 400 }
           )
         }
-        
+
         // Verify current password
         const isValidPassword = await verifyPassword(currentPassword, currentPasswordHash)
         if (!isValidPassword) {
@@ -152,7 +154,7 @@ export async function PUT(request: NextRequest) {
             { status: 401 }
           )
         }
-        
+
         // Validate new password
         if (newPassword.trim().length < 6) {
           await client.query('ROLLBACK')
@@ -161,7 +163,7 @@ export async function PUT(request: NextRequest) {
             { status: 400 }
           )
         }
-        
+
         // Hash and update password
         const newPasswordHash = await hashPassword(newPassword.trim())
         await client.query(
@@ -169,16 +171,16 @@ export async function PUT(request: NextRequest) {
           [newPasswordHash, user.id]
         )
       }
-      
+
       // Commit transaction
       await client.query('COMMIT')
-      
+
       // Fetch updated user
       const updatedUser = await client.query(
-        'SELECT id, email, name, created_at, updated_at FROM users WHERE id = $1',
+        'SELECT id, email, name, role, permissions, created_at, updated_at FROM users WHERE id = $1',
         [user.id]
       )
-      
+
       const row = updatedUser.rows[0]
       return NextResponse.json({
         success: true,
@@ -186,6 +188,8 @@ export async function PUT(request: NextRequest) {
           id: row.id,
           email: row.email,
           name: row.name,
+          role: row.role,
+          permissions: row.permissions,
           createdAt: row.created_at.toISOString(),
           updatedAt: row.updated_at.toISOString(),
         },
@@ -203,7 +207,7 @@ export async function PUT(request: NextRequest) {
         { status: 401 }
       )
     }
-    
+
     console.error('Update profile error:', error)
     return NextResponse.json(
       { success: false, error: error.message || 'Failed to update profile' },

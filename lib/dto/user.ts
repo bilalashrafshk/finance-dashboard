@@ -6,6 +6,7 @@ export interface UserDTO {
     subscriptionTier: string
     accountStatus: string
     avatarUrl?: string | null
+    permissions: string[] | null
     createdAt?: Date | string
 }
 
@@ -22,6 +23,7 @@ export function toUserDTO(user: any): UserDTO {
         subscriptionTier: user.subscription_tier || user.subscriptionTier || 'free',
         accountStatus: user.account_status || user.accountStatus || 'active',
         avatarUrl: user.avatar_url || user.avatarUrl || null,
+        permissions: user.permissions || [],
         createdAt: user.created_at || user.createdAt
     }
 }

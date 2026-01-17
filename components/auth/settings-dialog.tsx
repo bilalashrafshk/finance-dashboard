@@ -22,14 +22,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [fetching, setFetching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
-  
+
   // Form fields
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  
+
   // Password visibility
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
@@ -101,13 +101,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           setLoading(false)
           return
         }
-        
+
         if (newPassword.length < 6) {
           setError('New password must be at least 6 characters')
           setLoading(false)
           return
         }
-        
+
         if (newPassword !== confirmPassword) {
           setError('New passwords do not match')
           setLoading(false)
@@ -123,16 +123,16 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       }
 
       const updateData: any = {}
-      
+
       // Only include fields that have changed
       if (name !== (user?.name || '')) {
         updateData.name = name.trim() || null
       }
-      
+
       if (email !== (user?.email || '')) {
         updateData.email = email.trim()
       }
-      
+
       if (newPassword) {
         updateData.currentPassword = currentPassword
         updateData.newPassword = newPassword
@@ -158,26 +158,29 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
       if (response.ok && data.success) {
         setSuccess(true)
-        
+
         // Update auth context with new user data
         if (data.user) {
           updateUser({
+            ...user!,
             id: data.user.id,
             email: data.user.email,
             name: data.user.name,
+            role: data.user.role,
+            permissions: data.user.permissions,
           })
         }
-        
+
         toast({
           title: "Profile Updated",
           description: "Your profile has been updated successfully.",
         })
-        
+
         // Reset password fields
         setCurrentPassword('')
         setNewPassword('')
         setConfirmPassword('')
-        
+
         // Close dialog after a short delay
         setTimeout(() => {
           onOpenChange(false)
@@ -196,7 +199,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     const nameChanged = name !== (user?.name || '')
     const emailChanged = email !== (user?.email || '')
     const passwordChanged = newPassword.length > 0
-    
+
     return nameChanged || emailChanged || passwordChanged
   }
 
@@ -209,7 +212,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             Update your account information. Leave password fields empty if you don't want to change your password.
           </DialogDescription>
         </DialogHeader>
-        
+
         <form onSubmit={handleSubmit}>
           <div className="grid gap-6 py-4">
             {fetching ? (
@@ -240,6 +243,29 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     placeholder="your.email@example.com"
                     required
                   />
+                </div>
+
+                {/* Role & Permissions Display (Read-only) */}
+                <div className="space-y-4 border-t pt-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Account Role</Label>
+                    <span className="text-xs font-bold px-2 py-1 bg-muted rounded uppercase tracking-wider">
+                      {user?.role?.replace(/_/g, ' ') || 'User'}
+                    </span>
+                  </div>
+
+                  {user?.role === 'staff' && user.permissions && user.permissions.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Granted Access</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {user.permissions.map((cap) => (
+                          <span key={cap} className="text-[10px] px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full font-medium">
+                            {cap}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Password Section */}
@@ -355,8 +381,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={loading || fetching || !hasChanges()}
             >
               {loading ? (
