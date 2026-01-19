@@ -219,12 +219,62 @@ export function BalanceOfPaymentsSection() {
   }
 
   const loadBOPData = async (refresh = false) => {
-    // ... same logic ...
+    setLoading(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams({
+        seriesKey: selectedSeries,
+        refresh: refresh ? 'true' : 'false',
+        startDate: '2013-07-01'
+      })
+      const res = await fetch(`/api/sbp/balance-of-payments?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch data')
+      const json = await res.json()
+
+      setData(json.data)
+      setMetadata({
+        seriesName: json.metadata.seriesName,
+        latestDate: json.metadata.latestDate,
+        earliestDate: json.metadata.earliestDate,
+        cached: json.metadata.cached
+      })
+
+      // Fix range if it was reset or on first load
+      if (!rangeEnd || refresh) {
+        setRangeEnd(json.metadata.latestDate)
+        // Default to last 3 years for better overview
+        const latestDate = new Date(json.metadata.latestDate)
+        const threeYearsAgo = new Date(latestDate)
+        threeYearsAgo.setFullYear(latestDate.getFullYear() - 3)
+        const startStr = threeYearsAgo.toISOString().slice(0, 10)
+        const startMatch = json.data.find((d: any) => d.date >= startStr) || json.data[0]
+        setRangeStart(startMatch.date)
+      }
+    } catch (err: any) {
+      setError(err.message)
+      toast({
+        title: "Error",
+        description: err.message,
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
     loadBOPData()
   }, [selectedSeries])
+
+  // Create a lookup map for YoY data once to avoid O(N^2)
+  const dataLookupMap = useMemo(() => {
+    const map = new Map<string, number>()
+    data.forEach(d => {
+      const monthStr = d.date.slice(0, 7) // "YYYY-MM"
+      map.set(monthStr, d.value)
+    })
+    return map
+  }, [data])
 
   // Filter and Aggregate Data
   const processedData = useMemo(() => {
@@ -233,12 +283,9 @@ export function BalanceOfPaymentsSection() {
     // 1. Initial filter by raw range
     let workingSet = data
     if (rangeStart && rangeEnd) {
-      const start = new Date(rangeStart).getTime()
-      const end = new Date(rangeEnd).getTime()
-      workingSet = data.filter(d => {
-        const dTime = new Date(d.date).getTime()
-        return dTime >= start && dTime <= end
-      })
+      const start = rangeStart
+      const end = rangeEnd
+      workingSet = data.filter(d => d.date >= start && d.date <= end)
     }
 
     // 2. Aggregate by viewMode
@@ -249,39 +296,36 @@ export function BalanceOfPaymentsSection() {
   const yoyBaselineData = useMemo(() => {
     if (!showYoY || processedData.length === 0) return []
 
-    const baseline = getYoyBaseline(processedData, data)
-
-    // If we are in quarterly mode, we need to handle the aggregate YoY
-    if (viewMode === 'quarterly') {
-      // Group baseline by quarter
-      // Simplified: Since baseline is calculated per-month in processedData (monthly), 
-      // we can just re-run aggregation on the YoY values.
-      // Actually, easier: getAggregatedData already handles the grouping.
-      // Let's pass a synthetic set of YoY data to it.
-      const syntheticYoy = data.map(d => {
-        const dDate = new Date(d.date)
-        const target = new Date(dDate)
-        target.setFullYear(dDate.getFullYear() - 1)
-        const targetStr = target.toISOString().slice(0, 7)
-        const match = data.find(m => m.date.startsWith(targetStr))
-        return { ...d, value: match ? match.value : 0 }
+    // 1. Calculate YoY baseline for the current processed set
+    if (viewMode === 'monthly') {
+      return processedData.map(curr => {
+        const currDate = new Date(curr.date)
+        const targetDate = new Date(currDate)
+        targetDate.setFullYear(currDate.getFullYear() - 1)
+        const targetMonthStr = targetDate.toISOString().slice(0, 7)
+        return dataLookupMap.get(targetMonthStr) ?? null
       })
-
-      // Filter raw synthetic set by range then aggregate
-      let filteredSynthetic = syntheticYoy
-      if (rangeStart && rangeEnd) {
-        const start = new Date(rangeStart).getTime()
-        const end = new Date(rangeEnd).getTime()
-        filteredSynthetic = syntheticYoy.filter(d => {
-          const dTime = new Date(d.date).getTime()
-          return dTime >= start && dTime <= end
-        })
-      }
-      return getAggregatedData(filteredSynthetic, 'quarterly').map(d => d.value)
     }
 
-    return baseline
-  }, [showYoY, processedData, data, viewMode, rangeStart, rangeEnd])
+    // 2. For Quarterly: We need to aggregate the PREVIOUS year's data by the same quarters
+    // Construct a synthetic set of YoY data
+    const syntheticYoy = data.map(d => {
+      const dDate = new Date(d.date)
+      const targetDate = new Date(dDate)
+      targetDate.setFullYear(dDate.getFullYear() - 1)
+      const targetMonthStr = targetDate.toISOString().slice(0, 7)
+      return { ...d, value: dataLookupMap.get(targetMonthStr) ?? 0 }
+    })
+
+    // Filter raw synthetic set by same range
+    let filteredSynthetic = syntheticYoy
+    if (rangeStart && rangeEnd) {
+      filteredSynthetic = syntheticYoy.filter(d => d.date >= rangeStart && d.date <= rangeEnd)
+    }
+
+    // Aggregate the synthetic set
+    return getAggregatedData(filteredSynthetic, 'quarterly').map(d => d.value)
+  }, [showYoY, processedData, data, dataLookupMap, viewMode, rangeStart, rangeEnd])
 
   // Calculate Aggregated Value for Summary Card
   const aggregateValue = useMemo(() => {
