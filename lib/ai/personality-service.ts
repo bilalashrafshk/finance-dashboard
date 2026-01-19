@@ -3,6 +3,7 @@ import { getPool } from '@/lib/db';
 export interface Example {
     text: string;
     type: 'short' | 'long';
+    mode?: 'tweet' | 'reply' | 'briefing';
 }
 
 export interface BrandPersonality {
@@ -91,6 +92,46 @@ export class PersonalityService {
                     ALTER TABLE brand_personality ADD COLUMN briefing_instructions TEXT;
                 END IF;
             END $$;
+
+            -- Migration: Add granular prompt columns
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brand_personality' AND column_name='tweet_coordinator_prompt') THEN
+                    ALTER TABLE brand_personality ADD COLUMN tweet_coordinator_prompt TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brand_personality' AND column_name='tweet_drafter_prompt') THEN
+                    ALTER TABLE brand_personality ADD COLUMN tweet_drafter_prompt TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brand_personality' AND column_name='tweet_humanizer_prompt') THEN
+                    ALTER TABLE brand_personality ADD COLUMN tweet_humanizer_prompt TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brand_personality' AND column_name='tweet_tools') THEN
+                    ALTER TABLE brand_personality ADD COLUMN tweet_tools JSONB DEFAULT '{}';
+                END IF;
+
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brand_personality' AND column_name='reply_coordinator_prompt') THEN
+                    ALTER TABLE brand_personality ADD COLUMN reply_coordinator_prompt TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brand_personality' AND column_name='reply_drafter_prompt') THEN
+                    ALTER TABLE brand_personality ADD COLUMN reply_drafter_prompt TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brand_personality' AND column_name='reply_humanizer_prompt') THEN
+                    ALTER TABLE brand_personality ADD COLUMN reply_humanizer_prompt TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brand_personality' AND column_name='reply_tools') THEN
+                    ALTER TABLE brand_personality ADD COLUMN reply_tools JSONB DEFAULT '{}';
+                END IF;
+
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brand_personality' AND column_name='briefing_coordinator_prompt') THEN
+                    ALTER TABLE brand_personality ADD COLUMN briefing_coordinator_prompt TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brand_personality' AND column_name='briefing_humanizer_prompt') THEN
+                    ALTER TABLE brand_personality ADD COLUMN briefing_humanizer_prompt TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brand_personality' AND column_name='briefing_tools') THEN
+                    ALTER TABLE brand_personality ADD COLUMN briefing_tools JSONB DEFAULT '{}';
+                END IF;
+            END $$;
         `);
 
         // 3. Seed/Update default personality
@@ -103,14 +144,20 @@ export class PersonalityService {
             ) ON CONFLICT (slug) DO NOTHING;
         `);
 
-        // 4. Run data migrations (examples format conversion)
+        // 4. Run data migrations (examples format conversion and default modes)
         await pool.query(`
             UPDATE brand_personality 
             SET examples = (
-                SELECT jsonb_agg(jsonb_build_object('text', elem, 'type', 'short'))
-                FROM jsonb_array_elements_text(examples) AS elem
+                SELECT jsonb_agg(
+                    CASE 
+                        WHEN jsonb_typeof(elem) = 'string' THEN jsonb_build_object('text', elem, 'type', 'short', 'mode', 'tweet')
+                        WHEN elem->'mode' IS NULL THEN elem || jsonb_build_object('mode', CASE WHEN elem->>'type' = 'long' THEN 'briefing' ELSE 'tweet' END)
+                        ELSE elem
+                    END
+                )
+                FROM jsonb_array_elements(examples) AS elem
             )
-            WHERE jsonb_typeof(examples) = 'array' AND jsonb_array_length(examples) > 0 AND jsonb_typeof(examples->0) = 'string';
+            WHERE jsonb_typeof(examples) = 'array' AND jsonb_array_length(examples) > 0;
         `);
     }
 

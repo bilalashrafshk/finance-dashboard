@@ -21,6 +21,7 @@ export default function AdminBrandPage() {
     const [examples, setExamples] = useState<{ text: string; type: 'short' | 'long' }[]>([]);
     const [newExample, setNewExample] = useState('');
     const [newExampleType, setNewExampleType] = useState<'short' | 'long'>('short');
+    const [newExampleMode, setNewExampleMode] = useState<'tweet' | 'reply' | 'briefing'>('tweet');
 
     // Models
     const [model, setModel] = useState('gemini-2.0-flash');
@@ -150,7 +151,11 @@ export default function AdminBrandPage() {
 
     const addExample = () => {
         if (!newExample) return;
-        setExamples([...examples, { text: newExample, type: newExampleType }]);
+        setExamples([...examples, {
+            text: newExample,
+            type: newExampleType,
+            mode: newExampleMode
+        } as any]);
         setNewExample('');
     };
 
@@ -226,6 +231,11 @@ export default function AdminBrandPage() {
                                             <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${ex.type === 'long' ? 'bg-purple-500/10 text-purple-600' : 'bg-blue-500/10 text-blue-600'}`}>
                                                 {ex.type} Post
                                             </span>
+                                            {(ex as any).mode && (
+                                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${(ex as any).mode === 'reply' ? 'bg-orange-500/10 text-orange-600' : (ex as any).mode === 'briefing' ? 'bg-indigo-500/10 text-indigo-600' : 'bg-blue-500/10 text-blue-600'}`}>
+                                                    {(ex as any).mode}
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="text-sm font-medium leading-relaxed">"{ex.text}"</p>
                                         <Button
@@ -238,18 +248,34 @@ export default function AdminBrandPage() {
                                 ))}
                             </div>
                             <div className="p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-500/10 rounded-xl space-y-3">
-                                <div className="flex gap-4 mb-2">
-                                    {['short', 'long'].map((t) => (
-                                        <label key={t} className="flex items-center gap-2 cursor-pointer">
-                                            <input
-                                                type="radio"
-                                                name="type"
-                                                checked={newExampleType === t}
-                                                onChange={() => setNewExampleType(t as any)}
-                                            />
-                                            <span className="text-xs font-bold uppercase">{t} Example</span>
-                                        </label>
-                                    ))}
+                                <div className="flex gap-6 mb-2">
+                                    <div className="flex gap-4">
+                                        {['short', 'long'].map((t) => (
+                                            <label key={t} className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name="type"
+                                                    checked={newExampleType === t}
+                                                    onChange={() => setNewExampleType(t as any)}
+                                                />
+                                                <span className="text-xs font-bold uppercase">{t}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                    <div className="w-px h-4 bg-border self-center" />
+                                    <div className="flex gap-4">
+                                        {['tweet', 'reply', 'briefing'].map((m) => (
+                                            <label key={m} className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name="mode"
+                                                    checked={newExampleMode === m}
+                                                    onChange={() => setNewExampleMode(m as any)}
+                                                />
+                                                <span className="text-xs font-bold uppercase">{m}</span>
+                                            </label>
+                                        ))}
+                                    </div>
                                 </div>
                                 <div className="flex gap-2">
                                     <Input
