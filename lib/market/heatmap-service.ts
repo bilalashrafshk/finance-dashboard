@@ -231,12 +231,17 @@ export class MarketHeatmapService {
       SELECT date 
       FROM historical_price_data 
       WHERE symbol = 'KSE100' 
+      AND EXTRACT(ISODOW FROM date) < 6
       ORDER BY date DESC 
       LIMIT 1
     `)
         if (res.rows.length > 0) {
             const d = new Date(res.rows[0].date)
-            return d.toISOString().split('T')[0]
+            // Use local time to avoid UTC rollback (e.g., midnight PKT -> prev day UTC)
+            const year = d.getFullYear()
+            const month = String(d.getMonth() + 1).padStart(2, '0')
+            const day = String(d.getDate()).padStart(2, '0')
+            return `${year}-${month}-${day}`
         }
         return new Date().toISOString().split('T')[0] // Fallback to today
     }
