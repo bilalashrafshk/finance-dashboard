@@ -154,9 +154,51 @@ export class MarketHeatmapService {
             FROM current_idx c, (SELECT close as price FROM historical_price_data WHERE symbol = 'KSE100' AND date <= $2 ORDER BY date DESC LIMIT 1) p
         `
 
-        const [heatmapRes, indexRes] = await Promise.all([
+        const sectorQuery = `
+            WITH top_stocks AS (
+                SELECT symbol, market_cap, sector
+                FROM company_profiles
+                ${filterClause}
+            ),
+            target_prices AS (
+                SELECT symbol, close as price
+                FROM historical_price_data
+                WHERE asset_type = 'pk-equity' AND date = $1
+            ),
+            start_prices AS (
+                SELECT DISTINCT ON (symbol) symbol, close as price
+                FROM historical_price_data
+                WHERE asset_type = 'pk-equity' AND date <= $2
+                ORDER BY symbol, date DESC
+            ),
+            base_data AS (
+                SELECT
+                    ts.sector,
+                    ts.market_cap as current_mc,
+                    -- Estimate Previous MC: (Current MC / Current Price) * Start Price
+                    (ts.market_cap / NULLIF(tp.price, 0)) * sp.price as prev_mc
+                FROM top_stocks ts
+                JOIN target_prices tp ON ts.symbol = tp.symbol
+                JOIN start_prices sp ON ts.symbol = sp.symbol
+                WHERE tp.price > 0
+            )
+            SELECT 
+                sector as name,
+                SUM(current_mc) as current_mc_sum,
+                SUM(prev_mc) as prev_mc_sum
+            FROM base_data
+            GROUP BY sector
+            ORDER BY 
+                CASE WHEN SUM(prev_mc) > 0 
+                     THEN ((SUM(current_mc) - SUM(prev_mc)) / SUM(prev_mc)) * 100 
+                     ELSE 0 
+                END DESC
+        `
+
+        const [heatmapRes, indexRes, sectorRes] = await Promise.all([
             pool.query(heatmapQuery, [limit, date, startDate]),
-            pool.query(indexQuery, [date, startDate])
+            pool.query(indexQuery, [date, startDate]),
+            pool.query(sectorQuery, [date, startDate])
         ])
 
         // Process Stocks
@@ -179,30 +221,18 @@ export class MarketHeatmapService {
             }
         })
 
-        // Process Sectors (Market Cap Weighted)
-        const sectorMap = new Map<string, { currentMcapSum: number, startMcapSum: number, volumeSum: number }>()
+        // Process Sectors (From dedicated query)
+        const sectors: MarketSectorPerformance[] = sectorRes.rows.map((row: any) => {
+            const currentSum = parseFloat(row.current_mc_sum)
+            const prevSum = parseFloat(row.prev_mc_sum)
+            const change = prevSum > 0 ? ((currentSum - prevSum) / prevSum) * 100 : 0
 
-        stocks.forEach(stock => {
-            if (!stock.sector) return
-            const shares = stock.marketCap / stock.price // Approximate shares
-            const startMcap = stock.previousPrice ? shares * stock.previousPrice : stock.marketCap // Fallback equal if no history
-
-            const entry = sectorMap.get(stock.sector) || { currentMcapSum: 0, startMcapSum: 0, volumeSum: 0 }
-            entry.currentMcapSum += stock.marketCap
-            entry.startMcapSum += startMcap
-            sectorMap.set(stock.sector, entry)
-        })
-
-        const sectors: MarketSectorPerformance[] = Array.from(sectorMap.entries()).map(([name, data]) => {
-            const change = data.startMcapSum > 0
-                ? ((data.currentMcapSum - data.startMcapSum) / data.startMcapSum) * 100
-                : 0
             return {
-                name,
+                name: row.name || 'Others',
                 change,
                 volume: 'N/A'
             }
-        }).sort((a, b) => b.change - a.change)
+        })
 
         // Process Indices
         const indices: MarketIndexData[] = indexRes.rows.length > 0 ? [{
