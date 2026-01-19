@@ -261,14 +261,36 @@ export class TwitterAgentService {
         const planMentionsSearch = planLower.includes('google search') || planLower.includes('web search') || planLower.includes('search the web');
         const shouldEnableSearch = (userAskedForSearch || planMentionsSearch) && configTools.googleSearch !== false;
 
-        let handTools: any[] = [];
-
+        // --- STAGE 2.1: THE RESEARCHER (Grounding Turn) ---
+        // Gemini 2.0/2.5 cannot mix custom tools with Google Search grounding in a single turn.
+        // We perform a dedicated research turn first if needed.
+        let researchContext = '';
         if (shouldEnableSearch) {
-            handTools.push({ googleSearch: {} });
+            reasoningLog.push({ type: 'thought', content: "--- STAGE 2.1: RESEARCHING ---" });
+            const researcherModel = ai.getGenerativeModel({
+                model: personality.hand_model || personality.default_model || 'gemini-2.0-flash',
+                tools: [{ googleSearch: {} }] as any
+            });
+
+            const researchPrompt = `Review the following analysis plan and provide the latest factual context, news, and data available via web search to ground the analysis:
+            
+            PLAN:
+            ${planText}
+            
+            Provide a concise summary of your findings. Focus on hard facts, latest prices mentioned in news, and recent announcements.`;
+
+            try {
+                const researchResult = await researcherModel.generateContent(researchPrompt);
+                researchContext = researchResult.response.text();
+                reasoningLog.push({ type: 'thought', content: `RESEARCH FINDINGS: ${researchContext}` });
+            } catch (err) {
+                console.error('Research turn failed:', err);
+                reasoningLog.push({ type: 'thought', content: `Warning: Research turn failed. Proceeding without search context. Error: ${(err as any).message}` });
+            }
         }
 
-        // Add custom tools
-        handTools.push(...enabledCustomTools);
+        // --- STAGE 2.2: THE DATA HAND (Custom Tools only) ---
+        const handTools: any[] = [...enabledCustomTools];
 
         const handModel = ai.getGenerativeModel({
             model: personality.hand_model || personality.default_model || 'gemini-2.0-flash',
@@ -291,6 +313,9 @@ export class TwitterAgentService {
         });
 
         let currentPrompt = `Execute this analysis plan: ${planText}`;
+        if (researchContext) {
+            currentPrompt += `\n\n[SEARCH GROUNDING CONTEXT]\n${researchContext}\n\nUse this search context to inform your analysis. If tools provide more recent or specific data, prioritize tool data.`;
+        }
 
         // HEATMAP CONTEXT INJECTION (If enabled in settings)
         try {
