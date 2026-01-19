@@ -93,7 +93,7 @@ export class TwitterAgentService {
             case 'getAnnualEarnings': return await AIContextService.getAnnualEarnings(args.symbol);
             case 'getDividendInfo': return await AIContextService.getDividendInfo(args.symbol);
             case 'getMarketSummary': return await AIContextService.getMarketSummary(args.date, args.detailed, args.filter_sector, args.filter_symbols, args.timeframe);
-            case 'googleSearch': return "Google Search grounding is enabled. Use your internal grounding capability to retrieve web results directly.";
+            case 'googleSearch': return "SYSTEM NOTE: googleSearch is a built-in capability. Do NOT call it as a function. Please proceed with your analysis using your internal grounding now.";
             default: throw new Error(`Unknown tool: ${name}`);
         }
     }
@@ -109,11 +109,13 @@ export class TwitterAgentService {
             }
         }
 
+        let desc = lines.join('\n');
+
         if (enabledTools.googleSearch !== false) {
-            lines.push(`${idx++}. googleSearch: Use for latest news, macro facts, or if explicitly asked.`);
+            desc += '\n\nINTERNAL CAPABILITY:\n- googleSearch: You are GROUNDED with Google Search. Do NOT call it as a function. Use it automatically to retrieve real-time facts while drafting.';
         }
 
-        return lines.join('\n');
+        return desc;
     }
 
     static async generate(
