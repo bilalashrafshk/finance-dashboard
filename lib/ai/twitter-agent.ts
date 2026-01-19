@@ -93,6 +93,9 @@ export class TwitterAgentService {
             case 'getAnnualEarnings': return await AIContextService.getAnnualEarnings(args.symbol);
             case 'getDividendInfo': return await AIContextService.getDividendInfo(args.symbol);
             case 'getMarketSummary': return await AIContextService.getMarketSummary(args.date, args.detailed, args.filter_sector, args.filter_symbols, args.timeframe);
+            case 'googleSearch':
+                // This is a safety handler for when the model hallucinates a search call in Stage 2.2
+                return "NOTE: Google Search is NOT available in this stage. Use the provided [SEARCH GROUNDING CONTEXT] already included in the prompt.";
             default: throw new Error(`Unknown tool: ${name}`);
         }
     }
@@ -110,7 +113,7 @@ export class TwitterAgentService {
 
 
         if (enabledTools.googleSearch !== false) {
-            lines.push(`\nCAPABILITY: Real-time Google Search Grounding enabled. Check facts automatically.`);
+            lines.push(`\nCAPABILITY: Google Search Grounding is available. NOTE: This is a NATIVE capability handled in a separate research turn. It is NOT a callable function for the Hand stage.`);
         }
         return lines.join('\n');
     }
@@ -312,7 +315,7 @@ export class TwitterAgentService {
             } as any
         });
 
-        let currentPrompt = `Execute this analysis plan: ${planText}`;
+        let currentPrompt = `Execute this analysis plan: ${planText}\n\nNOTE: You do NOT have access to the 'googleSearch' tool in this turn. Use the provided [SEARCH GROUNDING CONTEXT] above for news/web data. Focus on using your custom tools for financial data.`;
         if (researchContext) {
             currentPrompt += `\n\n[SEARCH GROUNDING CONTEXT]\n${researchContext}\n\nUse this search context to inform your analysis. If tools provide more recent or specific data, prioritize tool data.`;
         }
