@@ -313,13 +313,15 @@ export class TwitterAgentService {
         }
 
         let finalDraft = '';
+        let currentInput: string | any = currentPrompt;
 
         // 3. Agentic Loop (Max 5 iterations to prevent infinite loops)
         for (let i = 0; i < 5; i++) {
-            history.push({ role: 'user', parts: [{ text: currentPrompt }] });
-            const result = await chat.sendMessage(currentPrompt);
+            const result = await chat.sendMessage(currentInput);
             const response = result.response;
             const content = response.candidates![0].content;
+
+            // Log for tracing
             history.push({ role: 'model', parts: content.parts });
 
             for (const part of content.parts) {
@@ -340,13 +342,13 @@ export class TwitterAgentService {
                 const toolResult = await this.callFunction(name, args);
                 reasoningLog.push({ type: 'tool_response', name, result: toolResult });
 
-                // Continue loop with tool result
-                currentPrompt = JSON.stringify({
+                // Continue loop with proper FunctionResponse part
+                currentInput = [{
                     functionResponse: {
                         name,
                         response: { content: toolResult }
                     }
-                });
+                }];
             } else {
                 finalDraft = content.parts.find(Part => Part.text)?.text || '';
                 break;
