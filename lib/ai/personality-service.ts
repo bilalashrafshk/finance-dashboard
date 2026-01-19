@@ -10,6 +10,9 @@ export interface BrandPersonality {
     instructions: string;
     examples: Example[];
     default_model: string;
+    brain_model?: string;
+    hand_model?: string;
+    humanizer_model?: string;
     enabled_tools: Record<string, boolean>;
     coordinator_instructions?: string; // Instructions for the PLANNING phase
     humanizer_instructions?: string;   // Stylistic refinement phase
@@ -51,11 +54,17 @@ export class PersonalityService {
                 END IF;
             END $$;
 
-            -- Migration: Add humanizer_instructions if it doesn't exist
+            -- Migration: Add model override columns
             DO $$ 
             BEGIN 
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brand_personality' AND column_name='humanizer_instructions') THEN
-                    ALTER TABLE brand_personality ADD COLUMN humanizer_instructions TEXT;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brand_personality' AND column_name='brain_model') THEN
+                    ALTER TABLE brand_personality ADD COLUMN brain_model VARCHAR(50);
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brand_personality' AND column_name='hand_model') THEN
+                    ALTER TABLE brand_personality ADD COLUMN hand_model VARCHAR(50);
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='brand_personality' AND column_name='humanizer_model') THEN
+                    ALTER TABLE brand_personality ADD COLUMN humanizer_model VARCHAR(50);
                 END IF;
             END $$;
         `);
@@ -73,13 +82,16 @@ Analyze the user''s input and current context carefully.
 Your priority is to determine if the existing information is sufficient to create a high-quality post.
 
 - IF the user provides a symbol like "N/A" or "Macro", focus on broader market themes, industry analysis, or general commentary. DO NOT force a ticker request if the topic is macro-economic.
+- EXTRACT ALL NUMBERS: Your first step is to extract every figure, P/E ratio, and price mentioned in the User Note and Target Tweet.
+- VERIFY vs HALLUCINATION: If the User Note contains specific figures (e.g. "P/E of 7.64"), you MUST use them. Never invent or "estimate" figures like "3.5x" if they are not present.
 - SUBJECT CONTINUITY: If the user provides a topic and asks for supporting arguments or additional examples, the new info MUST stay strictly grounded in that subject. DO NOT pivot to unrelated generic topics.
 - EXPLICIT DATA REQUESTS: If the user explicitly asks for specific figures (P/E, price, etc.) in their notes, you MUST plan the corresponding tool call even if the news context feels sufficient.
-- IF the user provides rich context (like a news announcement), your first instinct should be to use that.
+- IF the user provides rich context (like a news announcement), your first instinct should be to use that context as the source of truth for figures.
 - ONLY plan a tool call if you need specific quantitative data or web context that would significantly enhance the post''s signal.
 - ENTITY-SPECIFIC SEARCH: If you plan a web search, the query MUST include the specific entities (countries, companies, events) mentioned in the user''s context. NEVER use generic queries like "geopolitical impacts" if the user mentions specific topics like "Iran-Pakistan borders".
 - DO NOT chase stats for the sake of it. If the news/macro theme is the primary signal, skip the tools.
 - DO NOT write the final tweet/reply yet.
+- OUTPUT FORMAT: Provide a "FACT SHEET" of extracted numbers followed by a "DATA PLAN".
 
 Available Tools:
 1. getCompanyProfile: Use for P/E ratio, sector, and basic valuation.
@@ -96,6 +108,7 @@ CORE RULES:
 4. PUNCTUATION: Never use semicolons. Avoid overusing dashes (-). Use periods or line breaks to separate thoughts for a cleaner look.
 5. NO BOT-SPEAK: Strip all markdown headers (#, ##, ###), bold markers (**), and bullet points. NEVER include meta-commentary like "i can''t find the data" or "i apologize". If data is missing, just write a high-signal post based on what YOU HAVE. Maintain a confident expert persona.
 6. KILL ROBOT WORDS: Absolutely delete the following: delve, underscore, notable, interesting development, crucial, furthermore, moreover.
+7. DO NOT ALTER NUMBERS: You must preserve every specific number, percentage, or price mentioned in the Technical Draft. Do not round them or change them for "style".
 
 FORMATTING:
 - No emojis unless asked (max 1).
@@ -141,7 +154,10 @@ Input Tweet: {{tweet}}';
             default_model: row.default_model,
             enabled_tools: typeof row.enabled_tools === 'string' ? JSON.parse(row.enabled_tools) : (row.enabled_tools || {}),
             coordinator_instructions: row.coordinator_instructions,
-            humanizer_instructions: row.humanizer_instructions
+            humanizer_instructions: row.humanizer_instructions,
+            brain_model: row.brain_model,
+            hand_model: row.hand_model,
+            humanizer_model: row.humanizer_model
         };
     }
 
@@ -174,6 +190,18 @@ Input Tweet: {{tweet}}';
         if (data.humanizer_instructions !== undefined) {
             fields.push(`humanizer_instructions = $${i++}`);
             values.push(data.humanizer_instructions);
+        }
+        if (data.brain_model !== undefined) {
+            fields.push(`brain_model = $${i++}`);
+            values.push(data.brain_model);
+        }
+        if (data.hand_model !== undefined) {
+            fields.push(`hand_model = $${i++}`);
+            values.push(data.hand_model);
+        }
+        if (data.humanizer_model !== undefined) {
+            fields.push(`humanizer_model = $${i++}`);
+            values.push(data.humanizer_model);
         }
 
         if (fields.length === 0) return;

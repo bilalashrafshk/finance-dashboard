@@ -18,6 +18,9 @@ export default function AdminBrandPage() {
     const [newExample, setNewExample] = useState('');
     const [newExampleType, setNewExampleType] = useState<'short' | 'long'>('short');
     const [model, setModel] = useState('gemini-2.0-flash');
+    const [brainModel, setBrainModel] = useState('');
+    const [handModel, setHandModel] = useState('');
+    const [humanizerModel, setHumanizerModel] = useState('');
     const [enabledTools, setEnabledTools] = useState<Record<string, boolean>>({});
     const [coordinatorInstructions, setCoordinatorInstructions] = useState('');
     const [humanizerInstructions, setHumanizerInstructions] = useState('');
@@ -45,6 +48,9 @@ export default function AdminBrandPage() {
                 setInstructions(data.instructions);
                 setExamples(data.examples || []);
                 setModel(data.default_model);
+                setBrainModel(data.brain_model || '');
+                setHandModel(data.hand_model || '');
+                setHumanizerModel(data.humanizer_model || '');
                 setEnabledTools(data.enabled_tools || {});
                 setCoordinatorInstructions(data.coordinator_instructions || '');
                 setHumanizerInstructions(data.humanizer_instructions || '');
@@ -61,6 +67,9 @@ export default function AdminBrandPage() {
                 instructions,
                 examples,
                 default_model: model,
+                brain_model: brainModel,
+                hand_model: handModel,
+                humanizer_model: humanizerModel,
                 enabled_tools: enabledTools,
                 coordinator_instructions: coordinatorInstructions,
                 humanizer_instructions: humanizerInstructions
@@ -218,6 +227,46 @@ export default function AdminBrandPage() {
                             <option value="gemini-2.0-flash-thinking-preview-01-21" />
                         </datalist>
                     </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase text-blue-600 flex items-center gap-1">
+                                🧠 Brain Model Override
+                            </label>
+                            <Input
+                                value={brainModel}
+                                onChange={(e) => setBrainModel(e.target.value)}
+                                placeholder="Stage 1 (Planning)"
+                                list="gemini-models"
+                                className="font-mono text-xs h-9"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase text-orange-600 flex items-center gap-1">
+                                ⚙️ Hand Model Override
+                            </label>
+                            <Input
+                                value={handModel}
+                                onChange={(e) => setHandModel(e.target.value)}
+                                placeholder="Stage 2 (Execution)"
+                                list="gemini-models"
+                                className="font-mono text-xs h-9"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase text-green-600 flex items-center gap-1">
+                                ✨ Humanizer Model Override
+                            </label>
+                            <Input
+                                value={humanizerModel}
+                                onChange={(e) => setHumanizerModel(e.target.value)}
+                                placeholder="Stage 3 (Styling)"
+                                list="gemini-models"
+                                className="font-mono text-xs h-9"
+                            />
+                        </div>
+                    </div>
+
                     <div className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-lg">
                         <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
                             {model.includes('thinking') ?

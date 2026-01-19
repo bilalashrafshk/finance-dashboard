@@ -193,7 +193,17 @@ export function parseAIResponse(rawText: string) {
     try {
         const jsonMatch = rawText.match(/\{[\s\S]*\}/);
         const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
-        return JSON.parse(jsonStr);
+        const parsed = JSON.parse(jsonStr);
+
+        // Map flexible field names to expected keys
+        return {
+            sentiment: parsed.sentiment || parsed.verdict || "Neutral",
+            headline: parsed.headline || "New Announcement",
+            scoop: parsed.scoop || parsed.the_scoop || [],
+            verdict: parsed.post || parsed.the_post || parsed.summary || parsed.verdict || "Analysis unavailable.",
+            sector: parsed.sector || "Unknown",
+            market_context: parsed.market_context || { valuation: "N/A", momentum: "N/A", price: "N/A" }
+        };
     } catch (e) {
         console.warn("⚠️ Failed to parse AI JSON, falling back to raw text.");
         return {
@@ -224,18 +234,23 @@ export async function sendToFundamentalDiscord(task: any, aiResult: any, sector:
     // Use AI-identified sector if the database one is "Unknown"
     const finalSector = (sector === 'Unknown' || !sector) ? (aiResult.sector || sector || 'General') : sector;
 
-    const sentimentEmoji = aiResult.sentiment === 'Bullish' ? '🟢' : (aiResult.sentiment === 'Bearish' ? '🔴' : '⚪');
+    const sentimentEmoji = (aiResult.sentiment || '').includes('Bullish') ? '🟢' : ((aiResult.sentiment || '').includes('Bearish') ? '🔴' : '⚪');
 
     // Format the Scoop bullets
     const scoopText = Array.isArray(aiResult.scoop)
         ? aiResult.scoop.map((item: string) => `• ${item}`).join('\n\n')
         : `• ${aiResult.scoop}`;
 
-    const content = `**${sentimentEmoji} ${task.symbol}: ${aiResult.headline.replace(/^[^\w\s]+/, '').trim()}**
+    // Twitter-Ready Block (Headline + Summary)
+    const twitterHeadline = aiResult.headline.replace(/^[^\w\s]+/, '').trim();
+    const twitterPost = aiResult.verdict || '';
+
+    const content = `**${sentimentEmoji} ${twitterHeadline}**
 *(${finalSector})*
 
-${aiResult.verdict}
+${twitterPost}
 
+---
 **The Intelligence Scoop**
 ${scoopText}
 

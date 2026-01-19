@@ -129,6 +129,7 @@ export class TwitterAgentService {
             5. NO STRATEGIC FLUFF: If you don't have specific data (like P/E), focus on the facts you DO have. Never hallucinate generic "benefits."
             6. NO APOLOGIES: Never apologize for missing data. Maintain an intelligent, expert tone.
             7. TECHNICAL INTEGRITY: If no tools were used because the user context was sufficient, explicitly cite the facts provided by the user.
+            8. DATA VERIFICATION: Before drafting, check the "Fact Sheet" from the plan against any tool results. The User Note is the source of truth for specific event context. Never replace user-provided numbers with generic ones.
         `;
 
         // --- STAGE 1: THE BRAIN (Thinking ENABLED, Tools DISABLED) ---
@@ -139,7 +140,7 @@ export class TwitterAgentService {
         DO NOT write the final tweet/reply yet.`;
 
         const brainModel = ai.getGenerativeModel({
-            model: personality.default_model || 'gemini-2.0-flash',
+            model: personality.brain_model || personality.default_model || 'gemini-2.0-flash',
             systemInstruction: `
                 ${personality.coordinator_instructions || defaultCoordinatorPrompt}
                 
@@ -157,26 +158,30 @@ export class TwitterAgentService {
         ` : ''}
 
         TASK:
-        1. Analyze the core claims, entities (countries, companies, people), and logical arguments in the ${mode === 'reply' ? 'Target Tweet and User Note' : 'User Note'}.
-        2. Plan the data acquisition. If a web search is needed, the query MUST be specific to the entities and claims identified (e.g., "Impact of [Event] on [Entity]"). Never use generic queries.
-        3. Determine if tools are even needed. If the provided context is already rich in facts, focus on structuring the argument instead of chasing generic stats.
+        1. EXTRACT ALL QUANTITATIVE DATA: List every number, price, P/E ratio, percentage, and date mentioned in the User Note and Target Tweet.
+        2. VERIFY vs HALLUCINATION: If the User Note contains specific figures (e.g. "P/E of 7.64"), you MUST use them. Never invent or "estimate" figures like "3.5x" if they are not present.
+        3. DATA PLAN: Determine if tools are needed. If the User Note is already fact-rich, prioritize those facts. If search is needed, make it entity-specific.
         
         TARGET FORMAT: ${postFormat === 'short' ? 'Standard Tweet (STRICTLY UNDER 280 characters)' : 'Long Post / Thread'}
         
-        DO NOT provide the final draft. Provide only the analysis and data plan.`;
+        OUTPUT FORMAT:
+        - FACT SHEET: [List extracted numbers here]
+        - DATA PLAN: [Tool plan or "No tools needed, user context is sufficient"]
+        
+        DO NOT provide the final draft. Provide only the Fact Sheet and Data Plan.`;
 
         // @ts-ignore
         const brainResult = await brainModel.generateContent({
             contents: [{ role: 'user', parts: [{ text: brainPrompt }] }],
             generationConfig: {
                 // @ts-ignore
-                ...(personality.default_model?.includes('thinking') ? {
+                ...((personality.brain_model || personality.default_model)?.includes('thinking') ? {
                     thinkingConfig: {
                         includeThoughts: true,
                         thinkingBudget: 1024
                     }
                 } : {})
-            }
+            } as any
         });
 
         const brainParts = (brainResult.response.candidates?.[0]?.content?.parts || []) as any[];
@@ -221,7 +226,7 @@ export class TwitterAgentService {
         }
 
         const handModel = ai.getGenerativeModel({
-            model: personality.default_model || 'gemini-2.0-flash',
+            model: personality.hand_model || personality.default_model || 'gemini-2.0-flash',
             tools: handTools.length > 0 ? handTools : undefined,
             systemInstruction: stage2SystemDoc
         });
@@ -231,13 +236,13 @@ export class TwitterAgentService {
             history: [],
             generationConfig: {
                 // @ts-ignore
-                ...(personality.default_model?.includes('thinking') ? {
+                ...((personality.hand_model || personality.default_model)?.includes('thinking') ? {
                     thinkingConfig: {
                         includeThoughts: true,
                         thinkingBudget: 0
                     }
                 } : {})
-            }
+            } as any
         });
 
         let currentPrompt = `Execute this analysis plan: ${planText}`;
@@ -300,15 +305,27 @@ export class TwitterAgentService {
                 - Keep the facts from the draft, but change the "voice".
                 - ${postFormat === 'short' ? 'STRICT CONSTRAINT: The final output MUST be under 280 characters.' : 'This is a Long Post/Thread format.'}
                 - Follow the precise instructions provided in the prompt.
+                - DO NOT ALTER NUMBERS: You must preserve every specific number, percentage, or price mentioned in the Technical Draft. Do not round them or change them for "style".
             `;
 
             const humanizerModel = ai.getGenerativeModel({
-                model: personality.default_model || 'gemini-2.0-flash',
+                model: personality.humanizer_model || personality.default_model || 'gemini-2.0-flash',
                 systemInstruction: humanizerSystemInstruction
             });
 
             reasoningLog.push({ type: 'thought', content: "--- STAGE 3: HUMANIZING ---" });
-            const humanRes = await humanizerModel.generateContent(humanizerPrompt);
+            const humanRes = await humanizerModel.generateContent({
+                contents: [{ role: 'user', parts: [{ text: humanizerPrompt }] }],
+                generationConfig: {
+                    // @ts-ignore
+                    ...((personality.humanizer_model || personality.default_model)?.includes('thinking') ? {
+                        thinkingConfig: {
+                            includeThoughts: true,
+                            thinkingBudget: 1024
+                        }
+                    } : {})
+                } as any
+            });
             const humanText = humanRes.response.text();
 
             if (humanText) {
