@@ -151,7 +151,7 @@ export class PersonalityService {
                 SELECT jsonb_agg(
                     CASE 
                         WHEN jsonb_typeof(elem) = 'string' THEN jsonb_build_object('text', elem, 'type', 'short', 'mode', 'tweet')
-                        WHEN elem->'mode' IS NULL THEN elem || jsonb_build_object('mode', CASE WHEN elem->>'type' = 'long' THEN 'briefing' ELSE 'tweet' END)
+                        WHEN elem->'mode' IS NULL THEN elem || jsonb_build_object('mode', 'tweet')
                         ELSE elem
                     END
                 )

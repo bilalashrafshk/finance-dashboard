@@ -163,20 +163,21 @@ export class TwitterAgentService {
         // Filter examples based on format and mode
         const relevantExamples = personality.examples
             .filter(ex => {
-                // If ex.mode is provided, it must match the current mode
-                if (ex.mode && ex.mode !== mode && !(mode === 'tweet' && ex.mode === 'briefing')) {
-                    // Special case: briefing is a sub-mode of tweet in some contexts, 
-                    // but here they are distinct.
-                    if (postFormat === 'briefing' && ex.mode !== 'briefing') return false;
-                    if (postFormat !== 'briefing' && ex.mode === 'briefing') return false;
-                    if (ex.mode !== mode) return false;
-                }
+                // Determine the mode of the example (default to 'tweet')
+                const exMode = ex.mode || 'tweet';
 
-                // Prioritize mode match
+                // Strict mode match: Tweet -> Tweet, Reply -> Reply, Briefing -> Briefing
+                // Note: Briefing format is triggered when postFormat === 'briefing'
+                const currentExecutionMode = postFormat === 'briefing' ? 'briefing' : mode;
+
+                if (exMode !== currentExecutionMode) return false;
+
+                // Match the type (short/long)
                 const targetType = (postFormat === 'briefing' ? 'long' : postFormat);
                 return ex.type === targetType;
             })
             .map(ex => ex.text);
+
 
         // Heuristic: Only use Google Search if the user explicitly asks for it in their notes
         const notesLower = userNotes.toLowerCase();
