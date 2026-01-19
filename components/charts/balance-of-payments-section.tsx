@@ -233,20 +233,19 @@ export function BalanceOfPaymentsSection() {
 
       setData(json.data)
       setMetadata({
-        seriesName: json.metadata.seriesName,
-        latestDate: json.metadata.latestDate,
-        earliestDate: json.metadata.earliestDate,
-        cached: json.metadata.cached
+        seriesName: json.seriesName,
+        latestDate: json.latestStoredDate,
+        earliestDate: json.earliestStoredDate,
+        cached: json.cached
       })
 
-      // Fix range if it was reset or on first load
+      // Default to "Last 1 Year" (12 months) on first load
       if (!rangeEnd || refresh) {
-        setRangeEnd(json.metadata.latestDate)
-        // Default to last 3 years for better overview
-        const latestDate = new Date(json.metadata.latestDate)
-        const threeYearsAgo = new Date(latestDate)
-        threeYearsAgo.setFullYear(latestDate.getFullYear() - 3)
-        const startStr = threeYearsAgo.toISOString().slice(0, 10)
+        setRangeEnd(json.latestStoredDate)
+        const latestDate = new Date(json.latestStoredDate)
+        const oneYearAgo = new Date(latestDate)
+        oneYearAgo.setFullYear(latestDate.getFullYear() - 1)
+        const startStr = oneYearAgo.toISOString().slice(0, 10)
         const startMatch = json.data.find((d: any) => d.date >= startStr) || json.data[0]
         setRangeStart(startMatch.date)
       }
