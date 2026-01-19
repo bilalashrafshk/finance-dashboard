@@ -15,7 +15,7 @@
     },
     {
       "path": "/api/sbp/macros/update",
-      "schedule": "0 */6 * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }
