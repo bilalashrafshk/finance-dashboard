@@ -86,7 +86,7 @@ export class TwitterAgentService {
         userNotes: string = '',
         mode: 'tweet' | 'reply' = 'tweet',
         targetTweet: string = '',
-        postFormat: 'short' | 'long' = 'short'
+        postFormat: 'short' | 'long' | 'briefing' = 'short'
     ): Promise<{ draft: string; reasoningLog: any[]; trace?: any }> {
         const apiKey = process.env.GEMINI_API_KEY || '';
         if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
@@ -99,9 +99,9 @@ export class TwitterAgentService {
         const reasoningLog: any[] = [];
         const history: any[] = [];
 
-        // Filter examples based on format
+        // Filter examples based on format (fallback to short if briefing has no examples)
         const relevantExamples = personality.examples
-            .filter(ex => ex.type === postFormat)
+            .filter(ex => ex.type === (postFormat === 'briefing' ? 'long' : postFormat))
             .map(ex => ex.text);
 
         // Heuristic: Only use Google Search if the user explicitly asks for it in their notes
@@ -119,7 +119,9 @@ export class TwitterAgentService {
             CONSTRAINTS:
             ${postFormat === 'short'
                 ? '- MUST be under 280 characters.\n- Be punchy and concise.\n- No threads.'
-                : '- Can be longer than 280 characters.\n- Use structured details.\n- Provide deep technical analysis.'}
+                : postFormat === 'briefing'
+                    ? '- MUST use structured headers: "The Intelligence Scoop", "Valuation Insight", "Momentum Pulse".\n- "The Intelligence Scoop" MUST use bullet points.\n- Focus on high information density.'
+                    : '- Can be longer than 280 characters.\n- Use structured details.\n- Provide deep technical analysis.'}
 
             CORE MISSION:
             1. DATA COLLECTION FIRST: Your primary goal is to gather specific quantitative data, hard facts, and evidence using the provided tools (Google Search or Internal Database).
@@ -162,7 +164,7 @@ export class TwitterAgentService {
         2. VERIFY vs HALLUCINATION: If the User Note contains specific figures (e.g. "P/E of 7.64"), you MUST use them. Never invent or "estimate" figures like "3.5x" if they are not present.
         3. DATA PLAN: Determine if tools are needed. If the User Note is already fact-rich, prioritize those facts. If search is needed, make it entity-specific.
         
-        TARGET FORMAT: ${postFormat === 'short' ? 'Standard Tweet (STRICTLY UNDER 280 characters)' : 'Long Post / Thread'}
+        TARGET FORMAT: ${postFormat === 'short' ? 'Standard Tweet (STRICTLY UNDER 280 characters)' : postFormat === 'briefing' ? 'Structured News Briefing' : 'Long Post / Thread'}
         
         OUTPUT FORMAT:
         - FACT SHEET: [List extracted numbers here]
@@ -289,7 +291,8 @@ export class TwitterAgentService {
 
         // --- STAGE 3: THE HUMANIZER (Final Refinement) ---
         // This stage applies precise stylistic rules (lowercase, imperfect grammar, etc).
-        if (finalDraft && personality.humanizer_instructions) {
+        // SKIPPED FOR BRIEFING MODE to preserve structure.
+        if (postFormat !== 'briefing' && finalDraft && personality.humanizer_instructions) {
             const humanizerPrompt = personality.humanizer_instructions.replace('{{tweet}}', finalDraft);
 
             const humanizerSystemInstruction = `
