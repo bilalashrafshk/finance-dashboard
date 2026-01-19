@@ -109,30 +109,52 @@ export class TwitterAgentService {
         const userAskedForSearch = notesLower.includes('search') || notesLower.includes('google') || notesLower.includes('latest news') || notesLower.includes('find on web');
 
         // Stage 2 Instructions: Focus on Factual Assembly and Structural Logic
-        const stage2SystemDoc = `
-            ${personality.instructions}
-            
-            CURRENT MODE: ${mode === 'reply' ? 'Reply to existing tweet' : 'New Tweet'}
-            TARGET TWEET: ${targetTweet || 'N/A'}
-            DESIRED FORMAT: ${postFormat === 'short' ? 'Standard Tweet (under 280 characters)' : 'Long Post / Thread (detailed analysis)'}
-            
-            CONSTRAINTS:
-            ${postFormat === 'short'
-                ? '- MUST be under 280 characters.\n- Be punchy and concise.\n- No threads.'
-                : postFormat === 'briefing'
-                    ? '- MUST use structured headers: "The Intelligence Scoop", "Valuation Insight", "Momentum Pulse".\n- "The Intelligence Scoop" MUST use bullet points.\n- Focus on high information density.'
+        // Stage 2 Instructions: Focus on Factual Assembly and Structural Logic
+        let stage2SystemDoc = '';
+
+        if (postFormat === 'briefing') {
+            stage2SystemDoc = `
+                You are a Senior Financial Analyst constructing a "News Briefing".
+                Your goal is to extract facts from the User Note and present them in a specific 3-part structure.
+
+                STRICT OUTPUT RULES:
+                1. NO PREAMBLE or INTRO. Start directly with the first header.
+                2. NO OUTRO or fluffy conclusion (e.g., "Time will tell", "Investors should watch").
+                3. HEADERS MUST BE EXACT: "### The Intelligence Scoop", "### Valuation Insight", "### Momentum Pulse".
+                4. "The Intelligence Scoop": Use BULLET POINTS. Focus on the raw news facts (Who, What, When, How Much).
+                5. "Valuation Insight": Use a concise PARAGRAPH. Connect the news to P/E, sector averages, or fair value.
+                6. "Momentum Pulse": Use a concise PARAGRAPH. Discuss price action, 52-week highs, or volatility.
+
+                INPUT CONTEXT:
+                User Note: ${userNotes}
+                Symbol: ${symbol}
+
+                Generate the briefing now.
+            `;
+        } else {
+            stage2SystemDoc = `
+                ${personality.instructions}
+                
+                CURRENT MODE: ${mode === 'reply' ? 'Reply to existing tweet' : 'New Tweet'}
+                TARGET TWEET: ${targetTweet || 'N/A'}
+                DESIRED FORMAT: ${postFormat === 'short' ? 'Standard Tweet (under 280 characters)' : 'Long Post / Thread (detailed analysis)'}
+                
+                CONSTRAINTS:
+                ${postFormat === 'short'
+                    ? '- MUST be under 280 characters.\n- Be punchy and concise.\n- No threads.'
                     : '- Can be longer than 280 characters.\n- Use structured details.\n- Provide deep technical analysis.'}
 
-            CORE MISSION:
-            1. DATA COLLECTION FIRST: Your primary goal is to gather specific quantitative data, hard facts, and evidence using the provided tools (Google Search or Internal Database).
-            2. NO EARLY DRAFTING: Do not write the final tweet draft until you have executed all relevant tools and received specific results. If you skip tools and provide a generic draft, you have failed.
-            3. EVIDENCE EMBEDDING: Every technical draft MUST contain specific facts found from the tools (e.g., specific dollar amounts, percentages, dates, or named events).
-            4. SUBJECT CONTINUITY: Stay strictly grounded in the user's provided topic. Any additional facts or tool data MUST directly support the primary subject.
-            5. NO STRATEGIC FLUFF: If you don't have specific data (like P/E), focus on the facts you DO have. Never hallucinate generic "benefits."
-            6. NO APOLOGIES: Never apologize for missing data. Maintain an intelligent, expert tone.
-            7. TECHNICAL INTEGRITY: If no tools were used because the user context was sufficient, explicitly cite the facts provided by the user.
-            8. DATA VERIFICATION: Before drafting, check the "Fact Sheet" from the plan against any tool results. The User Note is the source of truth for specific event context. Never replace user-provided numbers with generic ones.
-        `;
+                CORE MISSION:
+                1. DATA COLLECTION FIRST: Your primary goal is to gather specific quantitative data, hard facts, and evidence using the provided tools (Google Search or Internal Database).
+                2. NO EARLY DRAFTING: Do not write the final tweet draft until you have executed all relevant tools and received specific results. If you skip tools and provide a generic draft, you have failed.
+                3. EVIDENCE EMBEDDING: Every technical draft MUST contain specific facts found from the tools (e.g., specific dollar amounts, percentages, dates, or named events).
+                4. SUBJECT CONTINUITY: Stay strictly grounded in the user's provided topic. Any additional facts or tool data MUST directly support the primary subject.
+                5. NO STRATEGIC FLUFF: If you don't have specific data (like P/E), focus on the facts you DO have. Never hallucinate generic "benefits."
+                6. NO APOLOGIES: Never apologize for missing data. Maintain an intelligent, expert tone.
+                7. TECHNICAL INTEGRITY: If no tools were used because the user context was sufficient, explicitly cite the facts provided by the user.
+                8. DATA VERIFICATION: Before drafting, check the "Fact Sheet" from the plan against any tool results. The User Note is the source of truth for specific event context. Never replace user-provided numbers with generic ones.
+            `;
+        }
 
         // --- STAGE 1: THE BRAIN (Thinking ENABLED, Tools DISABLED) ---
         // This stage captures the AI's internal reasoning and data plan.

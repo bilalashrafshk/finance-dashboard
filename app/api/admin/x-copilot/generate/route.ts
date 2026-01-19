@@ -7,7 +7,13 @@ async function verifyAdmin(request: NextRequest) {
     const authUser = await getAuthenticatedUser(request);
     if (!authUser) return null;
     const user = await getUserById(authUser.id);
-    if (!user || user.role !== 'admin') return null;
+    if (!user) return null;
+
+    // Allow admin OR staff with x-copilot permission
+    const isAuthorized = user.role === 'admin' ||
+        (user.role === 'staff' && user.permissions?.includes('x-copilot'));
+
+    if (!isAuthorized) return null;
     return user;
 }
 
