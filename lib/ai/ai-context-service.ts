@@ -126,4 +126,99 @@ export class AIContextService {
             }
         };
     }
+
+    /**
+     * Tool: Fetch market summary (indices and heatmap top performes).
+     */
+    /**
+     * Tool: Fetch market summary (indices and heatmap top performes).
+     * @param date - YYYY-MM-DD
+     * @param detailed - If true, returns deeper data for report generation
+     * @param filter_sector - Optional: Return data ONLY for this sector
+     * @param filter_symbols - Optional: Return data ONLY for these symbols (comma separated)
+     * @param timeframe - Optional: '1D', '1W', '1M', 'YTD' (defaults to '1D')
+     */
+    static async getMarketSummary(date?: string, detailed: boolean = false, filter_sector?: string, filter_symbols?: string, timeframe: string = '1D') {
+        // Dynamic import to avoid circular dep issues if any, though likely safe
+        const { MarketHeatmapService } = await import('@/lib/market/heatmap-service');
+
+        const targetDate = date || await MarketHeatmapService.getLatestMarketDate();
+        // If filters are present, we might want a higher limit to ensure we catch the relevant stocks
+        // or rely on post-fetch filtering. For now, fetch 100 to be safe.
+        const limit = detailed || filter_sector || filter_symbols ? 200 : 50;
+        const data = await MarketHeatmapService.getHeatmapData(targetDate, limit, timeframe);
+
+        // Filter Logic
+        let filteredStocks = data.stocks;
+        let filteredSectors = data.sectors;
+
+        if (filter_sector) {
+            filteredStocks = filteredStocks.filter(s => s.sector?.toLowerCase().includes(filter_sector.toLowerCase()));
+            filteredSectors = filteredSectors.filter(s => s.name.toLowerCase().includes(filter_sector.toLowerCase()));
+        }
+
+        if (filter_symbols) {
+            const symbols = filter_symbols.split(',').map(s => s.trim().toUpperCase());
+            filteredStocks = filteredStocks.filter(s => symbols.includes(s.symbol));
+            // Keep all sectors or just relevant one? Usually if specific stocks are asked, we might still want their sector ctx.
+            // But let's filter sectors to only those containing these stocks for purity.
+            const relevantSectors = new Set(filteredStocks.map(s => s.sector));
+            filteredSectors = filteredSectors.filter(s => relevantSectors.has(s.name));
+        }
+
+        // Summarize for AI to save tokens
+        const kse100 = data.indices.find(i => i.name === 'KSE-100');
+
+        // Group top movers (from the filtered set)
+        const gainers = filteredStocks.filter(s => (s.changePercent || 0) > 0);
+        const losers = filteredStocks.filter(s => (s.changePercent || 0) < 0).reverse();
+
+        if (detailed || filter_sector || filter_symbols) {
+            return {
+                meta: {
+                    date: targetDate,
+                    timeframe: timeframe,
+                    filter_applied: filter_sector ? `Sector: ${filter_sector}` : (filter_symbols ? `Symbols: ${filter_symbols}` : 'None')
+                },
+                market_status: kse100 ? {
+                    index: 'KSE-100',
+                    price: kse100.price,
+                    change: kse100.change,
+                    change_percent: kse100.changePercent,
+                    trend: kse100.change > 0 ? 'BULLISH' : 'BEARISH'
+                } : 'Index data unavailable',
+                // Sector Breakdown
+                sectors_performance: filteredSectors.map(s => ({
+                    name: s.name,
+                    change_percent: s.change.toFixed(2) + '%',
+                    trend: s.change > 0 ? 'Positive' : 'Negative'
+                })),
+                // Stock Lists
+                stocks: filteredStocks.map(s => ({
+                    symbol: s.symbol,
+                    price: s.price,
+                    change_percent: s.changePercent?.toFixed(2) + '%',
+                    sector: s.sector
+                })),
+                message: "Filtered market data provided."
+            };
+        }
+
+        // Summary Mode (No filters, detailed=false)
+        return {
+            date: targetDate,
+            timeframe: timeframe,
+            market_status: kse100 ? {
+                index: 'KSE-100',
+                price: kse100.price,
+                change: kse100.change,
+                change_percent: kse100.changePercent,
+                trend: kse100.change > 0 ? 'BULLISH' : 'BEARISH'
+            } : 'Index data unavailable',
+            sectors: data.sectors.slice(0, 5).map(s => `${s.name}: ${s.change.toFixed(2)}%`),
+            top_gainers: gainers.slice(0, 5).map(s => `${s.symbol} (${s.changePercent?.toFixed(2)}%)`),
+            top_losers: losers.slice(0, 5).map(s => `${s.symbol} (${s.changePercent?.toFixed(2)}%)`)
+        };
+    }
+
 }

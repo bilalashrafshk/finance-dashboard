@@ -62,6 +62,21 @@ export class TwitterAgentService {
                         properties: { symbol: { type: 'string', description: 'The stock symbol' } },
                         required: ['symbol']
                     }
+                },
+                {
+                    name: 'getMarketSummary',
+                    description: 'Fetch daily market index (KSE-100) status and top movers heatmap. Supports filtering.',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            date: { type: 'string', description: 'Date in YYYY-MM-DD format (optional)' },
+                            detailed: { type: 'boolean', description: 'Set to true for full market report (all sectors).' },
+                            filter_sector: { type: 'string', description: 'Filter by sector name (e.g., "Cement"). Returns detailed sector data.' },
+                            filter_symbols: { type: 'string', description: 'Filter by stock symbols (comma separated, e.g. "LUCK, DGKC").' },
+                            timeframe: { type: 'string', description: 'Timeframe for change calculation: "1D", "1W", "1M", "YTD", or custom like "3Y", "6M". Defaults to "1D".' }
+                        },
+                        required: []
+                    }
                 }
             ]
         }
@@ -77,6 +92,7 @@ export class TwitterAgentService {
             case 'getQuarterlyEarnings': return await AIContextService.getQuarterlyEarnings(args.symbol);
             case 'getAnnualEarnings': return await AIContextService.getAnnualEarnings(args.symbol);
             case 'getDividendInfo': return await AIContextService.getDividendInfo(args.symbol);
+            case 'getMarketSummary': return await AIContextService.getMarketSummary(args.date, args.detailed, args.filter_sector, args.filter_symbols, args.timeframe);
             default: throw new Error(`Unknown tool: ${name}`);
         }
     }
@@ -173,7 +189,7 @@ export class TwitterAgentService {
         });
 
         const brainPrompt = `Request: Write a ${mode === 'reply' ? 'reply' : 'tweet'} for symbol ${symbol}. ${userNotes ? `User Note: ${userNotes}` : ''}. 
-        ${symbol.toUpperCase() === 'N/A' ? 'This is a MACRO/GENERAL request. Do not force a stock symbol.' : ''}
+        ${symbol.toUpperCase() === 'N/A' ? 'This is a MACRO/GENERAL request. PRIORITIZE using "getMarketSummary" to check the overall market or relevant sectors. Do not force a single stock symbol.' : ''}
         
         ${mode === 'reply' && targetTweet ? `TARGET TWEET TO REPLY TO:
         ---
@@ -184,7 +200,11 @@ export class TwitterAgentService {
         TASK:
         1. EXTRACT ALL QUANTITATIVE DATA: List every number, price, P/E ratio, percentage, and date mentioned in the User Note and Target Tweet.
         2. VERIFY vs HALLUCINATION: If the User Note contains specific figures (e.g. "P/E of 7.64"), you MUST use them. Never invent or "estimate" figures like "3.5x" if they are not present.
-        3. DATA PLAN: Determine if tools are needed. If the User Note is already fact-rich, prioritize those facts. If search is needed, make it entity-specific.
+        3. DATA PLAN: Determine if tools are needed. 
+           - If user asks about a SECTOR (e.g. "Cement"), plan to use 'getMarketSummary' with 'filter_sector'.
+           - If user asks about TIME (e.g. "Year to Date", "last 3 years"), plan to use 'getMarketSummary' with 'timeframe'.
+           - If user asks about the MARKET/INDEX, plan to use 'getMarketSummary'.
+           - If the User Note is already fact-rich, prioritize those facts. If search is needed, make it entity-specific.
         
         TARGET FORMAT: ${postFormat === 'short' ? 'Standard Tweet (STRICTLY UNDER 280 characters)' : postFormat === 'briefing' ? 'Structured News Briefing' : 'Long Post / Thread'}
         
