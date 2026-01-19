@@ -106,7 +106,7 @@ export default async function AdminPromptsPage() {
                         )}
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {['ai_context_instructions', 'ai_context_payload', 'priority_keywords'].map(key => {
+                            {['ai_context_instructions', 'ai_context_payload', 'priority_keywords', 'include_heatmap_context'].map(key => {
                                 const config = getAlertConfig(key);
                                 if (!config) return null;
                                 return (
@@ -240,6 +240,29 @@ export default async function AdminPromptsPage() {
                         </div>
                     </SettingsZone>
                 )}
+
+                {/* --- NEWS BRIEFING MODE --- */}
+                <SettingsZone
+                    title="News Briefing Mode"
+                    description="Configuration for the structured briefing format"
+                    icon={<Newspaper className="w-6 h-6" />}
+                    color="bg-indigo-500"
+                >
+                    <div className="border rounded-xl p-6 bg-indigo-500/5 border-indigo-500/10">
+                        <h4 className="text-lg font-bold mb-1 flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                            Briefing Instructions
+                        </h4>
+                        <p className="text-xs text-muted-foreground mb-6 font-mono opacity-70">
+                            Controls the format of "The Intelligence Scoop", "Valuation Insight", etc.
+                        </p>
+                        {/* We use a pseudo-prompt object here to reuse PromptEditor */}
+                        <PromptEditor prompt={{
+                            slug: 'briefing_instructions',
+                            content: prompts.find(p => p.slug === 'briefing_instructions')?.content || ''
+                        }} />
+                    </div>
+                </SettingsZone>
             </div>
         </div>
     );

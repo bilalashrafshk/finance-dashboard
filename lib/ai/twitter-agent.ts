@@ -111,6 +111,30 @@ export class TwitterAgentService {
         const personality = await PersonalityService.getPersonality('bilal-ashraf');
         if (!personality) throw new Error('Brand personality not found');
 
+        // --- MODE CONFIG RESOLUTION ---
+        let configCoordinator = personality.coordinator_instructions;
+        let configDrafter = personality.instructions;
+        let configHumanizer = personality.humanizer_instructions;
+        let configTools = personality.enabled_tools;
+
+        if (postFormat === 'briefing') {
+            configCoordinator = personality.briefing_coordinator_prompt || configCoordinator;
+            configDrafter = personality.briefing_instructions || configDrafter;
+            configHumanizer = personality.briefing_humanizer_prompt || ''; // Briefing often skips humanizer
+            configTools = personality.briefing_tools || configTools;
+        } else if (mode === 'reply') {
+            configCoordinator = personality.reply_coordinator_prompt || configCoordinator;
+            configDrafter = personality.reply_drafter_prompt || configDrafter;
+            configHumanizer = personality.reply_humanizer_prompt || configHumanizer;
+            configTools = personality.reply_tools || configTools;
+        } else {
+            // New Tweet / Broadcast
+            configCoordinator = personality.tweet_coordinator_prompt || configCoordinator;
+            configDrafter = personality.tweet_drafter_prompt || configDrafter;
+            configHumanizer = personality.tweet_humanizer_prompt || configHumanizer;
+            configTools = personality.tweet_tools || configTools;
+        }
+
         const ai = initAI(apiKey);
         const reasoningLog: any[] = [];
         const history: any[] = [];
@@ -125,52 +149,18 @@ export class TwitterAgentService {
         const userAskedForSearch = notesLower.includes('search') || notesLower.includes('google') || notesLower.includes('latest news') || notesLower.includes('find on web');
 
         // Stage 2 Instructions: Focus on Factual Assembly and Structural Logic
-        // Stage 2 Instructions: Focus on Factual Assembly and Structural Logic
-        let stage2SystemDoc = '';
+        let stage2SystemDoc = configDrafter || '';
 
-        if (postFormat === 'briefing') {
-            stage2SystemDoc = `
-                You are a Senior Financial Analyst constructing a "News Briefing".
-                Your goal is to extract facts from the User Note and present them in a specific 3-part structure.
-
-                STRICT OUTPUT RULES:
-                1. NO PREAMBLE or INTRO. Start directly with the first header.
-                2. NO OUTRO or fluffy conclusion (e.g., "Time will tell", "Investors should watch").
-                3. HEADERS MUST BE EXACT: "### The Intelligence Scoop", "### Valuation Insight", "### Momentum Pulse".
-                4. "The Intelligence Scoop": Use BULLET POINTS. Focus on the raw news facts (Who, What, When, How Much).
-                5. "Valuation Insight": Use a concise PARAGRAPH. Connect the news to P/E, sector averages, or fair value.
-                6. "Momentum Pulse": Use a concise PARAGRAPH. Discuss price action, 52-week highs, or volatility.
-
-                INPUT CONTEXT:
-                User Note: ${userNotes}
-                Symbol: ${symbol}
-
-                Generate the briefing now.
-            `;
-        } else {
-            stage2SystemDoc = `
-                ${personality.instructions}
-                
-                CURRENT MODE: ${mode === 'reply' ? 'Reply to existing tweet' : 'New Tweet'}
-                TARGET TWEET: ${targetTweet || 'N/A'}
-                DESIRED FORMAT: ${postFormat === 'short' ? 'Standard Tweet (under 280 characters)' : 'Long Post / Thread (detailed analysis)'}
-                
-                CONSTRAINTS:
-                ${postFormat === 'short'
-                    ? '- MUST be under 280 characters.\n- Be punchy and concise.\n- No threads.'
-                    : '- Can be longer than 280 characters.\n- Use structured details.\n- Provide deep technical analysis.'}
-
-                CORE MISSION:
-                1. DATA COLLECTION FIRST: Your primary goal is to gather specific quantitative data, hard facts, and evidence using the provided tools (Google Search or Internal Database).
-                2. NO EARLY DRAFTING: Do not write the final tweet draft until you have executed all relevant tools and received specific results. If you skip tools and provide a generic draft, you have failed.
-                3. EVIDENCE EMBEDDING: Every technical draft MUST contain specific facts found from the tools (e.g., specific dollar amounts, percentages, dates, or named events).
-                4. SUBJECT CONTINUITY: Stay strictly grounded in the user's provided topic. Any additional facts or tool data MUST directly support the primary subject.
-                5. NO STRATEGIC FLUFF: If you don't have specific data (like P/E), focus on the facts you DO have. Never hallucinate generic "benefits."
-                6. NO APOLOGIES: Never apologize for missing data. Maintain an intelligent, expert tone.
-                7. TECHNICAL INTEGRITY: If no tools were used because the user context was sufficient, explicitly cite the facts provided by the user.
-                8. DATA VERIFICATION: Before drafting, check the "Fact Sheet" from the plan against any tool results. The User Note is the source of truth for specific event context. Never replace user-provided numbers with generic ones.
-            `;
-        }
+        // Append Runtime Context (Standardized)
+        stage2SystemDoc += `
+        
+        INPUT CONTEXT:
+        User Note: ${userNotes}
+        Symbol: ${symbol}
+        Mode: ${mode === 'reply' ? 'REPLY' : 'BROADCAST'}
+        ${targetTweet ? `TARGET TWEET: ${targetTweet}` : ''}
+        Desired Format: ${postFormat}
+        `;
 
         // --- STAGE 1: THE BRAIN (Thinking ENABLED, Tools DISABLED) ---
         // This stage captures the AI's internal reasoning and data plan.
@@ -182,7 +172,7 @@ export class TwitterAgentService {
         const brainModel = ai.getGenerativeModel({
             model: personality.brain_model || personality.default_model || 'gemini-2.0-flash',
             systemInstruction: `
-                ${personality.coordinator_instructions || defaultCoordinatorPrompt}
+                ${configCoordinator || defaultCoordinatorPrompt}
                 
                 ${userAskedForSearch ? 'The user has requested a web search. Include planning for Google Search.' : 'Do NOT plan for web search unless it is explicitly requested by the user or absolutely essential for current macro context.'}
             `
@@ -242,12 +232,12 @@ export class TwitterAgentService {
         // We now execute the plan.
 
         const enabledCustomTools: any[] = this.tools.filter(t =>
-            personality.enabled_tools[t.functionDeclarations![0].name] !== false
+            configTools[t.functionDeclarations![0].name] !== false
         );
 
         // Enable Google Search if user asked OR if Brain planned it
         const planMentionsSearch = planLower.includes('google search') || planLower.includes('web search') || planLower.includes('search the web');
-        const shouldEnableSearch = (userAskedForSearch || planMentionsSearch) && personality.enabled_tools.googleSearch !== false;
+        const shouldEnableSearch = (userAskedForSearch || planMentionsSearch) && configTools.googleSearch !== false;
 
         let handTools: any[] = [];
         const is25Flash = personality.default_model?.includes('2.5-flash');
@@ -290,6 +280,24 @@ export class TwitterAgentService {
         });
 
         let currentPrompt = `Execute this analysis plan: ${planText}`;
+
+        // HEATMAP CONTEXT INJECTION (If enabled in settings)
+        try {
+            const pool = (await import('@/lib/db')).getPool();
+            const configRes = await pool.query("SELECT value FROM alert_configs WHERE key = 'include_heatmap_context'");
+            const heatmapEnabled = configRes.rows.length > 0 && configRes.rows[0].value === 'true';
+
+            if (heatmapEnabled) {
+                // Fetch Heatmap Data (Top 100/All based on default service behavior, or specific?)
+                // We'll ask for 'detailed=false' to keep it concise, just context.
+                const marketData = await AIContextService.getMarketSummary(undefined, false);
+                currentPrompt += `\n\n[SYSTEM INJECTED CONTEXT - MARKET HEATMAP]\n${JSON.stringify(marketData, null, 2)}`;
+                reasoningLog.push({ type: 'thought', content: "System: Injected Market Heatmap Context (Settings Enabled)" });
+            }
+        } catch (err) {
+            console.error('Failed to inject heatmap context:', err);
+        }
+
         let finalDraft = '';
 
         // 3. Agentic Loop (Max 5 iterations to prevent infinite loops)
@@ -333,9 +341,9 @@ export class TwitterAgentService {
 
         // --- STAGE 3: THE HUMANIZER (Final Refinement) ---
         // This stage applies precise stylistic rules (lowercase, imperfect grammar, etc).
-        // SKIPPED FOR BRIEFING MODE to preserve structure.
-        if (postFormat !== 'briefing' && finalDraft && personality.humanizer_instructions) {
-            let humanizerPrompt = personality.humanizer_instructions
+        // Runs if configHumanizer is present (Briefing defaults to empty, but can be enabled).
+        if (finalDraft && configHumanizer) {
+            let humanizerPrompt = configHumanizer
                 .replace('{{tweet}}', finalDraft)
                 .replace('{{mode}}', mode === 'reply' ? 'REPLY' : 'BROADCAST')
                 .replace('{{target_tweet}}', targetTweet || 'N/A');

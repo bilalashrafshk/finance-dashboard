@@ -7,24 +7,54 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 
 export default function AdminBrandPage() {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
+    const [loading, setLoading] = useState(true);
+
+    // Global
     const [instructions, setInstructions] = useState('');
     const [examples, setExamples] = useState<{ text: string; type: 'short' | 'long' }[]>([]);
     const [newExample, setNewExample] = useState('');
     const [newExampleType, setNewExampleType] = useState<'short' | 'long'>('short');
+
+    // Models
     const [model, setModel] = useState('gemini-2.0-flash');
     const [brainModel, setBrainModel] = useState('');
     const [handModel, setHandModel] = useState('');
     const [humanizerModel, setHumanizerModel] = useState('');
-    const [enabledTools, setEnabledTools] = useState<Record<string, boolean>>({});
-    const [coordinatorInstructions, setCoordinatorInstructions] = useState('');
-    const [humanizerInstructions, setHumanizerInstructions] = useState('');
-    const [loading, setLoading] = useState(true);
+
+    // Tweet Mode
+    const [tweetCoordinator, setTweetCoordinator] = useState('');
+    const [tweetDrafter, setTweetDrafter] = useState('');
+    const [tweetHumanizer, setTweetHumanizer] = useState('');
+    const [tweetTools, setTweetTools] = useState<Record<string, boolean>>({});
+
+    // Reply Mode
+    const [replyCoordinator, setReplyCoordinator] = useState('');
+    const [replyDrafter, setReplyDrafter] = useState('');
+    const [replyHumanizer, setReplyHumanizer] = useState('');
+    const [replyTools, setReplyTools] = useState<Record<string, boolean>>({});
+
+    // Briefing Mode
+    const [briefingCoordinator, setBriefingCoordinator] = useState('');
+    const [briefingDrafter, setBriefingDrafter] = useState(''); // Maps to briefing_instructions
+    const [briefingHumanizer, setBriefingHumanizer] = useState('');
+    const [briefingTools, setBriefingTools] = useState<Record<string, boolean>>({});
+
+    const allTools = [
+        { id: 'getCompanyProfile', label: 'Company Profile', desc: 'Price, P/E, Sector, Valuation' },
+        { id: 'getPriceHistoryMetrics', label: 'Price History', desc: '52w High/Low, History' },
+        { id: 'getQuarterlyEarnings', label: 'Quarterly Earnings', desc: 'Last 8 Quarters EPS/Net Income' },
+        { id: 'getAnnualEarnings', label: 'Annual Earnings', desc: 'Last 3 Years Profitability' },
+        { id: 'getDividendInfo', label: 'Dividend Info', desc: 'Yield and Payment History' },
+        { id: 'getMarketSummary', label: 'Market Heatmap', desc: 'Sector Performance & Top Movers' },
+        { id: 'googleSearch', label: 'Google Search', desc: 'Real-time News & Macro' },
+    ];
 
     useEffect(() => {
         if (!authLoading) {
@@ -45,15 +75,32 @@ export default function AdminBrandPage() {
         })
             .then(res => res.json())
             .then(data => {
-                setInstructions(data.instructions);
+                // Global
+                setInstructions(data.instructions || '');
                 setExamples(data.examples || []);
-                setModel(data.default_model);
+                setModel(data.default_model || 'gemini-2.0-flash');
                 setBrainModel(data.brain_model || '');
                 setHandModel(data.hand_model || '');
                 setHumanizerModel(data.humanizer_model || '');
-                setEnabledTools(data.enabled_tools || {});
-                setCoordinatorInstructions(data.coordinator_instructions || '');
-                setHumanizerInstructions(data.humanizer_instructions || '');
+
+                // Tweet (Fallbacks to legacy if new columns empty)
+                setTweetCoordinator(data.tweet_coordinator_prompt || data.coordinator_instructions || '');
+                setTweetDrafter(data.tweet_drafter_prompt || data.instructions || '');
+                setTweetHumanizer(data.tweet_humanizer_prompt || data.humanizer_instructions || '');
+                setTweetTools(data.tweet_tools || data.enabled_tools || {});
+
+                // Reply
+                setReplyCoordinator(data.reply_coordinator_prompt || data.coordinator_instructions || '');
+                setReplyDrafter(data.reply_drafter_prompt || data.instructions || '');
+                setReplyHumanizer(data.reply_humanizer_prompt || data.humanizer_instructions || '');
+                setReplyTools(data.reply_tools || data.enabled_tools || {});
+
+                // Briefing
+                setBriefingCoordinator(data.briefing_coordinator_prompt || data.coordinator_instructions || '');
+                setBriefingDrafter(data.briefing_instructions || ''); // briefing_instructions is the canonical drafter prompt for this mode
+                setBriefingHumanizer(data.briefing_humanizer_prompt || '');
+                setBriefingTools(data.briefing_tools || data.enabled_tools || {});
+
                 setLoading(false);
             })
             .catch(() => setLoading(false));
@@ -61,19 +108,37 @@ export default function AdminBrandPage() {
 
     const save = async () => {
         const token = getAuthToken();
+        const payload = {
+            // Global
+            instructions,
+            examples,
+            default_model: model,
+            brain_model: brainModel,
+            hand_model: handModel,
+            humanizer_model: humanizerModel,
+
+            // Tweet
+            tweet_coordinator_prompt: tweetCoordinator,
+            tweet_drafter_prompt: tweetDrafter,
+            tweet_humanizer_prompt: tweetHumanizer,
+            tweet_tools: tweetTools,
+
+            // Reply
+            reply_coordinator_prompt: replyCoordinator,
+            reply_drafter_prompt: replyDrafter,
+            reply_humanizer_prompt: replyHumanizer,
+            reply_tools: replyTools,
+
+            // Briefing
+            briefing_coordinator_prompt: briefingCoordinator,
+            briefing_instructions: briefingDrafter, // Mapped back to legacy column
+            briefing_humanizer_prompt: briefingHumanizer,
+            briefing_tools: briefingTools,
+        };
+
         const res = await fetch('/api/admin/brand', {
             method: 'POST',
-            body: JSON.stringify({
-                instructions,
-                examples,
-                default_model: model,
-                brain_model: brainModel,
-                hand_model: handModel,
-                humanizer_model: humanizerModel,
-                enabled_tools: enabledTools,
-                coordinator_instructions: coordinatorInstructions,
-                humanizer_instructions: humanizerInstructions
-            }),
+            body: JSON.stringify(payload),
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
@@ -89,227 +154,273 @@ export default function AdminBrandPage() {
         setNewExample('');
     };
 
+    const ToolSelector = ({ tools, setTools }: { tools: Record<string, boolean>, setTools: (t: Record<string, boolean>) => void }) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {allTools.map(tool => (
+                <div key={tool.id} className="flex items-start gap-3 p-3 bg-secondary/50 rounded-lg border border-border">
+                    <input
+                        type="checkbox"
+                        id={`${tool.id}-${Math.random()}`} // unique id hack for accessibility if rendered multiple times
+                        checked={tools[tool.id] !== false}
+                        onChange={(e) => setTools({ ...tools, [tool.id]: e.target.checked })}
+                        className="mt-1 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div>
+                        <label className="text-sm font-bold block">{tool.label}</label>
+                        <p className="text-xs text-muted-foreground">{tool.desc}</p>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+
     if (loading) return <div className="p-8">Loading...</div>;
 
     return (
-        <div className="p-8 max-w-4xl mx-auto space-y-6">
-            <h1 className="text-3xl font-bold font-black tracking-tight flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-600/30">X</div>
-                Brand Identity Training
-            </h1>
+        <div className="p-8 max-w-6xl mx-auto space-y-6">
+            <div className="flex justify-between items-center">
+                <h1 className="text-3xl font-bold font-black tracking-tight flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-600/30">X</div>
+                    Brand Identity & Mode Training
+                </h1>
+                <Button size="lg" className="bg-blue-600 hover:bg-blue-700 font-bold" onClick={save}>Save Changes</Button>
+            </div>
 
-            <Card>
-                <CardHeader><CardTitle>1. System Instructions & Persona</CardTitle></CardHeader>
-                <CardContent>
-                    <Textarea
-                        value={instructions}
-                        onChange={(e) => setInstructions(e.target.value)}
-                        className="h-64 font-mono text-sm leading-relaxed"
-                        placeholder="Define how the AI should think and write..."
-                    />
-                </CardContent>
-            </Card>
+            <Tabs defaultValue="global" className="w-full">
+                <TabsList className="grid w-full grid-cols-4 lg:w-[600px] mb-8">
+                    <TabsTrigger value="global">Global Identity</TabsTrigger>
+                    <TabsTrigger value="tweet">New Tweet</TabsTrigger>
+                    <TabsTrigger value="reply">Reply Mode</TabsTrigger>
+                    <TabsTrigger value="briefing">News Briefing</TabsTrigger>
+                </TabsList>
 
-            <Card className="border-blue-500/20 shadow-sm bg-blue-500/[0.02]">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <span className="text-blue-600">🧠</span> 2. The Brain (Coordinator Logic)
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <Textarea
-                        value={coordinatorInstructions}
-                        onChange={(e) => setCoordinatorInstructions(e.target.value)}
-                        className="h-48 font-mono text-sm bg-background/50 leading-relaxed border-blue-500/20 focus-visible:ring-blue-500/30"
-                        placeholder="Define how the AI should decide which tools to use. This controls the 'Balanced Brain' logic..."
-                    />
-                    <p className="mt-3 text-xs text-muted-foreground italic">
-                        This instruction is given to the agent FIRST. It determines if it should chase stats (P/E, Dividends) or focus solely on your provided news/notes.
-                    </p>
-                </CardContent>
-            </Card>
+                {/* --- GLOBAL IDENTITY --- */}
+                <TabsContent value="global" className="space-y-6">
+                    <Card>
+                        <CardHeader><CardTitle>Core System Persona</CardTitle></CardHeader>
+                        <CardContent>
+                            <Textarea
+                                value={instructions}
+                                onChange={(e) => setInstructions(e.target.value)}
+                                className="h-64 font-mono text-sm leading-relaxed"
+                                placeholder="Define the base persona (Voice, Tone, Style) used as a default..."
+                            />
+                        </CardContent>
+                    </Card>
 
-            <Card className="border-green-500/20 shadow-sm bg-green-500/[0.02]">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <span className="text-green-600">✍️</span> 3. The Humanizer (Phase 3 Styling)
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <Textarea
-                        value={humanizerInstructions}
-                        onChange={(e) => setHumanizerInstructions(e.target.value)}
-                        className="h-64 font-mono text-sm bg-background/50 leading-relaxed border-green-500/20 focus-visible:ring-green-500/30"
-                        placeholder="Define stylistic rules like lowercase, grammar rules, robot word bans..."
-                    />
-                    <p className="mt-3 text-xs text-muted-foreground italic">
-                        This instruction is used in a SECOND AI pass. Use <code>{"{{tweet}}"}</code> to placeholder the draft from Phase 2.
-                    </p>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader>
-                    <div className="flex justify-between items-center">
-                        <CardTitle>4. Style Examples (Few-Shot)</CardTitle>
-                        <div className="flex gap-4 text-xs font-bold uppercase opacity-50">
-                            <span>Short: {examples.filter(e => e.type === 'short').length}</span>
-                            <span>Long: {examples.filter(e => e.type === 'long').length}</span>
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="space-y-3">
-                        {examples.map((ex, i) => (
-                            <div key={i} className="p-4 bg-secondary/30 border rounded-xl relative group hover:bg-secondary/50 transition-colors">
-                                <div className="flex gap-2 mb-2">
-                                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${ex.type === 'long' ? 'bg-purple-500/10 text-purple-600' : 'bg-blue-500/10 text-blue-600'}`}>
-                                        {ex.type} Post
-                                    </span>
+                    <Card>
+                        <CardHeader>
+                            <div className="flex justify-between items-center">
+                                <CardTitle>Style Examples (Few-Shot)</CardTitle>
+                                <div className="flex gap-4 text-xs font-bold uppercase opacity-50">
+                                    <span>Short: {examples.filter(e => e.type === 'short').length}</span>
+                                    <span>Long: {examples.filter(e => e.type === 'long').length}</span>
                                 </div>
-                                <p className="text-sm font-medium leading-relaxed">"{ex.text}"</p>
-                                <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    className="absolute top-4 right-4 h-7 text-[10px] uppercase font-bold opacity-0 group-hover:opacity-100 transition-opacity"
-                                    onClick={() => setExamples(examples.filter((_, idx) => idx !== i))}
-                                >Remove</Button>
                             </div>
-                        ))}
-                    </div>
-
-                    <div className="p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-500/10 rounded-xl space-y-3">
-                        <div className="flex gap-4 mb-2">
-                            {['short', 'long'].map((t) => (
-                                <label key={t} className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name="type"
-                                        checked={newExampleType === t}
-                                        onChange={() => setNewExampleType(t as any)}
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-3">
+                                {examples.map((ex, i) => (
+                                    <div key={i} className="p-4 bg-secondary/30 border rounded-xl relative group hover:bg-secondary/50 transition-colors">
+                                        <div className="flex gap-2 mb-2">
+                                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${ex.type === 'long' ? 'bg-purple-500/10 text-purple-600' : 'bg-blue-500/10 text-blue-600'}`}>
+                                                {ex.type} Post
+                                            </span>
+                                        </div>
+                                        <p className="text-sm font-medium leading-relaxed">"{ex.text}"</p>
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            className="absolute top-4 right-4 h-7 text-[10px] uppercase font-bold opacity-0 group-hover:opacity-100 transition-opacity"
+                                            onClick={() => setExamples(examples.filter((_, idx) => idx !== i))}
+                                        >Remove</Button>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-500/10 rounded-xl space-y-3">
+                                <div className="flex gap-4 mb-2">
+                                    {['short', 'long'].map((t) => (
+                                        <label key={t} className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="type"
+                                                checked={newExampleType === t}
+                                                onChange={() => setNewExampleType(t as any)}
+                                            />
+                                            <span className="text-xs font-bold uppercase">{t} Example</span>
+                                        </label>
+                                    ))}
+                                </div>
+                                <div className="flex gap-2">
+                                    <Input
+                                        value={newExample}
+                                        onChange={(e) => setNewExample(e.target.value)}
+                                        placeholder="Paste a high-performing tweet sample here..."
+                                        className="bg-background"
                                     />
-                                    <span className="text-xs font-bold uppercase">{t} Example</span>
-                                </label>
-                            ))}
-                        </div>
-                        <div className="flex gap-2">
-                            <Input
-                                value={newExample}
-                                onChange={(e) => setNewExample(e.target.value)}
-                                placeholder="Paste a high-performing tweet sample here..."
-                                className="bg-background"
-                            />
-                            <Button onClick={addExample} className="bg-blue-600 font-bold">Add Example</Button>
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle>Model Selection</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                        <label className="text-xs font-bold uppercase text-muted-foreground">Active Model Name</label>
-                        <Input
-                            value={model}
-                            onChange={(e) => setModel(e.target.value)}
-                            placeholder="e.g. gemini-2.0-flash-thinking-preview"
-                            list="gemini-models"
-                            className="font-mono"
-                        />
-                        <datalist id="gemini-models">
-                            <option value="gemini-2.0-flash" />
-                            <option value="gemini-2.0-flash-lite" />
-                            <option value="gemini-1.5-pro" />
-                            <option value="gemini-2.0-pro-exp-02-05" />
-                            <option value="gemini-2.0-flash-thinking-preview-01-21" />
-                        </datalist>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black uppercase text-blue-600 flex items-center gap-1">
-                                🧠 Brain Model Override
-                            </label>
-                            <Input
-                                value={brainModel}
-                                onChange={(e) => setBrainModel(e.target.value)}
-                                placeholder="Stage 1 (Planning)"
-                                list="gemini-models"
-                                className="font-mono text-xs h-9"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black uppercase text-orange-600 flex items-center gap-1">
-                                ⚙️ Hand Model Override
-                            </label>
-                            <Input
-                                value={handModel}
-                                onChange={(e) => setHandModel(e.target.value)}
-                                placeholder="Stage 2 (Execution)"
-                                list="gemini-models"
-                                className="font-mono text-xs h-9"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black uppercase text-green-600 flex items-center gap-1">
-                                ✨ Humanizer Model Override
-                            </label>
-                            <Input
-                                value={humanizerModel}
-                                onChange={(e) => setHumanizerModel(e.target.value)}
-                                placeholder="Stage 3 (Styling)"
-                                list="gemini-models"
-                                className="font-mono text-xs h-9"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-lg">
-                        <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
-                            {model.includes('thinking') ?
-                                "🧠 RAW THINKING ENABLED: The agent will capture and display the internal chain-of-thought blocks from this model." :
-                                model.includes('2.0') ?
-                                    "✨ AGENTIC MODEL: High-speed tool-calling and reasoning loop supported." :
-                                    "⚠️ Standard model detected."}
-                        </p>
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle>AI Data Tools / Skills</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    {[
-                        { id: 'getCompanyProfile', label: 'Company Profile (Price, P/E, Sector PE, Div Yield)', desc: 'Fundamental basics and current market pricing.' },
-                        { id: 'getPriceHistoryMetrics', label: 'Price History (52w High/Low, History)', desc: 'Historical price action context.' },
-                        { id: 'getQuarterlyEarnings', label: 'Quarterly Earnings (Last 8 Quarters)', desc: 'Recent EPS and Net Income performance.' },
-                        { id: 'getAnnualEarnings', label: 'Annual Earnings (Last 3 Years)', desc: 'Long-term profitability trends.' },
-                        { id: 'getDividendInfo', label: 'Dividend Info (Detailed History)', desc: 'Detailed dividend payments and yield tracking.' },
-                        { id: 'googleSearch', label: 'Google Search Grounding (Web Access)', desc: 'Allow AI to search the web for real-time news and macro data.' },
-                    ].map(tool => (
-                        <div key={tool.id} className="flex items-start gap-3 p-3 bg-secondary/50 rounded-lg border border-border">
-                            <input
-                                type="checkbox"
-                                id={tool.id}
-                                checked={enabledTools[tool.id] !== false}
-                                onChange={(e) => setEnabledTools({ ...enabledTools, [tool.id]: e.target.checked })}
-                                className="mt-1 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <div>
-                                <label htmlFor={tool.id} className="text-sm font-bold block">{tool.label}</label>
-                                <p className="text-xs text-muted-foreground">{tool.desc}</p>
+                                    <Button onClick={addExample} className="bg-blue-600 font-bold">Add Example</Button>
+                                </div>
                             </div>
-                        </div>
-                    ))}
-                </CardContent>
-            </Card>
+                        </CardContent>
+                    </Card>
 
-            <Button size="lg" className="w-full h-14 text-lg font-black bg-blue-600 hover:bg-blue-700" onClick={save}>Save Brand Profile</Button>
+                    <Card>
+                        <CardHeader><CardTitle>Model Selection</CardTitle></CardHeader>
+                        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase text-muted-foreground">Default Model</label>
+                                <Input value={model} onChange={(e) => setModel(e.target.value)} list="gemini-models" className="font-mono" />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase text-blue-600">🧠 Brain (Planning)</label>
+                                <Input value={brainModel} onChange={(e) => setBrainModel(e.target.value)} list="gemini-models" className="font-mono" placeholder="Default Override" />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase text-orange-600">⚙️ Hand (Drafting)</label>
+                                <Input value={handModel} onChange={(e) => setHandModel(e.target.value)} list="gemini-models" className="font-mono" placeholder="Default Override" />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase text-green-600">✨ Humanizer (Style)</label>
+                                <Input value={humanizerModel} onChange={(e) => setHumanizerModel(e.target.value)} list="gemini-models" className="font-mono" placeholder="Default Override" />
+                            </div>
+                            <datalist id="gemini-models">
+                                <option value="gemini-2.0-flash" />
+                                <option value="gemini-2.0-flash-lite" />
+                                <option value="gemini-1.5-pro" />
+                                <option value="gemini-2.0-pro-exp-02-05" />
+                                <option value="gemini-2.0-flash-thinking-preview-01-21" />
+                            </datalist>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* --- TWEET MODE --- */}
+                <TabsContent value="tweet" className="space-y-6">
+                    <Card className="border-blue-500/20 shadow-sm bg-blue-500/[0.02]">
+                        <CardHeader><CardTitle className="text-blue-600">Broadcast Mode Configuration</CardTitle></CardHeader>
+                        <CardContent className="space-y-8">
+                            <div className="grid md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold flex items-center gap-2">🧠 Phase 1: Planning (Coordinator)</label>
+                                    <Textarea
+                                        value={tweetCoordinator}
+                                        onChange={(e) => setTweetCoordinator(e.target.value)}
+                                        className="h-48 font-mono text-xs bg-background/80"
+                                        placeholder="Define how the AI plans the tweet..."
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold flex items-center gap-2">✍️ Phase 2: Drafting (Hand)</label>
+                                    <Textarea
+                                        value={tweetDrafter}
+                                        onChange={(e) => setTweetDrafter(e.target.value)}
+                                        className="h-48 font-mono text-xs bg-background/80"
+                                        placeholder="Define how the AI drafts the content..."
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold flex items-center gap-2">✨ Phase 3: Humanization (Style)</label>
+                                <Textarea
+                                    value={tweetHumanizer}
+                                    onChange={(e) => setTweetHumanizer(e.target.value)}
+                                    className="h-32 font-mono text-xs bg-background/80"
+                                    placeholder="Define refinement rules..."
+                                />
+                            </div>
+                            <div className="pt-4 border-t">
+                                <h3 className="text-sm font-bold mb-4">Enabled Tools (Broadcast Mode)</h3>
+                                <ToolSelector tools={tweetTools} setTools={setTweetTools} />
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* --- REPLY MODE --- */}
+                <TabsContent value="reply" className="space-y-6">
+                    <Card className="border-orange-500/20 shadow-sm bg-orange-500/[0.02]">
+                        <CardHeader><CardTitle className="text-orange-600">Reply & Engage Mode Configuration</CardTitle></CardHeader>
+                        <CardContent className="space-y-8">
+                            <div className="grid md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold flex items-center gap-2">🧠 Phase 1: Planning (Coordinator)</label>
+                                    <Textarea
+                                        value={replyCoordinator}
+                                        onChange={(e) => setReplyCoordinator(e.target.value)}
+                                        className="h-48 font-mono text-xs bg-background/80"
+                                        placeholder="Define how the AI analyzes the target tweet..."
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold flex items-center gap-2">✍️ Phase 2: Drafting (Hand)</label>
+                                    <Textarea
+                                        value={replyDrafter}
+                                        onChange={(e) => setReplyDrafter(e.target.value)}
+                                        className="h-48 font-mono text-xs bg-background/80"
+                                        placeholder="Define how the AI formulates the reply..."
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold flex items-center gap-2">✨ Phase 3: Humanization (Style)</label>
+                                <Textarea
+                                    value={replyHumanizer}
+                                    onChange={(e) => setReplyHumanizer(e.target.value)}
+                                    className="h-32 font-mono text-xs bg-background/80"
+                                    placeholder="Define reply tone rules..."
+                                />
+                            </div>
+                            <div className="pt-4 border-t">
+                                <h3 className="text-sm font-bold mb-4">Enabled Tools (Reply Mode)</h3>
+                                <ToolSelector tools={replyTools} setTools={setReplyTools} />
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* --- BRIEFING MODE --- */}
+                <TabsContent value="briefing" className="space-y-6">
+                    <Card className="border-indigo-500/20 shadow-sm bg-indigo-500/[0.02]">
+                        <CardHeader><CardTitle className="text-indigo-600">News Briefing Mode Configuration</CardTitle></CardHeader>
+                        <CardContent className="space-y-8">
+                            <div className="grid md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold flex items-center gap-2">🧠 Phase 1: Planning (Coordinator)</label>
+                                    <Textarea
+                                        value={briefingCoordinator}
+                                        onChange={(e) => setBriefingCoordinator(e.target.value)}
+                                        className="h-48 font-mono text-xs bg-background/80"
+                                        placeholder="Define how the AI plans the briefing..."
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold flex items-center gap-2">✍️ Phase 2: Drafting (Hand)</label>
+                                    <Textarea
+                                        value={briefingDrafter}
+                                        onChange={(e) => setBriefingDrafter(e.target.value)}
+                                        className="h-48 font-mono text-xs bg-background/80"
+                                        placeholder="Define the structure of the news briefing..."
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold flex items-center gap-2">✨ Phase 3: Humanization (Style)</label>
+                                <p className="text-xs text-muted-foreground mb-1">Optional for Briefings. Usually skipped to preserve bullets.</p>
+                                <Textarea
+                                    value={briefingHumanizer}
+                                    onChange={(e) => setBriefingHumanizer(e.target.value)}
+                                    className="h-32 font-mono text-xs bg-background/80"
+                                    placeholder="Define refinement rules if needed..."
+                                />
+                            </div>
+                            <div className="pt-4 border-t">
+                                <h3 className="text-sm font-bold mb-4">Enabled Tools (Briefing Mode)</h3>
+                                <ToolSelector tools={briefingTools} setTools={setBriefingTools} />
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+            </Tabs>
         </div>
     );
 }

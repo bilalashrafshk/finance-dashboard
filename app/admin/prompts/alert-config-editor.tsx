@@ -84,6 +84,43 @@ export function AlertConfigEditor({ config }: { config: any }) {
         );
     }
 
+    if (config.key === 'include_heatmap_context') {
+        const isEnabled = value === 'true';
+        return (
+            <div className="space-y-4">
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-semibold text-foreground flex items-center gap-2">
+                        🗺️ Heatmap Context
+                    </label>
+                    <p className="text-xs text-muted-foreground mb-4">
+                        {config.description}
+                    </p>
+                </div>
+                <div className="flex items-center justify-between p-4 border rounded-xl bg-card">
+                    <span className="text-sm font-medium">Include Sector Performance & Top Movers</span>
+                    <button
+                        onClick={() => {
+                            const newValue = (!isEnabled).toString();
+                            setValue(newValue);
+                            handleSave(newValue);
+                        }}
+                        disabled={isSaving}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 ${isEnabled ? 'bg-purple-600' : 'bg-input'}`}
+                    >
+                        <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isEnabled ? 'translate-x-6' : 'translate-x-1'}`}
+                        />
+                    </button>
+                </div>
+                {message && (
+                    <p className={`text-xs font-medium ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+                        {message.text}
+                    </p>
+                )}
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-4">
             <div className="flex flex-col gap-1">
