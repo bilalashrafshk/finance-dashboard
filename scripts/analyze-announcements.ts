@@ -18,10 +18,17 @@ const OUTPUT_FILE = path.join(process.cwd(), 'scripts/data/final_analysis.json')
  */
 function parseAIResponse(rawText: string) {
     try {
-        // Try to find JSON block if AI wrapped it in markdown
         const jsonMatch = rawText.match(/\{[\s\S]*\}/);
         const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
-        return JSON.parse(jsonStr);
+        const parsed = JSON.parse(jsonStr);
+
+        return {
+            sentiment: parsed.sentiment || parsed.verdict || "Neutral",
+            headline: parsed.headline || "New Announcement",
+            scoop: parsed.scoop || parsed.the_scoop || [],
+            verdict: parsed.post || parsed.the_post || parsed.summary || parsed.verdict || "Analysis unavailable.",
+            market_context: parsed.market_context || { valuation: "N/A", momentum: "N/A", price: "N/A" }
+        };
     } catch (e) {
         console.warn("⚠️ Failed to parse AI JSON, falling back to raw text.");
         return {

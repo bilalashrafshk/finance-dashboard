@@ -335,7 +335,10 @@ export class TwitterAgentService {
         // This stage applies precise stylistic rules (lowercase, imperfect grammar, etc).
         // SKIPPED FOR BRIEFING MODE to preserve structure.
         if (postFormat !== 'briefing' && finalDraft && personality.humanizer_instructions) {
-            const humanizerPrompt = personality.humanizer_instructions.replace('{{tweet}}', finalDraft);
+            let humanizerPrompt = personality.humanizer_instructions
+                .replace('{{tweet}}', finalDraft)
+                .replace('{{mode}}', mode === 'reply' ? 'REPLY' : 'BROADCAST')
+                .replace('{{target_tweet}}', targetTweet || 'N/A');
 
             const humanizerSystemInstruction = `
                 You are a professional humanizer/editor for Bilal Ashraf, a calm, analytical investor.

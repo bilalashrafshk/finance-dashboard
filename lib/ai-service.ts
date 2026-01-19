@@ -116,7 +116,7 @@ Company: ${announcement.company} (${announcement.symbol})
         }
     }
 
-    parts.push({ text: "\nAnalyze the above (including any attached documents/images) and provide the output in the format requested in the system instruction." });
+    parts.push({ text: "\nOutput strictly in the specified JSON format. Zero conversational padding. No meta-commentary." });
 
     try {
         const result = await model.generateContent(parts);
