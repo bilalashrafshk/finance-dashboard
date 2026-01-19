@@ -93,6 +93,7 @@ export class TwitterAgentService {
             case 'getAnnualEarnings': return await AIContextService.getAnnualEarnings(args.symbol);
             case 'getDividendInfo': return await AIContextService.getDividendInfo(args.symbol);
             case 'getMarketSummary': return await AIContextService.getMarketSummary(args.date, args.detailed, args.filter_sector, args.filter_symbols, args.timeframe);
+            case 'googleSearch': return "Google Search grounding is enabled. Use your internal grounding capability to retrieve web results directly.";
             default: throw new Error(`Unknown tool: ${name}`);
         }
     }
@@ -262,24 +263,13 @@ export class TwitterAgentService {
         const shouldEnableSearch = (userAskedForSearch || planMentionsSearch) && configTools.googleSearch !== false;
 
         let handTools: any[] = [];
-        const is25Flash = personality.default_model?.includes('2.5-flash');
 
         if (shouldEnableSearch) {
-            // Priority 1: Google Search
-            handTools = [{ googleSearch: {} }];
-            // Note: On gemini-2.5-flash, mixing googleSearch with functionDeclarations is currently unsupported.
-            // If it's NOT 2.5-flash, we can potentially merge them, but for reliability we prioritize the search
-            // as per the "Search-First" directive.
-            if (!is25Flash) {
-                // For 2.0 or other models, we could theoretically add custom tools here:
-                // handTools.push(...enabledCustomTools);
-                // But for now, to follow the "Search-First" directive strictly and stay safe, 
-                // we keep it search-only if search is requested.
-            }
-        } else {
-            // Priority 2: Custom Tools
-            handTools = enabledCustomTools;
+            handTools.push({ googleSearch: {} });
         }
+
+        // Add custom tools
+        handTools.push(...enabledCustomTools);
 
         const handModel = ai.getGenerativeModel({
             model: personality.hand_model || personality.default_model || 'gemini-2.0-flash',
