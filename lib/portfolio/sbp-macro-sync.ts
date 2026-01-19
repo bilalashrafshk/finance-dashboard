@@ -3,7 +3,7 @@ import { getBOPMetadata, insertBOPData } from './db-client';
 const SBP_API_BASE_URL = 'https://easydata.sbp.org.pk/api/v1';
 
 const BOP_DATASET_KEY = 'TS_GP_BOP_BPM6SUM_M';
-const BOP_SERIES_KEYS = [
+export const BOP_SERIES_KEYS = [
     'TS_GP_BOP_BPM6SUM_M.P00010',
     'TS_GP_BOP_BPM6SUM_M.P00030',
     'TS_GP_BOP_BPM6SUM_M.P00040',
@@ -79,23 +79,35 @@ export class SBPMacroSyncService {
     }
 
     /**
-     * Sync all primary BoP series keys
+     * Sync a single series key
+     */
+    static async syncSingleSeries(seriesKey: string) {
+        try {
+            const data = await this.fetchSeriesFromAPI(seriesKey);
+            if (data.length > 0) {
+                const { inserted } = await insertBOPData(seriesKey, data[0].series_name, data);
+                return inserted;
+            }
+            return 0;
+        } catch (err) {
+            console.error(`[BOP Watcher] Failed to sync ${seriesKey}:`, err);
+            throw err;
+        }
+    }
+
+    /**
+     * Sync all primary BoP series keys (Batch/Emergency use)
      */
     static async syncBoPData() {
         console.log(`[BOP Watcher] Starting full sync of ${BOP_SERIES_KEYS.length} series...`);
         let totalInserted = 0;
 
-        for (const seriesKey of BOP_SERIES_KEYS) {
-            try {
-                const data = await this.fetchSeriesFromAPI(seriesKey);
-                if (data.length > 0) {
-                    const { inserted } = await insertBOPData(seriesKey, data[0].series_name, data);
-                    totalInserted += inserted;
-                    console.log(`[BOP Watcher] Synced ${seriesKey}: ${inserted} new records.`);
-                }
-            } catch (err) {
-                console.error(`[BOP Watcher] Failed to sync ${seriesKey}:`, err);
-            }
+        // Perform in parallel with concurrency limit (e.g. 3 at a time)
+        const CONCURRENCY = 3;
+        for (let i = 0; i < BOP_SERIES_KEYS.length; i += CONCURRENCY) {
+            const chunk = BOP_SERIES_KEYS.slice(i, i + CONCURRENCY);
+            const results = await Promise.all(chunk.map(key => this.syncSingleSeries(key).catch(() => 0)));
+            totalInserted += results.reduce((a, b) => a + b, 0);
         }
 
         return totalInserted;
