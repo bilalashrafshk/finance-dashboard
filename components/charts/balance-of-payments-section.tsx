@@ -53,10 +53,76 @@ interface BOPResponse {
 
 const SERIES_OPTIONS = [
   {
-    key: 'TS_GP_ES_PKBOPSTND_M.BOPSNA01810',
-    label: 'Current Account - Net',
+    key: 'TS_GP_BOP_BPM6SUM_M.P00010',
+    label: 'Current Account Balance',
     description: 'Net current account balance (surplus/deficit)',
     color: 'rgb(59, 130, 246)', // blue
+  },
+  {
+    key: 'TS_GP_BOP_BPM6SUM_M.P00030',
+    label: 'Exports of Goods',
+    description: 'Exports of goods FOB',
+    color: 'rgb(34, 197, 94)', // green
+  },
+  {
+    key: 'TS_GP_BOP_BPM6SUM_M.P00040',
+    label: 'Imports of Goods',
+    description: 'Imports of goods FOB',
+    color: 'rgb(239, 68, 68)', // red
+  },
+  {
+    key: 'TS_GP_BOP_BPM6SUM_M.P00050',
+    label: 'Trade Balance (Goods)',
+    description: 'Balance on trade in goods',
+    color: 'rgb(168, 85, 247)', // purple
+  },
+  {
+    key: 'TS_GP_BOP_BPM6SUM_M.P00060',
+    label: 'Exports of Services',
+    description: 'Exports of services',
+    color: 'rgb(20, 184, 166)', // teal
+  },
+  {
+    key: 'TS_GP_BOP_BPM6SUM_M.P00070',
+    label: 'Imports of Services',
+    description: 'Imports of services',
+    color: 'rgb(249, 115, 22)', // orange
+  },
+  {
+    key: 'TS_GP_BOP_BPM6SUM_M.P00080',
+    label: 'Trade Balance (Services)',
+    description: 'Balance on trade in services',
+    color: 'rgb(236, 72, 153)', // pink
+  },
+  {
+    key: 'TS_GP_BOP_BPM6SUM_M.P00140',
+    label: 'Workers\' Remittances',
+    description: 'Personal transfers (Net)',
+    color: 'rgb(14, 165, 233)', // sky blue
+  },
+  {
+    key: 'TS_GP_BOP_BPM6SUM_M.P00180',
+    label: 'FDI (Net)',
+    description: 'Foreign Direct Investment (Net)',
+    color: 'rgb(132, 204, 22)', // lime
+  },
+  {
+    key: 'TS_GP_BOP_BPM6SUM_M.P00330',
+    label: 'Portfolio Investment',
+    description: 'Portfolio Investment (Net)',
+    color: 'rgb(99, 102, 241)', // indigo
+  },
+  {
+    key: 'TS_GP_BOP_BPM6SUM_M.P00680',
+    label: 'Overall Balance',
+    description: 'Final balance of payments surplus/deficit',
+    color: 'rgb(107, 114, 128)', // gray
+  },
+  {
+    key: 'TS_GP_BOP_BPM6SUM_M.P00730',
+    label: 'SBP Gross Reserves',
+    description: 'Total foreign exchange reserves with State Bank',
+    color: 'rgb(234, 179, 8)', // yellow
   },
 ]
 
@@ -94,7 +160,7 @@ export function BalanceOfPaymentsSection() {
       }
 
       // Sort by date ascending for chart
-      const sortedData = [...result.data].sort((a, b) => 
+      const sortedData = [...result.data].sort((a, b) =>
         new Date(a.date).getTime() - new Date(b.date).getTime()
       )
 
@@ -177,7 +243,7 @@ export function BalanceOfPaymentsSection() {
         mode: 'index' as const,
         intersect: false,
         callbacks: {
-          label: function(context: any) {
+          label: function (context: any) {
             const value = context.parsed.y
             const sign = value >= 0 ? '+' : ''
             const status = value >= 0 ? ' (Surplus)' : ' (Deficit)'
@@ -207,7 +273,7 @@ export function BalanceOfPaymentsSection() {
         beginAtZero: false,
         // Add zero line to distinguish surplus/deficit
         grid: {
-          color: function(context: any) {
+          color: function (context: any) {
             if (context.tick.value === 0) {
               return 'rgba(0, 0, 0, 0.5)'
             }
@@ -227,8 +293,8 @@ export function BalanceOfPaymentsSection() {
   const latestValue = data.length > 0 ? data[data.length - 1].value : null
   const previousValue = data.length > 1 ? data[data.length - 2].value : null
   const change = latestValue !== null && previousValue !== null ? latestValue - previousValue : null
-  const changePercent = change !== null && previousValue !== null && previousValue !== 0 
-    ? (change / Math.abs(previousValue)) * 100 
+  const changePercent = change !== null && previousValue !== null && previousValue !== 0
+    ? (change / Math.abs(previousValue)) * 100
     : null
 
   // Determine if current value is surplus or deficit
@@ -272,9 +338,8 @@ export function BalanceOfPaymentsSection() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="p-4 border rounded-lg">
                 <div className="text-sm text-muted-foreground">Current Account</div>
-                <div className={`text-2xl font-bold mt-1 flex items-center gap-2 ${
-                  isSurplus ? 'text-green-600' : 'text-red-600'
-                }`}>
+                <div className={`text-2xl font-bold mt-1 flex items-center gap-2 ${isSurplus ? 'text-green-600' : 'text-red-600'
+                  }`}>
                   {isSurplus ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
                   {latestValue >= 0 ? '+' : ''}{latestValue.toFixed(2)}
                   <span className="text-sm font-normal text-muted-foreground ml-1">M USD</span>
@@ -289,9 +354,8 @@ export function BalanceOfPaymentsSection() {
               {change !== null && (
                 <div className="p-4 border rounded-lg">
                   <div className="text-sm text-muted-foreground">Change</div>
-                  <div className={`text-2xl font-bold mt-1 flex items-center gap-2 ${
-                    change >= 0 ? 'text-green-600' : 'text-red-600'
-                  }`}>
+                  <div className={`text-2xl font-bold mt-1 flex items-center gap-2 ${change >= 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
                     {change >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
                     {change > 0 ? '+' : ''}{change.toFixed(2)}
                     <span className="text-sm font-normal text-muted-foreground ml-1">M USD</span>
@@ -345,7 +409,7 @@ export function BalanceOfPaymentsSection() {
               <div className="h-[500px] w-full">
                 <Line data={chartData} options={chartOptions} />
               </div>
-              
+
               {/* Visual indicator below chart */}
               <div className="mt-4 p-4 border rounded-lg bg-muted/30">
                 <div className="flex items-center justify-center gap-6 text-sm">

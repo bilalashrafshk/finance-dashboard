@@ -115,9 +115,9 @@ export async function GET(request: NextRequest) {
   }
 
   // Validate series key format (Balance of Payments dataset)
-  if (!seriesKey.startsWith('TS_GP_ES_PKBOPSTND_M.')) {
+  if (!seriesKey.startsWith('TS_GP_BOP_BPM6SUM_M.')) {
     return NextResponse.json(
-      { error: 'Invalid seriesKey. Must be from Balance of Payments dataset (TS_GP_ES_PKBOPSTND_M.*)' },
+      { error: 'Invalid seriesKey. Must be from BPM6 Summary dataset (TS_GP_BOP_BPM6SUM_M.*)' },
       { status: 400 }
     )
   }
@@ -139,13 +139,13 @@ export async function GET(request: NextRequest) {
 
       try {
         // If no date range provided, fetch all available historical data
-        // BOP data typically starts from July 2023
+        // Monthly Summary BPM6 data typically starts from July 2013
         let fetchStartDate = startDate
         let fetchEndDate = endDate
 
         if (!fetchStartDate) {
-          // Default: July 2023 (when BOP data started)
-          fetchStartDate = '2023-07-01'
+          // Default: July 2013 (when BPM6 Monthly Summary data started)
+          fetchStartDate = '2013-07-01'
         }
 
         if (!fetchEndDate) {

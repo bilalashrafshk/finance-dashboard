@@ -1819,8 +1819,8 @@ export async function shouldRefreshBOPData(seriesKey: string): Promise<boolean> 
     const now = Date.now()
     const ageInDays = (now - lastUpdated) / (1000 * 60 * 60 * 24)
 
-    // Refresh if data is older than 10 days
-    return ageInDays > 10
+    // Refresh if data is older than 1 day (Active watcher in cron handles high-frequency sync)
+    return ageInDays > 1
   } catch (error: any) {
     console.error(`[DB] Error checking if BOP data needs refresh for ${seriesKey}:`, error.message)
     return true // On error, refresh to be safe

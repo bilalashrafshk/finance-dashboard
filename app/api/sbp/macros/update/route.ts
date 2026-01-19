@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { Pool } from 'pg'
 import { ensureSBPEconomicData, MACRO_KEYS } from '@/lib/portfolio/sbp-service'
+import { SBPMacroSyncService } from '@/lib/portfolio/sbp-macro-sync'
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
@@ -12,16 +13,31 @@ export const maxDuration = 60 // Max 60s for Vercel
 /**
  * CRON JOB: Dedicated Macro Economic Data Update
  * 
- * Frequency: Every 6 hours (Macro data changes slowly)
+ * Frequency: High frequency (e.g. every hour) to support BoP Watcher
  * 
  * Logic:
- * 1. Prioritize staleness: Update keys that haven't been updated in 3+ days.
- * 2. Time-budgeted: Process keys in small batches until ~55s limit to avoid timeout.
+ * 1. Active BoP Watcher: Check SBP metadata for immediate sync.
+ * 2. Standard Macros: Maintain 10-day cache.
  */
 export async function GET(request: Request) {
     const startTime = Date.now()
     const TIME_LIMIT_MS = 55000 // 55 seconds safety limit
     const CONCURRENCY = 2 // Small batch parallelism to stay safe with SBP API
+
+    // --- 1. Active BoP Watcher ---
+    try {
+        console.log('[Macro Update] Checking SBP BoP Metadata...');
+        const bopNewDate = await SBPMacroSyncService.checkBoPUpdateNeeded();
+        if (bopNewDate) {
+            console.log(`[Macro Update] Triggering Active BoP Sync (Source updated: ${bopNewDate})`);
+            const bopSyncCount = await SBPMacroSyncService.syncBoPData();
+            console.log(`[Macro Update] Active BoP Sync complete. ${bopSyncCount} records added.`);
+            // TODO: Queue AI alert generation event
+        }
+    } catch (bopErr) {
+        console.error('[Macro Update] BoP Watcher failed:', bopErr);
+    }
+
     const client = await pool.connect()
 
     try {
