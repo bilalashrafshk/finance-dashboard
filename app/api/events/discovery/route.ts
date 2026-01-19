@@ -3,6 +3,8 @@ import { Pool } from 'pg';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 
+import { triageAnnouncement } from '@/lib/ai-service';
+
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
     ssl: (process.env.DATABASE_URL || process.env.POSTGRES_URL || '').includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
@@ -84,7 +86,7 @@ export async function GET(request: Request) {
 
             // Filter Logic
             let passed = false;
-            const CRITICAL_KEYWORDS = ["Material Information"];
+            const CRITICAL_KEYWORDS = ["Material Information", "Discovery", "Production"];
 
             if (CRITICAL_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
                 passed = true;
@@ -94,6 +96,10 @@ export async function GET(request: Request) {
                 passed = true;
             } else if (titleLower.includes("disclosure of interest") && topSymbols.includes(symbol)) {
                 passed = true;
+            } else {
+                // Tier 3: AI Triage for the "Grey Area" (e.g., "Discovery of Hydrocarbons")
+                // We use await here to handle it in real-time
+                passed = await triageAnnouncement(title);
             }
 
             if (!passed) continue;

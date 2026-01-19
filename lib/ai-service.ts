@@ -2,14 +2,24 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import axios from 'axios';
 
 
+import { PersonalityService } from './ai/personality-service';
+
 let genAI: GoogleGenerativeAI | null = null;
 let model: any = null;
 
-function initAI() {
+async function initAI() {
     const API_KEY = process.env.GEMINI_API_KEY || '';
     if (API_KEY && !genAI) {
         genAI = new GoogleGenerativeAI(API_KEY);
-        model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-2.0-flash-lite' });
+
+        let modelName = process.env.GEMINI_MODEL;
+        if (!modelName) {
+            const personality = await PersonalityService.getPersonality('bilal-ashraf');
+            modelName = personality?.default_model || 'gemini-2.0-flash';
+        }
+
+        console.log(`🤖 Initializing AI with model: ${modelName}`);
+        model = genAI.getGenerativeModel({ model: modelName });
     }
 }
 
@@ -28,7 +38,7 @@ export async function generateHeadline(prompt: string): Promise<string> {
  * General purpose AI synthesis
  */
 export async function generateAISynthesis(prompt: string): Promise<string> {
-    initAI();
+    await initAI();
 
     if (!model) {
         console.warn('AI model not initialized. Returning fallback.');
@@ -53,7 +63,7 @@ export async function analyzeAnnouncement(
     context: any,
     announcement: any
 ): Promise<{ text: string; debugMetadata?: any }> {
-    initAI();
+    await initAI();
     if (!model) return { text: JSON.stringify({ error: 'AI Unavailable' }) };
 
     // 1. Prepare text prompt
@@ -127,6 +137,52 @@ Company: ${announcement.company} (${announcement.symbol})
         }
         console.error('Error in multimodal analysis:', error);
         return { text: "Analysis failed due to model error." };
+    }
+}
+
+/**
+ * Real-time triage to determine if an announcement title is significant.
+ * Gemini handles this semantic check in <1s.
+ */
+export async function triageAnnouncement(title: string): Promise<boolean> {
+    await initAI();
+    if (!model) return false;
+
+    const prompt = `
+Analyze the following PSX announcement title and decide if it is operationally or financially significant for a stock investor. 
+
+SIGNIFICANT (RETURN "YES"):
+- Discoveries (oil, gas, minerals)
+- Production updates or start of operations
+- Joint Ventures or Strategic Partnerships
+- Material Information or Legal Settlements
+- Capacity expansions or new facilities
+- Contracts, orders, or renewals
+- Financial Results/Board Meetings
+- Defaults, bankruptcies, or major risks
+
+NOT SIGNIFICANT (RETURN "NO"):
+- Routine transmission of annual/quarterly reports
+- Loss of share certificates
+- Change of share registrar
+- Routine notices of AGM/EOGM
+- Corrigendum for minor clerical errors
+- Routine notifications of shareholding changes (unless major buyback)
+
+Title: "${title}"
+
+Return ONLY "YES" or "NO".
+`;
+
+    try {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text().trim().toUpperCase();
+        console.log(`🤖 AI Triage for "${title}": ${text}`);
+        return text.includes('YES');
+    } catch (error) {
+        console.error('Error in AI triage:', error);
+        return false; // Fail safe to skip
     }
 }
 
