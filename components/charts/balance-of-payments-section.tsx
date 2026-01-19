@@ -231,7 +231,12 @@ export function BalanceOfPaymentsSection() {
       if (!res.ok) throw new Error('Failed to fetch data')
       const json = await res.json()
 
-      setData(json.data)
+      // Sort data Ascending (Earliest first) to simplify all range logic
+      const sortedData = [...json.data].sort((a: any, b: any) =>
+        new Date(a.date).getTime() - new Date(b.date).getTime()
+      )
+
+      setData(sortedData)
       setMetadata({
         seriesName: json.seriesName,
         latestDate: json.latestStoredDate,
@@ -242,12 +247,9 @@ export function BalanceOfPaymentsSection() {
       // Default to "Last 1 Year" (12 months) on first load
       if (!rangeEnd || refresh) {
         setRangeEnd(json.latestStoredDate)
-        const latestDate = new Date(json.latestStoredDate)
-        const oneYearAgo = new Date(latestDate)
-        oneYearAgo.setFullYear(latestDate.getFullYear() - 1)
-        const startStr = oneYearAgo.toISOString().slice(0, 10)
-        const startMatch = json.data.find((d: any) => d.date >= startStr) || json.data[0]
-        setRangeStart(startMatch.date)
+        const latestIdx = sortedData.length - 1
+        const startIdx = Math.max(0, latestIdx - 11) // 12 months including latest
+        setRangeStart(sortedData[startIdx].date)
       }
     } catch (err: any) {
       setError(err.message)
@@ -326,20 +328,11 @@ export function BalanceOfPaymentsSection() {
     return getAggregatedData(filteredSynthetic, 'quarterly').map(d => d.value)
   }, [showYoY, processedData, data, dataLookupMap, viewMode, rangeStart, rangeEnd])
 
-  // Calculate Aggregated Value for Summary Card
-  const aggregateValue = useMemo(() => {
-    if (processedData.length === 0) return null
-    if (selectedSeriesInfo.variableType === 'stock') {
-      return processedData[processedData.length - 1].value
-    } else {
-      return processedData.reduce((sum, d) => sum + d.value, 0)
-    }
-  }, [processedData, selectedSeriesInfo.variableType])
-
   // Generate Month/Year options for selection
   const monthOptions = useMemo(() => {
     if (data.length === 0) return []
-    return data.map(d => ({
+    // Keep internal data ascending, but show dropdown descending for usability
+    return [...data].reverse().map(d => ({
       value: d.date,
       label: format(new Date(d.date), 'MMM yyyy')
     }))
@@ -350,22 +343,20 @@ export function BalanceOfPaymentsSection() {
     if (data.length === 0) return
 
     const latest = data[data.length - 1].date
-    const latestDate = new Date(latest)
     setRangeEnd(latest)
 
     if (months === 'FULL') {
       setRangeStart(data[0].date)
     } else if (months === 'FYTD') {
+      const latestDate = new Date(latest)
       // Pakistan Fiscal Year starts July 1st
-      // If current month >= July, start is July of this year
-      // If current month < July, start is July of last year
       const year = latestDate.getMonth() >= 6 ? latestDate.getFullYear() : latestDate.getFullYear() - 1
       const fyStart = `${year}-07-01`
 
       // Find closest available date to July 1st
       const closest = data.find(d => d.date >= fyStart) || data[0]
       setRangeStart(closest.date)
-    } else {
+    } else if (typeof months === 'number') {
       // Last X months
       const startIdx = Math.max(0, data.length - months)
       setRangeStart(data[startIdx].date)
@@ -610,27 +601,6 @@ export function BalanceOfPaymentsSection() {
                 </div>
               </div>
             </div>
-
-            {/* Aggregated Summary Card */}
-            {aggregateValue !== null && (
-              <div className="p-4 border rounded-xl bg-muted/20 border-blue-500/20 shadow-sm flex flex-col justify-center h-full">
-                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-1">
-                  <TrendingUp className="h-4 w-4 text-blue-500" />
-                  {selectedSeriesInfo.variableType === 'stock' ? 'End of Period Value (Stock)' : `Range Total (${viewMode === 'quarterly' ? 'Sum of Quarters' : 'Sum of Months'})`}
-                </div>
-                <div className="text-3xl font-bold tracking-tight">
-                  <span className={aggregateValue >= 0 ? 'text-green-600' : 'text-red-600'}>
-                    {aggregateValue >= 0 ? '+' : ''}{aggregateValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                  <span className="text-sm font-normal text-muted-foreground ml-2">Million USD</span>
-                </div>
-                <div className="text-xs text-muted-foreground mt-1 font-medium">
-                  {rangeStart && rangeEnd ? (
-                    `${format(new Date(rangeStart), 'MMM yyyy')} - ${format(new Date(rangeEnd), 'MMM yyyy')}`
-                  ) : 'Selected Period'}
-                </div>
-              </div>
-            )}
           </div>
 
           <div className="border-t pt-6 space-y-6">
@@ -697,56 +667,57 @@ export function BalanceOfPaymentsSection() {
             )}
 
             {/* Chart */}
-            {loading ? (
-              <div className="flex items-center justify-center h-[500px] border rounded-lg bg-muted/10">
-                <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                  <Loader2 className="w-8 h-8 animate-spin" />
-                  <p>Loading Balance of Payments data...</p>
-                </div>
-              </div>
-            ) : error ? (
-              <div className="flex items-center justify-center h-[500px] border rounded-lg bg-destructive/10">
-                <div className="text-center text-destructive">
-                  <p className="font-medium">Error loading data</p>
-                  <p className="text-sm mt-2">{error}</p>
-                </div>
-              </div>
-            ) : processedData.length === 0 ? (
-              <div className="flex items-center justify-center h-[500px] border rounded-lg bg-muted/10">
-                <div className="text-center text-muted-foreground">
-                  <p>No data available for the selected range</p>
-                </div>
-              </div>
-            ) : !chartData ? (
-              <div className="flex items-center justify-center h-[500px] border rounded-lg bg-muted/10">
-                <div className="text-center text-muted-foreground">
-                  <p>No data available</p>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="h-[500px] w-full">
-                  <Line data={chartData} options={chartOptions as any} />
-                </div>
-
-                <div className="mt-4 p-4 border rounded-lg bg-muted/30">
-                  <div className="flex items-center justify-center gap-6 text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded bg-green-500"></div>
-                      <span className="text-muted-foreground">Surplus (≥ 0)</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 rounded bg-red-500"></div>
-                      <span className="text-muted-foreground">Deficit (&lt; 0)</span>
-                    </div>
+            {
+              loading ? (
+                <div className="flex items-center justify-center h-[500px] border rounded-lg bg-muted/10">
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <Loader2 className="w-8 h-8 animate-spin" />
+                    <p>Loading Balance of Payments data...</p>
                   </div>
                 </div>
-              </>
-            )}
+              ) : error ? (
+                <div className="flex items-center justify-center h-[500px] border rounded-lg bg-destructive/10">
+                  <div className="text-center text-destructive">
+                    <p className="font-medium">Error loading data</p>
+                    <p className="text-sm mt-2">{error}</p>
+                  </div>
+                </div>
+              ) : processedData.length === 0 ? (
+                <div className="flex items-center justify-center h-[500px] border rounded-lg bg-muted/10">
+                  <div className="text-center text-muted-foreground">
+                    <p>No data available for the selected range</p>
+                  </div>
+                </div>
+              ) : !chartData ? (
+                <div className="flex items-center justify-center h-[500px] border rounded-lg bg-muted/10">
+                  <div className="text-center text-muted-foreground">
+                    <p>No data available</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="h-[500px] w-full">
+                    <Line data={chartData} options={chartOptions as any} />
+                  </div>
+
+                  <div className="mt-4 p-4 border rounded-lg bg-muted/30">
+                    <div className="flex items-center justify-center gap-6 text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-green-500"></div>
+                        <span className="text-muted-foreground">Surplus (≥ 0)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-red-500"></div>
+                        <span className="text-muted-foreground">Deficit (&lt; 0)</span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )
+            }
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </CardContent >
+      </Card >
+    </div >
   )
 }
-
