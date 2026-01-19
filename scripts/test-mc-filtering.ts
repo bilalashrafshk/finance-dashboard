@@ -20,8 +20,8 @@ async function testFiltering() {
         const testSymbol = 'OGDC';
 
         // 1. Set threshold to 1 (Only the #1 company triggers alerts)
-        console.log('Setting mc_threshold_rank to 1...');
-        await client.query("UPDATE alert_configs SET value = '1' WHERE key = 'mc_threshold_rank'");
+        console.log('Setting technical_mc_threshold_rank to 1...');
+        await client.query("UPDATE alert_configs SET value = '1' WHERE key = 'technical_mc_threshold_rank'");
 
         // 2. Check if OGDC is #1
         const topRes = await client.query(`
@@ -56,7 +56,7 @@ async function testFiltering() {
 
         // 6. Restore threshold to a high value
         console.log('Restoring threshold to 100...');
-        await client.query("UPDATE alert_configs SET value = '100' WHERE key = 'mc_threshold_rank'");
+        await client.query("UPDATE alert_configs SET value = '100' WHERE key = 'technical_mc_threshold_rank'");
 
         // 7. Try again (Should pass now)
         console.log(`Testing again with high threshold...`);

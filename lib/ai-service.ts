@@ -191,9 +191,18 @@ Return ONLY "YES" or "NO".
  */
 export function parseAIResponse(rawText: string) {
     try {
-        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-        const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
-        const parsed = JSON.parse(jsonStr);
+        // 1. Strip Markdown Code Blocks (```json ... ``` or just ``` ... ```)
+        let cleaned = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+        // 2. Find the first '{' and last '}' to extract the JSON object
+        const firstBrace = cleaned.indexOf('{');
+        const lastBrace = cleaned.lastIndexOf('}');
+
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+        }
+
+        const parsed = JSON.parse(cleaned);
 
         // Map flexible field names to expected keys
         return {
@@ -205,12 +214,12 @@ export function parseAIResponse(rawText: string) {
             market_context: parsed.market_context || { valuation: "N/A", momentum: "N/A", price: "N/A" }
         };
     } catch (e) {
-        console.warn("⚠️ Failed to parse AI JSON, falling back to raw text.");
+        console.warn("⚠️ Failed to parse AI JSON, falling back to raw text.", e);
         return {
             sentiment: "Neutral",
-            headline: "New Announcement",
+            headline: "Possible Parse Error",
             scoop: [rawText.substring(0, 300)],
-            verdict: "Parse failed.",
+            verdict: "Parse failed - Raw text available in scoop.",
             sector: "Unknown",
             market_context: { valuation: "N/A", momentum: "N/A", price: "N/A" }
         };

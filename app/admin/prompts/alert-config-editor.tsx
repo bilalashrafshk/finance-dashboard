@@ -10,16 +10,21 @@ export function AlertConfigEditor({ config }: { config: any }) {
     const [isSaving, setIsSaving] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-    const handleSave = async () => {
+    const isMarketCapThreshold = config.key === 'fundamental_mc_threshold_rank' || config.key === 'technical_mc_threshold_rank';
+    const isVolumeSurge = config.key === 'volume_surge_settings';
+
+    const handleSave = async (customValue?: any) => {
         setIsSaving(true);
         setMessage(null);
         try {
-            let parsedValue;
-            try {
-                parsedValue = JSON.parse(value);
-            } catch (e) {
-                // If it's not JSON, treat it as a string (though our defaults are JSON)
-                parsedValue = value;
+            let parsedValue = customValue;
+
+            if (customValue === undefined) {
+                try {
+                    parsedValue = JSON.parse(value);
+                } catch (e) {
+                    parsedValue = value;
+                }
             }
 
             await updateAlertConfig(config.key, parsedValue);
@@ -31,6 +36,53 @@ export function AlertConfigEditor({ config }: { config: any }) {
             setIsSaving(false);
         }
     };
+
+    if (isMarketCapThreshold) {
+        const options = [
+            { label: 'Top 100 Stocks', value: 100 },
+            { label: 'Top 200 Stocks', value: 200 },
+            { label: 'Top 300 Stocks', value: 300 },
+            { label: 'Top 500 Stocks', value: 500 },
+            { label: 'Show All Stocks', value: 0 },
+        ];
+
+        return (
+            <div className="space-y-4">
+                <div className="flex flex-col gap-2">
+                    <label className="text-sm font-semibold text-foreground flex items-center gap-2">
+                        📊 {config.key === 'fundamental_mc_threshold_rank' ? 'Fundamental' : 'Technical'} Market Cap
+                    </label>
+                    <p className="text-xs text-muted-foreground mb-2">
+                        {config.description}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                        {options.map((opt) => (
+                            <button
+                                key={opt.value}
+                                onClick={() => {
+                                    setValue(opt.value.toString());
+                                    handleSave(opt.value);
+                                }}
+                                disabled={isSaving}
+                                className={`px-4 py-3 rounded-xl border text-sm font-medium transition-all text-left flex justify-between items-center ${Number(value) === opt.value
+                                    ? 'bg-purple-600 border-purple-600 text-white shadow-md'
+                                    : 'bg-card hover:border-purple-600/50 border-input'
+                                    }`}
+                            >
+                                {opt.label}
+                                {Number(value) === opt.value && <div className="w-2 h-2 rounded-full bg-white animate-pulse" />}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                {message && (
+                    <p className={`text-xs font-medium ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+                        {message.text}
+                    </p>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-4">
@@ -44,7 +96,7 @@ export function AlertConfigEditor({ config }: { config: any }) {
             </div>
             <div className="flex items-center justify-between">
                 <button
-                    onClick={handleSave}
+                    onClick={() => handleSave()}
                     disabled={isSaving}
                     className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-md disabled:opacity-50 transition-colors text-sm font-medium"
                 >

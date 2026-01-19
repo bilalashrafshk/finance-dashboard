@@ -168,7 +168,7 @@ export default async function AdminPromptsPage() {
                     color="bg-purple-500"
                 >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {['ignore_keywords', 'mc_threshold_rank'].map(key => {
+                        {['ignore_keywords', 'fundamental_mc_threshold_rank', 'technical_mc_threshold_rank'].map(key => {
                             const config = getAlertConfig(key);
                             if (!config) return null;
                             return (

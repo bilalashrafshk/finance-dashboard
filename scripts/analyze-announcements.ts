@@ -92,13 +92,16 @@ async function runAnalysis(targetDate?: string, queueMode: boolean = false) {
 
         const PRIORITY_KEYWORDS: string[] = configs.priority_keywords || [];
         const IGNORE_KEYWORDS: string[] = configs.ignore_keywords || [];
-        const MC_THRESHOLD_RANK = configs.mc_threshold_rank || 100;
+        const MC_THRESHOLD_RANK = configs.fundamental_mc_threshold_rank || 100;
 
-        const topRes = await pool.query(
-            "SELECT symbol FROM company_profiles WHERE market_cap IS NOT NULL ORDER BY market_cap DESC LIMIT $1",
-            [MC_THRESHOLD_RANK]
-        );
-        const topSymbols = topRes.rows.map((r: any) => r.symbol);
+        let topSymbols: string[] = [];
+        if (MC_THRESHOLD_RANK > 0) {
+            const topRes = await pool.query(
+                "SELECT symbol FROM company_profiles WHERE market_cap IS NOT NULL ORDER BY market_cap DESC LIMIT $1",
+                [MC_THRESHOLD_RANK]
+            );
+            topSymbols = topRes.rows.map((r: any) => r.symbol);
+        }
 
         // 2. Scrape Announcements
         const payload = new URLSearchParams({
@@ -135,18 +138,28 @@ async function runAnalysis(targetDate?: string, queueMode: boolean = false) {
             let passed = false;
             let reason = '';
 
+            const isTopStock = MC_THRESHOLD_RANK === 0 || topSymbols.includes(symbol);
             const CRITICAL_KEYWORDS = ["Material Information"];
+
             if (CRITICAL_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
                 passed = true;
                 reason = "Critical Info";
             } else if (IGNORE_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
                 continue; // Skip noise
-            } else if (PRIORITY_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
+            } else if (PRIORITY_KEYWORDS.some(k => titleLower.includes(k.toLowerCase())) && isTopStock) {
                 passed = true;
-                reason = "Priority Keyword";
-            } else if (titleLower.includes("disclosure of interest") && topSymbols.includes(symbol)) {
+                reason = `Priority (${MC_THRESHOLD_RANK > 0 ? `Top ${MC_THRESHOLD_RANK}` : 'All'})`;
+            } else if (titleLower.includes("disclosure of interest") && isTopStock) {
                 passed = true;
-                reason = "Top 100 Insider";
+                reason = `Insider (${MC_THRESHOLD_RANK > 0 ? `Top ${MC_THRESHOLD_RANK}` : 'All'})`;
+            } else if (PRIORITY_KEYWORDS.some(k => titleLower.includes(k.toLowerCase())) && !isTopStock) {
+                // If its a priority keyword but NOT a top stock, we still let it through 
+                // IF it's one of the "Super Priority" ones like Financial Results?
+                // For now, let's keep it simple: Priority Keywords pass if they are Top Stocks.
+                // UNLESS the user wants them for everyone.
+                // Usually Priority includes 'Financial Results', 'Dividend', etc.
+                // If it's a micro-cap, do they want it? 
+                // User said: "filter by top 100, 200... or show all". 
             }
 
             if (!passed) continue;

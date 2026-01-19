@@ -24,8 +24,8 @@ export async function processBreakouts(candidates: BreakoutCandidate[]) {
     const client = await getPostgresClient();
     try {
         // 0. Fetch Market Cap Threshold
-        const configRes = await client.query("SELECT value FROM alert_configs WHERE key = 'mc_threshold_rank'");
-        const mcThresholdRank = parseInt(configRes.rows[0]?.value || '100');
+        const configRes = await client.query("SELECT value FROM alert_configs WHERE key = 'technical_mc_threshold_rank'");
+        const mcThresholdRank = parseInt(configRes.rows[0]?.value || '200');
 
         // Fetch Top X companies by Market Cap
         const topSymbolsRes = await client.query(`
@@ -167,7 +167,7 @@ export async function processVolumeSurges(candidates: VolumeCandidate[]) {
     const client = await getPostgresClient();
     try {
         // 0. Fetch Settings from alert_configs
-        const configsRes = await client.query("SELECT key, value FROM alert_configs WHERE key IN ('volume_surge_settings', 'mc_threshold_rank')");
+        const configsRes = await client.query("SELECT key, value FROM alert_configs WHERE key IN ('volume_surge_settings', 'technical_mc_threshold_rank')");
         const configs = configsRes.rows.reduce((acc: any, row: any) => {
             acc[row.key] = row.value;
             return acc;
@@ -176,7 +176,7 @@ export async function processVolumeSurges(candidates: VolumeCandidate[]) {
         const volConfig = configs.volume_surge_settings || { multiplier: 2.0, period: 10, min_volume: 1000 };
         const { multiplier, period, min_volume } = typeof volConfig === 'string' ? JSON.parse(volConfig) : volConfig;
 
-        const mcThresholdRank = parseInt(configs.mc_threshold_rank || '100');
+        const mcThresholdRank = parseInt(configs.technical_mc_threshold_rank || '200');
 
         // Fetch Top X companies by Market Cap
         const topSymbolsRes = await client.query(`

@@ -43,7 +43,7 @@ export async function GET(request: Request) {
 
         const PRIORITY_KEYWORDS: string[] = configs.priority_keywords || [];
         const IGNORE_KEYWORDS: string[] = configs.ignore_keywords || [];
-        const MC_THRESHOLD_RANK = configs.mc_threshold_rank || 100;
+        const MC_THRESHOLD_RANK = configs.fundamental_mc_threshold_rank || 100;
 
         // 2. Fetch Top X Companies
         const topCompaniesRes = await client.query(
