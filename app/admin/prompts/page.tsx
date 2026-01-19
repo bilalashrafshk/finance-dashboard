@@ -5,6 +5,7 @@ import { SettingsZone } from './settings-zone';
 import { BarChart3, Users, Newspaper, ShieldAlert, Sliders, Bell, Sparkles, PenTool, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+export const dynamic = 'force-dynamic';
 
 export default async function AdminPromptsPage() {
     const [prompts, alertConfigs] = await Promise.all([
