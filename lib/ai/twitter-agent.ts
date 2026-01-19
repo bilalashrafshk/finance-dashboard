@@ -93,15 +93,6 @@ export class TwitterAgentService {
             case 'getAnnualEarnings': return await AIContextService.getAnnualEarnings(args.symbol);
             case 'getDividendInfo': return await AIContextService.getDividendInfo(args.symbol);
             case 'getMarketSummary': return await AIContextService.getMarketSummary(args.date, args.detailed, args.filter_sector, args.filter_symbols, args.timeframe);
-            case 'googleSearch':
-                try {
-                    const { search, SafeSearchType } = await import('duck-duck-scrape');
-                    const results = await search(args.query, { safeSearch: SafeSearchType.STRICT });
-                    if (!results.results || results.results.length === 0) return "No results found.";
-                    return results.results.slice(0, 5).map(r => `Title: ${r.title}\nURL: ${r.url}\nSnippet: ${r.description}`).join('\n\n');
-                } catch (e) {
-                    return `Search failed: ${e}`;
-                }
             default: throw new Error(`Unknown tool: ${name}`);
         }
     }
@@ -117,10 +108,10 @@ export class TwitterAgentService {
             }
         }
 
-        if (enabledTools.googleSearch !== false) {
-            lines.push(`${idx++}. googleSearch: Perform a real-time web search. Input: { query: string }.`);
-        }
 
+        if (enabledTools.googleSearch !== false) {
+            lines.push(`\nCAPABILITY: Real-time Google Search Grounding enabled. Check facts automatically.`);
+        }
         return lines.join('\n');
     }
 
