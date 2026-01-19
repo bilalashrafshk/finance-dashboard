@@ -274,7 +274,10 @@ export class TwitterAgentService {
         );
 
         // Enable Google Search if user asked OR if Brain planned it
-        const planMentionsSearch = planLower.includes('google search') || planLower.includes('web search') || planLower.includes('search the web');
+        const planMentionsSearch = planLower.includes('google search') ||
+            planLower.includes('googlesearch') ||
+            planLower.includes('web search') ||
+            planLower.includes('search the web');
         const shouldEnableSearch = (userAskedForSearch || planMentionsSearch) && configTools.googleSearch !== false;
 
         // --- STAGE 2.1: THE RESEARCHER (Grounding Turn) ---
