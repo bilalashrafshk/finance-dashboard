@@ -97,6 +97,24 @@ export class TwitterAgentService {
         }
     }
 
+    private static getAvailableToolsDescription(enabledTools: Record<string, boolean>): string {
+        const declaredTools = this.tools[0].functionDeclarations || [];
+        const lines = ['Available Tools:'];
+        let idx = 1;
+
+        for (const t of declaredTools) {
+            if (enabledTools[t.name] !== false) {
+                lines.push(`${idx++}. ${t.name}: ${t.description}`);
+            }
+        }
+
+        if (enabledTools.googleSearch !== false) {
+            lines.push(`${idx++}. googleSearch: Use for latest news, macro facts, or if explicitly asked.`);
+        }
+
+        return lines.join('\n');
+    }
+
     static async generate(
         symbol: string,
         userNotes: string = '',
@@ -120,7 +138,7 @@ export class TwitterAgentService {
         if (postFormat === 'briefing') {
             configCoordinator = personality.briefing_coordinator_prompt || configCoordinator;
             configDrafter = personality.briefing_instructions || configDrafter;
-            configHumanizer = personality.briefing_humanizer_prompt || ''; // Briefing often skips humanizer
+            configHumanizer = personality.briefing_humanizer_prompt || '';
             configTools = personality.briefing_tools || configTools;
         } else if (mode === 'reply') {
             configCoordinator = personality.reply_coordinator_prompt || configCoordinator;
@@ -169,10 +187,14 @@ export class TwitterAgentService {
         Determine if existing info is sufficient or if tools are needed. 
         DO NOT write the final tweet/reply yet.`;
 
+        const toolListCtx = this.getAvailableToolsDescription(configTools);
+
         const brainModel = ai.getGenerativeModel({
             model: personality.brain_model || personality.default_model || 'gemini-2.0-flash',
             systemInstruction: `
                 ${configCoordinator || defaultCoordinatorPrompt}
+
+                ${toolListCtx}
                 
                 ${userAskedForSearch ? 'The user has requested a web search. Include planning for Google Search.' : 'Do NOT plan for web search unless it is explicitly requested by the user or absolutely essential for current macro context.'}
             `
