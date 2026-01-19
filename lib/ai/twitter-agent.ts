@@ -93,7 +93,6 @@ export class TwitterAgentService {
             case 'getAnnualEarnings': return await AIContextService.getAnnualEarnings(args.symbol);
             case 'getDividendInfo': return await AIContextService.getDividendInfo(args.symbol);
             case 'getMarketSummary': return await AIContextService.getMarketSummary(args.date, args.detailed, args.filter_sector, args.filter_symbols, args.timeframe);
-            case 'googleSearch': return "SYSTEM NOTE: googleSearch is a built-in capability. Do NOT call it as a function. Please proceed with your analysis using your internal grounding now.";
             default: throw new Error(`Unknown tool: ${name}`);
         }
     }
@@ -112,7 +111,7 @@ export class TwitterAgentService {
         let desc = lines.join('\n');
 
         if (enabledTools.googleSearch !== false) {
-            desc += '\n\nINTERNAL CAPABILITY:\n- googleSearch: You are GROUNDED with Google Search. Do NOT call it as a function. Use it automatically to retrieve real-time facts while drafting.';
+            desc += '\n\nGROUNDING:\nYou have real-time web access via Google Search. Use it automatically to ground your analysis in current facts.';
         }
 
         return desc;
@@ -319,7 +318,23 @@ export class TwitterAgentService {
         for (let i = 0; i < 5; i++) {
             const result = await chat.sendMessage(currentInput);
             const response = result.response;
-            const content = response.candidates![0].content;
+
+            if (!response.candidates || response.candidates.length === 0) {
+                reasoningLog.push({ type: 'thought', content: "Error: No response candidates received from AI." });
+                break;
+            }
+
+            const candidate = response.candidates[0];
+            if (candidate.finishReason === 'SAFETY') {
+                reasoningLog.push({ type: 'thought', content: "Error: Safety filter blocked the AI response." });
+                finalDraft = "Conflict: The AI response was filtered due to safety constraints. Rephrase the request if this persists.";
+                break;
+            }
+
+            const content = candidate.content;
+            if (!content || !content.parts) {
+                break;
+            }
 
             // Log for tracing
             history.push({ role: 'model', parts: content.parts });
