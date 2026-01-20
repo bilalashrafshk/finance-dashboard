@@ -28,12 +28,21 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
         }
 
+        let finalMode = mode || 'tweet';
+        let finalFormat = postFormat || 'short';
+
+        // Backward compatibility: If old UI sends postFormat='briefing', map it to mode='briefing'
+        if (postFormat === 'briefing') {
+            finalMode = 'briefing';
+            finalFormat = 'long';
+        }
+
         const { draft, reasoningLog, trace } = await TwitterAgentService.generate(
             symbol,
             notes,
-            mode || 'tweet',
+            finalMode as any,
             targetTweet || '',
-            postFormat || 'short'
+            finalFormat as any
         );
 
         return NextResponse.json({ draft, reasoningLog, trace });

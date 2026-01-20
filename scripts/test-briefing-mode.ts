@@ -27,8 +27,8 @@ async function testBriefing() {
         Momentum Pulse
         "The positive news is likely to generate upward momentum; however, the stock is already trading at 245.17, close to its 52-week high of 269.99, indicating potential for increased volatility."`;
 
-        console.log('\nCalling TwitterAgentService.generate with format="briefing"...');
-        const result = await TwitterAgentService.generate(symbol, notes, 'tweet', '', 'briefing');
+        console.log('\nCalling TwitterAgentService.generate with mode="briefing"...');
+        const result = await TwitterAgentService.generate(symbol, notes, 'briefing', '', 'long');
 
         console.log('\n✅ SUCCESS!');
 

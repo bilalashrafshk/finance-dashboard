@@ -15,14 +15,14 @@ export default function XCopilotPage() {
     const router = useRouter();
     const [symbol, setSymbol] = useState('');
     const [notes, setNotes] = useState('');
-    const [mode, setMode] = useState<'tweet' | 'reply'>('tweet');
+    const [mode, setMode] = useState<'tweet' | 'reply' | 'briefing'>('tweet');
     const [targetTweet, setTargetTweet] = useState('');
     const [draft, setDraft] = useState('');
     const [reasoningLog, setReasoningLog] = useState<any[]>([]);
     const [trace, setTrace] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
-    const [postFormat, setPostFormat] = useState<'short' | 'long' | 'briefing'>('short');
+    const [postFormat, setPostFormat] = useState<'short' | 'long'>('short');
 
     useEffect(() => {
         if (!authLoading) {
@@ -101,6 +101,12 @@ export default function XCopilotPage() {
                     >
                         Reply Mode
                     </button>
+                    <button
+                        onClick={() => setMode('briefing')}
+                        className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${mode === 'briefing' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                    >
+                        Briefing Mode
+                    </button>
                 </div>
             </div>
 
@@ -133,8 +139,8 @@ export default function XCopilotPage() {
                             )}
 
                             <div className="space-y-2">
-                                <label className="text-xs font-bold uppercase text-muted-foreground italic">Tweet Format</label>
-                                <div className="grid grid-cols-3 gap-2 p-1 bg-muted/50 rounded-lg border">
+                                <label className="text-xs font-bold uppercase text-muted-foreground italic">Post Length / Format</label>
+                                <div className="grid grid-cols-2 gap-2 p-1 bg-muted/50 rounded-lg border">
                                     <button
                                         onClick={() => setPostFormat('short')}
                                         className={`py-2 text-xs font-black uppercase tracking-widest rounded-md transition-all ${postFormat === 'short' ? 'bg-blue-600 text-white shadow-lg' : 'text-muted-foreground hover:bg-muted'}`}
@@ -145,13 +151,7 @@ export default function XCopilotPage() {
                                         onClick={() => setPostFormat('long')}
                                         className={`py-2 text-xs font-black uppercase tracking-widest rounded-md transition-all ${postFormat === 'long' ? 'bg-purple-600 text-white shadow-lg' : 'text-muted-foreground hover:bg-muted'}`}
                                     >
-                                        Long Post <span className="block text-[8px] opacity-60 font-medium">Threads / Detailed</span>
-                                    </button>
-                                    <button
-                                        onClick={() => setPostFormat('briefing')}
-                                        className={`py-2 text-xs font-black uppercase tracking-widest rounded-md transition-all ${postFormat === 'briefing' ? 'bg-orange-500 text-white shadow-lg' : 'text-muted-foreground hover:bg-muted'}`}
-                                    >
-                                        Briefing <span className="block text-[8px] opacity-60 font-medium">News / Scraper</span>
+                                        Long Post <span className="block text-[8px] opacity-60 font-medium">Detailed / Thread</span>
                                     </button>
                                 </div>
                             </div>

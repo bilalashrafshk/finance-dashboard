@@ -121,9 +121,9 @@ export class TwitterAgentService {
     static async generate(
         symbol: string,
         userNotes: string = '',
-        mode: 'tweet' | 'reply' = 'tweet',
+        mode: 'tweet' | 'reply' | 'briefing' = 'tweet',
         targetTweet: string = '',
-        postFormat: 'short' | 'long' | 'briefing' = 'short'
+        postFormat: 'short' | 'long' = 'short'
     ): Promise<{ draft: string; reasoningLog: any[]; trace?: any }> {
         const apiKey = process.env.GEMINI_API_KEY || '';
         if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
@@ -138,16 +138,16 @@ export class TwitterAgentService {
         let configHumanizer = personality.humanizer_instructions;
         let configTools = personality.enabled_tools;
 
-        if (postFormat === 'briefing') {
-            configCoordinator = personality.briefing_coordinator_prompt || configCoordinator;
-            configDrafter = personality.briefing_instructions || configDrafter;
-            configHumanizer = personality.briefing_humanizer_prompt || '';
-            configTools = personality.briefing_tools || configTools;
-        } else if (mode === 'reply') {
+        if (mode === 'reply') {
             configCoordinator = personality.reply_coordinator_prompt || configCoordinator;
             configDrafter = personality.reply_drafter_prompt || configDrafter;
             configHumanizer = personality.reply_humanizer_prompt || configHumanizer;
             configTools = personality.reply_tools || configTools;
+        } else if (mode === 'briefing') {
+            configCoordinator = personality.briefing_coordinator_prompt || configCoordinator;
+            configDrafter = personality.briefing_instructions || configDrafter;
+            configHumanizer = personality.briefing_humanizer_prompt || '';
+            configTools = personality.briefing_tools || configTools;
         } else {
             // New Tweet / Broadcast
             configCoordinator = personality.tweet_coordinator_prompt || configCoordinator;
@@ -160,21 +160,12 @@ export class TwitterAgentService {
         const reasoningLog: any[] = [];
         const history: any[] = [];
 
-        // Filter examples based on format and mode
+        // Filter examples based on format and mode (Tweet/Reply/Briefing + Short/Long)
         const relevantExamples = personality.examples
             .filter(ex => {
-                // Determine the mode of the example (default to 'tweet')
                 const exMode = ex.mode || 'tweet';
-
-                // Strict mode match: Tweet -> Tweet, Reply -> Reply, Briefing -> Briefing
-                // Note: Briefing format is triggered when postFormat === 'briefing'
-                const currentExecutionMode = postFormat === 'briefing' ? 'briefing' : mode;
-
-                if (exMode !== currentExecutionMode) return false;
-
-                // Match the type (short/long)
-                const targetType = (postFormat === 'briefing' ? 'long' : postFormat);
-                return ex.type === targetType;
+                if (exMode !== mode) return false;
+                return ex.type === postFormat;
             })
             .map(ex => ex.text);
 
@@ -192,9 +183,16 @@ export class TwitterAgentService {
         INPUT CONTEXT:
         User Note: ${userNotes}
         Symbol: ${symbol}
-        Mode: ${mode === 'reply' ? 'REPLY' : 'BROADCAST'}
+        Mode: ${mode}
         ${targetTweet ? `TARGET TWEET: ${targetTweet}` : ''}
         Desired Format: ${postFormat}
+        
+        [STYLING INSTRUCTIONS] 
+        - Target: ${mode === 'briefing' ? 'Structured news briefing with headers' : 'Engaging social media post'}
+        - Length: ${postFormat === 'short' ? 'STRICTLY UNDER 280 characters' : 'Detailed/Long-form'}
+        ${mode === 'reply' ? '- Context: This is a REPLY to a specific user. Maintain conversation flow.' : ''}
+        ${mode === 'briefing' ? '- Note: Use factual, informative headers like ### The Intelligence Scoop' : ''}
+        - PROHIBITION: DO NOT mention "Google Search", "context", or "data provided". Report findings as your own.
         `;
 
         // --- STAGE 1: THE BRAIN (Thinking ENABLED, Tools DISABLED) ---
@@ -235,7 +233,7 @@ export class TwitterAgentService {
            - If user asks about the MARKET/INDEX, plan to use 'getMarketSummary'.
            - If the User Note is already fact-rich, prioritize those facts. If search is needed, make it entity-specific.
         
-        TARGET FORMAT: ${postFormat === 'short' ? 'Standard Tweet (STRICTLY UNDER 280 characters)' : postFormat === 'briefing' ? 'Structured News Briefing' : 'Long Post / Thread'}
+        TARGET FORMAT: ${mode === 'briefing' ? 'Structured News Briefing' : 'Social Media Post'} (${postFormat === 'short' ? 'STRICTLY UNDER 280 characters' : 'Long Post / Thread'})
         
         OUTPUT FORMAT:
         - FACT SHEET: [List extracted numbers here]
@@ -426,7 +424,7 @@ export class TwitterAgentService {
                 You are a professional humanizer/editor for Bilal Ashraf, a calm, analytical investor.
                 Your goal is to take a "Technical Draft" and refine it into Bilal's signature voice.
                 
-                BILAL'S BRAND EXAMPLES (${postFormat}):
+                BILAL'S BRAND EXAMPLES (${mode}, ${postFormat}):
                 ${relevantExamples.length > 0 ? relevantExamples.join('\n---\n') : 'No specific examples provided. Follow general style rules.'}
                 
                 HUMANIZATION RULES:
