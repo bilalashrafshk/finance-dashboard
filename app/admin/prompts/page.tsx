@@ -85,18 +85,7 @@ export default async function AdminPromptsPage() {
                         </div>
                     </div>
 
-                    {/* Auto-Tweet Settings moved here */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {['auto_tweet_ath', 'auto_tweet_52w', 'auto_tweet_vol'].map(key => {
-                            const config = getAlertConfig(key);
-                            if (!config) return null;
-                            return (
-                                <div key={key} className="border rounded-xl p-6 bg-card/50 transition-all border-blue-500/10 bg-blue-500/5">
-                                    <AlertConfigEditor config={config} />
-                                </div>
-                            );
-                        })}
-                    </div>
+
                 </SettingsZone>
 
                 {/* --- FINANCIAL INTELLIGENCE --- */}

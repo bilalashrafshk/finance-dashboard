@@ -10,6 +10,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
+import { AlertConfigEditor } from '../prompts/alert-config-editor';
+import { getAlertConfigs } from '../prompts/actions';
 
 export default function AdminBrandPage() {
     const { user, loading: authLoading } = useAuth();
@@ -57,6 +59,9 @@ export default function AdminBrandPage() {
         { id: 'googleSearch', label: 'Google Search', desc: 'Real-time News & Macro' },
     ];
 
+    // Alert Configs
+    const [alertConfigs, setAlertConfigs] = useState<any[]>([]);
+
     useEffect(() => {
         if (!authLoading) {
             if (!user) {
@@ -69,42 +74,45 @@ export default function AdminBrandPage() {
         }
     }, [user, authLoading, router]);
 
-    const fetchData = () => {
+    const fetchData = async () => {
         const token = getAuthToken();
-        fetch('/api/admin/brand', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        })
-            .then(res => res.json())
-            .then(data => {
-                // Global
-                setInstructions(data.instructions || '');
-                setExamples(data.examples || []);
-                setModel(data.default_model || 'gemini-2.0-flash');
-                setBrainModel(data.brain_model || '');
-                setHandModel(data.hand_model || '');
-                setHumanizerModel(data.humanizer_model || '');
 
-                // Tweet (Fallbacks to legacy if new columns empty)
-                setTweetCoordinator(data.tweet_coordinator_prompt || data.coordinator_instructions || '');
-                setTweetDrafter(data.tweet_drafter_prompt || data.instructions || '');
-                setTweetHumanizer(data.tweet_humanizer_prompt || data.humanizer_instructions || '');
-                setTweetTools(data.tweet_tools || data.enabled_tools || {});
+        // Parallel fetch for brand data and alert configs
+        const [brandRes, configs] = await Promise.all([
+            fetch('/api/admin/brand', { headers: { 'Authorization': `Bearer ${token}` } }),
+            getAlertConfigs()
+        ]);
 
-                // Reply
-                setReplyCoordinator(data.reply_coordinator_prompt || data.coordinator_instructions || '');
-                setReplyDrafter(data.reply_drafter_prompt || data.instructions || '');
-                setReplyHumanizer(data.reply_humanizer_prompt || data.humanizer_instructions || '');
-                setReplyTools(data.reply_tools || data.enabled_tools || {});
+        const data = await brandRes.json();
+        setAlertConfigs(configs);
 
-                // Briefing
-                setBriefingCoordinator(data.briefing_coordinator_prompt || data.coordinator_instructions || '');
-                setBriefingDrafter(data.briefing_instructions || ''); // briefing_instructions is the canonical drafter prompt for this mode
-                setBriefingHumanizer(data.briefing_humanizer_prompt || '');
-                setBriefingTools(data.briefing_tools || data.enabled_tools || {});
+        // Global
+        setInstructions(data.instructions || '');
+        setExamples(data.examples || []);
+        setModel(data.default_model || 'gemini-2.0-flash');
+        setBrainModel(data.brain_model || '');
+        setHandModel(data.hand_model || '');
+        setHumanizerModel(data.humanizer_model || '');
 
-                setLoading(false);
-            })
-            .catch(() => setLoading(false));
+        // Tweet (Fallbacks to legacy if new columns empty)
+        setTweetCoordinator(data.tweet_coordinator_prompt || data.coordinator_instructions || '');
+        setTweetDrafter(data.tweet_drafter_prompt || data.instructions || '');
+        setTweetHumanizer(data.tweet_humanizer_prompt || data.humanizer_instructions || '');
+        setTweetTools(data.tweet_tools || data.enabled_tools || {});
+
+        // Reply
+        setReplyCoordinator(data.reply_coordinator_prompt || data.coordinator_instructions || '');
+        setReplyDrafter(data.reply_drafter_prompt || data.instructions || '');
+        setReplyHumanizer(data.reply_humanizer_prompt || data.humanizer_instructions || '');
+        setReplyTools(data.reply_tools || data.enabled_tools || {});
+
+        // Briefing
+        setBriefingCoordinator(data.briefing_coordinator_prompt || data.coordinator_instructions || '');
+        setBriefingDrafter(data.briefing_instructions || ''); // briefing_instructions is the canonical drafter prompt for this mode
+        setBriefingHumanizer(data.briefing_humanizer_prompt || '');
+        setBriefingTools(data.briefing_tools || data.enabled_tools || {});
+
+        setLoading(false);
     };
 
     const save = async () => {
@@ -210,6 +218,24 @@ export default function AdminBrandPage() {
                                 className="h-64 font-mono text-sm leading-relaxed"
                                 placeholder="Define the base persona (Voice, Tone, Style) used as a default..."
                             />
+                        </CardContent>
+                    </Card>
+
+                    {/* Auto-Tweet Settings */}
+                    <Card>
+                        <CardHeader><CardTitle>Automation Settings</CardTitle></CardHeader>
+                        <CardContent>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {['auto_tweet_ath', 'auto_tweet_52w', 'auto_tweet_vol'].map(key => {
+                                    const config = alertConfigs.find(c => c.key === key);
+                                    if (!config) return null;
+                                    return (
+                                        <div key={key} className="border rounded-xl p-6 bg-card/50 transition-all border-blue-500/10 bg-blue-500/5">
+                                            <AlertConfigEditor config={config} />
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </CardContent>
                     </Card>
 
