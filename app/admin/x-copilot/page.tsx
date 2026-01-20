@@ -63,6 +63,57 @@ export default function XCopilotPage() {
         }
     }
 
+    const generate = async () => {
+        if (!symbol) return toast.error('Please enter a symbol');
+        setLoading(true);
+        setReasoningLog([]);
+        setTrace(null);
+        setDraft('');
+
+        try {
+            const response = await fetch('/api/admin/x-copilot/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    symbol,
+                    notes,
+                    mode,
+                    targetTweet,
+                    format: postFormat
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.reasoningLog) setReasoningLog(data.reasoningLog);
+            if (data.trace) setTrace(data.trace);
+
+            if (data.draft) {
+                setDraft(data.draft);
+                toast.success('Draft Generated!');
+            } else {
+                toast.error('Failed to generate draft');
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error('Error generating draft');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const copyToClipboard = () => {
+        if (!draft) return;
+        navigator.clipboard.writeText(draft);
+        toast.success('Copied to clipboard');
+    };
+
+    const openInX = () => {
+        if (!draft) return;
+        const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(draft)}`;
+        window.open(url, '_blank');
+    };
+
     // ... existing code ...
 
     return (
