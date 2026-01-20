@@ -225,7 +225,8 @@ export async function GET(req: NextRequest) {
         );
     } catch (e: any) {
         console.log(`${e.message}`);
-        return new Response(`Failed to generate the image. Error: ${e.message}. DB Context: ${dbErrorMsg}`, {
+        // Return detailed error for debugging
+        return new Response(`Error: ${e.message}`, {
             status: 500,
         });
     }
