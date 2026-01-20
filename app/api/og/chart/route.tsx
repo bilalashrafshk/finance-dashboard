@@ -54,14 +54,9 @@ export async function GET(req: NextRequest) {
         const name = searchParams.get('name') || '';
         const title = (searchParams.get('title') || 'CHART ALERT').toUpperCase();
 
-        // Load Font (Inter 700 - Bold)
-        // We fetch a subset or a standard version. providing a fallback if fetch fails is good practice but for now we try fetch.
-        // For simplicity in this environment, let's fetch a specific binary version from a CDN to avoid complex CSS parsing if possible,
-        // or just use the standard google fonts approach which is robust.
-        // We'll load Inter Bold for the main text.
-        const fontData = await fetch(
-            new URL('https://github.com/google/fonts/raw/main/ofl/inter/Inter-Bold.ttf', import.meta.url)
-        ).then((res) => res.arrayBuffer());
+        // Load Font (Inter 700 - Bold) using dynamic loader
+        // This is robust against 404s on static files because it queries the API for a valid URL.
+        const fontData = await loadGoogleFont('Inter', symbol + title + name + price + '$');
 
         // Fetch Real Data
         let data: number[] = [];
