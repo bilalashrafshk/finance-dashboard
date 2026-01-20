@@ -4,11 +4,6 @@ import { Pool } from 'pg';
 
 export const runtime = 'nodejs';
 
-import { ImageResponse } from '@vercel/og';
-import { NextRequest } from 'next/server';
-import { Pool } from 'pg';
-
-export const runtime = 'nodejs';
 
 // Lazy load pool to prevent top-level init errors if env vars are missing
 let pool: Pool | null = null;
