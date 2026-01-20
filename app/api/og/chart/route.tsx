@@ -44,47 +44,44 @@ async function loadGoogleFont() {
 }
 
 export async function GET(req: NextRequest) {
+    console.log('Chart API: Request Received');
     try {
         const { searchParams } = new URL(req.url);
         const symbol = searchParams.get('symbol') || 'LUCK';
-        const price = searchParams.get('price') || '850.5';
+        let price = searchParams.get('price') || '850.5';
         const name = searchParams.get('name') || '';
         const title = (searchParams.get('title') || 'CHART ALERT').toUpperCase();
 
         // 1. Load Font
+        console.log('Chart API: Loading Font...');
         let fontData = await loadGoogleFont();
         if (!fontData) {
-            // Fallback to fetch from another source if needed, or just Error
-            // Satori requires a font. 
+            console.error('Chart API: Font load failed');
             throw new Error("Critical: Could not load font from CDN.");
         }
+        console.log('Chart API: Font Loaded');
 
-        // 2. Fetch Data (with timeout)
+        // 2. Fetch Data (TEMPORARILY DISABLED DB FOR DEBUGGING)
         let data: number[] = [];
-        let dbUsed = false;
-        try {
-            const client = await getPool().connect();
-            const res = await client.query({
-                text: `
-                SELECT close as price
-                FROM historical_price_data 
-                WHERE symbol = $1 
-                ORDER BY date DESC
-                LIMIT 90
-            `,
-                values: [symbol],
-                // @ts-ignore - pg types might not have query timeout definition explicitly in all versions
-                query_timeout: 5000
-            });
-            client.release();
+        // let dbUsed = false;
+        // console.log('Chart API: Connecting to DB...');
+        // try {
+        //     const client = await getPool().connect();
+        //     const res = await client.query({
+        //         text: `SELECT close as price FROM historical_price_data WHERE symbol = $1 ORDER BY date DESC LIMIT 90`,
+        //         values: [symbol],
+        //         query_timeout: 5000 
+        //     });
+        //     client.release();
+        //     if (res.rows.length > 10) {
+        //         data = res.rows.map(r => parseFloat(r.price)).reverse();
+        //         dbUsed = true;
+        //     }
+        // } catch (dbError: any) {
+        //     console.error('DB Fetch Error:', dbError.message);
+        // }
 
-            if (res.rows.length > 10) {
-                data = res.rows.map(r => parseFloat(r.price)).reverse();
-                dbUsed = true;
-            }
-        } catch (dbError: any) {
-            console.error('DB Fetch Error:', dbError.message);
-        }
+        console.log('Chart API: Skipped DB (Debug Mode)');
 
         // 3. Fallback Mock Data
         if (data.length === 0) {
@@ -98,13 +95,15 @@ export async function GET(req: NextRequest) {
         const padding = 60;
         const min = Math.min(...data);
         const max = Math.max(...data);
-        const range = max - min || 1; // Avoid divide by zero
+        const range = max - min || 1;
 
         const points = data.map((val, index) => {
             const x = padding + (index / (data.length - 1)) * (width - padding * 2);
             const y = height - padding - ((val - min) / range) * (height - padding * 2);
             return `${x},${y}`;
         }).join(' ');
+
+        console.log('Chart API: Generating ImageResponse');
 
         return new ImageResponse(
             (
@@ -203,7 +202,7 @@ export async function GET(req: NextRequest) {
                             </svg>
                         </div>
                         <div style={{ fontSize: 32, fontWeight: 'bold', color: 'white', display: 'flex' }}>
-                            Conviction<span style={{ color: '#22d3ee' }}>Pays</span>
+                            <span>Conviction</span><span style={{ color: '#22d3ee' }}>Pays</span>
                         </div>
                     </div>
                 </div>
