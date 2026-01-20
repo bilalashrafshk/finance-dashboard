@@ -216,9 +216,10 @@ export async function GET(req: NextRequest) {
             },
         );
     } catch (e: any) {
-        console.log(`${e.message}`);
-        // Return detailed error for debugging
-        return new Response(`Error: ${e.message}`, {
+        console.error('Chart API Critical Error:', e);
+        console.error('Stack:', e.stack);
+        // Return detailed error for debugging (temporary)
+        return new Response(`Error: ${e.message}\nStack: ${e.stack}`, {
             status: 500,
         });
     }
