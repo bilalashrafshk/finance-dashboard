@@ -84,20 +84,27 @@ export function AlertConfigEditor({ config }: { config: any }) {
         );
     }
 
-    if (config.key === 'include_heatmap_context') {
+    if (config.key === 'include_heatmap_context' || config.key.startsWith('auto_tweet_')) {
         const isEnabled = value === 'true';
+        // Map key to a readable label
+        let label = 'Enable Setting';
+        if (config.key === 'include_heatmap_context') label = 'Include Sector Performance & Top Movers';
+        if (config.key === 'auto_tweet_ath') label = 'Auto-Tweet All Time Highs';
+        if (config.key === 'auto_tweet_52w') label = 'Auto-Tweet 52 Week Highs';
+        if (config.key === 'auto_tweet_vol') label = 'Auto-Tweet Volume Surges';
+
         return (
             <div className="space-y-4">
                 <div className="flex flex-col gap-1">
                     <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-                        🗺️ Heatmap Context
+                        {config.key.startsWith('auto_tweet_') ? '🤖 Automation' : '🗺️ Heatmap Context'}
                     </label>
                     <p className="text-xs text-muted-foreground mb-4">
                         {config.description}
                     </p>
                 </div>
                 <div className="flex items-center justify-between p-4 border rounded-xl bg-card">
-                    <span className="text-sm font-medium">Include Sector Performance & Top Movers</span>
+                    <span className="text-sm font-medium">{label}</span>
                     <button
                         onClick={() => {
                             const newValue = (!isEnabled).toString();

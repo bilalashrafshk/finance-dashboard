@@ -189,7 +189,7 @@ export default async function AdminPromptsPage() {
                     color="bg-blue-600"
                 >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {['volume_surge_settings'].map(key => {
+                        {['volume_surge_settings', 'auto_tweet_ath', 'auto_tweet_52w', 'auto_tweet_vol'].map(key => {
                             const config = getAlertConfig(key);
                             if (!config) return null;
                             return (

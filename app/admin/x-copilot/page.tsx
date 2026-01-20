@@ -9,8 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Copy, Send, Sparkles, Loader2, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { getAlertConfigs, updateAlertConfig } from '../prompts/actions';
-import { Switch } from '@/components/ui/switch'; // Assuming shadcn switch exists, otherwise use button toggle
+
 
 export default function XCopilotPage() {
     const { user, loading: authLoading } = useAuth();
@@ -27,41 +26,7 @@ export default function XCopilotPage() {
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [postFormat, setPostFormat] = useState<'short' | 'long'>('short');
 
-    // Config State
-    const [configs, setConfigs] = useState({
-        auto_tweet_ath: false,
-        auto_tweet_52w: false,
-        auto_tweet_vol: false
-    });
 
-    useEffect(() => {
-        if (user) {
-            getAlertConfigs().then(rows => {
-                const map: any = {};
-                rows.forEach((r: any) => {
-                    try { map[r.key] = JSON.parse(r.value); } catch (e) { map[r.key] = r.value }
-                });
-                setConfigs(prev => ({
-                    ...prev,
-                    auto_tweet_ath: map.auto_tweet_ath === true,
-                    auto_tweet_52w: map.auto_tweet_52w === true,
-                    auto_tweet_vol: map.auto_tweet_vol === true,
-                }));
-            });
-        }
-    }, [user]);
-
-    const toggleConfig = async (key: string) => {
-        const newVal = !configs[key as keyof typeof configs];
-        setConfigs(prev => ({ ...prev, [key]: newVal })); // Optimistic update
-        try {
-            await updateAlertConfig(key, newVal);
-            toast.success(`Updated ${key}`);
-        } catch (e) {
-            toast.error('Failed to update config');
-            setConfigs(prev => ({ ...prev, [key]: !newVal })); // Revert
-        }
-    }
 
     const generate = async () => {
         if (!symbol) return toast.error('Please enter a symbol');
@@ -120,51 +85,7 @@ export default function XCopilotPage() {
         <div className="p-8 max-w-7xl mx-auto space-y-8">
             {/* Header ... */}
 
-            {/* New Automation Settings Row */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="bg-card/50 border-blue-500/10">
-                    <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-widest opacity-70">Auto-Tweet ATH</CardTitle></CardHeader>
-                    <CardContent>
-                        <div className="flex items-center justify-between">
-                            <span className="text-sm">Enable for All-Time Highs</span>
-                            <button
-                                onClick={() => toggleConfig('auto_tweet_ath')}
-                                className={`w-10 h-6 rounded-full transition-colors ${configs.auto_tweet_ath ? 'bg-blue-600' : 'bg-muted'}`}
-                            >
-                                <div className={`w-4 h-4 rounded-full bg-white transform transition-transform ml-1 ${configs.auto_tweet_ath ? 'translate-x-4' : ''}`} />
-                            </button>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="bg-card/50 border-blue-500/10">
-                    <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-widest opacity-70">Auto-Tweet 52W High</CardTitle></CardHeader>
-                    <CardContent>
-                        <div className="flex items-center justify-between">
-                            <span className="text-sm">Enable for 52-Week Highs</span>
-                            <button
-                                onClick={() => toggleConfig('auto_tweet_52w')}
-                                className={`w-10 h-6 rounded-full transition-colors ${configs.auto_tweet_52w ? 'bg-blue-600' : 'bg-muted'}`}
-                            >
-                                <div className={`w-4 h-4 rounded-full bg-white transform transition-transform ml-1 ${configs.auto_tweet_52w ? 'translate-x-4' : ''}`} />
-                            </button>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="bg-card/50 border-blue-500/10">
-                    <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-widest opacity-70">Auto-Tweet Volume</CardTitle></CardHeader>
-                    <CardContent>
-                        <div className="flex items-center justify-between">
-                            <span className="text-sm">Enable for Volume Surges</span>
-                            <button
-                                onClick={() => toggleConfig('auto_tweet_vol')}
-                                className={`w-10 h-6 rounded-full transition-colors ${configs.auto_tweet_vol ? 'bg-blue-600' : 'bg-muted'}`}
-                            >
-                                <div className={`w-4 h-4 rounded-full bg-white transform transition-transform ml-1 ${configs.auto_tweet_vol ? 'translate-x-4' : ''}`} />
-                            </button>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
+
 
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
                 {/* ... Left Column ... */}
