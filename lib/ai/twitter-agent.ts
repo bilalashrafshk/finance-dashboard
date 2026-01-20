@@ -361,7 +361,7 @@ export class TwitterAgentService {
 
         let currentPrompt = `Execute this analysis plan: ${planText}\n\n`;
         if (researchContext) {
-            currentPrompt += `\n\n[USER PROVIDED RESEARCH / NEWS context]\n${researchContext}\n\n[AUTHORITY INSTRUCTION]\nThe above '[USER PROVIDED RESEARCH]' is the ABSOLUTE GROUND TRUTH. \n1. If the 'User Note' contradicts this research, YOU MUST IGNORE THE USER NOTE and use the Research data instead.\n2. ENRICHMENT: You MUST actively use unique details (dates, specific metrics, quotes) from the Research to improve the draft, even if they are not in the User Note.\nDo not debate the user. Just write the tweet using the best available data.`;
+            currentPrompt += `\n\n[USER PROVIDED RESEARCH / NEWS context]\n${researchContext}\n\n[AUTHORITY INSTRUCTION]\nThe above '[USER PROVIDED RESEARCH]' is the ABSOLUTE GROUND TRUTH. \n1. If the 'User Note' or 'Target Tweet' contradicts this research, YOU MUST IGNORE conflicting facts and use the Research data instead.\n2. ENRICHMENT: You MUST actively use unique details (dates, specific metrics, quotes) from the Research to improve the draft.\n   - If replying, use this research to ADD VALUE or CONTEXT that the Original Tweet missed (e.g. "Did you know this also creates 25k jobs?").\nDo not debate the user. Just write the tweet using the best available data.`;
         }
 
         // HEATMAP CONTEXT INJECTION (If enabled in settings)
