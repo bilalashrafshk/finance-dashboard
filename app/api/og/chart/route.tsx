@@ -4,12 +4,24 @@ import { Pool } from 'pg';
 
 export const runtime = 'nodejs';
 
-// Re-use connection logic (Serverless friendly)
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
-    ssl: (process.env.DATABASE_URL || process.env.POSTGRES_URL || '').includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
-    max: 1 // Keep connections low for serverless
-});
+import { ImageResponse } from '@vercel/og';
+import { NextRequest } from 'next/server';
+import { Pool } from 'pg';
+
+export const runtime = 'nodejs';
+
+// Lazy load pool to prevent top-level init errors if env vars are missing
+let pool: Pool | null = null;
+function getPool() {
+    if (!pool) {
+        pool = new Pool({
+            connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
+            ssl: (process.env.DATABASE_URL || process.env.POSTGRES_URL || '').includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
+            max: 1 // Keep connections low for serverless
+        });
+    }
+    return pool;
+}
 
 // Mock data generator for fallback
 function generateMockData() {
@@ -23,6 +35,7 @@ function generateMockData() {
 }
 
 export async function GET(req: NextRequest) {
+    let dbErrorMsg = '';
     try {
         const { searchParams } = new URL(req.url);
         const symbol = searchParams.get('symbol') || 'LUCK';
@@ -33,7 +46,7 @@ export async function GET(req: NextRequest) {
         // Fetch Real Data
         let data: number[] = [];
         try {
-            const client = await pool.connect();
+            const client = await getPool().connect();
             const res = await client.query(`
                 SELECT close as price
                 FROM historical_price_data 
@@ -47,8 +60,9 @@ export async function GET(req: NextRequest) {
                 // DB returns DESC (latest first), but chart needs ASC (oldest first)
                 data = res.rows.map(r => parseFloat(r.price)).reverse();
             }
-        } catch (dbError) {
+        } catch (dbError: any) {
             console.error('DB Fetch Error for Chart:', dbError);
+            dbErrorMsg = dbError.message;
         }
 
         // Fallback to mock if no data found
@@ -188,7 +202,7 @@ export async function GET(req: NextRequest) {
         );
     } catch (e: any) {
         console.log(`${e.message}`);
-        return new Response(`Failed to generate the image`, {
+        return new Response(`Failed to generate the image. Error: ${e.message}. DB Context: ${dbErrorMsg}`, {
             status: 500,
         });
     }
