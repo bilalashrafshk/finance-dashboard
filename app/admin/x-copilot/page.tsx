@@ -1,3 +1,14 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth, getAuthToken } from '@/lib/auth/auth-context';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Copy, Send, Sparkles, Loader2, Settings2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { getAlertConfigs, updateAlertConfig } from '../prompts/actions';
 import { Switch } from '@/components/ui/switch'; // Assuming shadcn switch exists, otherwise use button toggle
 
