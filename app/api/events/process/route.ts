@@ -130,19 +130,12 @@ export async function GET(request: Request) {
                         description = `Current volume reached ${currentVol.toLocaleString()}, which is ${(currentVol / avgVol).toFixed(1)}x higher than the 10-day average of ${avgVol.toLocaleString()}`;
                         metadata = { current: currentVol, avg: avgVol, surge_pct: surgePct, queue_id: event.id };
                     } else {
-                        const prompt = await getEventHeadlinePrompt(
-                            event.symbol,
-                            eventTypeLabel,
-                            parseFloat(event.trigger_value),
-                            parseFloat(event.previous_value),
-                            event.close_price ? parseFloat(event.close_price) : null
-                        );
-
-                        headline = `${event.symbol} hits new ${event.event_type} of ${event.trigger_value}`;
-                        try {
-                            headline = await generateHeadline(prompt);
-                        } catch (e) {
-                            console.error(`AI Gen failed for ${event.symbol}, using default.`);
+                        if (eventTypeLabel === 'ATH') {
+                            headline = `🚀 ALL TIME HIGH: ${event.symbol} hits ${event.trigger_value}`;
+                        } else if (eventTypeLabel === '52W_HIGH') {
+                            headline = `📈 New 52-Week High: ${event.symbol} at ${event.trigger_value}`;
+                        } else {
+                            headline = `${event.symbol} hits new ${event.event_type} of ${event.trigger_value}`;
                         }
 
                         description = `Price reached ${event.trigger_value}, breaking previous ${event.event_type} of ${event.previous_value}`;
