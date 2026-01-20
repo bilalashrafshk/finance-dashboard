@@ -462,7 +462,9 @@ export class TwitterAgentService {
                 - Keep the facts from the draft, but change the "voice".
                 - ${postFormat === 'short' ? 'STRICT CONSTRAINT: The final output MUST be under 280 characters.' : 'This is a Long Post/Thread format.'}
                 - Follow the precise instructions provided in the prompt.
-                - DO NOT ALTER NUMBERS: You must preserve every specific number, percentage, or price mentioned in the Technical Draft. Do not round them or change them for "style".
+                - DATA PRESERVATION: You are an Editor, not a Summarizer. 
+                - DO NOT REMOVE details like specific timestamps (e.g. "30 mins ago"), specific amounts (e.g. "$475m"), or key context (e.g. "M-6 Motorway"). 
+                - Your job is to improve the FLOW and TONE, not to delete information. Keep the tweet rich and dense.
             `;
 
             const humanizerModel = ai.getGenerativeModel({
