@@ -145,7 +145,7 @@ export class AIContextService {
         const targetDate = date || await MarketHeatmapService.getLatestMarketDate();
         // If filters are present, we might want a higher limit to ensure we catch the relevant stocks
         // or rely on post-fetch filtering. For now, fetch 100 to be safe.
-        const limit = detailed || filter_sector || filter_symbols ? 200 : 50;
+        const limit = detailed || filter_sector || filter_symbols ? 200 : 100;
         const data = await MarketHeatmapService.getHeatmapData(targetDate, limit, timeframe);
 
         // Filter Logic
