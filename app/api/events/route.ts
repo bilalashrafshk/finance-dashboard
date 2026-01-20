@@ -13,6 +13,8 @@ export const revalidate = 60; // Revalidate every minute
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
+    const symbol = searchParams.get('symbol');
+    const sentiment = searchParams.get('sentiment');
     const type = searchParams.get('type');
     const category = searchParams.get('category');
     const limit = parseInt(searchParams.get('limit') || '50');
@@ -28,6 +30,17 @@ export async function GET(request: NextRequest) {
             conditions.push(`(created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Karachi')::date = $${params.length}`);
         }
 
+        if (symbol) {
+            params.push(symbol.toUpperCase());
+            conditions.push(`symbol = $${params.length}`);
+        }
+
+        if (sentiment && sentiment !== 'all') {
+            params.push(sentiment);
+            // Sentiment is stored in metadata -> ai_analysis -> sentiment for fundamental alerts
+            conditions.push(`metadata->'ai_analysis'->>'sentiment' = $${params.length}`);
+        }
+
         if (type && type !== 'all') {
             params.push(type);
             conditions.push(`event_type = $${params.length}`);
@@ -38,6 +51,7 @@ export async function GET(request: NextRequest) {
         } else if (category === 'technical') {
             conditions.push(`event_type != 'fundamental_alert'`);
         }
+        // 'all' category doesn't add an event_type condition
 
         if (conditions.length > 0) {
             query += ' WHERE ' + conditions.join(' AND ');

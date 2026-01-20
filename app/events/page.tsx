@@ -34,9 +34,11 @@ export default function EventsPage() {
     const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
 
     // Filters
-    const [selectedCategory, setSelectedCategory] = useState<string>('fundamental');
+    const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [selectedType, setSelectedType] = useState<string>('all');
     const [selectedDate, setSelectedDate] = useState<string>('');
+    const [selectedSymbol, setSelectedSymbol] = useState<string>('');
+    const [selectedSentiment, setSelectedSentiment] = useState<string>('all');
 
     const fetchEvents = useCallback(async () => {
         try {
@@ -45,6 +47,8 @@ export default function EventsPage() {
             params.append('category', selectedCategory);
             if (selectedType && selectedType !== 'all') params.append('type', selectedType);
             if (selectedDate) params.append('date', selectedDate);
+            if (selectedSymbol) params.append('symbol', selectedSymbol);
+            if (selectedSentiment && selectedSentiment !== 'all') params.append('sentiment', selectedSentiment);
 
             const res = await fetch(`/api/events?${params.toString()}`);
             const data = await res.json();
@@ -68,6 +72,9 @@ export default function EventsPage() {
     const clearFilters = () => {
         setSelectedType('all');
         setSelectedDate('');
+        setSelectedSymbol('');
+        setSelectedSentiment('all');
+        setSelectedCategory('all');
     };
 
     return (
@@ -81,6 +88,14 @@ export default function EventsPage() {
                     </div>
 
                     <div className="flex bg-zinc-900/50 p-1 rounded-lg border border-zinc-800">
+                        <Button
+                            variant={selectedCategory === 'all' ? 'secondary' : 'ghost'}
+                            size="sm"
+                            onClick={() => setSelectedCategory('all')}
+                            className={selectedCategory === 'all' ? 'bg-zinc-800 text-white' : 'text-zinc-400'}
+                        >
+                            All
+                        </Button>
                         <Button
                             variant={selectedCategory === 'fundamental' ? 'secondary' : 'ghost'}
                             size="sm"
@@ -101,7 +116,17 @@ export default function EventsPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-4 items-end bg-zinc-900/30 p-4 rounded-xl border border-zinc-800/50">
-                    <div className="space-y-2 min-w-[200px]">
+                    <div className="space-y-2 min-w-[150px]">
+                        <label className="text-[10px] uppercase tracking-wider font-semibold text-zinc-500">Symbol</label>
+                        <Input
+                            placeholder="Search Symbol (e.g. PPL)"
+                            value={selectedSymbol}
+                            onChange={(e) => setSelectedSymbol(e.target.value)}
+                            className="bg-zinc-900 border-zinc-800 text-white"
+                        />
+                    </div>
+
+                    <div className="space-y-2 min-w-[150px]">
                         <label className="text-[10px] uppercase tracking-wider font-semibold text-zinc-500">Event Type</label>
                         <Select value={selectedType} onValueChange={setSelectedType}>
                             <SelectTrigger className="bg-zinc-900 border-zinc-800">
@@ -109,11 +134,31 @@ export default function EventsPage() {
                             </SelectTrigger>
                             <SelectContent className="bg-zinc-900 border-zinc-800 text-white">
                                 <SelectItem value="all">All Types</SelectItem>
-                                {eventTypes.filter(t => selectedCategory === 'fundamental' ? t === 'fundamental_alert' : t !== 'fundamental_alert').map(type => (
-                                    <SelectItem key={type} value={type}>
-                                        {type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                                    </SelectItem>
-                                ))}
+                                {eventTypes
+                                    .filter(t => {
+                                        if (selectedCategory === 'all') return true;
+                                        return selectedCategory === 'fundamental' ? t === 'fundamental_alert' : t !== 'fundamental_alert';
+                                    })
+                                    .map(type => (
+                                        <SelectItem key={type} value={type}>
+                                            {type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                        </SelectItem>
+                                    ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="space-y-2 min-w-[150px]">
+                        <label className="text-[10px] uppercase tracking-wider font-semibold text-zinc-500">Sentiment</label>
+                        <Select value={selectedSentiment} onValueChange={setSelectedSentiment}>
+                            <SelectTrigger className="bg-zinc-900 border-zinc-800">
+                                <SelectValue placeholder="All Sentiments" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-zinc-900 border-zinc-800 text-white">
+                                <SelectItem value="all">All Sentiments</SelectItem>
+                                <SelectItem value="Bullish">Bullish</SelectItem>
+                                <SelectItem value="Neutral">Neutral</SelectItem>
+                                <SelectItem value="Bearish">Bearish</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -131,7 +176,7 @@ export default function EventsPage() {
                         </div>
                     </div>
 
-                    {(selectedType !== 'all' || selectedDate) && (
+                    {(selectedType !== 'all' || selectedDate || selectedSymbol || selectedSentiment !== 'all' || selectedCategory !== 'all') && (
                         <Button variant="ghost" onClick={clearFilters} className="text-zinc-500 h-10 hover:text-white">
                             <X className="h-4 w-4 mr-2" />
                             Clear
