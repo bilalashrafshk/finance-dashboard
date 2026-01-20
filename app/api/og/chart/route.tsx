@@ -1,29 +1,30 @@
-import { ImageResponse } from '@vercel/og';
-import { NextRequest } from 'next/server';
+import { ImageResponse } from 'next/og';
+import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
 
 export const runtime = 'nodejs';
 
-
-// Lazy load pool to prevent top-level init errors if env vars are missing
+// Lazy load pool
 let pool: Pool | null = null;
 function getPool() {
     if (!pool) {
         pool = new Pool({
             connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
             ssl: (process.env.DATABASE_URL || process.env.POSTGRES_URL || '').includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
-            max: 1 // Keep connections low for serverless
+            max: 1, // Keep connections low
+            connectionTimeoutMillis: 5000, // Fail fast
+            idleTimeoutMillis: 5000,
         });
     }
     return pool;
 }
 
-// Mock data generator for fallback
+// Mock data generator
 function generateMockData() {
     const points = [];
     let price = 100;
     for (let i = 0; i < 50; i++) {
-        price = price * (1 + (Math.random() * 0.04 - 0.015)); // Upward trend
+        price = price * (1 + (Math.random() * 0.04 - 0.015));
         points.push(price);
     }
     return points;
@@ -31,15 +32,18 @@ function generateMockData() {
 
 // Font loader (CDN)
 async function loadGoogleFont() {
-    // Inter-Bold (700) from reliable CDN
-    const url = 'https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-700-normal.woff';
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to load font');
-    return await response.arrayBuffer();
+    try {
+        const url = 'https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-700-normal.woff';
+        const response = await fetch(url, { signal: AbortSignal.timeout(5000) }); // 5s timeout
+        if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+        return await response.arrayBuffer();
+    } catch (e) {
+        console.error('Font Load Failed:', e);
+        return null; // Handle null gracefully
+    }
 }
 
 export async function GET(req: NextRequest) {
-    let dbErrorMsg = '';
     try {
         const { searchParams } = new URL(req.url);
         const symbol = searchParams.get('symbol') || 'LUCK';
@@ -47,47 +51,55 @@ export async function GET(req: NextRequest) {
         const name = searchParams.get('name') || '';
         const title = (searchParams.get('title') || 'CHART ALERT').toUpperCase();
 
-        // Load Font (Inter 700 - Bold) from CDN
-        const fontData = await loadGoogleFont();
+        // 1. Load Font
+        let fontData = await loadGoogleFont();
+        if (!fontData) {
+            // Fallback to fetch from another source if needed, or just Error
+            // Satori requires a font. 
+            throw new Error("Critical: Could not load font from CDN.");
+        }
 
-        // Fetch Real Data
+        // 2. Fetch Data (with timeout)
         let data: number[] = [];
+        let dbUsed = false;
         try {
             const client = await getPool().connect();
-            const res = await client.query(`
+            const res = await client.query({
+                text: `
                 SELECT close as price
                 FROM historical_price_data 
                 WHERE symbol = $1 
                 ORDER BY date DESC
                 LIMIT 90
-            `, [symbol]);
+            `,
+                values: [symbol],
+                // @ts-ignore - pg types might not have query timeout definition explicitly in all versions
+                query_timeout: 5000
+            });
             client.release();
 
             if (res.rows.length > 10) {
-                // DB returns DESC (latest first), but chart needs ASC (oldest first)
                 data = res.rows.map(r => parseFloat(r.price)).reverse();
+                dbUsed = true;
             }
         } catch (dbError: any) {
-            console.error('DB Fetch Error for Chart:', dbError);
-            dbErrorMsg = dbError.message;
+            console.error('DB Fetch Error:', dbError.message);
         }
 
-        // Fallback to mock if no data found
+        // 3. Fallback Mock Data
         if (data.length === 0) {
-            console.log('Using Mock Data for Chart');
+            console.log('Using Mock Data');
             data = generateMockData();
         }
 
-        // SVG Logic
+        // 4. SVG Logic
         const width = 1200;
         const height = 630;
         const padding = 60;
-
         const min = Math.min(...data);
         const max = Math.max(...data);
-        const range = max - min;
+        const range = max - min || 1; // Avoid divide by zero
 
-        // Create Polyline Points
         const points = data.map((val, index) => {
             const x = padding + (index / (data.length - 1)) * (width - padding * 2);
             const y = height - padding - ((val - min) / range) * (height - padding * 2);
@@ -104,15 +116,15 @@ export async function GET(req: NextRequest) {
                         flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        backgroundColor: '#09090b', // zinc-950
+                        backgroundColor: '#09090b',
                         fontFamily: '"Inter"',
                         position: 'relative',
                     }}
                 >
-                    {/* Background Gradient (Blue) */}
+                    {/* Background Gradient */}
                     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '400px', background: 'linear-gradient(180deg, rgba(59, 130, 246, 0.1) 0%, transparent 100%)' }} />
 
-                    {/* Main Content Container (Top Left) */}
+                    {/* Content */}
                     <div style={{
                         display: 'flex',
                         flexDirection: 'column',
@@ -122,11 +134,10 @@ export async function GET(req: NextRequest) {
                         left: 60,
                         zIndex: 10
                     }}>
-                        {/* Symbol & Badge Row */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '30px', marginBottom: '10px' }}>
                             <div style={{ fontSize: 90, fontWeight: 900, color: 'white', letterSpacing: '-2px' }}>${symbol}</div>
                             <div style={{
-                                backgroundColor: '#3b82f6', // blue-500
+                                backgroundColor: '#3b82f6',
                                 color: 'white',
                                 padding: '12px 24px',
                                 borderRadius: '50px',
@@ -138,20 +149,18 @@ export async function GET(req: NextRequest) {
                             </div>
                         </div>
 
-                        {/* Full Company Name */}
                         {name && (
                             <div style={{ fontSize: 36, color: '#94a3b8', marginBottom: '30px', fontWeight: 500 }}>
                                 {name}
                             </div>
                         )}
 
-                        {/* Price */}
                         <div style={{ fontSize: 130, fontWeight: 'bold', color: '#22d3ee' }}>
                             Rs {price}
                         </div>
                     </div>
 
-                    {/* Chart SVG */}
+                    {/* Chart */}
                     <svg
                         width={width}
                         height={height}
@@ -170,15 +179,14 @@ export async function GET(req: NextRequest) {
                         />
                         <polyline
                             fill="none"
-                            stroke="#22d3ee" // cyan-400
+                            stroke="#22d3ee"
                             strokeWidth="6"
                             points={points}
                         />
                     </svg>
 
-                    {/* Footer Logo with Icon */}
+                    {/* Footer Logo */}
                     <div style={{ position: 'absolute', bottom: 40, right: 50, display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {/* Icon Container mimicking the logo.tsx gradient */}
                         <div style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -186,16 +194,14 @@ export async function GET(req: NextRequest) {
                             width: 40,
                             height: 40,
                             borderRadius: '10px',
-                            background: 'linear-gradient(135deg, #2563eb, #06b6d4)', // blue-600 to cyan-500
+                            background: 'linear-gradient(135deg, #2563eb, #06b6d4)',
                             boxShadow: '0 4px 6px -1px rgba(59, 130, 246, 0.3)'
                         }}>
-                            {/* TrendingUp Icon SVG */}
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                                 <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
                                 <polyline points="17 6 23 6 23 12" />
                             </svg>
                         </div>
-
                         <div style={{ fontSize: 32, fontWeight: 'bold', color: 'white', display: 'flex' }}>
                             Conviction<span style={{ color: '#22d3ee' }}>Pays</span>
                         </div>
@@ -205,22 +211,20 @@ export async function GET(req: NextRequest) {
             {
                 width: 1200,
                 height: 630,
-                fonts: [
-                    {
-                        name: 'Inter',
-                        data: fontData,
-                        style: 'normal',
-                        weight: 700,
-                    },
-                ],
+                fonts: [{
+                    name: 'Inter',
+                    data: fontData,
+                    style: 'normal',
+                    weight: 700,
+                }],
             },
         );
     } catch (e: any) {
-        console.error('Chart API Critical Error:', e);
-        console.error('Stack:', e.stack);
-        // Return detailed error for debugging (temporary)
-        return new Response(`Error: ${e.message}\nStack: ${e.stack}`, {
-            status: 500,
-        });
+        console.error('API Error:', e);
+        // Return JSON so the user can see the error in browser
+        return NextResponse.json(
+            { error: e.message, stack: e.stack },
+            { status: 500 }
+        );
     }
 }
