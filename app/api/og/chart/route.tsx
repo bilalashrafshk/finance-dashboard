@@ -1,9 +1,17 @@
 import { ImageResponse } from '@vercel/og';
 import { NextRequest } from 'next/server';
+import { Pool } from 'pg';
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 
-// Mock data generator for testing if DB fetch fails or for simplicity
+// Re-use connection logic (Serverless friendly)
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL,
+    ssl: (process.env.DATABASE_URL || process.env.POSTGRES_URL || '').includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
+    max: 1 // Keep connections low for serverless
+});
+
+// Mock data generator for fallback
 function generateMockData() {
     const points = [];
     let price = 100;
@@ -22,9 +30,32 @@ export async function GET(req: NextRequest) {
         const name = searchParams.get('name') || '';
         const title = (searchParams.get('title') || 'CHART ALERT').toUpperCase();
 
-        // In a real scenario, we would fetch historical data here.
-        // For this proof-of-concept, we'll use generated data to prove the visualization.
-        const data = generateMockData();
+        // Fetch Real Data
+        let data: number[] = [];
+        try {
+            const client = await pool.connect();
+            const res = await client.query(`
+                SELECT close as price
+                FROM historical_price_data 
+                WHERE symbol = $1 
+                ORDER BY date DESC
+                LIMIT 90
+            `, [symbol]);
+            client.release();
+
+            if (res.rows.length > 10) {
+                // DB returns DESC (latest first), but chart needs ASC (oldest first)
+                data = res.rows.map(r => parseFloat(r.price)).reverse();
+            }
+        } catch (dbError) {
+            console.error('DB Fetch Error for Chart:', dbError);
+        }
+
+        // Fallback to mock if no data found
+        if (data.length === 0) {
+            console.log('Using Mock Data for Chart');
+            data = generateMockData();
+        }
 
         // SVG Logic
         const width = 1200;
