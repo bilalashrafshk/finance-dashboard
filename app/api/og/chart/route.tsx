@@ -150,12 +150,12 @@ export async function GET(req: NextRequest) {
                         </div>
 
                         {name && (
-                            <div style={{ fontSize: 36, color: '#94a3b8', marginBottom: '30px', fontWeight: 500 }}>
+                            <div style={{ fontSize: 36, color: '#94a3b8', marginBottom: '30px', fontWeight: 500, display: 'flex' }}>
                                 {name}
                             </div>
                         )}
 
-                        <div style={{ fontSize: 130, fontWeight: 'bold', color: '#22d3ee' }}>
+                        <div style={{ fontSize: 130, fontWeight: 'bold', color: '#22d3ee', display: 'flex' }}>
                             Rs {price}
                         </div>
                     </div>
