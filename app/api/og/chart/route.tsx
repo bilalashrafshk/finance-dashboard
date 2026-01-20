@@ -29,20 +29,13 @@ function generateMockData() {
     return points;
 }
 
-// Font loader
-async function loadGoogleFont(font: string, text: string) {
-    const url = `https://fonts.googleapis.com/css2?family=${font}&text=${encodeURIComponent(text)}`;
-    const css = await (await fetch(url)).text();
-    const resource = css.match(/src: url\((.+?)\)/);
-
-    if (resource) {
-        const response = await fetch(resource[1]);
-        if (response.status == 200) {
-            return await response.arrayBuffer();
-        }
-    }
-
-    throw new Error('failed to load font data');
+// Font loader (CDN)
+async function loadGoogleFont() {
+    // Inter-Bold (700) from reliable CDN
+    const url = 'https://cdn.jsdelivr.net/npm/@fontsource/inter/files/inter-latin-700-normal.woff';
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to load font');
+    return await response.arrayBuffer();
 }
 
 export async function GET(req: NextRequest) {
@@ -54,9 +47,8 @@ export async function GET(req: NextRequest) {
         const name = searchParams.get('name') || '';
         const title = (searchParams.get('title') || 'CHART ALERT').toUpperCase();
 
-        // Load Font (Inter 700 - Bold) using dynamic loader
-        // This is robust against 404s on static files because it queries the API for a valid URL.
-        const fontData = await loadGoogleFont('Inter', symbol + title + name + price + '$');
+        // Load Font (Inter 700 - Bold) from CDN
+        const fontData = await loadGoogleFont();
 
         // Fetch Real Data
         let data: number[] = [];

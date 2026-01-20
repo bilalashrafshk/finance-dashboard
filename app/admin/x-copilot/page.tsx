@@ -36,9 +36,13 @@ export default function XCopilotPage() {
         setDraft('');
 
         try {
+            const token = getAuthToken();
             const response = await fetch('/api/admin/x-copilot/generate', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({
                     symbol,
                     notes,
