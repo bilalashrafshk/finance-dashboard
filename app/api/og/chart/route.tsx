@@ -84,7 +84,6 @@ export async function GET(req: NextRequest) {
 
         // 3. Fallback Mock Data
         if (data.length === 0) {
-            console.log('Using Mock Data');
             data = generateMockData();
         }
 
