@@ -29,6 +29,22 @@ function generateMockData() {
     return points;
 }
 
+// Font loader
+async function loadGoogleFont(font: string, text: string) {
+    const url = `https://fonts.googleapis.com/css2?family=${font}&text=${encodeURIComponent(text)}`;
+    const css = await (await fetch(url)).text();
+    const resource = css.match(/src: url\((.+)\) format\('(opentype|truetype)'\)/);
+
+    if (resource) {
+        const response = await fetch(resource[1]);
+        if (response.status == 200) {
+            return await response.arrayBuffer();
+        }
+    }
+
+    throw new Error('failed to load font data');
+}
+
 export async function GET(req: NextRequest) {
     let dbErrorMsg = '';
     try {
@@ -37,6 +53,15 @@ export async function GET(req: NextRequest) {
         const price = searchParams.get('price') || '850.5';
         const name = searchParams.get('name') || '';
         const title = (searchParams.get('title') || 'CHART ALERT').toUpperCase();
+
+        // Load Font (Inter 700 - Bold)
+        // We fetch a subset or a standard version. providing a fallback if fetch fails is good practice but for now we try fetch.
+        // For simplicity in this environment, let's fetch a specific binary version from a CDN to avoid complex CSS parsing if possible,
+        // or just use the standard google fonts approach which is robust.
+        // We'll load Inter Bold for the main text.
+        const fontData = await fetch(
+            new URL('https://github.com/google/fonts/raw/main/ofl/inter/Inter-Bold.ttf', import.meta.url)
+        ).then((res) => res.arrayBuffer());
 
         // Fetch Real Data
         let data: number[] = [];
@@ -93,7 +118,7 @@ export async function GET(req: NextRequest) {
                         alignItems: 'center',
                         justifyContent: 'center',
                         backgroundColor: '#09090b', // zinc-950
-                        fontFamily: 'sans-serif',
+                        fontFamily: '"Inter"',
                         position: 'relative',
                     }}
                 >
@@ -193,6 +218,14 @@ export async function GET(req: NextRequest) {
             {
                 width: 1200,
                 height: 630,
+                fonts: [
+                    {
+                        name: 'Inter',
+                        data: fontData,
+                        style: 'normal',
+                        weight: 700,
+                    },
+                ],
             },
         );
     } catch (e: any) {
