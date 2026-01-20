@@ -270,6 +270,8 @@ ${scoopText}
 "${aiResult.market_context?.momentum || 'N/A'}"
 
 ${task.attachments?.length > 0 ? `[📄 Open Document](${task.attachments[0]})` : ''}
+
+[Post to X](https://twitter.com/intent/tweet?text=${encodeURIComponent(twitterHeadline + '\n\n' + twitterPost)})
 `;
 
     try {

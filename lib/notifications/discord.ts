@@ -96,7 +96,7 @@ export async function sendMarketEventAlert(event: {
 
     const embed: DiscordEmbed = {
         title: `${isVolume ? '📊' : '🚀'} ${event.type}: $${event.symbol}`,
-        description: event.headline,
+        description: `${event.headline}\n\n[Post to X](https://twitter.com/intent/tweet?text=${encodeURIComponent(event.headline + ' $' + event.symbol)})`,
         color: color,
         fields: [
             { name: 'Symbol', value: event.symbol, inline: true },
