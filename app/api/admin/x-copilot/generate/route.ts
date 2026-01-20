@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
         const admin = await verifyAdmin(req);
         if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const { symbol, notes, mode, targetTweet, postFormat } = await req.json();
+        const { symbol, notes, mode, targetTweet, postFormat, providedResearch } = await req.json();
 
         if (!symbol) {
             return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
@@ -37,15 +37,16 @@ export async function POST(req: NextRequest) {
             finalFormat = 'long';
         }
 
-        const { draft, reasoningLog, trace } = await TwitterAgentService.generate(
+        const result = await TwitterAgentService.generate(
             symbol,
             notes,
             finalMode as any,
             targetTweet || '',
-            finalFormat as any
+            finalFormat as any,
+            providedResearch || ''
         );
 
-        return NextResponse.json({ draft, reasoningLog, trace });
+        return NextResponse.json(result);
     } catch (error: any) {
         console.error('API Error in X-Copilot Generate:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });

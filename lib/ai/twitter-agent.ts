@@ -123,8 +123,15 @@ export class TwitterAgentService {
         userNotes: string = '',
         mode: 'tweet' | 'reply' | 'briefing' | 'automated_alert' = 'tweet',
         targetTweet: string = '',
-        postFormat: 'short' | 'long' = 'short'
-    ): Promise<{ draft: string; reasoningLog: any[]; trace?: any }> {
+        postFormat: 'short' | 'long' = 'short',
+        providedResearch: string = ''
+    ): Promise<{
+        draft: string;
+        reasoningLog: any[];
+        trace?: any;
+        status?: 'SUCCESS' | 'NEEDS_RESEARCH' | 'ERROR';
+        researchQueries?: string[];
+    }> {
         const apiKey = process.env.GEMINI_API_KEY || '';
         if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
 
@@ -232,7 +239,7 @@ export class TwitterAgentService {
 
                 ${toolListCtx}
                 
-                ${userAskedForSearch ? 'The user has requested a web search. Include planning for Google Search.' : 'Do NOT plan for web search unless it is explicitly requested by the user or absolutely essential for current macro context.'}
+                ${userAskedForSearch ? 'The user has requested a web search. Include planning for "WEB_SEARCH_NEEDED".' : ''}
             `
         });
 
@@ -253,12 +260,15 @@ export class TwitterAgentService {
            - If user asks about TIME (e.g. "Year to Date", "last 3 years"), plan to use 'getMarketSummary' with 'timeframe'.
            - If user asks about the MARKET/INDEX, plan to use 'getMarketSummary'.
            - If the User Note is already fact-rich, prioritize those facts. If search is needed, make it entity-specific.
+           - If user asks about latest NEWS or "Search for X" and it is NOT in the user note, you MUST request "WEB_SEARCH_NEEDED".
         
         TARGET FORMAT: ${mode === 'briefing' ? 'Structured News Briefing' : 'Social Media Post'} (${postFormat === 'short' ? 'STRICTLY UNDER 280 characters' : 'Long Post / Thread'})
         
         OUTPUT FORMAT:
         - FACT SHEET: [List extracted numbers here]
         - DATA PLAN: [Tool plan or "No tools needed, user context is sufficient"]
+        - SEARCH_NEEDED: [YES/NO] - Do you strictly require external web search for recent news?
+        - SEARCH_QUERIES: [List 3 specific google queries if YES]
         
         DO NOT provide the final draft. Provide only the Fact Sheet and Data Plan.`;
 
@@ -286,6 +296,29 @@ export class TwitterAgentService {
         }
         reasoningLog.push({ type: 'thought', content: `PLAN: ${planText}` });
 
+        // --- HITL CHECK ---
+        // Does the brain want search?
+        const brainRequestsSearch = planText.includes("SEARCH_NEEDED: YES") || planText.includes("WEB_SEARCH_NEEDED");
+        const needsResearch = (userAskedForSearch || brainRequestsSearch);
+
+        // If Research IS needed AND it is NOT provided yet -> Halt and Ask User
+        if (needsResearch && !providedResearch && configTools.googleSearch !== false) {
+            // Extract recommended queries from plan
+            const queriesMatch = planText.match(/SEARCH_QUERIES:([\s\S]*?)$/i);
+            const rawQueries = queriesMatch ? queriesMatch[1].trim() : '';
+            const queries = rawQueries.split('\n').map(q => q.replace(/^- /, '').trim()).filter(q => q.length > 0);
+
+            // Fallback queries if parsing fails
+            const finalQueries = queries.length > 0 ? queries : [`${symbol} stock news`, `${symbol} limited recent announcements`];
+
+            return {
+                draft: '',
+                reasoningLog,
+                status: 'NEEDS_RESEARCH',
+                researchQueries: finalQueries
+            };
+        }
+
         // --- STAGE 2: THE HAND (Thinking DISABLED, Tools ENABLED) ---
         // We now execute the plan.
 
@@ -293,40 +326,15 @@ export class TwitterAgentService {
             configTools[t.functionDeclarations![0].name] !== false
         );
 
-        // Enable Google Search if user asked OR if Brain planned it
-        const planMentionsSearch = planLower.includes('google search') ||
-            planLower.includes('googlesearch') ||
-            planLower.includes('web search') ||
-            planLower.includes('search the web');
-        const shouldEnableSearch = (userAskedForSearch || planMentionsSearch) && configTools.googleSearch !== false;
+        // Research Injection (if provided)
+        let researchContext = providedResearch || '';
 
-        // --- STAGE 2.1: THE RESEARCHER (Grounding Turn) ---
-        // Gemini 2.0/2.5 cannot mix custom tools with Google Search grounding in a single turn.
-        // We perform a dedicated research turn first if needed.
-        let researchContext = '';
-        if (shouldEnableSearch) {
-            reasoningLog.push({ type: 'thought', content: "--- STAGE 2.1: RESEARCHING ---" });
-            const researcherModel = ai.getGenerativeModel({
-                model: personality.hand_model || personality.default_model || 'gemini-2.0-flash',
-                tools: [{ googleSearch: {} }] as any
-            });
-
-            const researchPrompt = `Review the following analysis plan and provide the latest factual context, news, and data available via web search to ground the analysis:
-            
-            PLAN:
-            ${planText}
-            
-            Provide a concise summary of your findings. Focus on hard facts, latest prices mentioned in news, and recent announcements.`;
-
-            try {
-                const researchResult = await researcherModel.generateContent(researchPrompt);
-                researchContext = researchResult.response.text();
-                reasoningLog.push({ type: 'thought', content: `RESEARCH FINDINGS: ${researchContext}` });
-            } catch (err) {
-                console.error('Research turn failed:', err);
-                reasoningLog.push({ type: 'thought', content: `Warning: Research turn failed. Proceeding without search context. Error: ${(err as any).message}` });
-            }
+        if (researchContext) {
+            reasoningLog.push({ type: 'thought', content: `Using Provided Research Context: ${researchContext.substring(0, 100)}...` });
         }
+
+        // NATIVE GOOGLE SEARCH REMOVED to save cost. 
+        // We rely on providedResearch (HITL) or just proceed if none.
 
         // --- STAGE 2.2: THE DATA HAND (Custom Tools only) ---
         const handTools: any[] = [...enabledCustomTools];
@@ -351,9 +359,9 @@ export class TwitterAgentService {
             } as any
         });
 
-        let currentPrompt = `Execute this analysis plan: ${planText}\n\nNOTE: You do NOT have access to the 'googleSearch' tool in this turn. Use the provided [SEARCH GROUNDING CONTEXT] above for news/web data. Focus on using your custom tools for financial data.`;
+        let currentPrompt = `Execute this analysis plan: ${planText}\n\n`;
         if (researchContext) {
-            currentPrompt += `\n\n[SEARCH GROUNDING CONTEXT]\n${researchContext}\n\nUse this search context to inform your analysis. If tools provide more recent or specific data, prioritize tool data.`;
+            currentPrompt += `\n\n[USER PROVIDED RESEARCH / NEWS context]\n${researchContext}\n\nUse this context to inform your analysis. Treat it as factual ground truth.`;
         }
 
         // HEATMAP CONTEXT INJECTION (If enabled in settings)
@@ -491,7 +499,8 @@ export class TwitterAgentService {
                 model: personality.default_model,
                 toolsSentToModel: handTools,
                 history
-            }
+            },
+            status: 'SUCCESS'
         };
     }
 

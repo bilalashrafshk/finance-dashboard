@@ -28,12 +28,26 @@ export default function XCopilotPage() {
 
 
 
+    const [providedResearch, setProvidedResearch] = useState('');
+    const [needsResearch, setNeedsResearch] = useState(false);
+    const [researchQueries, setResearchQueries] = useState<string[]>([]);
+
     const generate = async () => {
         if (!symbol) return toast.error('Please enter a symbol');
         setLoading(true);
         setReasoningLog([]);
         setTrace(null);
         setDraft('');
+        // Do NOT clear providedResearch here, as we might be re-running with it.
+        // But if it's a fresh run (not a re-run), we might want to? 
+        // Logic: specific 'Resubmit' button handles the re-run. 
+        // If user clicks main 'Generate', we assume fresh start? 
+        // For safety, let's keep providedResearch unless explicit clear.
+
+        // Reset HITL state if this is a fresh run (e.g. changed symbol)
+        if (!needsResearch) {
+            setResearchQueries([]);
+        }
 
         try {
             const token = getAuthToken();
@@ -48,7 +62,8 @@ export default function XCopilotPage() {
                     notes,
                     mode,
                     targetTweet,
-                    format: postFormat
+                    format: postFormat,
+                    providedResearch: providedResearch // Send if available
                 })
             });
 
@@ -57,11 +72,20 @@ export default function XCopilotPage() {
             if (data.reasoningLog) setReasoningLog(data.reasoningLog);
             if (data.trace) setTrace(data.trace);
 
+            if (data.status === 'NEEDS_RESEARCH') {
+                setNeedsResearch(true);
+                setResearchQueries(data.researchQueries || []);
+                toast.warning('Agent needs you to verify news/data.');
+                return; // Stop here
+            }
+
             if (data.draft) {
                 setDraft(data.draft);
+                setNeedsResearch(false); // Reset on success
+                setResearchQueries([]);
                 toast.success('Draft Generated!');
             } else {
-                toast.error('Failed to generate draft');
+                toast.error('Failed to generate draft. Status: ' + data.status);
             }
         } catch (error) {
             console.error(error);
@@ -83,16 +107,27 @@ export default function XCopilotPage() {
         window.open(url, '_blank');
     };
 
-    // ... existing code ...
+    const handleResearchSubmit = () => {
+        // Just call generate again, it will pick up the 'providedResearch' state
+        generate();
+    };
 
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-8">
-            {/* Header ... */}
-
-
+            <div className="flex justify-between items-center">
+                <div>
+                    <h1 className="text-4xl font-black tracking-tight text-foreground">X Copilot <span className="text-blue-600">Pro</span></h1>
+                    <p className="text-muted-foreground mt-2 text-lg">Your Agentic AI Research & Tweet Assistant</p>
+                </div>
+                <div className="flex gap-2">
+                    {/* Status Badge */}
+                    <div className="px-3 py-1 bg-green-500/10 text-green-500 rounded-full text-xs font-bold uppercase tracking-widest border border-green-500/20">
+                        System Active
+                    </div>
+                </div>
+            </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
-                {/* ... Left Column ... */}
                 {/* --- Left Column: Inputs --- */}
                 <div className="xl:col-span-4 space-y-6">
                     <Card className="shadow-xl bg-card/50 backdrop-blur-sm border-blue-500/10">
@@ -126,7 +161,12 @@ export default function XCopilotPage() {
                                 <label className="text-xs font-bold uppercase text-muted-foreground">Asset Symbol</label>
                                 <Input
                                     value={symbol}
-                                    onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+                                    onChange={(e) => {
+                                        setSymbol(e.target.value.toUpperCase());
+                                        // Clear research state on new symbol
+                                        setNeedsResearch(false);
+                                        setProvidedResearch('');
+                                    }}
                                     placeholder="LUCK, SYS, BTC..."
                                     className="h-12 text-lg font-mono border-blue-500/20 focus:border-blue-500"
                                 />
@@ -172,26 +212,68 @@ export default function XCopilotPage() {
                                 />
                             </div>
 
-                            <div className="flex gap-2">
-                                <Button
-                                    className="flex-1 h-14 text-lg font-black bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20 gap-2"
-                                    onClick={generate}
-                                    disabled={loading}
-                                >
-                                    {loading ? <Loader2 className="animate-spin w-5 h-5" /> : <Sparkles className="w-5 h-5" />}
-                                    {loading ? 'Agent is Thinking...' : `Generate ${mode === 'reply' ? 'Reply' : 'Tweet'}`}
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    className={`h-14 px-4 ${showAdvanced ? 'bg-zinc-800 text-white' : ''}`}
-                                    onClick={() => setShowAdvanced(!showAdvanced)}
-                                    title="Show Raw Payload Payload"
-                                >
-                                    <Settings2 className="w-5 h-5" />
-                                </Button>
-                            </div>
+                            {/* HITL Research Box - Conditionally or Always Visible? */}
+                            {/* Make it appear only when needed, but stay visible to show input */}
+                            {needsResearch && (
+                                <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg animate-in fade-in zoom-in-95">
+                                    <div className="flex gap-3 mb-3">
+                                        <div className="w-8 h-8 bg-amber-500/20 rounded-full flex items-center justify-center shrink-0">
+                                            <div className="w-2 h-2 bg-amber-500 rounded-full animate-ping" />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-black text-amber-500 text-sm uppercase tracking-wide">Research Required</h4>
+                                            <p className="text-xs text-muted-foreground">The agent halted to verify facts. Please research these queries:</p>
+                                        </div>
+                                    </div>
+
+                                    <ul className="space-y-2 mb-4">
+                                        {researchQueries.map((q, i) => (
+                                            <li key={i} className="text-xs font-mono bg-background/50 p-2 rounded border border-amber-500/20 text-amber-600 dark:text-amber-400">
+                                                🔍 {q}
+                                            </li>
+                                        ))}
+                                    </ul>
+
+                                    <label className="text-xs font-bold uppercase text-amber-600">Paste Findings Here:</label>
+                                    <Textarea
+                                        value={providedResearch}
+                                        onChange={(e) => setProvidedResearch(e.target.value)}
+                                        className="h-32 text-sm font-mono bg-background border-amber-500/30 focus:border-amber-500 mb-3"
+                                        placeholder="[SOURCE: Dawn News]..."
+                                    />
+
+                                    <Button
+                                        onClick={handleResearchSubmit}
+                                        className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                                    >
+                                        Resume Generation <Send className="w-4 h-4 ml-2" />
+                                    </Button>
+                                </div>
+                            )}
+
+                            {!needsResearch && (
+                                <div className="flex gap-2">
+                                    <Button
+                                        className="flex-1 h-14 text-lg font-black bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20 gap-2"
+                                        onClick={generate}
+                                        disabled={loading}
+                                    >
+                                        {loading ? <Loader2 className="animate-spin w-5 h-5" /> : <Sparkles className="w-5 h-5" />}
+                                        {loading ? 'Agent is Thinking...' : `Generate ${mode === 'reply' ? 'Reply' : 'Tweet'}`}
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        className={`h-14 px-4 ${showAdvanced ? 'bg-zinc-800 text-white' : ''}`}
+                                        onClick={() => setShowAdvanced(!showAdvanced)}
+                                        title="Show Raw Payload Payload"
+                                    >
+                                        <Settings2 className="w-5 h-5" />
+                                    </Button>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
+
 
                     {/* --- Agentic Reasoning Log --- */}
                     {reasoningLog.length > 0 && (
