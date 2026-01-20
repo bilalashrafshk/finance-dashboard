@@ -49,7 +49,7 @@ export default async function AdminPromptsPage() {
                     color="bg-blue-600"
                     defaultOpen={true}
                 >
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                         <div className="border rounded-xl p-6 bg-blue-600/5 border-blue-600/10 flex flex-col justify-between">
                             <div>
                                 <h4 className="text-lg font-bold mb-2 flex items-center gap-2">
@@ -83,6 +83,19 @@ export default async function AdminPromptsPage() {
                                 </Button>
                             </Link>
                         </div>
+                    </div>
+
+                    {/* Auto-Tweet Settings moved here */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {['auto_tweet_ath', 'auto_tweet_52w', 'auto_tweet_vol'].map(key => {
+                            const config = getAlertConfig(key);
+                            if (!config) return null;
+                            return (
+                                <div key={key} className="border rounded-xl p-6 bg-card/50 transition-all border-blue-500/10 bg-blue-500/5">
+                                    <AlertConfigEditor config={config} />
+                                </div>
+                            );
+                        })}
                     </div>
                 </SettingsZone>
 
@@ -189,7 +202,7 @@ export default async function AdminPromptsPage() {
                     color="bg-blue-600"
                 >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {['volume_surge_settings', 'auto_tweet_ath', 'auto_tweet_52w', 'auto_tweet_vol'].map(key => {
+                        {['volume_surge_settings'].map(key => {
                             const config = getAlertConfig(key);
                             if (!config) return null;
                             return (
