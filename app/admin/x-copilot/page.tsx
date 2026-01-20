@@ -17,6 +17,12 @@ export default function XCopilotPage() {
     const router = useRouter();
     const [symbol, setSymbol] = useState('');
     const [notes, setNotes] = useState('');
+    const [mode, setMode] = useState<'tweet' | 'reply' | 'briefing'>('tweet');
+    const [targetTweet, setTargetTweet] = useState('');
+    const [draft, setDraft] = useState('');
+    const [reasoningLog, setReasoningLog] = useState<any[]>([]);
+    const [trace, setTrace] = useState<any>(null);
+    const [loading, setLoading] = useState(false);
     // ... existing ...
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [postFormat, setPostFormat] = useState<'short' | 'long'>('short');
