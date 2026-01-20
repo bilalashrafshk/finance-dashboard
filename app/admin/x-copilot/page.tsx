@@ -83,6 +83,7 @@ export default function XCopilotPage() {
                 setDraft(data.draft);
                 setNeedsResearch(false); // Reset on success
                 setResearchQueries([]);
+                setProvidedResearch(''); // Clear research so next run is fresh
                 toast.success('Draft Generated!');
             } else {
                 toast.error('Failed to generate draft. Status: ' + data.status);
