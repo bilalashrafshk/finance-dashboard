@@ -44,7 +44,6 @@ async function loadGoogleFont() {
 }
 
 export async function GET(req: NextRequest) {
-    console.log('Chart API: Request Received');
     try {
         const { searchParams } = new URL(req.url);
         const symbol = searchParams.get('symbol') || 'LUCK';
@@ -53,35 +52,35 @@ export async function GET(req: NextRequest) {
         const title = (searchParams.get('title') || 'CHART ALERT').toUpperCase();
 
         // 1. Load Font
-        console.log('Chart API: Loading Font...');
-        let fontData = await loadGoogleFont();
+        const fontData = await loadGoogleFont();
         if (!fontData) {
-            console.error('Chart API: Font load failed');
             throw new Error("Critical: Could not load font from CDN.");
         }
-        console.log('Chart API: Font Loaded');
 
-        // 2. Fetch Data (TEMPORARILY DISABLED DB FOR DEBUGGING)
+        // 2. Fetch Data
         let data: number[] = [];
-        // let dbUsed = false;
-        // console.log('Chart API: Connecting to DB...');
-        // try {
-        //     const client = await getPool().connect();
-        //     const res = await client.query({
-        //         text: `SELECT close as price FROM historical_price_data WHERE symbol = $1 ORDER BY date DESC LIMIT 90`,
-        //         values: [symbol],
-        //         query_timeout: 5000 
-        //     });
-        //     client.release();
-        //     if (res.rows.length > 10) {
-        //         data = res.rows.map(r => parseFloat(r.price)).reverse();
-        //         dbUsed = true;
-        //     }
-        // } catch (dbError: any) {
-        //     console.error('DB Fetch Error:', dbError.message);
-        // }
+        try {
+            const client = await getPool().connect();
+            const res = await client.query({
+                text: `
+                SELECT close as price
+                FROM historical_price_data 
+                WHERE symbol = $1 
+                ORDER BY date DESC
+                LIMIT 90
+            `,
+                values: [symbol],
+                // @ts-ignore - pg types might not have query timeout definition explicitly in all versions
+                query_timeout: 5000
+            });
+            client.release();
 
-        console.log('Chart API: Skipped DB (Debug Mode)');
+            if (res.rows.length > 10) {
+                data = res.rows.map(r => parseFloat(r.price)).reverse();
+            }
+        } catch (dbError: any) {
+            console.error('DB Fetch Error:', dbError.message);
+        }
 
         // 3. Fallback Mock Data
         if (data.length === 0) {
@@ -102,8 +101,6 @@ export async function GET(req: NextRequest) {
             const y = height - padding - ((val - min) / range) * (height - padding * 2);
             return `${x},${y}`;
         }).join(' ');
-
-        console.log('Chart API: Generating ImageResponse');
 
         return new ImageResponse(
             (
@@ -134,7 +131,9 @@ export async function GET(req: NextRequest) {
                         zIndex: 10
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '30px', marginBottom: '10px' }}>
-                            <div style={{ fontSize: 90, fontWeight: 900, color: 'white', letterSpacing: '-2px' }}>${symbol}</div>
+                            <div style={{ fontSize: 90, fontWeight: 900, color: 'white', letterSpacing: '-2px', display: 'flex' }}>
+                                {`$${symbol}`}
+                            </div>
                             <div style={{
                                 backgroundColor: '#3b82f6',
                                 color: 'white',
@@ -142,7 +141,8 @@ export async function GET(req: NextRequest) {
                                 borderRadius: '50px',
                                 fontSize: 32,
                                 fontWeight: 'bold',
-                                textTransform: 'uppercase'
+                                textTransform: 'uppercase',
+                                display: 'flex'
                             }}>
                                 {title}
                             </div>
@@ -155,7 +155,7 @@ export async function GET(req: NextRequest) {
                         )}
 
                         <div style={{ fontSize: 130, fontWeight: 'bold', color: '#22d3ee', display: 'flex' }}>
-                            Rs {price}
+                            {`Rs ${price}`}
                         </div>
                     </div>
 
