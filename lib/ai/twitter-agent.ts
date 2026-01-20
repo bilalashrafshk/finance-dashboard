@@ -121,7 +121,7 @@ export class TwitterAgentService {
     static async generate(
         symbol: string,
         userNotes: string = '',
-        mode: 'tweet' | 'reply' | 'briefing' = 'tweet',
+        mode: 'tweet' | 'reply' | 'briefing' | 'automated_alert' = 'tweet',
         targetTweet: string = '',
         postFormat: 'short' | 'long' = 'short'
     ): Promise<{ draft: string; reasoningLog: any[]; trace?: any }> {
@@ -148,6 +148,27 @@ export class TwitterAgentService {
             configDrafter = personality.briefing_instructions || configDrafter;
             configHumanizer = personality.briefing_humanizer_prompt || '';
             configTools = personality.briefing_tools || configTools;
+        } else if (mode === 'automated_alert') {
+            // SPECIAL MODE: Automated Alert (High-Velocity / Technical)
+            // We overrides prompts here directly or could add them to personality DB later.
+            configCoordinator = `You are a high-signal automated trading bot for Bilal Ashraf. 
+            Goal: Confirm the technical breakout data (Price, ATH, etc) and prepare a punchy, factual tweet.
+            Do not over-analyze. Focus on the numbers provided in the 'userNotes'.`;
+
+            configDrafter = `You are writing an automated technical alert tweet.
+            Style: Factual, Punchy, Authoritative.
+            Tone: High-Energy but Professional.
+            Structure:
+            1. Headline (e.g. 🚀 NEW ATH ALERT: $SYMBOL)
+            2. The Data (Current Price, Breakout Level)
+            3. Context (Why it matters, e.g. "Price Discovery Mode")
+            4. Hashtags (#PSX #KSE100 #$SYMBOL)
+            
+            Constraint: Under 280 characters.
+            NEVER apologize. NEVER say "Here is a draft". Just output the tweet text.`;
+
+            configHumanizer = ''; // Skip humanizer for speed/directness in auto-mode
+            configTools = { ...personality.tweet_tools, googleSearch: false }; // Disable search for speed
         } else {
             // New Tweet / Broadcast
             configCoordinator = personality.tweet_coordinator_prompt || configCoordinator;

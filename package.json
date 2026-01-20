@@ -43,6 +43,7 @@
     "@types/gif.js": "^0.2.5",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/pg": "^8.15.6",
+    "@vercel/og": "^0.8.6",
     "autoprefixer": "^10.4.20",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
@@ -83,6 +84,7 @@
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
     "technicalindicators": "^3.1.0",
+    "twitter-api-v2": "^1.29.0",
     "use-debounce": "^10.0.6",
     "vaul": "^0.9.9",
     "zod": "3.25.67"

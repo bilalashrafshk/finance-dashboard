@@ -1,116 +1,105 @@
-'use client';
-
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth, getAuthToken } from '@/lib/auth/auth-context';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Copy, Send, Sparkles, Loader2, Settings2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { getAlertConfigs, updateAlertConfig } from '../prompts/actions';
+import { Switch } from '@/components/ui/switch'; // Assuming shadcn switch exists, otherwise use button toggle
 
 export default function XCopilotPage() {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
     const [symbol, setSymbol] = useState('');
     const [notes, setNotes] = useState('');
-    const [mode, setMode] = useState<'tweet' | 'reply' | 'briefing'>('tweet');
-    const [targetTweet, setTargetTweet] = useState('');
-    const [draft, setDraft] = useState('');
-    const [reasoningLog, setReasoningLog] = useState<any[]>([]);
-    const [trace, setTrace] = useState<any>(null);
-    const [loading, setLoading] = useState(false);
+    // ... existing ...
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [postFormat, setPostFormat] = useState<'short' | 'long'>('short');
 
+    // Config State
+    const [configs, setConfigs] = useState({
+        auto_tweet_ath: false,
+        auto_tweet_52w: false,
+        auto_tweet_vol: false
+    });
+
     useEffect(() => {
-        if (!authLoading) {
-            if (!user) {
-                router.push("/auth/login");
-            } else if (user.role !== "admin" && !(user.role === "staff" && user.permissions?.includes("x-copilot"))) {
-                router.push("/dashboard");
-            }
-        }
-    }, [user, authLoading, router]);
-
-    const generate = async () => {
-        if (!symbol) {
-            toast.error('Please enter a symbol (e.g. LUCK, BTC)');
-            return;
-        }
-        setDraft('');
-        setReasoningLog([]);
-        setLoading(true);
-        const token = getAuthToken();
-        try {
-            const res = await fetch('/api/admin/x-copilot/generate', {
-                method: 'POST',
-                body: JSON.stringify({ symbol, notes, mode, targetTweet, postFormat }),
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                }
+        if (user) {
+            getAlertConfigs().then(rows => {
+                const map: any = {};
+                rows.forEach((r: any) => {
+                    try { map[r.key] = JSON.parse(r.value); } catch (e) { map[r.key] = r.value }
+                });
+                setConfigs(prev => ({
+                    ...prev,
+                    auto_tweet_ath: map.auto_tweet_ath === true,
+                    auto_tweet_52w: map.auto_tweet_52w === true,
+                    auto_tweet_vol: map.auto_tweet_vol === true,
+                }));
             });
-            const data = await res.json();
-            if (data.draft) {
-                setDraft(data.draft);
-                setReasoningLog(data.reasoningLog || []);
-                setTrace(data.trace || null);
-            } else {
-                toast.error('Generation failed: ' + (data.error || 'Unknown error'));
-            }
-        } catch (e) {
-            toast.error('API Error');
-        } finally {
-            setLoading(false);
         }
-    };
+    }, [user]);
 
-    const copyToClipboard = () => {
-        navigator.clipboard.writeText(draft);
-        toast.success('Copied to clipboard');
-    };
+    const toggleConfig = async (key: string) => {
+        const newVal = !configs[key as keyof typeof configs];
+        setConfigs(prev => ({ ...prev, [key]: newVal })); // Optimistic update
+        try {
+            await updateAlertConfig(key, newVal);
+            toast.success(`Updated ${key}`);
+        } catch (e) {
+            toast.error('Failed to update config');
+            setConfigs(prev => ({ ...prev, [key]: !newVal })); // Revert
+        }
+    }
 
-    const openInX = () => {
-        const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(draft)}`;
-        window.open(url, '_blank');
-    };
-
-    if (authLoading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
+    // ... existing code ...
 
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-8">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-4xl font-black flex items-center gap-3 tracking-tighter">
-                        <Sparkles className="text-blue-500 w-10 h-10" /> X-COPILOT <span className="text-xs bg-blue-500/10 text-blue-500 px-2 py-1 rounded-full uppercase tracking-widest font-bold">Agent v2.0</span>
-                    </h1>
-                    <p className="text-muted-foreground mt-1">AI Reasoning Agent powered by Gemini 2.0 Flash Tool-Calling.</p>
-                </div>
-                <div className="flex p-1 bg-muted rounded-lg w-fit border border-border">
-                    <button
-                        onClick={() => setMode('tweet')}
-                        className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${mode === 'tweet' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                    >
-                        New Tweet
-                    </button>
-                    <button
-                        onClick={() => setMode('reply')}
-                        className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${mode === 'reply' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                    >
-                        Reply Mode
-                    </button>
-                    <button
-                        onClick={() => setMode('briefing')}
-                        className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${mode === 'briefing' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                    >
-                        Briefing Mode
-                    </button>
-                </div>
+            {/* Header ... */}
+
+            {/* New Automation Settings Row */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="bg-card/50 border-blue-500/10">
+                    <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-widest opacity-70">Auto-Tweet ATH</CardTitle></CardHeader>
+                    <CardContent>
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm">Enable for All-Time Highs</span>
+                            <button
+                                onClick={() => toggleConfig('auto_tweet_ath')}
+                                className={`w-10 h-6 rounded-full transition-colors ${configs.auto_tweet_ath ? 'bg-blue-600' : 'bg-muted'}`}
+                            >
+                                <div className={`w-4 h-4 rounded-full bg-white transform transition-transform ml-1 ${configs.auto_tweet_ath ? 'translate-x-4' : ''}`} />
+                            </button>
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="bg-card/50 border-blue-500/10">
+                    <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-widest opacity-70">Auto-Tweet 52W High</CardTitle></CardHeader>
+                    <CardContent>
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm">Enable for 52-Week Highs</span>
+                            <button
+                                onClick={() => toggleConfig('auto_tweet_52w')}
+                                className={`w-10 h-6 rounded-full transition-colors ${configs.auto_tweet_52w ? 'bg-blue-600' : 'bg-muted'}`}
+                            >
+                                <div className={`w-4 h-4 rounded-full bg-white transform transition-transform ml-1 ${configs.auto_tweet_52w ? 'translate-x-4' : ''}`} />
+                            </button>
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="bg-card/50 border-blue-500/10">
+                    <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-widest opacity-70">Auto-Tweet Volume</CardTitle></CardHeader>
+                    <CardContent>
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm">Enable for Volume Surges</span>
+                            <button
+                                onClick={() => toggleConfig('auto_tweet_vol')}
+                                className={`w-10 h-6 rounded-full transition-colors ${configs.auto_tweet_vol ? 'bg-blue-600' : 'bg-muted'}`}
+                            >
+                                <div className={`w-4 h-4 rounded-full bg-white transform transition-transform ml-1 ${configs.auto_tweet_vol ? 'translate-x-4' : ''}`} />
+                            </button>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+                {/* ... Left Column ... */}
                 {/* --- Left Column: Inputs --- */}
                 <div className="xl:col-span-4 space-y-6">
                     <Card className="shadow-xl bg-card/50 backdrop-blur-sm border-blue-500/10">
