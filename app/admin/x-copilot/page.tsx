@@ -95,6 +95,30 @@ export default function XCopilotPage() {
                         <CardHeader><CardTitle className="text-sm uppercase tracking-widest opacity-50 font-black">1. Context Inputs</CardTitle></CardHeader>
                         <CardContent className="space-y-5">
                             <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase text-muted-foreground">Generation Mode</label>
+                                <div className="grid grid-cols-3 gap-2 p-1 bg-muted/50 rounded-lg border">
+                                    <button
+                                        onClick={() => setMode('tweet')}
+                                        className={`py-2 text-xs font-black uppercase tracking-widest rounded-md transition-all ${mode === 'tweet' ? 'bg-blue-600 text-white shadow-lg' : 'text-muted-foreground hover:bg-muted'}`}
+                                    >
+                                        Tweet
+                                    </button>
+                                    <button
+                                        onClick={() => setMode('reply')}
+                                        className={`py-2 text-xs font-black uppercase tracking-widest rounded-md transition-all ${mode === 'reply' ? 'bg-purple-600 text-white shadow-lg' : 'text-muted-foreground hover:bg-muted'}`}
+                                    >
+                                        Reply
+                                    </button>
+                                    <button
+                                        onClick={() => setMode('briefing')}
+                                        className={`py-2 text-xs font-black uppercase tracking-widest rounded-md transition-all ${mode === 'briefing' ? 'bg-emerald-600 text-white shadow-lg' : 'text-muted-foreground hover:bg-muted'}`}
+                                    >
+                                        Briefing
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
                                 <label className="text-xs font-bold uppercase text-muted-foreground">Asset Symbol</label>
                                 <Input
                                     value={symbol}
