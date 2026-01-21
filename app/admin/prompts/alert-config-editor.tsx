@@ -91,7 +91,7 @@ export function AlertConfigEditor({ config }: { config: any }) {
         if (config.key === 'include_heatmap_context') label = 'Include Sector Performance & Top Movers';
         if (config.key === 'auto_tweet_ath') label = 'Auto-Tweet All Time Highs';
         if (config.key === 'auto_tweet_52w') label = 'Auto-Tweet 52 Week Highs';
-        if (config.key === 'auto_tweet_vol') label = 'Auto-Tweet Volume Surges';
+        if (config.key === 'auto_tweet_vol') label = 'Enable Volume Surge Detection & Tweets';
 
         return (
             <div className="space-y-4">

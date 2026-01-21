@@ -167,11 +167,20 @@ export async function processVolumeSurges(candidates: VolumeCandidate[]) {
     const client = await getPostgresClient();
     try {
         // 0. Fetch Settings from alert_configs
-        const configsRes = await client.query("SELECT key, value FROM alert_configs WHERE key IN ('volume_surge_settings', 'technical_mc_threshold_rank')");
+        // Added 'auto_tweet_vol' as a Master Switch to prevent DB writes/processing if disabled
+        const configsRes = await client.query("SELECT key, value FROM alert_configs WHERE key IN ('volume_surge_settings', 'technical_mc_threshold_rank', 'auto_tweet_vol')");
         const configs = configsRes.rows.reduce((acc: any, row: any) => {
             acc[row.key] = row.value;
             return acc;
         }, {});
+
+        // MASTER SWITCH CHECK
+        // If auto_tweet_vol is NOT explicitly 'true', assume the user wants this feature off entirely to save resources.
+        // This stops both DB writes (storage) and calculation overhead.
+        if (configs.auto_tweet_vol !== 'true') {
+            // console.log('[Event Processor] Volume Surge detection disabled by config (auto_tweet_vol).');
+            return;
+        }
 
         const volConfig = configs.volume_surge_settings || { multiplier: 2.0, period: 10, min_volume: 1000 };
         const { multiplier, period, min_volume } = typeof volConfig === 'string' ? JSON.parse(volConfig) : volConfig;
