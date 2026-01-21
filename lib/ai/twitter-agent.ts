@@ -269,6 +269,7 @@ export class TwitterAgentService {
            - If user asks about TIME (e.g. "Year to Date", "last 3 years"), plan to use 'getMarketSummary' with 'timeframe'.
            - If user asks about the MARKET/INDEX, plan to use 'getMarketSummary'.
            - [CRITICAL] PSYCHOLOGY FILTER: If the User Note or Target Tweet is strictly about PSYCHOLOGY, PRINCIPLES, or PHILOSOPHY (e.g. "patience", "disagreement", "buying stocks is hard") and does NOT explicitly ask for market data -> DO NOT CALL 'getMarketSummary'. Select "No tools needed".
+           - PROACTIVE TOOL USE: Review the 'Available Tools' list. If a valid stock symbol is present, you are ENCOURAGED to use relevant tools (Earnings, Dividends, Price History) to verify claims or enrich content, even if not explicitly requested.
            - If the User Note is already fact-rich, prioritize those facts. If search is needed, make it entity-specific.
            - If user asks about latest NEWS or "Search for X" and it is NOT in the user note, you MUST request "WEB_SEARCH_NEEDED".
         
@@ -384,6 +385,7 @@ export class TwitterAgentService {
             3. "FORECAST != FACT" FILTER:
                - If a research snippet says "forecast", "predicted", "projected", "seen rising to", or "outlook", DO NOT treat that number as the *current* price. It is a guess.
                - ONLY use numbers labeled as "is currently", "trading at", "hit", or "reached" as current facts.
+               - NOTE: You MAY cite forecasts as *future predictions* (e.g. "Analysts see Gold hitting $3000 next year"), just don't confuse them with today's price.
             4. DEBUNKING: If the [TARGET CLAIMS] (from Stage 1) conflict with your best data (User Note OR Research), explicitly DEBUNK them. (e.g. "Actually, data shows X, not Y").
             5. If dates are similar, treat Research as ground truth.
             
