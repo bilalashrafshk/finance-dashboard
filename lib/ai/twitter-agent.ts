@@ -388,6 +388,9 @@ export class TwitterAgentService {
         }
 
         // HEATMAP CONTEXT INJECTION (If enabled in settings)
+        // HEATMAP CONTEXT INJECTION DISABLED (User Request - 2026-01-21)
+        // We now force the AI to explicitly call 'getMarketSummary' if it needs this data.
+        /*
         try {
             const pool = (await import('@/lib/db')).getPool();
             const configRes = await pool.query("SELECT value FROM alert_configs WHERE key = 'include_heatmap_context'");
@@ -403,6 +406,7 @@ export class TwitterAgentService {
         } catch (err) {
             console.error('Failed to inject heatmap context:', err);
         }
+        */
 
         let finalDraft = '';
         let currentInput: string | any = currentPrompt;
