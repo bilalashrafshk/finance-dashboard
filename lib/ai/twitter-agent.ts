@@ -222,12 +222,7 @@ export class TwitterAgentService {
         [STYLING INSTRUCTIONS] 
         - Target: ${mode === 'briefing' ? 'Structured news briefing with headers' : 'Engaging social media post'}
         - Length: ${postFormat === 'short' ? 'STRICTLY UNDER 280 characters' : 'Detailed/Long-form'}
-        ${mode === 'reply' ? `
-        [REPLY PROTOCOL]
-        - HIERARCHY: [USER NOTE] is your BOSS (Obey). [TARGET TWEET] is your PEER (Add Value).
-        - ANTI-ECHO: Do NOT regurgitate the [TARGET TWEET]'s claims/stats. They know what they wrote.
-        - "YES, AND..." Rule: If agreeing, provide NEW data/context. NEVER repeat their stats (e.g. if they say "5.6% inflation", don't say "5.6% inflation").
-        - DISAGREEMENT: Be polite but factual.` : ''}
+        ${mode === 'reply' ? '- Context: This is a REPLY to a specific user. Maintain conversation flow.' : ''}
         ${mode === 'briefing' ? '- Note: Use factual, informative headers like ### The Intelligence Scoop' : ''}
         - PROHIBITION: DO NOT mention "Google Search", "context", or "data provided". Report findings as your own.
         `;
@@ -392,7 +387,11 @@ export class TwitterAgentService {
                - ONLY use numbers labeled as "is currently", "trading at", "hit", or "reached" as current facts.
                - NOTE: You MAY cite forecasts as *future predictions* (e.g. "Analysts see Gold hitting $3000 next year"), just don't confuse them with today's price.
             4. DEBUNKING: If the [TARGET CLAIMS] (from Stage 1) conflict with your best data (User Note OR Research), explicitly DEBUNK them. (e.g. "Actually, data shows X, not Y").
-            5. If dates are similar, treat Research as ground truth.
+            5. ANTI-ECHO FILTER (CRITICAL):
+               - If Research CONFIRMS the [TARGET CLAIMS] (e.g. they said "Inflation 5.6%" and research says "5.6%"), DO NOT repeat the number in your output.
+               - Instead, say something like "Data confirms your point on inflation" or "Agreed on the 5.6% figure".
+               - NEVER present the Target Tweet's own stats as if they are a new discovery.
+            6. If dates are similar, treat Research as ground truth.
             
             Refine the draft using the fresher signal.`;
         }
