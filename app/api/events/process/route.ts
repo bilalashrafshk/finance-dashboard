@@ -222,12 +222,18 @@ async function handleDailyRecap(client: any) {
         const pktOffset = 5 * 60; // UTC+5
         const pktTime = new Date(now.getTime() + (pktOffset + now.getTimezoneOffset()) * 60000);
 
+        const day = pktTime.getDay(); // 0 = Sun, 1 = Mon, ... 5 = Fri, 6 = Sat
         const hour = pktTime.getHours();
         const minute = pktTime.getMinutes();
         const todayStr = pktTime.toISOString().split('T')[0];
 
-        // 2. We trigger between 4:00 PM and 4:15 PM PKT
-        if (hour === 16 && minute >= 0 && minute <= 15) {
+        // 2. Determine target hour based on day
+        // Mon-Thu: 4 PM (16:00), Fri: 5 PM (17:00), Sat/Sun: Skip
+        let targetHour = -1;
+        if (day >= 1 && day <= 4) targetHour = 16;
+        else if (day === 5) targetHour = 17;
+
+        if (targetHour !== -1 && hour === targetHour && minute >= 0 && minute <= 15) {
             // 3. Check if we already sent it today
             const checkRes = await client.query(
                 "SELECT value FROM alert_configs WHERE key = 'last_daily_recap_sent_date'"
