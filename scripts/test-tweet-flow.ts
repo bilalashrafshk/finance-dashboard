@@ -25,7 +25,7 @@ async function main() {
             Previous Record: ${prevAth}
             Headline context: LUCK hits new All Time High of ${price}
         `;
-        const tweetRes = await TwitterAgentService.generate(symbol, systemNotes, 'automated_alert');
+        const tweetRes = await TwitterAgentService.generate(symbol, systemNotes, 'tweet');
         console.log('✅ DRAFT RECEIVED:');
         console.log(tweetRes.draft);
     } catch (e) {

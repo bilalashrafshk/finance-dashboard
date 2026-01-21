@@ -28,7 +28,7 @@ async function main() {
     try {
         // 1. Generate Tweet Logic
         console.log('\n1. Generating Tweet Content...');
-        const tweetGen = await TwitterAgentService.generate(symbol, systemNotes, 'automated_alert');
+        const tweetGen = await TwitterAgentService.generate(symbol, systemNotes, 'tweet');
         console.log('   Draft:', tweetGen.draft);
 
         // 2. Fetch Image (Try Production URL for stability if local fails)

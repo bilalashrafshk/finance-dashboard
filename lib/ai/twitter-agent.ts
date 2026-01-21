@@ -158,27 +158,6 @@ export class TwitterAgentService {
             configDrafter = personality.briefing_instructions || configDrafter;
             configHumanizer = personality.briefing_humanizer_prompt || '';
             configTools = personality.briefing_tools || configTools;
-        } else if (mode === 'automated_alert') {
-            // SPECIAL MODE: Automated Alert (High-Velocity / Technical)
-            // We overrides prompts here directly or could add them to personality DB later.
-            configCoordinator = `You are a high-signal automated trading bot for Bilal Ashraf. 
-            Goal: Confirm the technical breakout data (Price, ATH, etc) and prepare a punchy, factual tweet.
-            Do not over-analyze. Focus on the numbers provided in the 'userNotes'.`;
-
-            configDrafter = `You are writing an automated technical alert tweet.
-            Style: Factual, Punchy, Authoritative.
-            Tone: High-Energy but Professional.
-            Structure:
-            1. Headline (e.g. 🚀 NEW ATH ALERT: $SYMBOL)
-            2. The Data (Current Price, Breakout Level)
-            3. Context (Why it matters, e.g. "Price Discovery Mode")
-            4. Hashtags (#PSX #KSE100 #$SYMBOL)
-            
-            Constraint: Under 280 characters.
-            NEVER apologize. NEVER say "Here is a draft". Just output the tweet text.`;
-
-            configHumanizer = ''; // Skip humanizer for speed/directness in auto-mode
-            configTools = { ...personality.tweet_tools, googleSearch: false }; // Disable search for speed
         } else {
             // New Tweet / Broadcast
             configCoordinator = personality.tweet_coordinator_prompt || configCoordinator;
@@ -208,23 +187,15 @@ export class TwitterAgentService {
         // Stage 2 Instructions: Focus on Factual Assembly and Structural Logic
         let stage2SystemDoc = configDrafter || '';
 
-        // Append Runtime Context (Standardized)
+        // Append Output Guidelines (Stage 2 Focuses on ASSEMBLY based on The Brain's Plan)
         stage2SystemDoc += `
         
-        INPUT CONTEXT:
-        Current Date: ${currentDate}
-        User Note: ${userNotes}
-        Symbol: ${symbol}
-        Mode: ${mode}
-        ${targetTweet ? `TARGET TWEET: ${targetTweet}` : ''}
-        Desired Format: ${postFormat}
-        
-        [STYLING INSTRUCTIONS] 
-        - Target: ${mode === 'briefing' ? 'Structured news briefing with headers' : 'Engaging social media post'}
-        - Length: ${postFormat === 'short' ? 'STRICTLY UNDER 280 characters' : 'Detailed/Long-form'}
-        ${mode === 'reply' ? '- Context: This is a REPLY to a specific user. Maintain conversation flow.' : ''}
-        ${mode === 'briefing' ? '- Note: Use factual, informative headers like ### The Intelligence Scoop' : ''}
-        - PROHIBITION: DO NOT mention "Google Search", "context", or "data provided". Report findings as your own.
+        [OUTPUT GUIDELINES] 
+        - Formatting: ${mode === 'briefing' ? 'Structured news briefing with headers' : 'Engaging social media post'}
+        - Target Length: ${postFormat === 'short' ? 'STRICTLY UNDER 280 characters' : 'Detailed/Long-form'}
+        ${mode === 'reply' ? '- Context: This is a REPLY. Align with the conversation flow.' : ''}
+        ${mode === 'briefing' ? '- Note: Use factual headers like ### The Intelligence Scoop' : ''}
+        - PROHIBITION: Report findings as your own. DO NOT mention "Google Search", "context", or data sources.
         `;
 
         // --- STAGE 1: THE BRAIN (Thinking ENABLED, Tools DISABLED) ---
@@ -256,34 +227,7 @@ export class TwitterAgentService {
         ---
         ${targetTweet}
         ---
-        ` : ''}
-
-        TASK:
-        1. DATA EXTRACTION:
-           - Extract claims from the TARGET TWEET (if any) into a "TARGET CLAIMS" list.
-           - Extract claims/facts from the USER NOTE into a "USER FACTS" list.
-           - Compare them. If they conflict, note the conflict.
-        2. VERIFY vs HALLUCINATION: If the User Note contains specific figures (e.g. "P/E of 7.64"), you MUST use them as your signal.
-        3. DATA PLAN: Determine if tools are needed. 
-           - If user asks about a SECTOR (e.g. "Cement"), plan to use 'getMarketSummary' with 'filter_sector'.
-           - If user asks about TIME (e.g. "Year to Date", "last 3 years"), plan to use 'getMarketSummary' with 'timeframe'.
-           - If user asks about the MARKET/INDEX, plan to use 'getMarketSummary'.
-           - [CRITICAL] PSYCHOLOGY FILTER: If the User Note or Target Tweet is strictly about PSYCHOLOGY, PRINCIPLES, or PHILOSOPHY (e.g. "patience", "disagreement", "buying stocks is hard") and does NOT explicitly ask for market data -> DO NOT CALL 'getMarketSummary'. Select "No tools needed".
-           - PROACTIVE TOOL USE: Review the 'Available Tools' list. If a valid stock symbol is present, you are ENCOURAGED to use relevant tools (Earnings, Dividends, Price History) to verify claims or enrich content, even if not explicitly requested.
-           - If the User Note is already fact-rich, prioritize those facts. If search is needed, make it entity-specific.
-           - If user asks about latest NEWS or "Search for X" and it is NOT in the user note, you MUST request "WEB_SEARCH_NEEDED".
-        
-        TARGET FORMAT: ${mode === 'briefing' ? 'Structured News Briefing' : 'Social Media Post'} (${postFormat === 'short' ? 'STRICTLY UNDER 280 characters' : 'Long Post / Thread'})
-        
-        OUTPUT FORMAT:
-        - DATA EXTRACTION:
-          - TARGET CLAIMS: [List claims from the tweet we are replying to]
-          - USER FACTS: [List numbers/facts provided by the user]
-        - DATA PLAN: [Tool plan or "No tools needed, user context is sufficient"]
-        - SEARCH_NEEDED: [YES/NO] - Do you strictly require external web search for recent news?
-        - SEARCH_QUERIES: [List 3 specific google queries if YES] - *IMPORTANT: Include Month/Year (${currentDate}) to avoid stale results.*
-        
-        DO NOT provide the final draft. Provide only the Extraction and Data Plan.`;
+        ` : ''}`;
 
         // @ts-ignore
         const brainResult = await brainModel.generateContent({
@@ -307,7 +251,7 @@ export class TwitterAgentService {
         if (internalThoughts) {
             reasoningLog.push({ type: 'thought', content: internalThoughts, isRawThinking: true });
         }
-        reasoningLog.push({ type: 'thought', content: `PLAN: ${planText}` });
+        reasoningLog.push({ type: 'thought', content: `PLAN: ${planText} ` });
 
         // --- HITL CHECK ---
         // Does the brain want search?
@@ -374,27 +318,10 @@ export class TwitterAgentService {
 
         let currentPrompt = `Execute this analysis plan: ${planText}\n\n`;
         if (researchContext) {
-            currentPrompt += `\n\n[USER PROVIDED RESEARCH / NEWS context]\n${researchContext}\n\n[AUTHORITY INSTRUCTION]\nThe above '[USER PROVIDED RESEARCH]' is a powerful data source, but YOU are the judge.
-            Current Date: ${currentDate}
-            
-            CONFLICT RESOLUTION RULES:
-            1. CHECK DATES: Compare the date of the [USER PROVIDED RESEARCH] vs the [USER NOTE] (if implicit) vs the Current Date.
-            2. STALE RESEARCH SQUASHING: 
-               - If the Research is > 6 months old (e.g. from 2024 when now is 2026) AND the User Note contains specific, fresh claims (e.g. "Gold hit 4000"), **TRUST THE USER NOTE**.
-               - Assume the user has "breaking news" that the old research missed.
-            3. "FORECAST != FACT" FILTER:
-               - If a research snippet says "forecast", "predicted", "projected", "seen rising to", or "outlook", DO NOT treat that number as the *current* price. It is a guess.
-               - ONLY use numbers labeled as "is currently", "trading at", "hit", or "reached" as current facts.
-               - NOTE: You MAY cite forecasts as *future predictions* (e.g. "Analysts see Gold hitting $3000 next year"), just don't confuse them with today's price.
-            4. DEBUNKING: If the [TARGET CLAIMS] (from Stage 1) conflict with your best data (User Note OR Research), explicitly DEBUNK them. (e.g. "Actually, data shows X, not Y").
-            5. ANTI-ECHO FILTER (CRITICAL):
-               - If Research CONFIRMS the [TARGET CLAIMS] (e.g. they said "Inflation 5.6%" and research says "5.6%"), DO NOT repeat the number in your output.
-               - Instead, say something like "Data confirms your point on inflation" or "Agreed on the 5.6% figure".
-               - NEVER present the Target Tweet's own stats as if they are a new discovery.
-            6. If dates are similar, treat Research as ground truth.
-            
-            Refine the draft using the fresher signal.`;
+            currentPrompt += `\n\n[USER PROVIDED RESEARCH / NEWS context]\n${researchContext}`;
         }
+
+
 
         // HEATMAP CONTEXT INJECTION (If enabled in settings)
         // HEATMAP CONTEXT INJECTION DISABLED (User Request - 2026-01-21)
@@ -409,7 +336,7 @@ export class TwitterAgentService {
                 // Fetch Heatmap Data (Top 100/All based on default service behavior, or specific?)
                 // We'll ask for 'detailed=false' to keep it concise, just context.
                 const marketData = await AIContextService.getMarketSummary(undefined, false);
-                currentPrompt += `\n\n[SYSTEM INJECTED CONTEXT - MARKET HEATMAP]\n${JSON.stringify(marketData, null, 2)}`;
+                currentPrompt += `\n\n[SYSTEM INJECTED CONTEXT - MARKET HEATMAP]\n${ JSON.stringify(marketData, null, 2) } `;
                 reasoningLog.push({ type: 'thought', content: "System: Injected Market Heatmap Context (Settings Enabled)" });
             }
         } catch (err) {
@@ -473,7 +400,7 @@ export class TwitterAgentService {
                             }
                         };
                     } catch (error: any) {
-                        const errorMsg = `Error: ${error.message}`;
+                        const errorMsg = `Error: ${error.message} `;
                         reasoningLog.push({ type: 'tool_response', name, result: errorMsg, isError: true });
                         return {
                             functionResponse: {
@@ -502,21 +429,13 @@ export class TwitterAgentService {
                 .replace('{{target_tweet}}', targetTweet || 'N/A');
 
             const humanizerSystemInstruction = `
-                You are a professional humanizer/editor for Bilal Ashraf, a calm, analytical investor.
-                Your goal is to take a "Technical Draft" and refine it into Bilal's signature voice.
+                ${personality.humanizer_instructions || 'You are a professional humanizer / editor.'}
                 
                 BILAL'S BRAND EXAMPLES (${mode}, ${postFormat}):
                 ${relevantExamples.length > 0 ? relevantExamples.join('\n---\n') : 'No specific examples provided. Follow general style rules.'}
                 
-                HUMANIZATION RULES:
-                - Use the "I" rule for opinions/feelings.
-                - Avoid "robot words" (notable, crucial, delve, etc).
-                - Keep the facts from the draft, but change the "voice".
-                - ${postFormat === 'short' ? 'STRICT CONSTRAINT: The final output MUST be under 280 characters.' : 'This is a Long Post/Thread format.'}
-                - Follow the precise instructions provided in the prompt.
-                - DATA PRESERVATION: You are an Editor, not a Summarizer. 
-                - DO NOT REMOVE details like specific timestamps (e.g. "30 mins ago"), specific amounts (e.g. "$475m"), or key context (e.g. "M-6 Motorway"). 
-                - Your job is to improve the FLOW and TONE, not to delete information. Keep the tweet rich and dense.
+                STRICT CONSTRAINTS:
+                - ${postFormat === 'short' ? 'The final output MUST be under 280 characters.' : 'This is a Long Post/Thread format.'}
             `;
 
             const humanizerModel = ai.getGenerativeModel({
@@ -540,7 +459,7 @@ export class TwitterAgentService {
             const humanText = humanRes.response.text();
 
             if (humanText) {
-                reasoningLog.push({ type: 'thought', content: `REFINED DRAFT: ${humanText}` });
+                reasoningLog.push({ type: 'thought', content: `REFINED DRAFT: ${humanText} ` });
                 finalDraft = humanText;
             }
         }
