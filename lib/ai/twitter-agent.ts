@@ -102,18 +102,14 @@ export class TwitterAgentService {
 
     private static getAvailableToolsDescription(enabledTools: Record<string, boolean>): string {
         const declaredTools = this.tools[0].functionDeclarations || [];
-        const lines = ['Available Tools:'];
-        let idx = 1;
-
+        const lines = ['Tools:'];
         for (const t of declaredTools) {
             if (enabledTools[t.name] !== false) {
-                lines.push(`${idx++}. ${t.name}: ${t.description}`);
+                lines.push(`- ${t.name}: ${t.description}`);
             }
         }
-
-
         if (enabledTools.googleSearch !== false) {
-            lines.push(`\nCAPABILITY: Google Search Grounding is available. NOTE: This is a NATIVE capability handled in a separate research turn. It is NOT a callable function for the Hand stage.`);
+            lines.push(`- googleSearch: Native web grounding.`);
         }
         return lines.join('\n');
     }
@@ -171,20 +167,26 @@ export class TwitterAgentService {
         const history: any[] = [];
 
         // Filter examples based on format and mode (Tweet/Reply/Briefing + Short/Long)
+        // Optimization: Limit to top 3 examples to save tokens
         const relevantExamples = personality.examples
             .filter(ex => {
                 const exMode = ex.mode || 'tweet';
                 if (exMode !== mode) return false;
                 return ex.type === postFormat;
             })
+            .slice(0, 3)
             .map(ex => ex.text);
 
 
-        // Heuristic: Only use Google Search if the user explicitly asks for it in their notes
+        // HITL HEURISTIC: Should we suggest a research request?
+        // We trigger if: 
+        // 1. User explicitly asked for search/news
+        // 2. OR the request is macro/general (symbol N/A) and tools might be insufficient
+        // 3. OR the brand personality has googleSearch enabled (default)
         const notesLower = userNotes.toLowerCase();
         const userAskedForSearch = notesLower.includes('search') || notesLower.includes('google') || notesLower.includes('latest news') || notesLower.includes('find on web');
 
-        // Stage 2 Instructions: Focus on Factual Assembly and Structural Logic
+        // Stage 1 Instructions: Focus on Factual Assembly and Structural Logic
         let stage2SystemDoc = configDrafter || '';
 
         // Append Output Guidelines (Stage 2 Focuses on ASSEMBLY based on The Brain's Plan)
@@ -204,6 +206,7 @@ export class TwitterAgentService {
         Current Date: ${currentDate}
         Analyze the user's input and current context carefully. 
         Determine if existing info is sufficient or if tools are needed. 
+        If tools are insufficient (e.g. macro data, yield auction results, latest policy news), explicitly request a research flow.
         DO NOT write the final tweet/reply yet.`;
 
         const toolListCtx = this.getAvailableToolsDescription(configTools);

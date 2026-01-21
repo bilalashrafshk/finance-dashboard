@@ -7,20 +7,29 @@ import { PersonalityService } from './ai/personality-service';
 let genAI: GoogleGenerativeAI | null = null;
 let model: any = null;
 
-async function initAI() {
+async function getModel(customModelName?: string) {
     const API_KEY = process.env.GEMINI_API_KEY || '';
-    if (API_KEY && !genAI) {
-        genAI = new GoogleGenerativeAI(API_KEY);
+    if (!API_KEY) return null;
 
+    if (!genAI) {
+        genAI = new GoogleGenerativeAI(API_KEY);
+    }
+
+    if (customModelName) {
+        return genAI.getGenerativeModel({ model: customModelName });
+    }
+
+    if (!model) {
         let modelName = process.env.GEMINI_MODEL;
         if (!modelName) {
             const personality = await PersonalityService.getPersonality('bilal-ashraf');
             modelName = personality?.default_model || 'gemini-2.0-flash';
         }
-
-        console.log(`🤖 Initializing AI with model: ${modelName}`);
+        console.log(`🤖 Initializing default AI model: ${modelName}`);
         model = genAI.getGenerativeModel({ model: modelName });
     }
+
+    return model;
 }
 
 
@@ -37,16 +46,16 @@ export async function generateHeadline(prompt: string): Promise<string> {
 /**
  * General purpose AI synthesis
  */
-export async function generateAISynthesis(prompt: string): Promise<string> {
-    await initAI();
+export async function generateAISynthesis(prompt: string, modelName?: string): Promise<string> {
+    const currentModel = await getModel(modelName);
 
-    if (!model) {
+    if (!currentModel) {
         console.warn('AI model not initialized. Returning fallback.');
         return 'Market Event Detected (AI Unavailable)';
     }
 
     try {
-        const result = await model.generateContent(prompt);
+        const result = await currentModel.generateContent(prompt);
         const response = await result.response;
         return response.text().trim();
     } catch (error) {
@@ -61,10 +70,11 @@ export async function generateAISynthesis(prompt: string): Promise<string> {
 export async function analyzeAnnouncement(
     systemPrompt: string,
     context: any,
-    announcement: any
+    announcement: any,
+    options: { disableMultimodal?: boolean, modelName?: string } = {}
 ): Promise<{ text: string; debugMetadata?: any }> {
-    await initAI();
-    if (!model) return { text: JSON.stringify({ error: 'AI Unavailable' }) };
+    const currentModel = await getModel(options.modelName);
+    if (!currentModel) return { text: JSON.stringify({ error: 'AI Unavailable' }) };
 
     // 1. Prepare text prompt
     const textPrompt = `
@@ -82,44 +92,48 @@ Company: ${announcement.company} (${announcement.symbol})
     const parts: any[] = [{ text: textPrompt }];
     const attachedFiles: any[] = [];
 
-    for (const url of announcement.attachments || []) {
-        try {
-            console.log(`📥 Downloading attachment: ${url}`);
-            const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 10000 });
+    if (!options.disableMultimodal) {
+        for (const url of announcement.attachments || []) {
+            try {
+                console.log(`📥 Downloading attachment: ${url}`);
+                const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 10000 });
 
-            // Clean content type (remove charset=utf-8 etc)
-            let mimeType = response.headers['content-type']?.split(';')[0]?.trim();
-            const dataBase64 = Buffer.from(response.data).toString('base64');
-            const sizeInMb = (response.data.byteLength / (1024 * 1024)).toFixed(2);
+                // Clean content type (remove charset=utf-8 etc)
+                let mimeType = response.headers['content-type']?.split(';')[0]?.trim();
+                const dataBase64 = Buffer.from(response.data).toString('base64');
+                const sizeInMb = (response.data.byteLength / (1024 * 1024)).toFixed(2);
 
-            console.log(`🔍 Mime: ${mimeType}, Size: ${sizeInMb} MB`);
+                console.log(`🔍 Mime: ${mimeType}, Size: ${sizeInMb} MB`);
 
-            // Gemini limitations: 
-            // - Images: png, jpeg, webp, heic, heif
-            // - Documents: application/pdf
-            const supportedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif'];
+                // Gemini limitations: 
+                // - Images: png, jpeg, webp, heic, heif
+                // - Documents: application/pdf
+                const supportedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif'];
 
-            if (supportedTypes.includes(mimeType) || mimeType.startsWith('image/')) {
-                parts.push({
-                    inlineData: {
-                        data: dataBase64,
-                        mimeType: mimeType === 'image/gif' ? 'image/png' : mimeType
-                    }
-                });
-                attachedFiles.push({ url, mimeType, size: `${sizeInMb} MB` });
-                console.log(`✅ Attached ${mimeType} (${sizeInMb} MB) to AI request.`);
-            } else {
-                console.warn(`⚠️ Unsupported mime type: ${mimeType} for ${url}`);
+                if (supportedTypes.includes(mimeType) || mimeType.startsWith('image/')) {
+                    parts.push({
+                        inlineData: {
+                            data: dataBase64,
+                            mimeType: mimeType === 'image/gif' ? 'image/png' : mimeType
+                        }
+                    });
+                    attachedFiles.push({ url, mimeType, size: `${sizeInMb} MB` });
+                    console.log(`✅ Attached ${mimeType} (${sizeInMb} MB) to AI request.`);
+                } else {
+                    console.warn(`⚠️ Unsupported mime type: ${mimeType} for ${url}`);
+                }
+            } catch (err: any) {
+                console.warn(`❌ Failed to download attachment ${url}:`, err.message);
             }
-        } catch (err: any) {
-            console.warn(`❌ Failed to download attachment ${url}:`, err.message);
         }
+    } else {
+        console.log(`💰 Optimization: Multimodal analysis DISABLED for ${announcement.symbol}`);
     }
 
     parts.push({ text: "\nOutput strictly in the specified JSON format. Zero conversational padding. No meta-commentary." });
 
     try {
-        const result = await model.generateContent(parts);
+        const result = await currentModel.generateContent(parts);
         const response = await result.response;
         return {
             text: response.text().trim(),
@@ -128,7 +142,7 @@ Company: ${announcement.company} (${announcement.symbol})
     } catch (error: any) {
         if (error.status === 400 || error.message?.includes('400')) {
             console.error('❌ Gemini 400 Error: Possible payload limit or format issue. Falling back to text-only.');
-            const textOnlyResult = await model.generateContent(textPrompt + "\nAnalyze the announcement details provided in text.");
+            const textOnlyResult = await currentModel.generateContent(textPrompt + "\nAnalyze the announcement details provided in text.");
             const resp = await textOnlyResult.response;
             return {
                 text: resp.text().trim(),
@@ -144,41 +158,21 @@ Company: ${announcement.company} (${announcement.symbol})
  * Real-time triage to determine if an announcement title is significant.
  * Gemini handles this semantic check in <1s.
  */
-export async function triageAnnouncement(title: string): Promise<boolean> {
-    await initAI();
-    if (!model) return false;
+export async function triageAnnouncement(title: string, modelName?: string): Promise<boolean> {
+    const currentModel = await getModel(modelName);
+    if (!currentModel) return false;
 
-    const prompt = `
-Analyze the following PSX announcement title and decide if it is operationally or financially significant for a stock investor. 
-
-SIGNIFICANT (RETURN "YES"):
-- Discoveries (oil, gas, minerals)
-- Production updates or start of operations
-- Joint Ventures or Strategic Partnerships
-- Material Information or Legal Settlements
-- Capacity expansions or new facilities
-- Contracts, orders, or renewals
-- Financial Results/Board Meetings
-- Defaults, bankruptcies, or major risks
-
-NOT SIGNIFICANT (RETURN "NO"):
-- Routine transmission of annual/quarterly reports
-- Loss of share certificates
-- Change of share registrar
-- Routine notices of AGM/EOGM
-- Corrigendum for minor clerical errors
-- Routine notifications of shareholding changes (unless major buyback)
-
+    const prompt = `Decide if this PSX title is operationally/financially significant for an investor.
+SIGNIFICANT: Discoveries, Production, JVs, Material Info, Expansions, Contracts, Financials, Defaults.
+NOT SIGNIFICANT: Reports, Share Certs, Registrar, routine AGMs, Corrigendum, minor Shareholding changes.
 Title: "${title}"
-
-Return ONLY "YES" or "NO".
-`;
+Return ONLY "YES" or "NO".`;
 
     try {
-        const result = await model.generateContent(prompt);
+        const result = await currentModel.generateContent(prompt);
         const response = await result.response;
         const text = response.text().trim().toUpperCase();
-        console.log(`🤖 AI Triage for "${title}": ${text}`);
+        console.log(`🤖 AI Triage for "${title}" [${modelName || 'default'}]: ${text}`);
         return text.includes('YES');
     } catch (error) {
         console.error('Error in AI triage:', error);

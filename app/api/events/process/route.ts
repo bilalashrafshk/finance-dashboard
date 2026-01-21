@@ -67,6 +67,23 @@ export async function GET(request: Request) {
                     }
 
                     // B. Get Prompt & Context
+                    const configRes = await client.query("SELECT key, value FROM alert_configs");
+                    const configs = configRes.rows.reduce((acc: any, row: any) => {
+                        acc[row.key] = row.value;
+                        return acc;
+                    }, {});
+
+                    const MC_THRESHOLD_RANK = configs.fundamental_mc_threshold_rank || 100;
+                    const GLOBAL_MULTIMODAL = configs.enable_multimodal_analysis === true || configs.enable_multimodal_analysis === 'true';
+                    const modelName = configs.fundamental_alert_model;
+
+                    const topCompaniesRes = await client.query(
+                        "SELECT symbol FROM company_profiles WHERE market_cap IS NOT NULL ORDER BY market_cap DESC LIMIT $1",
+                        [MC_THRESHOLD_RANK]
+                    );
+                    const topSymbols = topCompaniesRes.rows.map((r: any) => r.symbol);
+                    const isPrioritySymbol = topSymbols.includes(event.symbol);
+
                     const promptSlug = getPromptSlugByTitle(task.title);
                     const promptRes = await client.query("SELECT content FROM ai_prompts WHERE slug = $1", [promptSlug]);
                     const systemPrompt = promptRes.rows[0]?.content || "Analyze this financial announcement.";
@@ -79,7 +96,8 @@ export async function GET(request: Request) {
                     }
 
                     // C. AI Synthesis (This is the slow part)
-                    const { text: rawAiResult } = await analyzeAnnouncement(systemPrompt, context, task);
+                    const disableMultimodal = !GLOBAL_MULTIMODAL || !isPrioritySymbol;
+                    const { text: rawAiResult } = await analyzeAnnouncement(systemPrompt, context, task, { disableMultimodal, modelName });
                     const aiResult = parseAIResponse(rawAiResult);
 
                     // D. Push to Notable Events & Discord

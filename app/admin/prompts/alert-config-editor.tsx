@@ -84,20 +84,23 @@ export function AlertConfigEditor({ config }: { config: any }) {
         );
     }
 
-    if (config.key === 'include_heatmap_context' || config.key.startsWith('auto_tweet_')) {
-        const isEnabled = value === 'true';
+    if (config.key === 'include_heatmap_context' || config.key.startsWith('auto_tweet_') || config.key === 'enable_multimodal_analysis' || config.key === 'ai_triage_mid_small_caps') {
+        const isEnabled = typeof value === 'boolean' ? value : value === 'true';
         // Map key to a readable label
         let label = 'Enable Setting';
         if (config.key === 'include_heatmap_context') label = 'Include Sector Performance & Top Movers';
         if (config.key === 'auto_tweet_ath') label = 'Auto-Tweet All Time Highs';
         if (config.key === 'auto_tweet_52w') label = 'Auto-Tweet 52 Week Highs';
         if (config.key === 'auto_tweet_vol') label = 'Enable Volume Surge Detection & Tweets';
+        if (config.key === 'enable_multimodal_analysis') label = 'Enable Multimodal (PDF/Image) Analysis';
+        if (config.key === 'ai_triage_mid_small_caps') label = 'AI Triage for Mid/Small-Cap Stocks';
 
         return (
             <div className="space-y-4">
                 <div className="flex flex-col gap-1">
                     <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-                        {config.key.startsWith('auto_tweet_') ? '🤖 Automation' : '🗺️ Heatmap Context'}
+                        {config.key.startsWith('auto_tweet_') ? '🤖 Automation' :
+                            (config.key === 'include_heatmap_context' ? '🗺️ Heatmap Context' : '💰 Cost Optimization')}
                     </label>
                     <p className="text-xs text-muted-foreground mb-4">
                         {config.description}
@@ -118,6 +121,56 @@ export function AlertConfigEditor({ config }: { config: any }) {
                             className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isEnabled ? 'translate-x-6' : 'translate-x-1'}`}
                         />
                     </button>
+                </div>
+                {message && (
+                    <p className={`text-xs font-medium ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+                        {message.text}
+                    </p>
+                )}
+            </div>
+        );
+    }
+    if (config.key === 'fundamental_alert_model') {
+        const models = [
+            { label: 'Gemini 2.5 Flash Lite (Cheapest)', value: 'gemini-2.5-flash-lite' },
+            { label: 'Gemini 2.0 Flash (Balanced)', value: 'gemini-2.0-flash' },
+            { label: 'Gemini 2.0 Flash Thinking', value: 'gemini-2.0-flash-thinking-exp-01-21' },
+            { label: 'Gemini 1.5 Flash (Legacy)', value: 'gemini-1.5-flash' },
+        ];
+
+        return (
+            <div className="space-y-4">
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-semibold text-foreground flex items-center gap-2">
+                        🧠 Fundamental AI Model
+                    </label>
+                    <p className="text-xs text-muted-foreground mb-4">
+                        {config.description}
+                    </p>
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                    {models.map((m) => {
+                        const isSelected = value.replace(/"/g, '') === m.value;
+                        return (
+                            <button
+                                key={m.value}
+                                onClick={() => {
+                                    const newValue = JSON.stringify(m.value);
+                                    setValue(newValue);
+                                    handleSave(m.value);
+                                }}
+                                disabled={isSaving}
+                                className={`px-4 py-3 rounded-xl border text-sm font-medium transition-all text-left flex justify-between items-center ${isSelected
+                                    ? 'bg-blue-600 border-blue-600 text-white shadow-md'
+                                    : 'bg-card hover:border-blue-600/50 border-input'
+                                    }`}
+                            >
+                                {m.label}
+                                <span className="text-xs opacity-70 ml-2">{m.value}</span>
+                                {isSelected && <div className="w-2 h-2 rounded-full bg-white animate-pulse" />}
+                            </button>
+                        );
+                    })}
                 </div>
                 {message && (
                     <p className={`text-xs font-medium ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>

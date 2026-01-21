@@ -56,6 +56,8 @@ export async function GET(request: Request) {
         const PRIORITY_KEYWORDS: string[] = configs.priority_keywords || [];
         const IGNORE_KEYWORDS: string[] = configs.ignore_keywords || [];
         const MC_THRESHOLD_RANK = configs.fundamental_mc_threshold_rank || 100;
+        const AI_TRIAGE_MID_SMALL = configs.ai_triage_mid_small_caps === true || configs.ai_triage_mid_small_caps === 'true';
+        const modelName = configs.fundamental_alert_model;
 
         // 2. Fetch Top X Companies
         const topCompaniesRes = await client.query(
@@ -149,20 +151,33 @@ export async function GET(request: Request) {
             // It's NEW! Now we check if we care about it.
             const titleLower = cand.title.toLowerCase();
             let passed = false;
-            const CRITICAL_KEYWORDS = ["Material Information", "Discovery", "Production"];
+
+            // LOCAL DETERMINISTIC FILTERS (Free)
+            const CRITICAL_KEYWORDS = ["Material Information", "Discovery", "Production", "Financial Results", "Board Meeting", "Dividend"];
+            const LOCAL_IGNORE_KEYWORDS = [
+                ...IGNORE_KEYWORDS,
+                "subscription status", "share certificates", "registrar", "corrigendum",
+                "transmission of annual report", "notice of agm", "notice of eogm"
+            ];
+
+            const isPrioritySymbol = topSymbols.includes(cand.symbol);
 
             if (CRITICAL_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
                 passed = true;
-            } else if (IGNORE_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
-                continue;
+            } else if (LOCAL_IGNORE_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
+                passed = false;
             } else if (PRIORITY_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
                 passed = true;
-            } else if (titleLower.includes("disclosure of interest") && topSymbols.includes(cand.symbol)) {
+            } else if (titleLower.includes("disclosure of interest") && isPrioritySymbol) {
                 passed = true;
             } else {
                 // Tier 3: AI Triage for the "Grey Area"
-                // ONLY CALLED ON NEW ITEMS
-                passed = await triageAnnouncement(cand.title);
+                // ONLY if the symbol is priority OR user enabled mid/small cap triage
+                if (isPrioritySymbol || AI_TRIAGE_MID_SMALL) {
+                    passed = await triageAnnouncement(cand.title, modelName);
+                } else {
+                    passed = false; // Skip AI triage for non-priority stocks unless enabled
+                }
             }
 
             if (!passed) {
