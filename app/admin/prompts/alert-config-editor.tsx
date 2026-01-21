@@ -130,6 +130,71 @@ export function AlertConfigEditor({ config }: { config: any }) {
             </div>
         );
     }
+    if (config.key === 'priority_keywords' || config.key === 'ignore_keywords') {
+        const keywords = Array.isArray(JSON.parse(value)) ? JSON.parse(value) : [];
+        const [newKeyword, setNewKeyword] = useState('');
+
+        const addKeyword = () => {
+            if (newKeyword && !keywords.includes(newKeyword)) {
+                const updated = [...keywords, newKeyword];
+                setValue(JSON.stringify(updated));
+                handleSave(updated);
+                setNewKeyword('');
+            }
+        };
+
+        const removeKeyword = (kw: string) => {
+            const updated = keywords.filter((k: string) => k !== kw);
+            setValue(JSON.stringify(updated));
+            handleSave(updated);
+        };
+
+        return (
+            <div className="space-y-4">
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-semibold text-foreground flex items-center gap-2">
+                        {config.key === 'priority_keywords' ? '🎯 Priority Keywords' : '🚫 Ignore Keywords'}
+                    </label>
+                    <p className="text-xs text-muted-foreground mb-4">
+                        {config.description}
+                    </p>
+                </div>
+                <div className="flex flex-wrap gap-2 p-3 border rounded-xl bg-card min-h-[60px]">
+                    {keywords.map((kw: string) => (
+                        <div key={kw} className="flex items-center gap-1 px-3 py-1 bg-purple-600/10 border border-purple-600/30 text-purple-600 rounded-full text-xs font-medium">
+                            {kw}
+                            <button onClick={() => removeKeyword(kw)} className="hover:text-red-500 transition-colors">
+                                ✕
+                            </button>
+                        </div>
+                    ))}
+                    {keywords.length === 0 && <span className="text-xs text-muted-foreground italic">No keywords set</span>}
+                </div>
+                <div className="flex gap-2">
+                    <input
+                        type="text"
+                        value={newKeyword}
+                        onChange={(e) => setNewKeyword(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && addKeyword()}
+                        placeholder="Add new keyword..."
+                        className="flex-1 px-3 py-2 text-sm border rounded-lg bg-background focus:ring-2 focus:ring-purple-500 outline-none"
+                    />
+                    <button
+                        onClick={addKeyword}
+                        className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
+                    >
+                        Add
+                    </button>
+                </div>
+                {message && (
+                    <p className={`text-xs font-medium ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+                        {message.text}
+                    </p>
+                )}
+            </div>
+        );
+    }
+
     if (config.key === 'fundamental_alert_model') {
         const models = [
             { label: 'Gemini 2.5 Flash Lite (Cheapest)', value: 'gemini-2.5-flash-lite' },
