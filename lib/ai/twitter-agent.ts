@@ -450,22 +450,38 @@ export class TwitterAgentService {
                 }
             }
 
-            const functionCallPart = content.parts.find(Part => Part.functionCall);
+            const functionCallParts = content.parts.filter(Part => Part.functionCall);
 
-            if (functionCallPart?.functionCall) {
-                const { name, args } = functionCallPart.functionCall;
-                reasoningLog.push({ type: 'tool_call', name, args });
+            if (functionCallParts.length > 0) {
+                // Execute ALL tools in parallel
+                const functionResponses = await Promise.all(functionCallParts.map(async (part) => {
+                    const { name, args } = part.functionCall!;
+                    reasoningLog.push({ type: 'tool_call', name, args });
 
-                const toolResult = await this.callFunction(name, args);
-                reasoningLog.push({ type: 'tool_response', name, result: toolResult });
+                    try {
+                        const toolResult = await this.callFunction(name, args);
+                        reasoningLog.push({ type: 'tool_response', name, result: toolResult });
 
-                // Continue loop with proper FunctionResponse part
-                currentInput = [{
-                    functionResponse: {
-                        name,
-                        response: { content: toolResult }
+                        return {
+                            functionResponse: {
+                                name,
+                                response: { content: toolResult }
+                            }
+                        };
+                    } catch (error: any) {
+                        const errorMsg = `Error: ${error.message}`;
+                        reasoningLog.push({ type: 'tool_response', name, result: errorMsg, isError: true });
+                        return {
+                            functionResponse: {
+                                name,
+                                response: { content: errorMsg }
+                            }
+                        };
                     }
-                }];
+                }));
+
+                // Continue loop with ALL responses
+                currentInput = functionResponses;
             } else {
                 finalDraft = content.parts.find(Part => Part.text)?.text || '';
                 break;
