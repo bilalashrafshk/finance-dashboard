@@ -22,6 +22,18 @@ export async function GET(request: Request) {
     const client = await pool.connect();
 
     try {
+        // --- NIGHT MODE CHECK ---
+        // Skip scraping for announcements between 11 PM and 6 AM PKT to save resources.
+        const pktTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Karachi" });
+        const pktHour = new Date(pktTime).getHours();
+        if (pktHour >= 23 || pktHour < 6) {
+            return NextResponse.json({
+                success: true,
+                skipped: true,
+                message: 'Night mode: Skipping announcement scrape (11PM-6AM PKT).'
+            });
+        }
+
         // --- CLEANUP STEP ---
         // Clean up event_queue to prevent bloat. Keep only pending items.
         // Delete PROCESSED or SKIPPED items older than 2 days.

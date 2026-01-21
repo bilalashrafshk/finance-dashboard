@@ -45,7 +45,7 @@ export async function GET(request: Request) {
         let fundamentalProcessedCount = 0;
 
         for (const event of pendingRes.rows) {
-            // Safety: Only process ONE fundamental alert per run due to 60s timeout
+            // Safety: Only process ONE fundamental alert per run due to high latency
             if (event.event_type === 'fundamental_alert' && fundamentalProcessedCount >= 1) {
                 console.log(`[Event Queue] Skipping extra fundamental alert ${event.id} for next run.`);
                 continue;

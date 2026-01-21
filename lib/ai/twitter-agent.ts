@@ -135,6 +135,9 @@ export class TwitterAgentService {
         const apiKey = process.env.GEMINI_API_KEY || '';
         if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
 
+        // Current Date Injection
+        const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
         // 1. Fetch Brand Personality
         const personality = await PersonalityService.getPersonality('bilal-ashraf');
         if (!personality) throw new Error('Brand personality not found');
@@ -209,6 +212,7 @@ export class TwitterAgentService {
         stage2SystemDoc += `
         
         INPUT CONTEXT:
+        Current Date: ${currentDate}
         User Note: ${userNotes}
         Symbol: ${symbol}
         Mode: ${mode}
@@ -226,6 +230,7 @@ export class TwitterAgentService {
         // --- STAGE 1: THE BRAIN (Thinking ENABLED, Tools DISABLED) ---
         // This stage captures the AI's internal reasoning and data plan.
         const defaultCoordinatorPrompt = `You are the COORDINATOR of an investment agent. 
+        Current Date: ${currentDate}
         Analyze the user's input and current context carefully. 
         Determine if existing info is sufficient or if tools are needed. 
         DO NOT write the final tweet/reply yet.`;
@@ -244,6 +249,7 @@ export class TwitterAgentService {
         });
 
         const brainPrompt = `Request: Write a ${mode === 'reply' ? 'reply' : 'tweet'} for symbol ${symbol}. ${userNotes ? `User Note: ${userNotes}` : ''}. 
+        Current Date: ${currentDate}
         ${symbol.toUpperCase() === 'N/A' ? 'This is a MACRO/GENERAL request. PRIORITIZE using "getMarketSummary" to check the overall market or relevant sectors. Do not force a single stock symbol.' : ''}
         
         ${mode === 'reply' && targetTweet ? `TARGET TWEET TO REPLY TO:
@@ -253,8 +259,11 @@ export class TwitterAgentService {
         ` : ''}
 
         TASK:
-        1. EXTRACT ALL QUANTITATIVE DATA: List every number, price, P/E ratio, percentage, and date mentioned in the User Note and Target Tweet.
-        2. VERIFY vs HALLUCINATION: If the User Note contains specific figures (e.g. "P/E of 7.64"), you MUST use them. Never invent or "estimate" figures like "3.5x" if they are not present.
+        1. DATA EXTRACTION:
+           - Extract claims from the TARGET TWEET (if any) into a "TARGET CLAIMS" list.
+           - Extract claims/facts from the USER NOTE into a "USER FACTS" list.
+           - Compare them. If they conflict, note the conflict.
+        2. VERIFY vs HALLUCINATION: If the User Note contains specific figures (e.g. "P/E of 7.64"), you MUST use them as your signal.
         3. DATA PLAN: Determine if tools are needed. 
            - If user asks about a SECTOR (e.g. "Cement"), plan to use 'getMarketSummary' with 'filter_sector'.
            - If user asks about TIME (e.g. "Year to Date", "last 3 years"), plan to use 'getMarketSummary' with 'timeframe'.
@@ -266,12 +275,14 @@ export class TwitterAgentService {
         TARGET FORMAT: ${mode === 'briefing' ? 'Structured News Briefing' : 'Social Media Post'} (${postFormat === 'short' ? 'STRICTLY UNDER 280 characters' : 'Long Post / Thread'})
         
         OUTPUT FORMAT:
-        - FACT SHEET: [List extracted numbers here]
+        - DATA EXTRACTION:
+          - TARGET CLAIMS: [List claims from the tweet we are replying to]
+          - USER FACTS: [List numbers/facts provided by the user]
         - DATA PLAN: [Tool plan or "No tools needed, user context is sufficient"]
         - SEARCH_NEEDED: [YES/NO] - Do you strictly require external web search for recent news?
-        - SEARCH_QUERIES: [List 3 specific google queries if YES]
+        - SEARCH_QUERIES: [List 3 specific google queries if YES] - *IMPORTANT: Include Month/Year (${currentDate}) to avoid stale results.*
         
-        DO NOT provide the final draft. Provide only the Fact Sheet and Data Plan.`;
+        DO NOT provide the final draft. Provide only the Extraction and Data Plan.`;
 
         // @ts-ignore
         const brainResult = await brainModel.generateContent({
@@ -362,7 +373,18 @@ export class TwitterAgentService {
 
         let currentPrompt = `Execute this analysis plan: ${planText}\n\n`;
         if (researchContext) {
-            currentPrompt += `\n\n[USER PROVIDED RESEARCH / NEWS context]\n${researchContext}\n\n[AUTHORITY INSTRUCTION]\nThe above '[USER PROVIDED RESEARCH]' is the ABSOLUTE GROUND TRUTH. \n1. If the 'User Note' or 'Target Tweet' contradicts this research, YOU MUST IGNORE conflicting facts and use the Research data instead.\n2. ENRICHMENT: You MUST actively use unique details (dates, specific metrics, quotes) from the Research to improve the draft.\n   - If replying, use this research to ADD VALUE or CONTEXT that the Original Tweet missed (e.g. "Did you know this also creates 25k jobs?").\nDo not debate the user. Just write the tweet using the best available data.`;
+            currentPrompt += `\n\n[USER PROVIDED RESEARCH / NEWS context]\n${researchContext}\n\n[AUTHORITY INSTRUCTION]\nThe above '[USER PROVIDED RESEARCH]' is a powerful data source, but YOU are the judge.
+            Current Date: ${currentDate}
+            
+            CONFLICT RESOLUTION RULES:
+            1. CHECK DATES: Compare the date of the [USER PROVIDED RESEARCH] vs the [USER NOTE] (if implicit) vs the Current Date.
+            2. STALE RESEARCH SQUASHING: 
+               - If the Research is > 6 months old (e.g. from 2024 when now is 2026) AND the User Note contains specific, fresh claims (e.g. "Gold hit 4000"), **TRUST THE USER NOTE**.
+               - Assume the user has "breaking news" that the old research missed.
+            3. DEBUNKING: If the [TARGET CLAIMS] (from Stage 1) conflict with your best data (User Note OR Research), explicitly DEBUNK them. (e.g. "Actually, data shows X, not Y").
+            4. If dates are similar, treat Research as ground truth.
+            
+            Refine the draft using the fresher signal.`;
         }
 
         // HEATMAP CONTEXT INJECTION (If enabled in settings)
