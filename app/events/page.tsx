@@ -33,6 +33,10 @@ export default function EventsPage() {
     const [loading, setLoading] = useState(true);
     const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
 
+    const [offset, setOffset] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
+    const LIMIT = 20;
+
     // Filters
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [selectedType, setSelectedType] = useState<string>('all');
@@ -40,11 +44,16 @@ export default function EventsPage() {
     const [selectedSymbol, setSelectedSymbol] = useState<string>('');
     const [selectedSentiment, setSelectedSentiment] = useState<string>('all');
 
-    const fetchEvents = useCallback(async () => {
+    const fetchEvents = useCallback(async (isLoadMore = false) => {
         try {
             setLoading(true);
+            const currentOffset = isLoadMore ? offset : 0;
+
             const params = new URLSearchParams();
             params.append('category', selectedCategory);
+            params.append('limit', LIMIT.toString());
+            params.append('offset', currentOffset.toString());
+
             if (selectedType && selectedType !== 'all') params.append('type', selectedType);
             if (selectedDate) params.append('date', selectedDate);
             if (selectedSymbol) params.append('symbol', selectedSymbol);
@@ -52,9 +61,24 @@ export default function EventsPage() {
 
             const res = await fetch(`/api/events?${params.toString()}`);
             const data = await res.json();
+
             if (data.events) {
-                setEvents(data.events);
+                if (isLoadMore) {
+                    setEvents(prev => [...prev, ...data.events]);
+                    setOffset(prev => prev + LIMIT);
+                } else {
+                    setEvents(data.events);
+                    setOffset(LIMIT);
+                }
+
+                // If we got fewer items than limit, we reached the end
+                if (data.events.length < LIMIT) {
+                    setHasMore(false);
+                } else {
+                    setHasMore(true);
+                }
             }
+
             if (data.eventTypes) {
                 setEventTypes(data.eventTypes);
             }
@@ -63,11 +87,21 @@ export default function EventsPage() {
         } finally {
             setLoading(false);
         }
-    }, [selectedCategory, selectedType, selectedDate]);
+    }, [selectedCategory, selectedType, selectedDate, selectedSymbol, selectedSentiment, offset]);
 
+    // Reset pagination when filters change
     useEffect(() => {
-        fetchEvents();
-    }, [fetchEvents]);
+        setOffset(0);
+        setHasMore(true);
+        // We pass false to reset list
+        fetchEvents(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedCategory, selectedType, selectedDate, selectedSymbol, selectedSentiment]);
+
+    // Initial load handled by filter effect
+    // useEffect(() => {
+    //     fetchEvents();
+    // }, [fetchEvents]);
 
     const clearFilters = () => {
         setSelectedType('all');
@@ -264,6 +298,23 @@ export default function EventsPage() {
                     )}
                 </div>
             </div>
+
+            {/* Load More Button */}
+            {hasMore && events.length > 0 && (
+                <div className="flex justify-center pt-6 pb-12">
+                    <Button
+                        variant="outline"
+                        onClick={() => fetchEvents(true)}
+                        disabled={loading}
+                        className="bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800 min-w-[200px]"
+                    >
+                        {loading ? (
+                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-500 border-t-white mr-2"></div>
+                        ) : null}
+                        Load More Events
+                    </Button>
+                </div>
+            )}
 
             {/* DETAIL MODAL */}
             <Dialog open={!!selectedEvent} onOpenChange={(open) => !open && setSelectedEvent(null)}>

@@ -196,46 +196,77 @@ export async function getPortfolioHistory(
         const todayStr = new Date().toISOString().split('T')[0]
 
         // Bulk fetch all relevant price history
-        // If assetType is filtered, uniqueAssets will only contain that type
+        // Group by asset type to minimize queries (O(Type) instead of O(N))
+        const assetsByType = new Map<string, string[]>()
 
         for (const [key, asset] of uniqueAssets.entries()) {
             if (asset.assetType === 'commodities') continue
 
-            const priceMap = new Map<string, number>()
             let symbolToFetch = asset.symbol
             if (asset.assetType === 'crypto') {
                 symbolToFetch = parseSymbolToBinance(asset.symbol)
             }
 
-            const priceParams = [asset.assetType, symbolToFetch]
-            const priceQuery = `
-        SELECT date, close, adjusted_close 
-        FROM historical_price_data 
-        WHERE asset_type = $1 AND symbol = $2
-        ORDER BY date ASC
-      `
-            const priceRes = await client.query(priceQuery, priceParams)
+            if (!assetsByType.has(asset.assetType)) {
+                assetsByType.set(asset.assetType, [])
+            }
+            assetsByType.get(asset.assetType)!.push(symbolToFetch)
+        }
 
-            priceRes.rows.forEach(row => {
+        // Execute parallel queries for each asset type
+        const fetchPromises = Array.from(assetsByType.entries()).map(async ([type, symbols]) => {
+            const priceQuery = `
+                SELECT symbol, date, close, adjusted_close 
+                FROM historical_price_data 
+                WHERE asset_type = $1 AND symbol = ANY($2)
+                ORDER BY date ASC
+             `
+            const res = await client.query(priceQuery, [type, symbols])
+            return { type, rows: res.rows }
+        })
+
+        const results = await Promise.all(fetchPromises)
+
+        // Process results into map
+        for (const result of results) {
+            const { type, rows } = result
+
+            // We need to map back to the key used in loop: `${assetType}:${symbol}:${currency}`
+            // But here we only have symbol. We need to find which keys match this symbol.
+            // Since uniqueAssets values have the symbol, we can reverse lookup or simpler:
+            // Just populate a temporary map: type:symbol -> date -> price
+
+            const tempMap = new Map<string, Map<string, number>>()
+
+            rows.forEach(row => {
+                const sym = row.symbol.toUpperCase()
+                if (!tempMap.has(sym)) tempMap.set(sym, new Map())
+
                 const dateStr = row.date instanceof Date ? row.date.toISOString().split('T')[0] : row.date
                 const price = parseFloat(row.adjusted_close || row.close)
-                if (price > 0) priceMap.set(dateStr, price)
+                if (price > 0) tempMap.get(sym)!.set(dateStr, price)
             })
 
-            // Fallback for today if missing
-            if (!priceMap.has(todayStr)) {
-                try {
-                    let latestDate = ''
-                    let latestPrice = 0
-                    for (const [d, p] of priceMap.entries()) {
-                        if (d > latestDate) { latestDate = d; latestPrice = p }
-                    }
-                    if (latestPrice > 0) priceMap.set(todayStr, latestPrice)
-                } catch (e) { }
-            }
+            // Now populate the main historicalPriceMap
+            for (const [key, asset] of uniqueAssets.entries()) {
+                if (asset.assetType !== type) continue
 
-            if (priceMap.size > 0) {
-                historicalPriceMap.set(key, priceMap)
+                let lookupSym = asset.symbol
+                if (asset.assetType === 'crypto') lookupSym = parseSymbolToBinance(asset.symbol)
+
+                const priceData = tempMap.get(lookupSym)
+                if (priceData) {
+                    // Fill today's price if missing
+                    if (!priceData.has(todayStr)) {
+                        let latestDate = ''
+                        let latestPrice = 0
+                        for (const [d, p] of priceData.entries()) {
+                            if (d > latestDate) { latestDate = d; latestPrice = p }
+                        }
+                        if (latestPrice > 0) priceData.set(todayStr, latestPrice)
+                    }
+                    historicalPriceMap.set(key, priceData)
+                }
             }
         }
 

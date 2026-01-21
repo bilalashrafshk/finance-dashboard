@@ -105,11 +105,13 @@ export class AIContextService {
      * Legacy support: maintained for backward compatibility.
      */
     static async getContext(symbol: string) {
-        const profile = await this.getCompanyProfile(symbol);
-        const history = await this.getPriceHistoryMetrics(symbol);
-        const quarterly = await this.getQuarterlyEarnings(symbol);
-        const annual = await this.getAnnualEarnings(symbol);
-        const dividend = await this.getDividendInfo(symbol);
+        const [profile, history, quarterly, annual, dividend] = await Promise.all([
+            this.getCompanyProfile(symbol),
+            this.getPriceHistoryMetrics(symbol),
+            this.getQuarterlyEarnings(symbol),
+            this.getAnnualEarnings(symbol),
+            this.getDividendInfo(symbol)
+        ]);
 
         if ('error' in profile) throw new Error(profile.error);
 

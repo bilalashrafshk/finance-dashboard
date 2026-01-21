@@ -8,7 +8,7 @@ const pool = new Pool({
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-export const revalidate = 60; // Revalidate every minute
+export const revalidate = 300; // Revalidate every 5 minutes (was 60s)
 
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
@@ -17,11 +17,17 @@ export async function GET(request: NextRequest) {
     const sentiment = searchParams.get('sentiment');
     const type = searchParams.get('type');
     const category = searchParams.get('category');
-    const limit = parseInt(searchParams.get('limit') || '50');
+    const limit = parseInt(searchParams.get('limit') || '20'); // Lower default to 20
+    const offset = parseInt(searchParams.get('offset') || '0');
 
     const client = await pool.connect();
     try {
-        let query = 'SELECT * FROM notable_events';
+        // Select only necessary columns for the list view
+        // We fetch full details (description etc) in a separate call or just rely on metadata if it's small enough.
+        // Actually, the frontend uses describing/metadata for the card. 
+        // We keep 'metadata' but we might exclude 'description' if it's huge? 
+        // For now, let's just avoid "SELECT *" and select explicitly.
+        let query = 'SELECT id, symbol, event_type, headline, metadata, created_at FROM notable_events';
         const conditions = [];
         const params = [];
 
@@ -38,6 +44,7 @@ export async function GET(request: NextRequest) {
         if (sentiment && sentiment !== 'all') {
             params.push(sentiment);
             // Sentiment is stored in metadata -> ai_analysis -> sentiment for fundamental alerts
+            // We now have an index on this path!
             conditions.push(`metadata->'ai_analysis'->>'sentiment' = $${params.length}`);
         }
 
@@ -57,18 +64,26 @@ export async function GET(request: NextRequest) {
             query += ' WHERE ' + conditions.join(' AND ');
         }
 
-        query += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
+        query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
         params.push(limit);
+        params.push(offset);
 
-        const result = await client.query(query, params);
+        // Parallelize queries
+        const [result, typesResult] = await Promise.all([
+            client.query(query, params),
+            client.query('SELECT DISTINCT event_type FROM notable_events ORDER BY event_type')
+        ]);
 
-        // Also fetch unique event types
-        const typesResult = await client.query('SELECT DISTINCT event_type FROM notable_events ORDER BY event_type');
         const eventTypes = typesResult.rows.map(row => row.event_type);
 
         return NextResponse.json({
             events: result.rows,
-            eventTypes: eventTypes
+            eventTypes: eventTypes,
+            meta: {
+                count: result.rows.length,
+                offset,
+                limit
+            }
         });
     } catch (error) {
         console.error('Database error:', error);

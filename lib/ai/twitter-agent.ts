@@ -259,6 +259,7 @@ export class TwitterAgentService {
            - If user asks about a SECTOR (e.g. "Cement"), plan to use 'getMarketSummary' with 'filter_sector'.
            - If user asks about TIME (e.g. "Year to Date", "last 3 years"), plan to use 'getMarketSummary' with 'timeframe'.
            - If user asks about the MARKET/INDEX, plan to use 'getMarketSummary'.
+           - [CRITICAL] PSYCHOLOGY FILTER: If the User Note or Target Tweet is strictly about PSYCHOLOGY, PRINCIPLES, or PHILOSOPHY (e.g. "patience", "disagreement", "buying stocks is hard") and does NOT explicitly ask for market data -> DO NOT CALL 'getMarketSummary'. Select "No tools needed".
            - If the User Note is already fact-rich, prioritize those facts. If search is needed, make it entity-specific.
            - If user asks about latest NEWS or "Search for X" and it is NOT in the user note, you MUST request "WEB_SEARCH_NEEDED".
         
