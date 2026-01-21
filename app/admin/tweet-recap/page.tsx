@@ -7,22 +7,23 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Copy, Sparkles, Loader2, RefreshCw, Twitter } from 'lucide-react';
+import { Copy, Sparkles, Loader2, Twitter, LayoutGrid, Zap } from 'lucide-react';
 import { toast } from 'sonner';
+
+type ReportType = 'recap' | 'liquidity';
 
 export default function TweetRecapPage() {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [reportType, setReportType] = useState<ReportType>('recap');
     const [loading, setLoading] = useState(false);
     const [recapText, setRecapText] = useState('');
-    const [data, setData] = useState<any>(null);
 
     // Protection: Admin/Staff only
     useEffect(() => {
         if (!authLoading && (!user || (user.role !== 'admin' && user.role !== 'staff'))) {
             toast.error('Unauthorized access');
-            // router.push('/'); // Uncomment to enforce redirect
         }
     }, [user, authLoading, router]);
 
@@ -40,38 +41,37 @@ export default function TweetRecapPage() {
             const result = await response.json();
 
             if (result.success) {
-                const { index, breadth, topGainers, valueLeaders } = result.data;
-                setData(result.data);
+                const { index, breadth, topGainers, topLosers, valueLeaders, sectors } = result.data;
 
-                // Build Tweet String
-                let text = '';
-                const changePct = index?.changePercent || 0;
+                if (reportType === 'recap') {
+                    // NEW DAILY RECAP FORMAT
+                    let text = `📉 Karachi 100: ${index?.price?.toLocaleString() || 'N/A'} (${index?.change >= 0 ? '+' : ''}${index?.change?.toFixed(2) || '0'} | ${index?.changePercent?.toFixed(2) || '0'}%)\n`;
+                    text += `📅 ${result.data.date} | Breadth: ${breadth.gainers}✅ ${breadth.losers}❌ ${breadth.neutral}➖\n\n`;
 
-                if (changePct > 0.5) text += `Karachi 100 Ends on a Bullish Note 🚀\n\n`;
-                else if (changePct > 0) text += `Karachi 100 Closes in the Green 📈\n\n`;
-                else if (changePct < -0.5) text += `Karachi 100 Faces Pressure 📉\n\n`;
-                else if (changePct < 0) text += `Karachi 100 Dips Slightly 🔻\n\n`;
-                else text += `Karachi 100 Remains Flat ⚖️\n\n`;
+                    text += `Top Gainers:\n🚀 `;
+                    text += topGainers.slice(0, 5).map((s: any) => `${s.symbol} ${s.changePercent.toFixed(2)}%`).join(' | ');
 
-                if (index) {
-                    text += `🔹 KSE-100: ${index.price.toLocaleString()} (${index.change >= 0 ? '+' : ''}${index.change.toFixed(2)} | ${index.changePercent.toFixed(2)}%)\n`;
+                    text += `\n\nTop Losers:\n⚠️ `;
+                    text += topLosers.slice(0, 5).map((s: any) => `${s.symbol} ${s.changePercent.toFixed(2)}%`).join(' | ');
+
+                    text += `\n\nSectors: 🟢${sectors[0]?.name} (${sectors[0]?.change.toFixed(2)}%) | 🔴${sectors[sectors.length - 1]?.name} (${sectors[sectors.length - 1]?.change.toFixed(2)}%)`;
+
+                    text += `\n\n#Karachi100 #PSX #PakistanMarket`;
+                    setRecapText(text);
+                } else {
+                    // VOLUME/LIQUIDITY LEADERS FORMAT
+                    let text = `🌊 Liquidity Watch: PSX Value Traded | ${result.data.date}\n\n`;
+                    text += `The top stocks by trading value (Vol × Price) today:\n\n`;
+
+                    valueLeaders.forEach((s: any, i: number) => {
+                        text += `${i + 1}. ${s.symbol}: Rs ${formatCurrency(s.valueTraded)} (${s.changePercent >= 0 ? '+' : ''}${s.changePercent.toFixed(2)}%)\n`;
+                    });
+
+                    text += `\n#PSX #Trading #PakistanEconomy`;
+                    setRecapText(text);
                 }
 
-                text += `🔹 Breadth: 🟢 ${breadth.gainers} | 🔴 ${breadth.losers} | ⚪ ${breadth.neutral}\n\n`;
-
-                text += `🚀 Top Gainers:\n`;
-                topGainers.slice(0, 3).forEach((s: any) => {
-                    text += `• ${s.symbol}: +${s.changePercent.toFixed(2)}%\n`;
-                });
-
-                text += `\n🌊 Value Leaders (Liquidity):\n`;
-                valueLeaders.slice(0, 3).forEach((s: any) => {
-                    text += `• ${s.symbol}: Rs ${formatCurrency(s.valueTraded)} (${s.changePercent >= 0 ? '+' : ''}${s.changePercent.toFixed(2)}%)\n`;
-                });
-
-                text += `\n#PSX #KSE100 #PakistanMarket`;
-                setRecapText(text);
-                toast.success('Recap Generated!');
+                toast.success('Generated!');
             } else {
                 toast.error(result.error || 'Failed to fetch data');
             }
@@ -101,14 +101,12 @@ export default function TweetRecapPage() {
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-4xl font-black tracking-tight text-foreground">
-                        Tweet <span className="text-blue-500">Recap</span> Tool
+                        Tweet <span className="text-blue-500">Recap</span>
                     </h1>
-                    <p className="text-muted-foreground mt-2">Generate tweet-ready market summaries for PSX</p>
+                    <p className="text-muted-foreground mt-2">Generate tweet-ready market summaries for Karachi 100</p>
                 </div>
-                <div className="flex gap-2">
-                    <div className="px-3 py-1 bg-blue-500/10 text-blue-500 rounded-full text-xs font-bold uppercase tracking-widest border border-blue-500/20">
-                        Admin Access
-                    </div>
+                <div className="px-3 py-1 bg-blue-500/10 text-blue-500 rounded-full text-xs font-bold uppercase tracking-widest border border-blue-500/20">
+                    Admin Access
                 </div>
             </div>
 
@@ -120,6 +118,26 @@ export default function TweetRecapPage() {
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="space-y-2">
+                            <label className="text-xs font-bold uppercase text-muted-foreground">Report Type</label>
+                            <div className="grid grid-cols-2 gap-2 p-1 bg-muted/50 rounded-lg border">
+                                <button
+                                    onClick={() => setReportType('recap')}
+                                    className={`py-2 px-1 text-[10px] font-black uppercase tracking-widest rounded-md transition-all flex flex-col items-center gap-1 ${reportType === 'recap' ? 'bg-blue-600 text-white shadow-lg' : 'text-muted-foreground hover:bg-muted'}`}
+                                >
+                                    <LayoutGrid className="w-4 h-4" />
+                                    Daily Recap
+                                </button>
+                                <button
+                                    onClick={() => setReportType('liquidity')}
+                                    className={`py-2 px-1 text-[10px] font-black uppercase tracking-widest rounded-md transition-all flex flex-col items-center gap-1 ${reportType === 'liquidity' ? 'bg-blue-600 text-white shadow-lg' : 'text-muted-foreground hover:bg-muted'}`}
+                                >
+                                    <Zap className="w-4 h-4" />
+                                    Value Leaders
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
                             <label className="text-xs font-bold uppercase text-muted-foreground">Select Date</label>
                             <Input
                                 type="date"
@@ -128,13 +146,14 @@ export default function TweetRecapPage() {
                                 className="h-12 border-blue-500/20 focus:border-blue-500"
                             />
                         </div>
+
                         <Button
                             className="w-full h-14 text-lg font-black bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20 gap-2"
                             onClick={generateTweet}
                             disabled={loading}
                         >
-                            {loading ? <Loader2 className="animate-spin w-5 h-5" /> : <Sparkles className="w-5 h-5" />}
-                            Generate Tweet
+                            {loading ? <Loader2 className="animate-spin w-5 h-5" /> : <Twitter className="w-5 h-5" />}
+                            Generate {reportType === 'recap' ? 'Recap' : 'Liquidity'}
                         </Button>
                     </CardContent>
                 </Card>
@@ -145,7 +164,7 @@ export default function TweetRecapPage() {
                     <CardHeader className="flex flex-row items-center justify-between">
                         <CardTitle className="text-xs uppercase tracking-widest opacity-50 font-black">Tweet Output</CardTitle>
                         {recapText && (
-                            <span className={`text-xs font-bold px-2 py-1 rounded ${recapText.length > 280 ? 'bg-red-500/10 text-red-500' : 'bg-muted'}`}>
+                            <span className={`text-xs font-bold px-2 py-1 rounded ${recapText.length > 280 ? 'bg-amber-500/10 text-amber-500' : 'bg-green-500/10 text-green-500'}`}>
                                 {recapText.length} / 280
                             </span>
                         )}
@@ -156,12 +175,12 @@ export default function TweetRecapPage() {
                                 <Textarea
                                     value={recapText}
                                     onChange={(e) => setRecapText(e.target.value)}
-                                    className="min-h-[320px] text-xl font-medium leading-relaxed bg-transparent border-none focus-visible:ring-0 p-0 resize-none"
+                                    className="min-h-[320px] text-lg font-medium leading-[1.6] bg-transparent border-none focus-visible:ring-0 p-0 resize-none font-sans"
                                 />
                             ) : (
                                 <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground/30">
                                     <Twitter className="w-16 h-16 mb-2 opacity-10" />
-                                    <p className="italic">Click generate to see the recap...</p>
+                                    <p className="italic">Click generate to see the draft...</p>
                                 </div>
                             )}
                         </div>
