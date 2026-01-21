@@ -44,19 +44,28 @@ export default function TweetRecapPage() {
                 const { index, breadth, topGainers, topLosers, valueLeaders, sectors } = result.data;
 
                 if (reportType === 'recap') {
-                    // NEW DAILY RECAP FORMAT
-                    let text = `📉 Karachi 100: ${index?.price?.toLocaleString() || 'N/A'} (${index?.change >= 0 ? '+' : ''}${index?.change?.toFixed(2) || '0'} | ${index?.changePercent?.toFixed(2) || '0'}%)\n`;
-                    text += `📅 ${result.data.date} | Breadth: ${breadth.gainers}✅ ${breadth.losers}❌ ${breadth.neutral}➖\n\n`;
+                    // NEW REFINED DAILY RECAP FORMAT
+                    const changePct = index?.changePercent || 0;
+                    let headline = '';
+                    if (changePct > 0.5) headline = 'Bullish Session';
+                    else if (changePct > 0) headline = 'Green Close';
+                    else if (changePct < -0.5) headline = 'Market Pressure';
+                    else if (changePct < 0) headline = 'Slight Dip';
+                    else headline = 'Flat Session';
 
-                    text += `Top Gainers:\n🚀 `;
-                    text += topGainers.slice(0, 5).map((s: any) => `${s.symbol} ${s.changePercent.toFixed(2)}%`).join(' | ');
+                    let text = `${headline} | ${result.data.date}\n`;
+                    text += `Index: ${index?.price?.toLocaleString() || 'N/A'} (${index?.change >= 0 ? '+' : ''}${index?.change?.toFixed(2) || '0'} | ${index?.changePercent?.toFixed(2) || '0'}%)\n`;
+                    text += `Breadth: ${breadth.gainers} Up, ${breadth.losers} Down\n\n`;
 
-                    text += `\n\nTop Losers:\n⚠️ `;
-                    text += topLosers.slice(0, 5).map((s: any) => `${s.symbol} ${s.changePercent.toFixed(2)}%`).join(' | ');
+                    text += `Lead: `;
+                    text += topGainers.slice(0, 3).map((s: any) => `${s.symbol} ${s.changePercent.toFixed(2)}%`).join(' | ');
 
-                    text += `\n\nSectors: 🟢${sectors[0]?.name} (${sectors[0]?.change.toFixed(2)}%) | 🔴${sectors[sectors.length - 1]?.name} (${sectors[sectors.length - 1]?.change.toFixed(2)}%)`;
+                    text += `\nLag: `;
+                    text += topLosers.slice(0, 3).map((s: any) => `${s.symbol} ${s.changePercent.toFixed(2)}%`).join(' | ');
 
-                    text += `\n\n#Karachi100 #PSX #PakistanMarket`;
+                    text += `\n\nSec: ${sectors[0]?.name} ${sectors[0]?.change.toFixed(2)}% | ${sectors[sectors.length - 1]?.name} ${sectors[sectors.length - 1]?.change.toFixed(2)}%`;
+
+                    text += `\n\n#Karachi100 #PSX`;
                     setRecapText(text);
                 } else {
                     // VOLUME/LIQUIDITY LEADERS FORMAT
