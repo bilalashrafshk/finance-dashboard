@@ -9,6 +9,7 @@ export interface MarketHeatmapStock {
     changePercent: number | null
     sector: string | null
     industry: string | null
+    volume: number
 }
 
 export interface MarketHeatmapResult {
@@ -106,7 +107,7 @@ export class MarketHeatmapService {
             -- However, the user wants "daily movement context". 
             
             target_prices AS (
-                SELECT symbol, close as price
+                SELECT symbol, close as price, volume
                 FROM historical_price_data
                 WHERE asset_type = 'pk-equity' AND date = $2
             ),
@@ -123,6 +124,7 @@ export class MarketHeatmapService {
                 ts.sector,
                 ts.industry,
                 tp.price as current_price,
+                tp.volume,
                 sp.price as start_price
             FROM top_stocks ts
             LEFT JOIN target_prices tp ON ts.symbol = tp.symbol
@@ -173,37 +175,14 @@ export class MarketHeatmapService {
                 previousPrice,
                 changePercent,
                 sector: row.sector || 'Others',
-                industry: row.industry
+                industry: row.industry,
+                volume: row.volume ? parseFloat(row.volume) : 0
             }
         })
 
-        // Process Sectors (Market Cap Weighted based on selected stocks)
-        const sectorMap = new Map<string, { currentMcapSum: number, startMcapSum: number }>()
+        const sectors = MarketHeatmapService.calculateSectorPerformance(stocks)
 
-        stocks.forEach(stock => {
-            if (!stock.sector) return
-            // Calculate implied shares to get previous market cap
-            // Or typically just: prevMcap = currentMcap / (1 + changePct/100)
-            // But let's stick to the Price method:
-            const shares = stock.price > 0 ? stock.marketCap / stock.price : 0
-            const startMcap = stock.previousPrice ? shares * stock.previousPrice : stock.marketCap
-
-            const entry = sectorMap.get(stock.sector) || { currentMcapSum: 0, startMcapSum: 0 }
-            entry.currentMcapSum += stock.marketCap
-            entry.startMcapSum += startMcap
-            sectorMap.set(stock.sector, entry)
-        })
-
-        const sectors: MarketSectorPerformance[] = Array.from(sectorMap.entries()).map(([name, data]) => {
-            const change = data.startMcapSum > 0
-                ? ((data.currentMcapSum - data.startMcapSum) / data.startMcapSum) * 100
-                : 0
-            return {
-                name,
-                change,
-                volume: 'N/A'
-            }
-        }).sort((a, b) => b.change - a.change)
+        // Process Indices
 
         // Process Indices
         const indices: MarketIndexData[] = indexRes.rows.length > 0 ? [{
@@ -221,6 +200,35 @@ export class MarketHeatmapService {
             date,
             timeframe
         }
+    }
+
+    /**
+     * Helper to calculate sector performance from a list of stocks
+     */
+    static calculateSectorPerformance(stocks: MarketHeatmapStock[]): MarketSectorPerformance[] {
+        const sectorMap = new Map<string, { currentMcapSum: number, startMcapSum: number }>()
+
+        stocks.forEach(stock => {
+            if (!stock.sector) return
+            const shares = stock.price > 0 ? stock.marketCap / stock.price : 0
+            const startMcap = stock.previousPrice ? shares * stock.previousPrice : stock.marketCap
+
+            const entry = sectorMap.get(stock.sector) || { currentMcapSum: 0, startMcapSum: 0 }
+            entry.currentMcapSum += stock.marketCap
+            entry.startMcapSum += startMcap
+            sectorMap.set(stock.sector, entry)
+        })
+
+        return Array.from(sectorMap.entries()).map(([name, data]) => {
+            const change = data.startMcapSum > 0
+                ? ((data.currentMcapSum - data.startMcapSum) / data.startMcapSum) * 100
+                : 0
+            return {
+                name,
+                change,
+                volume: 'N/A'
+            }
+        }).sort((a, b) => b.change - a.change)
     }
 
     /**

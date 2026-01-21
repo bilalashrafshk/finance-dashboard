@@ -5,6 +5,8 @@ import { generateHeadline, analyzeAnnouncement, parseAIResponse, sendToFundament
 import { sendMarketEventAlert } from '@/lib/notifications/discord';
 import { getPromptSlugByTitle } from '@/lib/ai/prompt-router';
 import { AIContextService } from '@/lib/ai/ai-context-service';
+import { RoutineReportService } from '@/lib/market/routine-report-service';
+import { getPool } from '@/lib/db';
 import { TwitterAgentService } from '@/lib/ai/twitter-agent';
 import { TwitterPublisher } from '@/lib/services/twitter-publisher';
 
@@ -36,10 +38,15 @@ export async function GET(request: Request) {
         `);
 
         if (pendingRes.rows.length === 0) {
+            // Check for Daily Recap even if queue is empty
+            await handleDailyRecap(client);
             return NextResponse.json({ success: true, count: 0, message: 'Queue empty' });
         }
 
         console.log(`[Event Queue] Processing ${pendingRes.rows.length} events...`);
+
+        // Check for Daily Recap
+        await handleDailyRecap(client);
 
         let processedCount = 0;
         let fundamentalProcessedCount = 0;
@@ -202,5 +209,44 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     } finally {
         client.release();
+    }
+}
+
+/**
+ * Trigger Daily Recap if the time is right (around 4:00 PM PKT)
+ */
+async function handleDailyRecap(client: any) {
+    try {
+        // 1. Get current time in PKT
+        const now = new Date();
+        const pktOffset = 5 * 60; // UTC+5
+        const pktTime = new Date(now.getTime() + (pktOffset + now.getTimezoneOffset()) * 60000);
+
+        const hour = pktTime.getHours();
+        const minute = pktTime.getMinutes();
+        const todayStr = pktTime.toISOString().split('T')[0];
+
+        // 2. We trigger between 4:00 PM and 4:15 PM PKT
+        if (hour === 16 && minute >= 0 && minute <= 15) {
+            // 3. Check if we already sent it today
+            const checkRes = await client.query(
+                "SELECT value FROM alert_configs WHERE key = 'last_daily_recap_sent_date'"
+            );
+            const lastSent = checkRes.rows[0]?.value;
+
+            if (lastSent !== todayStr) {
+                console.log(`[Daily Recap] Triggering reports for ${todayStr}...`);
+                await RoutineReportService.pushDailyReports();
+
+                // 4. Mark as sent
+                await client.query(`
+                    INSERT INTO alert_configs (key, value) 
+                    VALUES ('last_daily_recap_sent_date', $1)
+                    ON CONFLICT (key) DO UPDATE SET value = $1
+                `, [todayStr]);
+            }
+        }
+    } catch (err) {
+        console.error('[Daily Recap] Trigger failed:', err);
     }
 }

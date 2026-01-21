@@ -22,7 +22,7 @@ export function MarketHeatmapLayout() {
     const [startDate, setStartDate] = useState<string>("") // Start Date (for Custom)
     const [selectedSector, setSelectedSector] = useState<string>('all')
     const [sizeMode, setSizeMode] = useState<SizeMode>('marketCap')
-    const [stockLimit, setStockLimit] = useState<'100' | '500'>('100')
+    const [stockLimit, setStockLimit] = useState<'100' | '1000'>('100')
 
     const [data, setData] = useState<{
         stocks: MarketHeatmapStock[],
@@ -158,10 +158,23 @@ export function MarketHeatmapLayout() {
                     <h2 className="text-2xl font-bold tracking-tight">Market Heatmap</h2>
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <span>PSX {stockLimit === '100' ? 'Top 100' : 'All'} Companies</span>
-                        {data?.count !== undefined && (
+                        {data?.stocks && (
                             <>
                                 <span>•</span>
-                                <span>Showing {data.count} Stocks</span>
+                                <span className="flex items-center gap-1">
+                                    <span className="w-2 h-2 rounded-full bg-green-500" />
+                                    {data.stocks.filter(s => (s.changePercent || 0) > 0).length} Gains
+                                </span>
+                                <span>•</span>
+                                <span className="flex items-center gap-1">
+                                    <span className="w-2 h-2 rounded-full bg-red-500" />
+                                    {data.stocks.filter(s => (s.changePercent || 0) < 0).length} Losers
+                                </span>
+                                <span>•</span>
+                                <span className="flex items-center gap-1">
+                                    <span className="w-2 h-2 rounded-full bg-zinc-400" />
+                                    {data.stocks.filter(s => (s.changePercent || 0) === 0).length} Neutral
+                                </span>
                             </>
                         )}
                         <span>•</span>
@@ -219,10 +232,10 @@ export function MarketHeatmapLayout() {
                             Top 100
                         </Button>
                         <Button
-                            variant={stockLimit === '500' ? 'secondary' : 'ghost'}
+                            variant={stockLimit === '1000' ? 'secondary' : 'ghost'}
                             size="sm"
                             className="h-7 text-xs px-3"
-                            onClick={() => setStockLimit('500')}
+                            onClick={() => setStockLimit('1000')}
                         >
                             All
                         </Button>
