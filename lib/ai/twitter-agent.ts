@@ -280,9 +280,7 @@ export class TwitterAgentService {
           - USER FACTS: [List numbers/facts provided by the user]
         - DATA PLAN: [Tool plan or "No tools needed, user context is sufficient"]
         - SEARCH_NEEDED: [YES/NO] - Do you strictly require external web search for recent news?
-        - SEARCH_QUERIES: [List 3 specific google queries if YES]
-          *CRITICAL RULE*: If searching for an asset price, you MUST include one query for: "Current Price of [Asset] ${currentDate}".
-          *This prevents getting old "Outlook" articles instead of live data.*
+        - SEARCH_QUERIES: [List 3 specific google queries if YES] - *IMPORTANT: Include Month/Year (${currentDate}) to avoid stale results.*
         
         DO NOT provide the final draft. Provide only the Extraction and Data Plan.`;
 

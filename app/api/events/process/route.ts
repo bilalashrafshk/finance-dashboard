@@ -180,12 +180,6 @@ export async function GET(request: Request) {
                         if (eventTypeLabel === 'VOLUME_SURGE' && configs.auto_tweet_vol === true) shouldTweet = true;
 
                         if (shouldTweet) {
-                            // FORCE DISABLE TWITTER PUSH AS PER USER REQUEST
-                            console.log(`[Event Process] Automated tweet logic triggered but DISABLED for ${event.symbol}.`);
-                            shouldTweet = false;
-                        }
-
-                        if (shouldTweet) {
                             try {
                                 console.log(`[Event Process] Starting automated tweet for ${event.symbol} ${eventTypeLabel}...`);
 
