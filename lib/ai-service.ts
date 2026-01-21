@@ -245,38 +245,60 @@ export async function sendToFundamentalDiscord(task: any, aiResult: any, sector:
 
     const sentimentEmoji = (aiResult.sentiment || '').includes('Bullish') ? '🟢' : ((aiResult.sentiment || '').includes('Bearish') ? '🔴' : '⚪');
 
-    // Format the Scoop bullets
-    const scoopText = Array.isArray(aiResult.scoop)
-        ? aiResult.scoop.map((item: string) => `• ${item}`).join('\n\n')
-        : `• ${aiResult.scoop}`;
-
     // Twitter-Ready Block (Headline + Summary)
     const twitterHeadline = aiResult.headline.replace(/^[^\w\s]+/, '').trim();
     const twitterPost = aiResult.verdict || '';
 
-    const content = `**${sentimentEmoji} ${twitterHeadline}**
-*(${finalSector})*
+    // Truncate Tweet Intent Text to save space in Discord message (URL counts towards limit)
+    // We cap it at 500 chars for the URL to leave room for the actual Discord message content
+    const fullTweetText = twitterHeadline + '\n\n' + twitterPost;
+    const tweetIntentText = fullTweetText.length > 500 ? fullTweetText.substring(0, 497) + '...' : fullTweetText;
 
-${twitterPost}
+    const documentLink = task.attachments?.length > 0 ? `[📄 Open Document](${task.attachments[0]})` : '';
+    const twitterLink = `[Post to X](https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetIntentText)})`;
 
----
-**The Intelligence Scoop**
-${scoopText}
+    // Construct the fixed parts first (Headline, Analyst Note, Footer)
+    // We calculate their length to know how much space is left for the "Scoop" bullets
+    const baseContentStart = `**${sentimentEmoji} ${twitterHeadline}**\n*(${finalSector})*\n\n${twitterPost}\n\n---\n**The Intelligence Scoop**\n`;
+    const baseContentEnd = `\n\n**Valuation Insight**\n"${aiResult.market_context?.valuation || 'N/A'}"\n\n**Momentum Pulse**\n"${aiResult.market_context?.momentum || 'N/A'}"\n\n${documentLink}\n\n${twitterLink}`;
 
-**Valuation Insight**
-"${aiResult.market_context?.valuation || 'N/A'}"
+    const MAX_DISCORD_LEN = 1950; // Safety buffer
+    const usedLength = baseContentStart.length + baseContentEnd.length;
+    const availableSpace = MAX_DISCORD_LEN - usedLength;
 
-**Momentum Pulse**
-"${aiResult.market_context?.momentum || 'N/A'}"
+    // Format the Scoop bullets
+    let scoopText = '';
+    const scoopList = Array.isArray(aiResult.scoop) ? aiResult.scoop : [aiResult.scoop];
 
-${task.attachments?.length > 0 ? `[📄 Open Document](${task.attachments[0]})` : ''}
+    if (availableSpace > 50) { // Only add scoop if we have decent space
+        for (const item of scoopList) {
+            const bullet = `• ${item}`;
+            if ((scoopText.length + bullet.length + 2) < availableSpace) {
+                scoopText += (scoopText ? '\n\n' : '') + bullet;
+            } else {
+                // Formatting optimization: if we can't fit the next bullet, check if we have nothing yet
+                if (scoopText.length === 0) {
+                    scoopText = bullet.substring(0, availableSpace - 3) + '...';
+                }
+                // Otherwise, stop adding bullets
+                break;
+            }
+        }
+    } else {
+        scoopText = "(Full details in attached document)";
+    }
 
-[Post to X](https://twitter.com/intent/tweet?text=${encodeURIComponent(twitterHeadline + '\n\n' + twitterPost)})
-`;
+    const content = `${baseContentStart}${scoopText}${baseContentEnd}`;
 
     try {
         await axios.post(webhookUrl, { content });
     } catch (err: any) {
         console.error(`❌ Discord Error (${task.symbol}):`, err.message);
+        // Fallback: If it STILL fails (maybe weird characters?), try sending just the headline
+        if (err.message.includes('400')) {
+            try {
+                await axios.post(webhookUrl, { content: `**${sentimentEmoji} ${twitterHeadline}**\n*(${finalSector})*\n\n(Content too long for Discord - see Dashboard)` });
+            } catch (e) { /* ignore */ }
+        }
     }
 }

@@ -280,7 +280,9 @@ export class TwitterAgentService {
           - USER FACTS: [List numbers/facts provided by the user]
         - DATA PLAN: [Tool plan or "No tools needed, user context is sufficient"]
         - SEARCH_NEEDED: [YES/NO] - Do you strictly require external web search for recent news?
-        - SEARCH_QUERIES: [List 3 specific google queries if YES] - *IMPORTANT: Include Month/Year (${currentDate}) to avoid stale results.*
+        - SEARCH_QUERIES: [List 3 specific google queries if YES]
+          *CRITICAL RULE*: If searching for an asset price, you MUST include one query for: "Current Price of [Asset] ${currentDate}".
+          *This prevents getting old "Outlook" articles instead of live data.*
         
         DO NOT provide the final draft. Provide only the Extraction and Data Plan.`;
 
@@ -381,8 +383,11 @@ export class TwitterAgentService {
             2. STALE RESEARCH SQUASHING: 
                - If the Research is > 6 months old (e.g. from 2024 when now is 2026) AND the User Note contains specific, fresh claims (e.g. "Gold hit 4000"), **TRUST THE USER NOTE**.
                - Assume the user has "breaking news" that the old research missed.
-            3. DEBUNKING: If the [TARGET CLAIMS] (from Stage 1) conflict with your best data (User Note OR Research), explicitly DEBUNK them. (e.g. "Actually, data shows X, not Y").
-            4. If dates are similar, treat Research as ground truth.
+            3. "FORECAST != FACT" FILTER:
+               - If a research snippet says "forecast", "predicted", "projected", "seen rising to", or "outlook", DO NOT treat that number as the *current* price. It is a guess.
+               - ONLY use numbers labeled as "is currently", "trading at", "hit", or "reached" as current facts.
+            4. DEBUNKING: If the [TARGET CLAIMS] (from Stage 1) conflict with your best data (User Note OR Research), explicitly DEBUNK them. (e.g. "Actually, data shows X, not Y").
+            5. If dates are similar, treat Research as ground truth.
             
             Refine the draft using the fresher signal.`;
         }
