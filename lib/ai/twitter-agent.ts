@@ -222,7 +222,12 @@ export class TwitterAgentService {
         [STYLING INSTRUCTIONS] 
         - Target: ${mode === 'briefing' ? 'Structured news briefing with headers' : 'Engaging social media post'}
         - Length: ${postFormat === 'short' ? 'STRICTLY UNDER 280 characters' : 'Detailed/Long-form'}
-        ${mode === 'reply' ? '- Context: This is a REPLY to a specific user. Maintain conversation flow.' : ''}
+        ${mode === 'reply' ? `
+        [REPLY PROTOCOL]
+        - HIERARCHY: [USER NOTE] is your BOSS (Obey). [TARGET TWEET] is your PEER (Add Value).
+        - ANTI-ECHO: Do NOT regurgitate the [TARGET TWEET]'s claims/stats. They know what they wrote.
+        - "YES, AND..." Rule: If agreeing, provide NEW data/context. NEVER repeat their stats (e.g. if they say "5.6% inflation", don't say "5.6% inflation").
+        - DISAGREEMENT: Be polite but factual.` : ''}
         ${mode === 'briefing' ? '- Note: Use factual, informative headers like ### The Intelligence Scoop' : ''}
         - PROHIBITION: DO NOT mention "Google Search", "context", or "data provided". Report findings as your own.
         `;
