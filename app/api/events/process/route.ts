@@ -89,7 +89,28 @@ export async function GET(request: Request) {
                         [MC_THRESHOLD_RANK]
                     );
                     const topSymbols = topCompaniesRes.rows.map((r: any) => r.symbol);
-                    const isPrioritySymbol = topSymbols.includes(event.symbol);
+
+                    const priorityKeywordsRes = await client.query('SELECT value FROM alert_configs WHERE key = $1', ['priority_keywords']);
+                    let PRIORITY_KEYWORDS: string[] = [];
+                    if (priorityKeywordsRes.rows.length > 0) {
+                        PRIORITY_KEYWORDS = Array.isArray(priorityKeywordsRes.rows[0].value)
+                            ? priorityKeywordsRes.rows[0].value
+                            : JSON.parse(priorityKeywordsRes.rows[0].value);
+                    }
+
+                    const priorityWhitelistRes = await client.query('SELECT value FROM alert_configs WHERE key = $1', ['priority_whitelist']);
+                    let PRIORITY_WHITELIST: string[] = [];
+                    if (priorityWhitelistRes.rows.length > 0) {
+                        PRIORITY_WHITELIST = Array.isArray(priorityWhitelistRes.rows[0].value)
+                            ? priorityWhitelistRes.rows[0].value
+                            : JSON.parse(priorityWhitelistRes.rows[0].value);
+                    }
+
+                    // Check if symbol is a "Priority Symbol" (Top N market cap OR Whitelisted OR Priority Keyword)
+                    const isWhitelisted = PRIORITY_WHITELIST.includes(event.symbol);
+                    const isPrioritySymbol = topSymbols.includes(event.symbol) ||
+                        isWhitelisted ||
+                        PRIORITY_KEYWORDS.some(k => task.title?.toLowerCase().includes(k.toLowerCase()));
 
                     const promptSlug = getPromptSlugByTitle(task.title);
                     const promptRes = await client.query("SELECT content FROM ai_prompts WHERE slug = $1", [promptSlug]);
@@ -102,10 +123,51 @@ export async function GET(request: Request) {
                         console.warn(`[Event Queue] No context for ${event.symbol}`);
                     }
 
+                    let aiResult: any;
+                    let finalHeadline = task.title;
+
                     // C. AI Synthesis (This is the slow part)
-                    const disableMultimodal = !GLOBAL_MULTIMODAL || !isPrioritySymbol;
-                    const { text: rawAiResult } = await analyzeAnnouncement(systemPrompt, context, task, { disableMultimodal, modelName });
-                    const aiResult = parseAIResponse(rawAiResult);
+                    // Logic:
+                    // If GLOBAL_MULTIMODAL is TRUE -> Analyze everything (expensive mode)
+                    // If GLOBAL_MULTIMODAL is FALSE -> 
+                    //    - If Priority Symbol: Analyze (using text only or minimal resources)
+                    //    - If NOT Priority Symbol: SKIP AI ENTIRELY (Raw Alert)
+
+                    if (!GLOBAL_MULTIMODAL && !isPrioritySymbol) {
+                        console.log(`⚡ Optimization: Skipping AI for non-priority symbol ${event.symbol}. Sending Raw Alert.`);
+
+                        // Construct "Raw" Analysis Object
+                        aiResult = {
+                            headline: task.title, // Use original title
+                            verdict: "See attached filing for details.",
+                            sentiment: "Neutral",
+                            market_context: {
+                                valuation: "N/A",
+                                momentum: "N/A"
+                            },
+                            is_raw_alert: true // Flag for frontend/discord to handle differently if needed
+                        };
+                    } else {
+                        // Perform AI Analysis (Standard Flow)
+                        // If !GLOBAL_MULTIMODAL, disableMultimodal param tells AI service to skip PDF downloading
+                        const disableMultimodal = !GLOBAL_MULTIMODAL; // Only disable if GLOBAL_MULTIMODAL is false
+                        const { text: rawAiResult } = await analyzeAnnouncement(systemPrompt, context, task, { disableMultimodal, modelName });
+
+                        try {
+                            aiResult = parseAIResponse(rawAiResult);
+                            if (aiResult.headline) finalHeadline = aiResult.headline;
+                        } catch (e) {
+                            console.error('Failed to parse AI response', e);
+                            // Fallback to raw if parsing fails
+                            aiResult = {
+                                headline: task.title,
+                                verdict: "AI parsing failed. See filing.",
+                                sentiment: "Neutral",
+                                market_context: {},
+                                is_raw_alert: true
+                            };
+                        }
+                    }
 
                     // D. Push to Notable Events & Discord
                     const sector = (context as any)?.meta?.sector || 'General';
@@ -117,7 +179,7 @@ export async function GET(request: Request) {
                     `, [
                         event.symbol,
                         'fundamental_alert',
-                        aiResult.headline,
+                        finalHeadline, // Use finalHeadline which might be from AI or raw
                         aiResult.verdict,
                         JSON.stringify({
                             ai_analysis: aiResult,

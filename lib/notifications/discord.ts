@@ -12,6 +12,7 @@ export interface DiscordEmbed {
     timestamp?: string;
     footer?: { text: string; icon_url?: string };
     thumbnail?: { url: string };
+    image?: { url: string };
 }
 
 import { getPool } from '@/lib/db';
@@ -94,6 +95,11 @@ export async function sendMarketEventAlert(event: {
 
     const isVolume = event.type === 'VOLUME_SURGE';
 
+    // Construct Dynamic Chart URL
+    // Format: https://www.convictionpays.com/api/og/chart?symbol=PPL&price=100&title=VERIFICATION
+    const baseUrl = 'https://www.convictionpays.com/api/og/chart';
+    const chartUrl = `${baseUrl}?symbol=${encodeURIComponent(event.symbol)}&price=${event.price}&title=${encodeURIComponent(event.type.replace(/_/g, ' '))}`;
+
     const embed: DiscordEmbed = {
         title: `${isVolume ? '📊' : '🚀'} ${event.type}: $${event.symbol}`,
         description: `${event.headline}\n\n[Post to X](https://twitter.com/intent/tweet?text=${encodeURIComponent(event.headline + ' $' + event.symbol)})`,
@@ -112,6 +118,7 @@ export async function sendMarketEventAlert(event: {
                 inline: true
             },
         ],
+        image: { url: chartUrl }, // Attach the dynamic chart
         timestamp: new Date().toISOString(),
         footer: {
             text: 'Risk Metric Dashboard Alerts',

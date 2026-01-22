@@ -136,6 +136,14 @@ export async function GET(request: Request) {
             existRes.rows.forEach((row: any) => existingMap.add(`${row.symbol}|${row.title}`));
         }
 
+        const priorityWhitelistRes = await client.query('SELECT value FROM alert_configs WHERE key = $1', ['priority_whitelist']);
+        let PRIORITY_WHITELIST: string[] = [];
+        if (priorityWhitelistRes.rows.length > 0) {
+            PRIORITY_WHITELIST = Array.isArray(priorityWhitelistRes.rows[0].value)
+                ? priorityWhitelistRes.rows[0].value
+                : JSON.parse(priorityWhitelistRes.rows[0].value);
+        }
+
         const tasks: any[] = [];
         let newlyQueuedCount = 0;
         let skippedCount = 0;
@@ -160,23 +168,51 @@ export async function GET(request: Request) {
                 "transmission of annual report", "notice of agm", "notice of eogm"
             ];
 
-            const isPrioritySymbol = topSymbols.includes(cand.symbol);
+            // --- NEW FILTER LOGIC (Modified Jan 22 2026) ---
+            // 1. Explicit Ignore List (Daily Dividends, etc.) - Takes PRECEDENCE
+            const isIgnored = LOCAL_IGNORE_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()));
 
-            if (LOCAL_IGNORE_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
-                passed = false;
-            } else if (CRITICAL_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
-                passed = true;
-            } else if (PRIORITY_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
+            if (isIgnored) {
+                // console.log(`🚫 Skipped (Ignored): ${cand.title}`); // Removed for brevity in logs
+                await client.query(
+                    `INSERT INTO event_queue (symbol, event_type, trigger_value, previous_value, metadata, status, processed_at)
+                     VALUES ($1, $2, $3, $4, $5, 'SKIPPED', NOW())`,
+                    [cand.symbol, 'fundamental_alert', 0, 0, JSON.stringify(cand)]
+                );
+                continue;
+            }
+
+            // 2. Critical Keywords (Defaults + Saved Configs) - Bypass all checks
+            // Added 'Dividend' to CRITICAL_KEYWORDS to ensure dividends are caught if not ignored above
+            // CRITICAL_KEYWORDS now checked AFTER ignore keywords
+            const isPrioritized = PRIORITY_KEYWORDS.some(k => titleLower.includes(k.toLowerCase())) ||
+                CRITICAL_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()));
+
+            // 3. Triage & Rank Logic
+            const isWhitelisted = PRIORITY_WHITELIST.includes(cand.symbol);
+            let isPrioritySymbol = topSymbols.includes(cand.symbol) || isWhitelisted;
+
+            if (isPrioritized) {
                 passed = true;
             } else if (titleLower.includes("disclosure of interest") && isPrioritySymbol) {
                 passed = true;
             } else {
+                // If it's a small/mid cap and NOT a priority keyword match and NOT whitelisted, skip triage to save cost
+                if (!isPrioritySymbol && !AI_TRIAGE_MID_SMALL) {
+                    // console.log(`💰 Skipped (Cost Saving): ${cand.symbol}`);
+                    await client.query(
+                        `INSERT INTO event_queue (symbol, event_type, trigger_value, previous_value, metadata, status, processed_at)
+                         VALUES ($1, $2, $3, $4, $5, 'SKIPPED', NOW())`,
+                        [cand.symbol, 'fundamental_alert', 0, 0, JSON.stringify(cand)]
+                    );
+                    continue;
+                }
+
                 // Tier 3: AI Triage for the "Grey Area"
                 // ONLY if the symbol is priority OR user enabled mid/small cap triage
                 if (isPrioritySymbol || AI_TRIAGE_MID_SMALL) {
-                    passed = await triageAnnouncement(cand.title, modelName);
-                } else {
-                    passed = false; // Skip AI triage for non-priority stocks unless enabled
+                    const isSignificant = await triageAnnouncement(cand.title, modelName);
+                    passed = isSignificant;
                 }
             }
 
