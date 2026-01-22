@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { Pool } from 'pg';
 import { getEventHeadlinePrompt } from '@/lib/ai-prompts';
 import { generateHeadline, analyzeAnnouncement, parseAIResponse, sendToFundamentalDiscord } from '@/lib/ai-service';
-import { sendMarketEventAlert } from '@/lib/notifications/discord';
+import { sendMarketEventAlert, sendDiscordNotification } from '@/lib/notifications/discord';
 import { getPromptSlugByTitle } from '@/lib/ai/prompt-router';
 import { AIContextService } from '@/lib/ai/ai-context-service';
 import { RoutineReportService } from '@/lib/market/routine-report-service';
@@ -106,11 +106,19 @@ export async function GET(request: Request) {
                             : JSON.parse(priorityWhitelistRes.rows[0].value);
                     }
 
+                    // Define Critical Keywords (Hardcoded as they are in Discovery)
+                    // These are keywords that are so important they make a stock "Priority" even if small cap
+                    // UPDATED: User explicitly requested NOT to do multimodal for these on small caps.
+                    // const CRITICAL_KEYWORDS = ["Material Information", "Discovery", "Production", "Financial Results", "Board Meeting", "Dividend"];
+
                     // Check if symbol is a "Priority Symbol" (Top N market cap OR Whitelisted OR Priority Keyword)
+                    // REMOVED CRITICAL_KEYWORDS from this check.
                     const isWhitelisted = PRIORITY_WHITELIST.includes(event.symbol);
+                    const isKeywordMatch = PRIORITY_KEYWORDS.some(k => task.title?.toLowerCase().includes(k.toLowerCase()));
+
                     const isPrioritySymbol = topSymbols.includes(event.symbol) ||
                         isWhitelisted ||
-                        PRIORITY_KEYWORDS.some(k => task.title?.toLowerCase().includes(k.toLowerCase()));
+                        isKeywordMatch;
 
                     const promptSlug = getPromptSlugByTitle(task.title);
                     const promptRes = await client.query("SELECT content FROM ai_prompts WHERE slug = $1", [promptSlug]);
@@ -126,32 +134,21 @@ export async function GET(request: Request) {
                     let aiResult: any;
                     let finalHeadline = task.title;
 
-                    // C. AI Synthesis (This is the slow part)
-                    // Logic:
-                    // If GLOBAL_MULTIMODAL is TRUE -> Analyze everything (expensive mode)
-                    // If GLOBAL_MULTIMODAL is FALSE -> 
-                    //    - If Priority Symbol: Analyze (using text only or minimal resources)
-                    //    - If NOT Priority Symbol: SKIP AI ENTIRELY (Raw Alert)
+                    // C. AI Synthesis Logic (Strict: Full Multimodal OR Raw Alert. No Text-Only.)
+                    // 1. Check Eligibility: Must be Priority Symbol AND Global Multimodal must be ON.
+                    //    (Priority Symbol = Top 100 OR Whitelist OR Priority/Critical Keyword)
 
-                    if (!GLOBAL_MULTIMODAL && !isPrioritySymbol) {
-                        console.log(`⚡ Optimization: Skipping AI for non-priority symbol ${event.symbol}. Sending Raw Alert.`);
-
-                        // Construct "Raw" Analysis Object
-                        aiResult = {
-                            headline: task.title, // Use original title
-                            verdict: "See attached filing for details.",
-                            sentiment: "Neutral",
-                            market_context: {
-                                valuation: "N/A",
-                                momentum: "N/A"
-                            },
-                            is_raw_alert: true // Flag for frontend/discord to handle differently if needed
-                        };
-                    } else {
-                        // Perform AI Analysis (Standard Flow)
-                        // If !GLOBAL_MULTIMODAL, disableMultimodal param tells AI service to skip PDF downloading
-                        const disableMultimodal = !GLOBAL_MULTIMODAL; // Only disable if GLOBAL_MULTIMODAL is false
-                        const { text: rawAiResult } = await analyzeAnnouncement(systemPrompt, context, task, { disableMultimodal, modelName });
+                    if (GLOBAL_MULTIMODAL && isPrioritySymbol) {
+                        // --- FULL AI ANALYSIS (Multimodal) ---
+                        const { text: rawAiResult } = await analyzeAnnouncement(
+                            systemPrompt,
+                            context,
+                            task,
+                            {
+                                disableMultimodal: false, // Always try full multimodal
+                                modelName
+                            }
+                        );
 
                         try {
                             aiResult = parseAIResponse(rawAiResult);
@@ -163,31 +160,66 @@ export async function GET(request: Request) {
                                 headline: task.title,
                                 verdict: "AI parsing failed. See filing.",
                                 sentiment: "Neutral",
-                                market_context: {},
                                 is_raw_alert: true
                             };
                         }
+                    } else {
+                        // --- RAW ALERT (Skip AI) ---
+                        // Occurs if:
+                        // 1. Global Multimodal is OFF (User disabled AI globally)
+                        // 2. Stock is not Priority (Small cap, generic news)
+                        console.log(`⚡ Optimization: Raw Alert for ${event.symbol} (Priority: ${isPrioritySymbol}, Multimodal: ${GLOBAL_MULTIMODAL})`);
+
+                        aiResult = {
+                            headline: task.title,
+                            verdict: "See attached filing for details.",
+                            sentiment: "Neutral",
+                            is_raw_alert: true
+                        };
                     }
 
                     // D. Push to Notable Events & Discord
                     const sector = (context as any)?.meta?.sector || 'General';
-                    await sendToFundamentalDiscord(task, aiResult, sector);
+
+                    // Allow Generic/Other sector for now
+                    const sectorSlug = sector === 'General' ? 'general' : sector;
 
                     await client.query(`
-                        INSERT INTO notable_events (symbol, event_type, headline, description, created_at, metadata)
-                        VALUES ($1, $2, $3, $4, NOW(), $5)
+                        INSERT INTO notable_events (symbol, event_type, headline, summary, metadata, created_at)
+                        VALUES ($1, $2, $3, $4, $5, NOW())
+                        ON CONFLICT (id) DO UPDATE SET headline = $3, summary = $4, metadata = $5
                     `, [
                         event.symbol,
                         'fundamental_alert',
-                        finalHeadline, // Use finalHeadline which might be from AI or raw
+                        finalHeadline,
                         aiResult.verdict,
                         JSON.stringify({
                             ai_analysis: aiResult,
-                            attachments: task.attachments,
-                            psx_title: task.title,
-                            company: task.company
+                            link: task.link,
+                            sector: sectorSlug
                         })
                     ]);
+
+                    // Send Discord Notification
+                    await sendDiscordNotification({
+                        content: `🚨 **${event.symbol}**`,
+                        embeds: [{
+                            title: finalHeadline,
+                            description: aiResult.verdict, // Use verdict/scoop
+                            url: task.link,
+                            color: aiResult.sentiment === 'Bullish' ? 3066993 : aiResult.sentiment === 'Bearish' ? 15158332 : 10181046,
+                            fields: [
+                                { name: 'Symbol', value: event.symbol, inline: true },
+                                { name: 'Sentiment', value: aiResult.sentiment || 'Neutral', inline: true },
+                                { name: 'Valuation', value: aiResult.market_context?.valuation || 'N/A', inline: true },
+                            ],
+                            footer: { text: aiResult.is_raw_alert ? 'ConvictionPays Alert (AI Skipped)' : 'ConvictionPays AI Analyst' },
+                            timestamp: new Date().toISOString()
+                        }]
+                    });
+
+                    // Update Queue Status
+                    await client.query(`UPDATE event_queue SET status = 'PROCESSED', processed_at = NOW() WHERE id = $1`, [event.id]);
 
                     fundamentalProcessedCount++;
                 } else {
@@ -200,7 +232,7 @@ export async function GET(request: Request) {
                     `, [event.symbol, eventTypeLabel]);
 
                     if (existing && existing.rowCount && existing.rowCount > 0) {
-                        await client.query(`UPDATE event_queue SET status = 'SKIPPED', processed_at = NOW() WHERE id = $1`, [event.id]);
+                        await client.query(`UPDATE event_queue SET status = 'SKIPPED', processed_at = NOW() WHERE id = $1`);
                         continue;
                     }
 
