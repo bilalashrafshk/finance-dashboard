@@ -156,16 +156,16 @@ export async function GET(request: Request) {
             const CRITICAL_KEYWORDS = ["Material Information", "Discovery", "Production", "Financial Results", "Board Meeting", "Dividend"];
             const LOCAL_IGNORE_KEYWORDS = [
                 ...IGNORE_KEYWORDS,
-                "subscription status", "share certificates", "registrar", "corrigendum",
+                "daily dividend", "subscription status", "share certificates", "registrar", "corrigendum",
                 "transmission of annual report", "notice of agm", "notice of eogm"
             ];
 
             const isPrioritySymbol = topSymbols.includes(cand.symbol);
 
-            if (CRITICAL_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
-                passed = true;
-            } else if (LOCAL_IGNORE_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
+            if (LOCAL_IGNORE_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
                 passed = false;
+            } else if (CRITICAL_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
+                passed = true;
             } else if (PRIORITY_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()))) {
                 passed = true;
             } else if (titleLower.includes("disclosure of interest") && isPrioritySymbol) {
