@@ -11,11 +11,11 @@ import "./globals.css"
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.convictionpays.com"),
   title: {
-    default: "ConvictionPays - Risk Metric Dashboard",
+    default: "ConvictionPays",
     template: "%s | ConvictionPays",
   },
   description:
-    "Advanced investment risk analysis, portfolio management, and market screening tools. Track performance, analyze risk metrics, and optimize your investment strategy with ConvictionPays.",
+    "The ultimate Pakistan Portfolio Tracker and Risk Metric Dashboard. Track PSX, Crypto, and Global Assets with institutional-grade tools on ConvictionPays.",
   keywords: [
     "Investment Analysis",
     "Risk Management",
@@ -33,14 +33,14 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: "https://www.convictionpays.com",
-    title: "ConvictionPays - Risk Metric Dashboard",
+    title: "ConvictionPays",
     description:
       "Advanced investment risk analysis and portfolio management tools. Track performance and optimize your strategy.",
     siteName: "ConvictionPays",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ConvictionPays - Risk Metric Dashboard",
+    title: "ConvictionPays",
     description:
       "Advanced investment risk analysis and portfolio management. Optimize your strategy with professional-grade tools.",
     creator: "@convictionpays",
