@@ -39,12 +39,13 @@ async function runTest() {
     const client = await pool.connect();
     try {
         await client.query(`
-      INSERT INTO notable_events (symbol, event_type, headline, description, metadata)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO notable_events (symbol, event_type, headline, summary, description, metadata)
+      VALUES ($1, $2, $3, $4, $5, $6)
     `, [
             symbol,
             eventType,
             headline,
+            `Test summary`,
             `Test event description`,
             { test: true, time: new Date().toISOString() }
         ]);

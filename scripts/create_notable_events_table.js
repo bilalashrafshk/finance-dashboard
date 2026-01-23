@@ -29,6 +29,7 @@ async function migrate() {
         symbol VARCHAR(50) NOT NULL,
         event_type VARCHAR(50) NOT NULL, -- 'ATH', '52W_HIGH', 'VOL_SPIKE'
         headline TEXT NOT NULL,
+        summary TEXT,
         description TEXT,
         metadata JSONB, -- store raw prices, old values
         created_at TIMESTAMP DEFAULT NOW()

@@ -201,11 +201,14 @@ export async function GET(request: Request) {
                     ]);
 
                     // Send Discord Notification
+                    const fundamentalWebhook = configs.fundamental_webhook_url;
+                    const linkText = `\n\n[📄 Read Official Document](${task.link})`;
+
                     await sendDiscordNotification({
                         content: `🚨 **${event.symbol}**`,
                         embeds: [{
                             title: finalHeadline,
-                            description: aiResult.verdict, // Use verdict/scoop
+                            description: aiResult.verdict + (aiResult.is_raw_alert ? linkText : ''), // Append link for raw alerts
                             url: task.link,
                             color: aiResult.sentiment === 'Bullish' ? 3066993 : aiResult.sentiment === 'Bearish' ? 15158332 : 10181046,
                             fields: [
@@ -216,7 +219,7 @@ export async function GET(request: Request) {
                             footer: { text: aiResult.is_raw_alert ? 'ConvictionPays Alert (AI Skipped)' : 'ConvictionPays AI Analyst' },
                             timestamp: new Date().toISOString()
                         }]
-                    });
+                    }, false, fundamentalWebhook);
 
                     // Update Queue Status
                     await client.query(`UPDATE event_queue SET status = 'PROCESSED', processed_at = NOW() WHERE id = $1`, [event.id]);
