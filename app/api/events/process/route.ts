@@ -239,6 +239,11 @@ export async function GET(request: Request) {
                         continue;
                     }
 
+                    // Fetch Company Name
+                    const profileRes = await client.query("SELECT company_name FROM company_profiles WHERE symbol = $1", [event.symbol]);
+                    const companyName = profileRes.rows[0]?.company_name || '';
+                    const nameSuffix = companyName ? ` (${companyName})` : '';
+
                     let headline = '';
                     let description = '';
                     let metadata = {};
@@ -248,16 +253,16 @@ export async function GET(request: Request) {
                         const avgVol = parseFloat(event.previous_value);
                         const surgePct = ((currentVol / avgVol) - 1) * 100;
 
-                        headline = `🚀 Volume Surge: ${event.symbol} trading at ${surgePct.toFixed(0)}% above average`;
+                        headline = `🚀 Volume Surge: ${event.symbol}${nameSuffix} trading at ${surgePct.toFixed(0)}% above average`;
                         description = `Current volume reached ${currentVol.toLocaleString()}, which is ${(currentVol / avgVol).toFixed(1)}x higher than the 10-day average of ${avgVol.toLocaleString()}`;
                         metadata = { current: currentVol, avg: avgVol, surge_pct: surgePct, queue_id: event.id };
                     } else {
                         if (eventTypeLabel === 'ATH') {
-                            headline = `🚀 ALL TIME HIGH: ${event.symbol} hits ${event.trigger_value}`;
+                            headline = `🚀 ALL TIME HIGH: ${event.symbol}${nameSuffix} hits ${event.trigger_value}`;
                         } else if (eventTypeLabel === '52W_HIGH') {
-                            headline = `📈 New 52-Week High: ${event.symbol} at ${event.trigger_value}`;
+                            headline = `📈 New 52-Week High: ${event.symbol}${nameSuffix} at ${event.trigger_value}`;
                         } else {
-                            headline = `${event.symbol} hits new ${event.event_type} of ${event.trigger_value}`;
+                            headline = `${event.symbol}${nameSuffix} hits new ${event.event_type} of ${event.trigger_value}`;
                         }
 
                         description = `Price reached ${event.trigger_value}, breaking previous ${event.event_type} of ${event.previous_value}`;
