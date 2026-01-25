@@ -45,7 +45,7 @@ export function SharedNavbar() {
             </Link>
 
             {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center gap-6">
+            <div className="hidden xl:flex items-center gap-6">
               {user && (
                 <>
                   <Link
@@ -123,7 +123,7 @@ export function SharedNavbar() {
               )}
             </div>
 
-            <div className="hidden md:flex items-center gap-4">
+            <div className="hidden xl:flex items-center gap-4">
               {user && <GlobalSearch />}
               <ThemeToggle />
               {user ? (
@@ -235,7 +235,7 @@ export function SharedNavbar() {
             {/* Mobile menu button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden text-foreground"
+              className="xl:hidden text-foreground"
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
@@ -243,7 +243,7 @@ export function SharedNavbar() {
 
           {/* Mobile Navigation */}
           {mobileMenuOpen && (
-            <div className="md:hidden border-t border-border py-4 space-y-4">
+            <div className="xl:hidden border-t border-border py-4 space-y-4">
               {user && (
                 <div className="space-y-2">
                   <Link
