@@ -156,34 +156,58 @@ export async function GET(request: Request) {
 
                     if (GLOBAL_MULTIMODAL && isPrioritySymbol) {
                         // --- FULL AI ANALYSIS (Multimodal) ---
-                        const { text: rawAiResult } = await analyzeAnnouncement(
+                        // Strict: We try Multimodal. If it fails (e.g. no PDF), lib/ai-service might still do text.
+                        // But user wants: "either do multimodal or raw. no text analysis"
+                        // So we pass 'disableMultimodal: false' (meaning enable it). 
+                        // If analyzeAnnouncement internally falls back to text, we need to change THAT or handle it here.
+                        // Actually, user's request is: If multimodal is OFF, do raw.
+                        // Here: GLOBAL_MULTIMODAL is checked. 
+
+                        const { text: rawAiResult, debugMetadata } = await analyzeAnnouncement(
                             systemPrompt,
                             context,
                             task,
                             {
-                                disableMultimodal: false, // Always try full multimodal
+                                disableMultimodal: false,
                                 modelName
                             }
                         );
 
-                        try {
-                            aiResult = parseAIResponse(rawAiResult);
-                            if (aiResult.headline) finalHeadline = aiResult.headline;
-                        } catch (e) {
-                            console.error('Failed to parse AI response', e);
-                            // Fallback to raw if parsing fails
+                        // Check if it actually did multimodal or fell back
+                        // debugMetadata?.attachedFiles?.length tells us if files were used.
+                        // If no files attached, it likely did text-only analysis of the title.
+                        // User says: "no text analysis". 
+                        // So if NO files were attached, we should discard AI result and go RAW?
+                        // "if multimodal is off, it must do raw alert" -> processed in ELSE block below.
+                        // "If PDF download fails ... It falls back ... [User says NO]"
+
+                        const hasAttachments = debugMetadata?.attachedFiles && debugMetadata.attachedFiles.length > 0;
+
+                        if (!hasAttachments) {
+                            console.log(`[Event Process] ⚠️ AI performed text-only analysis (no attachments). Reverting to RAW as per strict policy.`);
                             aiResult = {
                                 headline: task.title,
-                                verdict: "AI parsing failed. See filing.",
+                                verdict: "See attached filing for details.",
                                 sentiment: "Neutral",
                                 is_raw_alert: true
                             };
+                        } else {
+                            try {
+                                aiResult = parseAIResponse(rawAiResult);
+                                if (aiResult.headline) finalHeadline = aiResult.headline;
+                            } catch (e) {
+                                console.error('Failed to parse AI response', e);
+                                aiResult = {
+                                    headline: task.title,
+                                    verdict: "AI parsing failed. See filing.",
+                                    sentiment: "Neutral",
+                                    is_raw_alert: true
+                                };
+                            }
                         }
+
                     } else {
-                        // --- RAW ALERT (Skip AI) ---
-                        // Occurs if:
-                        // 1. Global Multimodal is OFF (User disabled AI globally)
-                        // 2. Stock is not Priority (Small cap, generic news)
+                        // --- RAW ALERT (Global Multimodal OFF OR Not Priority) ---
                         console.log(`⚡ Optimization: Raw Alert for ${event.symbol} (Priority: ${isPrioritySymbol}, Multimodal: ${GLOBAL_MULTIMODAL})`);
 
                         aiResult = {
