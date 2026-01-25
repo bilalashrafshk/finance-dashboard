@@ -6,7 +6,7 @@ import Link from 'next/link'
 export default function Footer() {
   return (
     <footer className="border-t border-white/10 bg-[#020617] pt-20 pb-10 relative z-10">
-      <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-12 mb-16">
+      <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
         <div className="col-span-1 md:col-span-1">
           <Logo />
           <p className="text-slate-500 text-sm leading-relaxed mb-6 mt-4">
@@ -18,6 +18,22 @@ export default function Footer() {
           <h4 className="font-bold text-white mb-6">Company</h4>
           <ul className="space-y-4 text-sm text-slate-400">
             <li><Link href="/about" className="hover:text-cyan-400 transition-colors">About</Link></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 className="font-bold text-white mb-6">Community</h4>
+          <ul className="space-y-4 text-sm text-slate-400">
+            <li>
+              <a
+                href="https://discord.gg/TKxquPQf3V"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-cyan-400 transition-colors flex items-center gap-2"
+              >
+                Discord Server
+              </a>
+            </li>
           </ul>
         </div>
 

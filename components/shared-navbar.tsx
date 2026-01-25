@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { TrendingUp, Menu, X, LogOut, BarChart3, Wallet, Search, User, Settings, Crown, Filter, Grid3x3, Bell, Bot } from 'lucide-react'
+import { TrendingUp, Menu, X, LogOut, BarChart3, Wallet, Search, User, Settings, Crown, Filter, Grid3x3, Bell, Bot, MessageCircle } from 'lucide-react'
 import { Logo } from '@/components/logo'
 import { useAuth } from '@/lib/auth/auth-context'
 import LoginModal from '@/components/landing/login-modal'
@@ -108,6 +108,17 @@ export function SharedNavbar() {
                       <span>Events</span>
                     </div>
                   </Link>
+                  <a
+                    href="https://discord.gg/TKxquPQf3V"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 rounded-lg transition-colors text-slate-400 hover:text-white"
+                  >
+                    <div className="flex items-center gap-2">
+                      <MessageCircle className="w-4 h-4" />
+                      <span>Community</span>
+                    </div>
+                  </a>
                 </>
               )}
             </div>
@@ -295,6 +306,17 @@ export function SharedNavbar() {
                       <span>Events</span>
                     </div>
                   </Link>
+                  <a
+                    href="https://discord.gg/TKxquPQf3V"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block px-4 py-2 rounded-lg transition-colors text-foreground hover:bg-muted"
+                  >
+                    <div className="flex items-center gap-2">
+                      <MessageCircle className="w-4 h-4" />
+                      <span>Community</span>
+                    </div>
+                  </a>
                 </div>
               )}
               <div className="pt-4 border-t border-border space-y-3">
