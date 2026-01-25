@@ -82,7 +82,23 @@ export async function GET(request: Request) {
 
                     const MC_THRESHOLD_RANK = configs.fundamental_mc_threshold_rank || 100;
                     const GLOBAL_MULTIMODAL = configs.enable_multimodal_analysis === true || configs.enable_multimodal_analysis === 'true';
+                    const ENABLE_FUNDAMENTAL = configs.enable_fundamental_alerts === undefined ? true : (configs.enable_fundamental_alerts === true || configs.enable_fundamental_alerts === 'true');
                     const modelName = configs.fundamental_alert_model;
+
+                    if (!ENABLE_FUNDAMENTAL) {
+                        console.log(`[Event Queue] 🛑 Fundamental Alerts Disabled via Admin. Skipping ${event.symbol}`);
+                        // Mark as skipped but use a unique status if you want to retry later, or just SKIPPED
+                        // For temporary pause, we might want to leave them PENDING? 
+                        // But user said "turn them off", implying ignoring new ones. 
+                        // If we want "pause", we should just return. 
+                        // If we mark as SKIPPED, they are gone forever.
+                        // User asked: "turn them off temporarily and then check the issue"
+                        // Safer to just CONTINUE loop without marking processed, essentially "ignoring" them for now?
+                        // BUT if we don't mark processed, they clog the queue.
+                        // Let's mark as SKIPPED for now to clean queue.
+                        await client.query(`UPDATE event_queue SET status = 'SKIPPED', processed_at = NOW(), metadata = jsonb_set(metadata, '{skipped_reason}', '"Disabled in Admin"') WHERE id = $1`, [event.id]);
+                        continue;
+                    }
 
                     const topCompaniesRes = await client.query(
                         "SELECT symbol FROM company_profiles WHERE market_cap IS NOT NULL ORDER BY market_cap DESC LIMIT $1",

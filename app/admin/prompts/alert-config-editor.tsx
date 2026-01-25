@@ -84,7 +84,7 @@ export function AlertConfigEditor({ config }: { config: any }) {
         );
     }
 
-    if (config.key === 'include_heatmap_context' || config.key.startsWith('auto_tweet_') || config.key === 'enable_multimodal_analysis' || config.key === 'ai_triage_mid_small_caps') {
+    if (config.key === 'include_heatmap_context' || config.key.startsWith('auto_tweet_') || config.key === 'enable_multimodal_analysis' || config.key === 'ai_triage_mid_small_caps' || config.key === 'enable_fundamental_alerts') {
         const isEnabled = typeof value === 'boolean' ? value : value === 'true';
         // Map key to a readable label
         let label = 'Enable Setting';
@@ -94,6 +94,7 @@ export function AlertConfigEditor({ config }: { config: any }) {
         if (config.key === 'auto_tweet_vol') label = 'Enable Volume Surge Detection & Tweets';
         if (config.key === 'enable_multimodal_analysis') label = 'Enable Multimodal (PDF/Image) Analysis';
         if (config.key === 'ai_triage_mid_small_caps') label = 'AI Triage for Mid/Small-Cap Stocks';
+        if (config.key === 'enable_fundamental_alerts') label = 'Enable Fundamental Alerts (Master Switch)';
 
         return (
             <div className="space-y-4">
