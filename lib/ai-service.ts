@@ -252,7 +252,10 @@ export async function sendToFundamentalDiscord(task: any, aiResult: any, sector:
 *(${finalSector})*
 
 ${twitterPost}
+`;
 
+    if (!aiResult.is_raw_alert) {
+        content += `
 ---
 **The Intelligence Scoop**
 ${scoopText}
@@ -262,7 +265,10 @@ ${scoopText}
 
 **Momentum Pulse**
 "${aiResult.market_context?.momentum || 'N/A'}"
+`;
+    }
 
+    content += `
 ${task.attachments?.length > 0 ? `[📄 Open Document](${task.attachments[0]})` : ''}`;
 
     const postToXLink = `\n\n[Post to X](https://twitter.com/intent/tweet?text=${encodeURIComponent(twitterHeadline + '\n\n' + twitterPost)})`;
