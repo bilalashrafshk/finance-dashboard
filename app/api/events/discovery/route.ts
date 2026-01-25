@@ -130,8 +130,8 @@ export async function GET(request: Request) {
                 SELECT symbol, metadata->>'psx_title' as title FROM notable_events 
                 WHERE (symbol, metadata->>'psx_title') IN (VALUES ${candidateSigs})
                 UNION
-                SELECT symbol, metadata->>'psx_title' as title FROM event_queue
-                WHERE (symbol, metadata->>'psx_title') IN (VALUES ${candidateSigs})
+                SELECT symbol, metadata->>'title' as title FROM event_queue
+                WHERE (symbol, metadata->>'title') IN (VALUES ${candidateSigs})
             `);
             existRes.rows.forEach((row: any) => existingMap.add(`${row.symbol}|${row.title}`));
         }

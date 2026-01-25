@@ -239,7 +239,8 @@ export async function GET(request: Request) {
                         JSON.stringify({
                             ai_analysis: aiResult,
                             link: task.link,
-                            sector: sectorSlug
+                            sector: sectorSlug,
+                            psx_title: task.title
                         })
                     ]);
 
