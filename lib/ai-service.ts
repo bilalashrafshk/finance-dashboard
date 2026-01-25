@@ -163,8 +163,8 @@ export async function triageAnnouncement(title: string, modelName?: string): Pro
     if (!currentModel) return false;
 
     const prompt = `Decide if this PSX title is operationally/financially significant for an investor.
-SIGNIFICANT: Discoveries, Production, JVs, Material Info, Expansions, Contracts, Financials, Defaults.
-NOT SIGNIFICANT: Reports, Share Certs, Registrar, routine AGMs, Corrigendum, minor Shareholding changes.
+SIGNIFICANT: Discoveries, Production, JVs, Material Info, Expansions, Contracts, Financials, Defaults, Emergent/Special Board Meetings.
+NOT SIGNIFICANT: Reports, Share Certs, Registrar, routine AGMs, Corrigendum, minor Shareholding changes, Routine Board Meeting Notices (dates only).
 Title: "${title}"
 Return ONLY "YES" or "NO".`;
 
