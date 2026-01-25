@@ -252,14 +252,14 @@ export async function sendToFundamentalDiscord(task: any, aiResult: any, sector:
 *(${finalSector})*
 
 ${twitterPost}
+
+---
+**The Intelligence Scoop**
+${scoopText}
 `;
 
     if (!aiResult.is_raw_alert) {
         content += `
----
-**The Intelligence Scoop**
-${scoopText}
-
 **Valuation Insight**
 "${aiResult.market_context?.valuation || 'N/A'}"
 
