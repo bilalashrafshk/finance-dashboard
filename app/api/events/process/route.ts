@@ -189,7 +189,8 @@ export async function GET(request: Request) {
                                 headline: task.title,
                                 verdict: "See attached filing for details.",
                                 sentiment: "Neutral",
-                                is_raw_alert: true
+                                is_raw_alert: true,
+                                scoop: "Raw Alert: AI analysis skipped (Missing attachment or disabled)."
                             };
                         } else {
                             try {
@@ -201,7 +202,8 @@ export async function GET(request: Request) {
                                     headline: task.title,
                                     verdict: "AI parsing failed. See filing.",
                                     sentiment: "Neutral",
-                                    is_raw_alert: true
+                                    is_raw_alert: true,
+                                    scoop: "AI parsing failed. Please check the official document."
                                 };
                             }
                         }
@@ -214,7 +216,8 @@ export async function GET(request: Request) {
                             headline: task.title,
                             verdict: "See attached filing for details.",
                             sentiment: "Neutral",
-                            is_raw_alert: true
+                            is_raw_alert: true,
+                            scoop: "Raw Alert: Detailed AI analysis skipped for this event."
                         };
                     }
 
