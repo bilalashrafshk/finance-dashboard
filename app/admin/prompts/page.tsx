@@ -108,7 +108,7 @@ export default async function AdminPromptsPage() {
                         )}
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {['ai_context_instructions', 'ai_context_payload', 'priority_keywords', 'include_heatmap_context'].map(key => {
+                            {['ai_context_instructions', 'ai_context_payload', 'priority_keywords', 'include_heatmap_context', 'priority_whitelist'].map(key => {
                                 const config = getAlertConfig(key);
                                 if (!config) return null;
                                 return (
@@ -171,7 +171,7 @@ export default async function AdminPromptsPage() {
                     color="bg-purple-500"
                 >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {['ignore_keywords', 'fundamental_mc_threshold_rank', 'technical_mc_threshold_rank'].map(key => {
+                        {['enable_fundamental_alerts', 'fundamental_alert_model', 'ignore_keywords', 'fundamental_mc_threshold_rank', 'technical_mc_threshold_rank'].map(key => {
                             const config = getAlertConfig(key);
                             if (!config) return null;
                             return (
