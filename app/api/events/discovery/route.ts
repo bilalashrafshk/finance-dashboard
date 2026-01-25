@@ -161,19 +161,11 @@ export async function GET(request: Request) {
             let passed = false;
 
             // LOCAL DETERMINISTIC FILTERS (Free)
-            const CRITICAL_KEYWORDS = ["Material Information", "Discovery", "Production", "Financial Results", "Board Meeting", "Dividend"];
-            const LOCAL_IGNORE_KEYWORDS = [
-                ...IGNORE_KEYWORDS,
-                "daily dividend", "subscription status", "share certificates", "registrar", "corrigendum",
-                "transmission of annual report", "notice of agm", "notice of eogm"
-            ];
-
-            // --- NEW FILTER LOGIC (Modified Jan 22 2026) ---
-            // 1. Explicit Ignore List (Daily Dividends, etc.) - Takes PRECEDENCE
-            const isIgnored = LOCAL_IGNORE_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()));
+            // 1. Explicit Ignore List (From DB) - Takes PRECEDENCE
+            const isIgnored = IGNORE_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()));
 
             if (isIgnored) {
-                // console.log(`🚫 Skipped (Ignored): ${cand.title}`); // Removed for brevity in logs
+                // console.log(`🚫 Skipped (Ignored): ${cand.title}`);
                 await client.query(
                     `INSERT INTO event_queue (symbol, event_type, trigger_value, previous_value, metadata, status, processed_at)
                      VALUES ($1, $2, $3, $4, $5, 'SKIPPED', NOW())`,
@@ -182,11 +174,8 @@ export async function GET(request: Request) {
                 continue;
             }
 
-            // 2. Critical Keywords (Defaults + Saved Configs) - Bypass all checks
-            // Added 'Dividend' to CRITICAL_KEYWORDS to ensure dividends are caught if not ignored above
-            // CRITICAL_KEYWORDS now checked AFTER ignore keywords
-            const isPrioritized = PRIORITY_KEYWORDS.some(k => titleLower.includes(k.toLowerCase())) ||
-                CRITICAL_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()));
+            // 2. Priority/Critical Keywords (From DB) - Bypass all checks
+            const isPrioritized = PRIORITY_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()));
 
             // 3. Triage & Rank Logic
             const isWhitelisted = PRIORITY_WHITELIST.includes(cand.symbol);
