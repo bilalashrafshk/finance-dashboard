@@ -3,11 +3,11 @@ import { Metadata } from "next"
 import { parseAssetSlug } from "@/lib/asset-screener/url-utils"
 
 interface Props {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const slug = params.slug
+  const { slug } = await params
   const parsed = parseAssetSlug(slug)
 
   if (!parsed) {
@@ -33,8 +33,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 }
 
-export default function AssetPage({ params }: Props) {
-  const parsed = parseAssetSlug(params.slug)
+export default async function AssetPage({ params }: Props) {
+  const { slug } = await params
+  const parsed = parseAssetSlug(slug)
   const symbol = parsed?.ticker || "Asset"
 
   // Structured Data (JSON-LD) for Financial Product
@@ -56,7 +57,7 @@ export default function AssetPage({ params }: Props) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <AssetDetailClient slug={params.slug} />
+      <AssetDetailClient slug={slug} />
     </>
   )
 }
