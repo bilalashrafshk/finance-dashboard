@@ -21,7 +21,7 @@ export class AIContextService {
         const pool = getPool();
         const upperSymbol = symbol.toUpperCase();
         const res = await pool.query(`
-            SELECT cp.sector, sm.price, sm.dividend_yield, sm.pe_ratio, sm.sector_pe
+            SELECT cp.sector, sm.price, sm.dividend_yield, sm.pe_ratio, sm.sector_pe, sm.rsi_14, sm.ytd_return
             FROM company_profiles cp
             LEFT JOIN screener_metrics sm ON cp.symbol = sm.symbol
             WHERE cp.symbol = $1
@@ -119,6 +119,10 @@ export class AIContextService {
             meta: { symbol: symbol.toUpperCase(), sector: profile.sector, current_date: new Date().toISOString().split('T')[0] },
             price_context: { current: parseFloat(profile.price || 0), five_two_week_high: parseFloat(history.high_52w || 0) },
             valuation_context: { company_pe: parseFloat(profile.pe_ratio || 0), sector_avg_pe: parseFloat(profile.sector_pe || 0) },
+            momentum_context: {
+                rsi_14: profile.rsi_14 ? parseFloat(profile.rsi_14) : null,
+                ytd_return: profile.ytd_return ? parseFloat(profile.ytd_return) + '%' : null
+            },
             earnings: { quarterly, annual },
             dividend_history: {
                 status: dividend.date ? "Found" : "None",
