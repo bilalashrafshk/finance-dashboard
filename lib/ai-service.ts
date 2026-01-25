@@ -237,52 +237,83 @@ export async function sendToFundamentalDiscord(task: any, aiResult: any, sector:
     // Use AI-identified sector if the database one is "Unknown"
     const finalSector = (sector === 'Unknown' || !sector) ? (aiResult.sector || sector || 'General') : sector;
 
-    const sentimentEmoji = (aiResult.sentiment || '').includes('Bullish') ? '🟢' : ((aiResult.sentiment || '').includes('Bearish') ? '🔴' : '⚪');
+    // Determine Color
+    let color = 0x95a5a6; // Grey (Neutral)
+    if ((aiResult.sentiment || '').includes('Bullish')) color = 0x2ecc71; // Green
+    if ((aiResult.sentiment || '').includes('Bearish')) color = 0xe74c3c; // Red
 
-    // Format the Scoop bullets
-    const scoopText = Array.isArray(aiResult.scoop)
-        ? aiResult.scoop.map((item: string) => `• ${item}`).join('\n\n')
-        : `• ${aiResult.scoop}`;
+    // Clean Headline
+    const cleanHeadline = aiResult.headline.replace(/^[^\w\s]+/, '').trim(); // Remove leading emojis if any
 
-    // Twitter-Ready Block (Headline + Summary)
-    const twitterHeadline = aiResult.headline.replace(/^[^\w\s]+/, '').trim();
-    const twitterPost = aiResult.verdict || '';
-
-    let content = `**${sentimentEmoji} ${twitterHeadline}**
-*(${finalSector})*
-
-${twitterPost}
-
----
-**The Intelligence Scoop**
-${scoopText}
-`;
+    // Prepare Fields
+    const fields = [
+        {
+            name: "Symbol",
+            value: task.symbol,
+            inline: true
+        },
+        {
+            name: "Sentiment",
+            value: aiResult.sentiment || "Neutral",
+            inline: true
+        }
+    ];
 
     if (!aiResult.is_raw_alert) {
-        content += `
-**Valuation Insight**
-"${aiResult.market_context?.valuation || 'N/A'}"
-
-**Momentum Pulse**
-"${aiResult.market_context?.momentum || 'N/A'}"
-`;
+        fields.push({
+            name: "Valuation",
+            value: aiResult.market_context?.valuation || "N/A",
+            inline: true
+        });
+        // Momentum context can be added if needed, but screenshot showed Valuation
     }
 
-    content += `
-${task.attachments?.length > 0 ? `[📄 Open Document](${task.attachments[0]})` : ''}`;
+    // Prepare Description (The Post + Scoop)
+    let description = aiResult.verdict || "See attached filing for details.";
 
-    const postToXLink = `\n\n[Post to X](https://twitter.com/intent/tweet?text=${encodeURIComponent(twitterHeadline + '\n\n' + twitterPost)})`;
+    if (!aiResult.is_raw_alert) {
+        // Format Scoop
+        const scoopText = Array.isArray(aiResult.scoop)
+            ? aiResult.scoop.map((item: string) => `• ${item}`).join('\n')
+            : `• ${aiResult.scoop}`;
 
-    // Check if adding the link exceeds Discord's 2000 char limit
-    if (content.length + postToXLink.length <= 2000) {
-        content += postToXLink;
+        description += `\n\n**The Intelligence Scoop**\n${scoopText}`;
+
+        if (aiResult.market_context?.momentum && aiResult.market_context.momentum !== 'N/A') {
+            description += `\n\n**Momentum Pulse**\n${aiResult.market_context.momentum}`;
+        }
     } else {
-        console.warn(`⚠️ Discord message length (${content.length} + ${postToXLink.length}) exceeds 2000 chars. Omitting 'Post to X' link.`);
+        // Raw Alert disclaimer
+        if (aiResult.scoop) {
+            description += `\n\n*${aiResult.scoop}*`;
+        }
     }
 
+    // Attachment Link
+    if (task.attachments?.length > 0) {
+        description += `\n\n[📄 Open Document](${task.attachments[0]})`;
+    }
+
+    // Post to X Link (only if AI)
+    if (!aiResult.is_raw_alert) {
+        const twitterPost = aiResult.verdict || '';
+        const postToXLink = ` | [Post to X](https://twitter.com/intent/tweet?text=${encodeURIComponent(cleanHeadline + '\n\n' + twitterPost)})`;
+        description += postToXLink;
+    }
+
+    const embed = {
+        title: cleanHeadline,
+        description: description,
+        color: color,
+        fields: fields,
+        footer: {
+            text: `ConvictionPays AI Analyst • ${finalSector}`
+        },
+        timestamp: new Date().toISOString()
+    };
 
     try {
-        await axios.post(webhookUrl, { content });
+        await axios.post(webhookUrl, { embeds: [embed] });
     } catch (err: any) {
         console.error(`❌ Discord Error (${task.symbol}):`, err.message);
     }
