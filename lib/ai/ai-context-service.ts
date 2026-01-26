@@ -22,9 +22,15 @@ export class AIContextService {
         const pool = getPool();
         const upperSymbol = symbol.toUpperCase();
         const res = await pool.query(`
-            SELECT cp.sector, sm.price, sm.dividend_yield, sm.pe_ratio, sm.sector_pe, sm.rsi_14, sm.ytd_return
+            WITH ranked_companies AS (
+                SELECT symbol, RANK() OVER (ORDER BY market_cap DESC) as market_cap_rank
+                FROM company_profiles 
+                WHERE market_cap IS NOT NULL
+            )
+            SELECT cp.sector, sm.price, sm.dividend_yield, sm.pe_ratio, sm.sector_pe, sm.rsi_14, sm.ytd_return, rc.market_cap_rank
             FROM company_profiles cp
             LEFT JOIN screener_metrics sm ON cp.symbol = sm.symbol
+            LEFT JOIN ranked_companies rc ON cp.symbol = rc.symbol
             WHERE cp.symbol = $1
         `, [upperSymbol]);
 
@@ -162,7 +168,12 @@ export class AIContextService {
         }
 
         return {
-            meta: { symbol: symbol.toUpperCase(), sector: profile.sector, current_date: new Date().toISOString().split('T')[0] },
+            meta: {
+                symbol: symbol.toUpperCase(),
+                sector: profile.sector,
+                current_date: new Date().toISOString().split('T')[0],
+                market_cap_rank: profile.market_cap_rank ? parseInt(profile.market_cap_rank) : null
+            },
             price_context: { current: parseFloat(profile.price || 0), five_two_week_high: parseFloat(history.high_52w || 0) },
             valuation_context: { company_pe: parseFloat(profile.pe_ratio || 0), sector_avg_pe: parseFloat(profile.sector_pe || 0) },
             growth_context: growthContext,

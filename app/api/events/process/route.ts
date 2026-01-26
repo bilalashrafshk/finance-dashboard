@@ -130,7 +130,14 @@ export async function GET(request: Request) {
                     // Check if symbol is a "Priority Symbol" (Top N market cap OR Whitelisted OR Priority Keyword)
                     // REMOVED CRITICAL_KEYWORDS from this check.
                     const isWhitelisted = PRIORITY_WHITELIST.includes(event.symbol);
-                    const isKeywordMatch = PRIORITY_KEYWORDS.some(k => task.title?.toLowerCase().includes(k.toLowerCase()));
+
+                    // Logic fix: "Board Meeting Other Than Financial Results" shouldn't trigger "Financial Results"
+                    // We check if title contains explicit exclusion phrases
+                    const titleLower = task.title?.toLowerCase() || "";
+                    const EXCLUSION_PHRASES = ["other than financial results", "other than financial"];
+                    const containsExclusion = EXCLUSION_PHRASES.some(phrase => titleLower.includes(phrase));
+
+                    const isKeywordMatch = !containsExclusion && PRIORITY_KEYWORDS.some(k => titleLower.includes(k.toLowerCase()));
 
                     const isPrioritySymbol = topSymbols.includes(event.symbol) ||
                         isWhitelisted ||
@@ -261,7 +268,8 @@ export async function GET(request: Request) {
                             attachments: task.attachments || []
                         },
                         aiResult,
-                        sectorSlug
+                        sectorSlug,
+                        { market_cap_rank: (context as any).meta?.market_cap_rank }
                     );
 
                     // Update Queue Status

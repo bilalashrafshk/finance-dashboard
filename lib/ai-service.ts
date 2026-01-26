@@ -242,7 +242,12 @@ import { getWebhookFromDB } from './notifications/discord';
 /**
  * Send fundamental alert to Discord
  */
-export async function sendToFundamentalDiscord(task: any, aiResult: any, sector: string) {
+export async function sendToFundamentalDiscord(
+    task: any,
+    aiResult: any,
+    sector: string,
+    extraOptions: { market_cap_rank?: number | null } = {}
+) {
     let webhookUrl = await getWebhookFromDB('fundamental_webhook_url');
 
     if (!webhookUrl || webhookUrl === '""') {
@@ -324,7 +329,7 @@ export async function sendToFundamentalDiscord(task: any, aiResult: any, sector:
         color: color,
         fields: fields,
         footer: {
-            text: `ConvictionPays AI Analyst • ${finalSector}`
+            text: `ConvictionPays AI Analyst • ${finalSector}${extraOptions.market_cap_rank ? ` • Rank #${extraOptions.market_cap_rank}` : ''}`
         },
         timestamp: new Date().toISOString()
     };
