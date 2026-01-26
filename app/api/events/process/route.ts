@@ -387,22 +387,28 @@ async function handleDailyRecap(client: any) {
         else if (day === 5) targetHour = 17;
 
         if (targetHour !== -1 && hour === targetHour && minute >= 0 && minute <= 15) {
-            // 3. Check if we already sent it today
-            const checkRes = await client.query(
-                "SELECT value FROM alert_configs WHERE key = 'last_daily_recap_sent_date'"
-            );
-            const lastSent = checkRes.rows[0]?.value;
+            // 3. Atomically check AND update (Claim the lock)
+            // We try to insert today's date. 
+            // If key exists, we try to update it ONLY IF it's not already todayStr.
+            // If the update happens (rowCount > 0), we won the race.
+            const result = await client.query(`
+                INSERT INTO alert_configs (key, value) 
+                VALUES ('last_daily_recap_sent_date', $1)
+                ON CONFLICT (key) DO UPDATE 
+                SET value = $1 
+                WHERE alert_configs.value != $1
+            `, [todayStr]);
 
-            if (lastSent !== todayStr) {
-                console.log(`[Daily Recap] Triggering reports for ${todayStr}...`);
+            if (result.rowCount > 0) {
+                console.log(`[Daily Recap] Lock acquired for ${todayStr}. Triggering reports...`);
                 await RoutineReportService.pushDailyReports();
-
-                // 4. Mark as sent
-                await client.query(`
-                    INSERT INTO alert_configs (key, value) 
-                    VALUES ('last_daily_recap_sent_date', $1)
-                    ON CONFLICT (key) DO UPDATE SET value = $1
-                `, [todayStr]);
+                console.log(`[Daily Recap] Reports sent successfully.`);
+            } else {
+                // rowCount 0 means either:
+                // a) Key existed and value was ALREADY todayStr (Someone else did it)
+                // b) Insert failed (unlikely)
+                // In either case, we skip.
+                // console.log(`[Daily Recap] Skipped. Already sent for ${todayStr}.`);
             }
         }
     } catch (err) {
