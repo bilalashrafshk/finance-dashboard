@@ -86,7 +86,7 @@ export function GlobalSearch() {
         <>
             <button
                 onClick={() => setOpen(true)}
-                className="relative h-9 w-full justify-start rounded-lg bg-slate-900 border border-slate-700/50 text-sm font-normal text-slate-400 shadow-sm hover:bg-slate-800 transition-colors px-4 flex items-center gap-2 sm:pr-12 md:w-36 lg:w-40 xl:w-64"
+                className="relative h-9 w-full justify-start rounded-lg bg-slate-900 border border-slate-700/50 text-sm font-normal text-slate-400 shadow-sm hover:bg-slate-800 transition-colors px-4 flex items-center gap-2 sm:pr-12 md:w-32 lg:w-40 xl:w-48 2xl:w-64"
             >
                 <Search className="h-4 w-4" />
                 <span className="hidden xl:inline-flex">Search assets...</span>
