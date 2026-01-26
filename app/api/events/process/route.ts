@@ -185,12 +185,20 @@ export async function GET(request: Request) {
 
                         if (!hasAttachments) {
                             console.log(`[Event Process] ⚠️ AI performed text-only analysis (no attachments). Reverting to RAW as per strict policy.`);
+
+                            let skipReason = "Missing attachment or disabled";
+                            if (debugMetadata?.failedAttachments && debugMetadata.failedAttachments.length > 0) {
+                                // Use the reason from the first failed attachment
+                                const firstFail = debugMetadata.failedAttachments[0];
+                                skipReason = `Attachment Error: ${firstFail.reason}`;
+                            }
+
                             aiResult = {
                                 headline: task.title,
                                 verdict: "See attached filing for details.",
                                 sentiment: "Neutral",
                                 is_raw_alert: true,
-                                scoop: "Raw Alert: AI analysis skipped (Missing attachment or disabled)."
+                                scoop: `Raw Alert: AI analysis skipped (${skipReason}).`
                             };
                         } else {
                             try {

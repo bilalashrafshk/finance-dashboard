@@ -91,15 +91,22 @@ Company: ${announcement.company} (${announcement.symbol})
     // 2. Prepare Multimodal Parts (Images/PDFs)
     const parts: any[] = [{ text: textPrompt }];
     const attachedFiles: any[] = [];
+    const failedAttachments: any[] = [];
 
     if (!options.disableMultimodal) {
         for (const url of announcement.attachments || []) {
             try {
                 console.log(`📥 Downloading attachment: ${url}`);
-                const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 10000 });
+                const response = await axios.get(url, {
+                    responseType: 'arraybuffer',
+                    timeout: 15000, // Increased timeout
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                    }
+                });
 
                 // Clean content type (remove charset=utf-8 etc)
-                let mimeType = response.headers['content-type']?.split(';')[0]?.trim();
+                let mimeType = response.headers['content-type']?.split(';')[0]?.trim().toLowerCase();
                 const dataBase64 = Buffer.from(response.data).toString('base64');
                 const sizeInMb = (response.data.byteLength / (1024 * 1024)).toFixed(2);
 
@@ -108,7 +115,15 @@ Company: ${announcement.company} (${announcement.symbol})
                 // Gemini limitations: 
                 // - Images: png, jpeg, webp, heic, heif
                 // - Documents: application/pdf
-                const supportedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif'];
+                const supportedTypes = ['application/pdf', 'application/x-pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif'];
+
+                // Fallback for octet-stream if extension is pdf
+                if (mimeType === 'application/octet-stream' || mimeType === 'binary/octet-stream') {
+                    if (url.toLowerCase().endsWith('.pdf')) {
+                        mimeType = 'application/pdf';
+                        console.log(`⚠️ Mime was ${mimeType} but extension is .pdf. Treating as application/pdf.`);
+                    }
+                }
 
                 if (supportedTypes.includes(mimeType) || mimeType.startsWith('image/')) {
                     parts.push({
@@ -121,9 +136,11 @@ Company: ${announcement.company} (${announcement.symbol})
                     console.log(`✅ Attached ${mimeType} (${sizeInMb} MB) to AI request.`);
                 } else {
                     console.warn(`⚠️ Unsupported mime type: ${mimeType} for ${url}`);
+                    failedAttachments.push({ url, reason: `Unsupported MIME: ${mimeType}` });
                 }
             } catch (err: any) {
                 console.warn(`❌ Failed to download attachment ${url}:`, err.message);
+                failedAttachments.push({ url, reason: `Download Failed: ${err.message}` });
             }
         }
     } else {
@@ -137,7 +154,7 @@ Company: ${announcement.company} (${announcement.symbol})
         const response = await result.response;
         return {
             text: response.text().trim(),
-            debugMetadata: { attachedFiles, textPrompt }
+            debugMetadata: { attachedFiles, failedAttachments, textPrompt }
         };
     } catch (error: any) {
         if (error.status === 400 || error.message?.includes('400')) {

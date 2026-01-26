@@ -2,6 +2,7 @@ import { getPool } from '@/lib/db';
 
 export interface EarningsData {
     period: string;
+    period_end_date: string;
     eps: number;
     net_income: number;
 }
@@ -60,6 +61,7 @@ export class AIContextService {
         `, [upperSymbol]);
         return res.rows.map((r: any) => ({
             period: this.formatPeriod(r.period_end_date, 'quarterly'),
+            period_end_date: r.period_end_date,
             eps: r.eps_diluted ? parseFloat(r.eps_diluted) : (r.eps_basic ? parseFloat(r.eps_basic) : 0),
             net_income: r.net_income ? parseFloat(r.net_income) : 0
         }));
@@ -80,6 +82,7 @@ export class AIContextService {
         `, [upperSymbol]);
         return res.rows.map((r: any) => ({
             period: this.formatPeriod(r.period_end_date, 'annual'),
+            period_end_date: r.period_end_date,
             eps: r.eps_diluted ? parseFloat(r.eps_diluted) : (r.eps_basic ? parseFloat(r.eps_basic) : 0),
             net_income: r.net_income ? parseFloat(r.net_income) : 0
         }));
@@ -104,6 +107,18 @@ export class AIContextService {
     /**
      * Legacy support: maintained for backward compatibility.
      */
+    /**
+     * Helper to calculate percentage growth
+     */
+    private static calculateGrowth(current: number, previous: number): string | null {
+        if (!previous || previous === 0) return null;
+        const growth = ((current - previous) / Math.abs(previous)) * 100;
+        return growth.toFixed(2) + '%';
+    }
+
+    /**
+     * Legacy support: maintained for backward compatibility.
+     */
     static async getContext(symbol: string) {
         const [profile, history, quarterly, annual, dividend] = await Promise.all([
             this.getCompanyProfile(symbol),
@@ -115,10 +130,42 @@ export class AIContextService {
 
         if ('error' in profile) throw new Error(profile.error);
 
+        // --- Growth Calculation Logic ---
+        // Sort descending (newest first)
+        const sortedQuarterly = [...quarterly].sort((a, b) => new Date(b.period_end_date || 0).getTime() - new Date(a.period_end_date || 0).getTime());
+
+        let growthContext = {
+            note: "Growth metrics based on last available reported data in DB.",
+            last_reported_period: sortedQuarterly.length > 0 ? sortedQuarterly[0].period : "N/A",
+            last_reported_eps_qoq: "N/A",
+            last_reported_eps_yoy: "N/A",
+            last_reported_net_income_qoq: "N/A",
+            last_reported_net_income_yoy: "N/A"
+        };
+
+        if (sortedQuarterly.length >= 1) {
+            const currentQ = sortedQuarterly[0];
+
+            // QoQ (Compare with index 1)
+            if (sortedQuarterly.length >= 2) {
+                const prevQ = sortedQuarterly[1];
+                growthContext.last_reported_eps_qoq = this.calculateGrowth(currentQ.eps, prevQ.eps) || "N/A";
+                growthContext.last_reported_net_income_qoq = this.calculateGrowth(currentQ.net_income, prevQ.net_income) || "N/A";
+            }
+
+            // YoY (Compare with index 4)
+            if (sortedQuarterly.length >= 5) {
+                const sameQLastYear = sortedQuarterly[4];
+                growthContext.last_reported_eps_yoy = this.calculateGrowth(currentQ.eps, sameQLastYear.eps) || "N/A";
+                growthContext.last_reported_net_income_yoy = this.calculateGrowth(currentQ.net_income, sameQLastYear.net_income) || "N/A";
+            }
+        }
+
         return {
             meta: { symbol: symbol.toUpperCase(), sector: profile.sector, current_date: new Date().toISOString().split('T')[0] },
             price_context: { current: parseFloat(profile.price || 0), five_two_week_high: parseFloat(history.high_52w || 0) },
             valuation_context: { company_pe: parseFloat(profile.pe_ratio || 0), sector_avg_pe: parseFloat(profile.sector_pe || 0) },
+            growth_context: growthContext,
             momentum_context: {
                 rsi_14: profile.rsi_14 ? parseFloat(profile.rsi_14) : null,
                 ytd_return: profile.ytd_return ? parseFloat(profile.ytd_return) + '%' : null
