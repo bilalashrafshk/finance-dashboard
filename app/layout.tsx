@@ -45,6 +45,10 @@ export const metadata: Metadata = {
       "Advanced investment risk analysis and portfolio management. Optimize your strategy with professional-grade tools.",
     creator: "@convictionpays",
   },
+  icons: {
+    icon: "/icon-only-transparent.png",
+    apple: "/apple-icon",
+  },
 }
 
 export const viewport: Viewport = {

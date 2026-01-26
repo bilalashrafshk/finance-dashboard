@@ -45,12 +45,12 @@ export function SharedNavbar() {
             </Link>
 
             {/* Desktop Navigation */}
-            <div className="hidden xl:flex items-center gap-6">
+            <div className="hidden md:flex items-center gap-1 lg:gap-2 xl:gap-6">
               {user && (
                 <>
                   <Link
                     href="/charts"
-                    className={`px-4 py-2 rounded-lg transition-colors ${isActive('/charts')
+                    className={`px-2 lg:px-3 xl:px-4 py-2 rounded-lg transition-colors text-sm xl:text-base ${isActive('/charts')
                       ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
                       : 'text-slate-400 hover:text-white'
                       }`}
@@ -62,7 +62,7 @@ export function SharedNavbar() {
                   </Link>
                   <Link
                     href="/portfolio"
-                    className={`px-4 py-2 rounded-lg transition-colors ${isActive('/portfolio')
+                    className={`px-2 lg:px-3 xl:px-4 py-2 rounded-lg transition-colors text-sm xl:text-base ${isActive('/portfolio')
                       ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
                       : 'text-slate-400 hover:text-white'
                       }`}
@@ -74,7 +74,7 @@ export function SharedNavbar() {
                   </Link>
                   <Link
                     href="/my-list"
-                    className={`px-4 py-2 rounded-lg transition-colors ${isActive('/my-list')
+                    className={`px-2 lg:px-3 xl:px-4 py-2 rounded-lg transition-colors text-sm xl:text-base ${isActive('/my-list')
                       ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
                       : 'text-slate-400 hover:text-white'
                       }`}
@@ -86,7 +86,7 @@ export function SharedNavbar() {
                   </Link>
                   <Link
                     href="/screener"
-                    className={`px-4 py-2 rounded-lg transition-colors ${isActive('/screener')
+                    className={`px-2 lg:px-3 xl:px-4 py-2 rounded-lg transition-colors text-sm xl:text-base ${isActive('/screener')
                       ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
                       : 'text-slate-400 hover:text-white'
                       }`}
@@ -98,7 +98,7 @@ export function SharedNavbar() {
                   </Link>
                   <Link
                     href="/events"
-                    className={`px-4 py-2 rounded-lg transition-colors ${isActive('/events')
+                    className={`px-2 lg:px-3 xl:px-4 py-2 rounded-lg transition-colors text-sm xl:text-base ${isActive('/events')
                       ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
                       : 'text-slate-400 hover:text-white'
                       }`}
@@ -112,7 +112,7 @@ export function SharedNavbar() {
                     href="https://discord.gg/TKxquPQf3V"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-4 py-2 rounded-lg transition-colors text-slate-400 hover:text-white"
+                    className="px-2 lg:px-3 xl:px-4 py-2 rounded-lg transition-colors text-slate-400 hover:text-white text-sm xl:text-base"
                   >
                     <div className="flex items-center gap-2">
                       <MessageCircle className="w-4 h-4" />
@@ -123,17 +123,17 @@ export function SharedNavbar() {
               )}
             </div>
 
-            <div className="hidden xl:flex items-center gap-4">
+            <div className="hidden md:flex items-center gap-2 lg:gap-3 xl:gap-4">
               {user && <GlobalSearch />}
               <ThemeToggle />
               {user ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className="flex items-center gap-3 px-4 py-2 bg-muted rounded-lg hover:bg-muted/80 transition-colors cursor-pointer">
-                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                    <button className="flex items-center gap-3 px-2 lg:px-3 xl:px-4 py-2 bg-muted rounded-lg hover:bg-muted/80 transition-colors cursor-pointer">
+                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0">
                         {user.name?.charAt(0).toUpperCase() || 'U'}
                       </div>
-                      <span className="text-sm text-foreground">{user.name || 'User'}</span>
+                      <span className="text-sm text-foreground hidden xl:block">{user.name || 'User'}</span>
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
@@ -235,7 +235,7 @@ export function SharedNavbar() {
             {/* Mobile menu button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="xl:hidden text-foreground"
+              className="md:hidden text-foreground"
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
@@ -243,7 +243,7 @@ export function SharedNavbar() {
 
           {/* Mobile Navigation */}
           {mobileMenuOpen && (
-            <div className="xl:hidden border-t border-border py-4 space-y-4">
+            <div className="md:hidden border-t border-border py-4 space-y-4">
               {user && (
                 <div className="space-y-2">
                   <Link
