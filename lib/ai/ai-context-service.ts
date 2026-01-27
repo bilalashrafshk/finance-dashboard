@@ -125,21 +125,49 @@ export class AIContextService {
     /**
      * Legacy support: maintained for backward compatibility.
      */
+    /**
+     * Legacy support: maintained for backward compatibility.
+     */
     static async getContext(symbol: string) {
-        const [profile, history, quarterly, annual, dividend] = await Promise.all([
+        const { fetchPKEquityPriceService } = await import('@/lib/prices/pk-equity-service');
+
+        const [profile, history, quarterly, annual, dividend, latestPriceData] = await Promise.all([
             this.getCompanyProfile(symbol),
             this.getPriceHistoryMetrics(symbol),
             this.getQuarterlyEarnings(symbol),
             this.getAnnualEarnings(symbol),
-            this.getDividendInfo(symbol)
+            this.getDividendInfo(symbol),
+            fetchPKEquityPriceService(symbol, false) // Fetch without forced refresh first
         ]);
 
         if ('error' in profile) throw new Error(profile.error);
 
-        // --- Growth Calculation Logic ---
-        // Sort descending (newest first)
+        // Resolving the most current price:
+        // Priority 1: fetchPKEquityPriceService (Real-time / Historical Data Service)
+        // Priority 2: profile.price (Screener Metrics - might be stale)
+        const currentPrice = latestPriceData && latestPriceData.price > 0
+            ? latestPriceData.price
+            : parseFloat(profile.price || 0);
+
+        // --- Dynamic PE Calculation (Real-time) ---
+        // Calculate TTM EPS from the last 4 available quarters
+        // We use the already fetched 'quarterly' data which is sorted by date in the DB query usually, 
+        // but we ensure sorting here just in case.
         const sortedQuarterly = [...quarterly].sort((a, b) => new Date(b.period_end_date || 0).getTime() - new Date(a.period_end_date || 0).getTime());
 
+        let ttmEps = 0;
+        if (sortedQuarterly.length > 0) {
+            // Sum up to 4 recent quarters
+            const last4 = sortedQuarterly.slice(0, 4);
+            ttmEps = last4.reduce((sum, q) => sum + (q.eps || 0), 0);
+        }
+
+        let dynamicPe = parseFloat(profile.pe_ratio || 0); // Fallback to stale screener PE
+        if (currentPrice > 0 && ttmEps > 0) {
+            dynamicPe = parseFloat((currentPrice / ttmEps).toFixed(2));
+        }
+
+        // --- Growth Calculation Logic ---
         let growthContext = {
             note: "Growth metrics based on last available reported data in DB.",
             last_reported_period: sortedQuarterly.length > 0 ? sortedQuarterly[0].period : "N/A",
@@ -174,8 +202,8 @@ export class AIContextService {
                 current_date: new Date().toISOString().split('T')[0],
                 market_cap_rank: profile.market_cap_rank ? parseInt(profile.market_cap_rank) : null
             },
-            price_context: { current: parseFloat(profile.price || 0), five_two_week_high: parseFloat(history.high_52w || 0) },
-            valuation_context: { company_pe: parseFloat(profile.pe_ratio || 0), sector_avg_pe: parseFloat(profile.sector_pe || 0) },
+            price_context: { current: currentPrice, five_two_week_high: parseFloat(history.high_52w || 0) },
+            valuation_context: { company_pe: dynamicPe, sector_avg_pe: parseFloat(profile.sector_pe || 0) },
             growth_context: growthContext,
             momentum_context: {
                 rsi_14: profile.rsi_14 ? parseFloat(profile.rsi_14) : null,

@@ -291,7 +291,7 @@ export async function GET(request: Request) {
                     }
 
                     // Fetch Company Name
-                    const profileRes = await client.query("SELECT company_name FROM company_profiles WHERE symbol = $1", [event.symbol]);
+                    const profileRes = await client.query("SELECT name as company_name FROM company_profiles WHERE symbol = $1", [event.symbol]);
                     const companyName = profileRes.rows[0]?.company_name || '';
                     const nameSuffix = companyName ? ` (${companyName})` : '';
 
