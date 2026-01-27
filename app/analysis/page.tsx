@@ -1,5 +1,6 @@
 import { AnalysisFeed } from "@/components/analysis/analysis-feed"
 import { Metadata } from "next"
+import { SharedNavbar } from "@/components/shared-navbar"
 
 export const metadata: Metadata = {
     title: "Market Analysis & Research | ConvictionPays",
@@ -8,15 +9,18 @@ export const metadata: Metadata = {
 
 export default function AnalysisPage() {
     return (
-        <div className="container py-8 max-w-7xl mx-auto">
-            <div className="flex flex-col gap-2 mb-8">
-                <h1 className="text-3xl font-bold tracking-tight">Market Analysis & Research</h1>
-                <p className="text-muted-foreground">
-                    Latest thoughts, deep dives, and presentations on key market assets.
-                </p>
-            </div>
+        <div className="min-h-screen bg-background">
+            <SharedNavbar />
+            <div className="container py-8 max-w-7xl mx-auto">
+                <div className="flex flex-col gap-2 mb-8">
+                    <h1 className="text-3xl font-bold tracking-tight">Market Analysis & Research</h1>
+                    <p className="text-muted-foreground">
+                        Latest thoughts, deep dives, and presentations on key market assets.
+                    </p>
+                </div>
 
-            <AnalysisFeed />
+                <AnalysisFeed />
+            </div>
         </div>
     )
 }
