@@ -4,21 +4,50 @@ import { getAuthenticatedUser } from '@/lib/auth/middleware';
 import { getUserById } from '@/lib/auth/db-auth';
 
 // GET: Fetch analyses for a symbol
+// GET: Fetch analyses (by symbol or all)
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const symbol = searchParams.get('symbol');
-
-    if (!symbol) {
-        return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
-    }
+    // Pagination params
+    const limit = parseInt(searchParams.get('limit') || '20');
+    const offset = parseInt(searchParams.get('offset') || '0');
 
     const pool = getPool();
     try {
-        const result = await pool.query(
-            `SELECT * FROM asset_analyses WHERE symbol = $1 ORDER BY analysis_date DESC, created_at DESC`,
-            [symbol]
-        );
-        return NextResponse.json({ analyses: result.rows });
+        let query = `SELECT * FROM asset_analyses`;
+        const params: any[] = [];
+        const conditions: string[] = [];
+
+        if (symbol) {
+            conditions.push(`symbol = $${params.length + 1}`);
+            params.push(symbol);
+        }
+
+        if (conditions.length > 0) {
+            query += ` WHERE ${conditions.join(' AND ')}`;
+        }
+
+        query += ` ORDER BY analysis_date DESC, created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+        params.push(limit, offset);
+
+        const result = await pool.query(query, params);
+
+        // Get total count for pagination
+        let countQuery = `SELECT COUNT(*) FROM asset_analyses`;
+        if (conditions.length > 0) {
+            countQuery += ` WHERE ${conditions.join(' AND ')}`;
+        }
+        // Reuse params for conditions, slice off limit/offset
+        const countResult = await pool.query(countQuery, params.slice(0, conditions.length));
+
+        return NextResponse.json({
+            analyses: result.rows,
+            pagination: {
+                total: parseInt(countResult.rows[0].count),
+                limit,
+                offset
+            }
+        });
     } catch (error) {
         console.error('Error fetching asset analyses:', error);
         return NextResponse.json({ error: 'Failed to fetch analyses' }, { status: 500 });

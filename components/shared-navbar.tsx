@@ -97,6 +97,18 @@ export function SharedNavbar() {
                     </div>
                   </Link>
                   <Link
+                    href="/analysis"
+                    className={`px-3 py-2 rounded-lg transition-colors text-sm ${isActive('/analysis')
+                      ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
+                      : 'text-slate-400 hover:text-white'
+                      }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Grid3x3 className="w-4 h-4" />
+                      <span>Analysis</span>
+                    </div>
+                  </Link>
+                  <Link
                     href="/events"
                     className={`px-3 py-2 rounded-lg transition-colors text-sm ${isActive('/events')
                       ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
@@ -292,6 +304,18 @@ export function SharedNavbar() {
                     <div className="flex items-center gap-2">
                       <Filter className="w-4 h-4" />
                       <span>Screener</span>
+                    </div>
+                  </Link>
+                  <Link
+                    href="/analysis"
+                    className={`block px-4 py-2 rounded-lg transition-colors ${isActive('/analysis')
+                      ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
+                      : 'text-foreground hover:bg-muted'
+                      }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Grid3x3 className="w-4 h-4" />
+                      <span>Analysis</span>
                     </div>
                   </Link>
                   <Link
