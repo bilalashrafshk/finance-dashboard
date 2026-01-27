@@ -13,7 +13,12 @@ async function runMigration() {
     const client = await pool.connect();
     try {
         console.log('Applying migration...');
-        const sql = fs.readFileSync(path.join(__dirname, '../lib/db/migrations/20260121_add_sentiment_index.sql'), 'utf8');
+        const migrationFile = process.argv[2];
+        if (!migrationFile) {
+            throw new Error('Please provide migration filename as argument');
+        }
+        console.log(`Applying migration: ${migrationFile}...`);
+        const sql = fs.readFileSync(path.join(__dirname, `../lib/db/migrations/${migrationFile}`), 'utf8');
         await client.query(sql);
         console.log('✅ Migration applied successfully.');
     } catch (e) {

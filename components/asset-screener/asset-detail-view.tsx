@@ -21,6 +21,7 @@ import { DividendTable } from "./dividend-table"
 import { AssetFinancialsView } from "./asset-financials-view"
 import { HistoricPEChart } from "./historic-pe-chart"
 import { RiskMetricsDisplay } from "./risk-metrics-display"
+import { AssetAnalysisTab } from "./asset-analysis-tab"
 
 interface AssetDetailViewProps {
   asset: TrackedAsset
@@ -389,6 +390,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
         )}
         <TabsTrigger value="prices">Prices & Ratios</TabsTrigger>
         <TabsTrigger value="seasonality">Seasonality</TabsTrigger>
+        <TabsTrigger value="analysis">Analysis</TabsTrigger>
       </TabsList>
 
       <TabsContent value="analytics" className="space-y-4">
@@ -531,6 +533,10 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
             </CardContent>
           </Card>
         )}
+      </TabsContent>
+
+      <TabsContent value="analysis" className="space-y-4">
+        <AssetAnalysisTab symbol={asset.symbol} />
       </TabsContent>
     </Tabs>
   )
