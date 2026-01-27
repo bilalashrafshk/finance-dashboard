@@ -23,6 +23,7 @@ interface Analysis {
     thought: 'buy' | 'sell' | 'watch' | 'hold'
     remarks: string
     analysis_date: string
+    analyst: string
     created_at: string
 }
 
@@ -46,6 +47,7 @@ export function AssetAnalysisTab({ symbol }: Props) {
         type: 'video',
         thought: 'watch',
         remarks: '',
+        analyst: 'Bilal Ashraf',
         analysis_date: format(new Date(), 'yyyy-MM-dd')
     })
 
@@ -96,6 +98,7 @@ export function AssetAnalysisTab({ symbol }: Props) {
                     type: 'video',
                     thought: 'watch',
                     remarks: '',
+                    analyst: 'Bilal Ashraf',
                     analysis_date: format(new Date(), 'yyyy-MM-dd')
                 })
                 fetchAnalyses()
@@ -147,6 +150,17 @@ export function AssetAnalysisTab({ symbol }: Props) {
                                         onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                                         required
                                         placeholder="e.g., Q2 Earnings Review"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="analyst">Analyst</Label>
+                                    <Input
+                                        id="analyst"
+                                        value={formData.analyst}
+                                        onChange={(e) => setFormData({ ...formData, analyst: e.target.value })}
+                                        required
+                                        placeholder="Enter analyst name"
                                     />
                                 </div>
 
@@ -251,6 +265,8 @@ export function AssetAnalysisTab({ symbol }: Props) {
                                                 <Calendar className="h-3 w-3" />
                                                 {format(new Date(analysis.analysis_date), 'MMM d, yyyy')}
                                             </span>
+                                            <span>•</span>
+                                            <span className="font-medium text-foreground/80">{analysis.analyst}</span>
                                             <span>•</span>
                                             <span className="flex items-center gap-1 capitalize">
                                                 {analysis.type === 'video' ? <Video className="h-3 w-3" /> : <FileText className="h-3 w-3" />}

@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const { symbol, url, title, type, thought, remarks, analysis_date } = body;
+        const { symbol, url, title, type, thought, remarks, analysis_date, analyst } = body;
 
         // Basic validation
         if (!symbol || !url || !title || !type || !thought) {
@@ -49,10 +49,10 @@ export async function POST(req: NextRequest) {
 
         const pool = getPool();
         const result = await pool.query(
-            `INSERT INTO asset_analyses (symbol, url, title, type, thought, remarks, analysis_date)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `INSERT INTO asset_analyses (symbol, url, title, type, thought, remarks, analysis_date, analyst)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              RETURNING *`,
-            [symbol, url, title, type, thought, remarks || null, analysis_date || new Date()]
+            [symbol, url, title, type, thought, remarks || null, analysis_date || new Date(), analyst || 'Bilal Ashraf']
         );
 
         return NextResponse.json({ success: true, analysis: result.rows[0] });
