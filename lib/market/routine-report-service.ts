@@ -101,7 +101,8 @@ export class RoutineReportService {
             timestamp: new Date().toISOString()
         };
 
-        await sendDiscordNotification({ embeds: [recapEmbed] }, false, fundamentalWebhook || undefined);
+        const sent1 = await sendDiscordNotification({ embeds: [recapEmbed] }, false, fundamentalWebhook || undefined);
+        if (!sent1) throw new Error("Failed to send Daily Recap embed");
 
         // 2. PUSH VALUE TRADED LEADERS (Liquidity)
         const valueLeaders = allStocks
@@ -122,7 +123,8 @@ export class RoutineReportService {
             timestamp: new Date().toISOString()
         };
 
-        await sendDiscordNotification({ embeds: [volEmbed] }, false, fundamentalWebhook || undefined);
+        const sent2 = await sendDiscordNotification({ embeds: [volEmbed] }, false, fundamentalWebhook || undefined);
+        if (!sent2) throw new Error("Failed to send Liquidity Watch embed");
     }
 
     /**

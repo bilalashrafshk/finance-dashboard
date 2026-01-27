@@ -386,7 +386,7 @@ async function handleDailyRecap(client: any) {
         if (day >= 1 && day <= 4) targetHour = 16;
         else if (day === 5) targetHour = 17;
 
-        if (targetHour !== -1 && hour === targetHour && minute >= 0 && minute <= 15) {
+        if (targetHour !== -1 && hour >= targetHour) {
             // 3. Atomically check AND update (Claim the lock)
             // We try to insert today's date. 
             // If key exists, we try to update it ONLY IF it's not already todayStr.
@@ -401,8 +401,14 @@ async function handleDailyRecap(client: any) {
 
             if (result.rowCount > 0) {
                 console.log(`[Daily Recap] Lock acquired for ${todayStr}. Triggering reports...`);
-                await RoutineReportService.pushDailyReports();
-                console.log(`[Daily Recap] Reports sent successfully.`);
+                try {
+                    await RoutineReportService.pushDailyReports();
+                    console.log(`[Daily Recap] Reports sent successfully.`);
+                } catch (e: any) {
+                    console.error(`[Daily Recap] FAILED to send reports: ${e.message}. Reverting lock.`);
+                    // Revert the value so it retries on next cron tick
+                    await client.query("UPDATE alert_configs SET value = $1 WHERE key = 'last_daily_recap_sent_date'", [`FAILED_${todayStr}`]);
+                }
             } else {
                 // rowCount 0 means either:
                 // a) Key existed and value was ALREADY todayStr (Someone else did it)
