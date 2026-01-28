@@ -9,11 +9,26 @@ async function verifyAdmin(request: NextRequest) {
     const user = await getUserById(authUser.id);
     if (!user) return null;
 
+    // Safety check for permissions type
+    let permissions: string[] = [];
+    if (Array.isArray(user.permissions)) {
+        permissions = user.permissions;
+    } else if (typeof user.permissions === 'string') {
+        try {
+            permissions = JSON.parse(user.permissions);
+        } catch (e) {
+            permissions = [];
+        }
+    }
+
     // Allow admin OR staff with x-copilot permission
     const isAuthorized = user.role === 'admin' ||
-        (user.role === 'staff' && user.permissions?.includes('x-copilot'));
+        (user.role === 'staff' && permissions.includes('x-copilot'));
 
-    if (!isAuthorized) return null;
+    if (!isAuthorized) {
+        console.warn(`[X-Copilot Blocked] User: ${user.email} | Role: ${user.role} | Permissions: ${JSON.stringify(user.permissions)}`);
+        return null;
+    }
     return user;
 }
 

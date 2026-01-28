@@ -191,6 +191,27 @@ export async function GET(request: Request) {
                         const hasAttachments = debugMetadata?.attachedFiles && debugMetadata.attachedFiles.length > 0;
 
                         if (!hasAttachments) {
+                            // Check for download failures and retry if needed
+                            const failedDownloads = debugMetadata?.failedAttachments?.filter((f: any) => f.reason.startsWith("Download Failed"));
+
+                            if (failedDownloads && failedDownloads.length > 0) {
+                                const currentRetries = task.retry_count || 0;
+                                const MAX_RETRIES = 3;
+
+                                if (currentRetries < MAX_RETRIES) {
+                                    console.log(`[Event Process] ⚠️ Download failed for ${event.symbol}. Retrying (${currentRetries + 1}/${MAX_RETRIES})...`);
+
+                                    const newMetadata = { ...task, retry_count: currentRetries + 1 };
+
+                                    // Update metadata and keep as PENDING so it gets picked up again
+                                    await client.query(
+                                        `UPDATE event_queue SET metadata = $1, processed_at = NOW() WHERE id = $2`,
+                                        [JSON.stringify(newMetadata), event.id]
+                                    );
+                                    continue;
+                                }
+                            }
+
                             console.log(`[Event Process] ⚠️ AI performed text-only analysis (no attachments). Reverting to RAW as per strict policy.`);
 
                             let skipReason = "Missing attachment or disabled";
