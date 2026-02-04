@@ -9,7 +9,7 @@ const fetcher = async (url: string) => {
   const res = await fetch(url, {
     headers: token ? { 'Authorization': `Bearer ${token}` } : {}
   })
-  
+
   if (!res.ok) {
     const error = new Error('An error occurred while fetching the data.')
     // @ts-ignore
@@ -18,7 +18,7 @@ const fetcher = async (url: string) => {
     error.status = res.status
     throw error
   }
-  
+
   return res.json()
 }
 
@@ -27,7 +27,7 @@ const batchPriceFetcher = async ([url, assets]: [string, any[]]) => {
   const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 
+    headers: {
       'Content-Type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     },
@@ -57,8 +57,8 @@ export function usePortfolio() {
   // 2. Prepare assets list for price fetching
   // We need to stabilize this array to prevent SWR infinite loops
   const rawHoldings = holdingsData?.holdings || []
-  const assetsKey = rawHoldings.length > 0 
-    ? JSON.stringify(rawHoldings.map((h: any) => `${h.assetType}:${h.symbol}`)) 
+  const assetsKey = rawHoldings.length > 0
+    ? JSON.stringify(rawHoldings.map((h: any) => `${h.assetType}:${h.symbol}`))
     : null
 
   const assetsForPriceFetch = rawHoldings.map((h: any) => {
@@ -77,6 +77,8 @@ export function usePortfolio() {
       refreshInterval: 60000, // 1 minute
       dedupingInterval: 10000,
       keepPreviousData: true,
+      refreshWhenHidden: false,
+      refreshWhenOffline: false,
     }
   )
 
@@ -89,7 +91,7 @@ export function usePortfolio() {
       if (assetType === 'crypto') {
         symbol = parseSymbolToBinance(h.symbol)
       }
-      
+
       // For commodities, always use purchase price (no unrealized P&L until sold/realized)
       if (assetType === 'commodities') {
         return {
@@ -97,21 +99,21 @@ export function usePortfolio() {
           currentPrice: h.purchasePrice
         }
       }
-      
+
       // Key format from batch API: "type:SYMBOL"
       const priceKey = `${assetType}:${symbol.toUpperCase()}`
-      
+
       let currentPrice = h.purchasePrice // Default fallback
-      
+
       if (pricesData?.results?.[priceKey]) {
         const result = pricesData.results[priceKey]
         if (result.price !== null && !result.error) {
           currentPrice = result.price
         }
       } else if (h.currentPrice) {
-          // Fallback to price from holdings API (if any, though we requested fetchPrices=false, 
-          // fast load might return stored prices from DB)
-          currentPrice = h.currentPrice
+        // Fallback to price from holdings API (if any, though we requested fetchPrices=false, 
+        // fast load might return stored prices from DB)
+        currentPrice = h.currentPrice
       }
 
       return {
