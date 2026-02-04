@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /api/
+Disallow: /portfolio/
+Disallow: /dashboard/
+Allow: /
