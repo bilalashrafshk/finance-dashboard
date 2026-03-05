@@ -99,8 +99,8 @@ export async function fetchBatchPrices(
 
             try {
                 if (asset.type === 'pk-equity') {
-                    // Use SERVICE directly (No HTTP)
-                    const result = await fetchPKEquityPriceService(asset.symbol, false)
+                    // Use SERVICE directly (No HTTP), Bypass cache to avoid stale-while-revalidate in cron
+                    const result = await fetchPKEquityPriceService(asset.symbol, true)
                     if (result) {
                         data = { price: result.price, date: result.date }
                     }
