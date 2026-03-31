@@ -353,7 +353,7 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
       cashBalance,
       purchases
     }
-  }, [filteredData, amount, frequency, strategy, dynamicAggression, accountForDividends, reinvestDividends, dividendTax, dividends])
+  }, [filteredData, amount, frequency, calendarAlign, strategy, dynamicAggression, accountForDividends, reinvestDividends, dividendTax, dividends])
 
   if (!results) {
     return (
