@@ -53,6 +53,7 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
 
   const [accountForDividends, setAccountForDividends] = useState(false)
   const [reinvestDividends, setReinvestDividends] = useState(false)
+  const [dividendTax, setDividendTax] = useState(15)
   
   const [financials, setFinancials] = useState<FinancialPeriod[]>([])
   const [loadingFinancials, setLoadingFinancials] = useState(false)
@@ -191,12 +192,16 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
     
     // Only consider rows that have valid PE for avg calculation
     const pointsWithPE = filteredData.filter(d => d.pe !== null)
-    let avgPE = 0
+    let medianPE = 0
     let stdDevPE = 0
 
     if (pointsWithPE.length > 0) {
-      avgPE = pointsWithPE.reduce((acc, curr) => acc + (curr.pe as number), 0) / pointsWithPE.length
-      const variance = pointsWithPE.reduce((acc, curr) => acc + Math.pow((curr.pe as number) - avgPE, 2), 0) / pointsWithPE.length
+      const sortedPEs = [...pointsWithPE].map(p => p.pe as number).sort((a,b) => a - b)
+      const mid = Math.floor(sortedPEs.length / 2)
+      if (sortedPEs.length % 2 !== 0) medianPE = sortedPEs[mid]
+      else medianPE = (sortedPEs[mid - 1] + sortedPEs[mid]) / 2
+
+      const variance = pointsWithPE.reduce((acc, curr) => acc + Math.pow((curr.pe as number) - medianPE, 2), 0) / pointsWithPE.length
       stdDevPE = Math.sqrt(variance)
     }
 
@@ -245,9 +250,9 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
       if (executeBuy) {
           let currentInvestAmount = amount
 
-          if (strategy === 'dynamic' && point.pe !== null && avgPE > 0 && stdDevPE > 0) {
+          if (strategy === 'dynamic' && point.pe !== null && medianPE > 0 && stdDevPE > 0) {
             const pe = point.pe
-            const zScore = (pe - avgPE) / stdDevPE
+            const zScore = (pe - medianPE) / stdDevPE
             if (zScore <= -2) {
               currentInvestAmount = amount * Math.min(4, dynamicAggression * 2)
             } else if (zScore <= -1) {
@@ -257,7 +262,7 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
             } else if (zScore >= 1) {
               currentInvestAmount = amount * 0.5
             } else {
-              const undervaluationFactor = avgPE / pe
+              const undervaluationFactor = medianPE / pe
               const multiplier = Math.min(Math.max(undervaluationFactor, 0.5), dynamicAggression)
               currentInvestAmount = amount * multiplier
             }
@@ -280,8 +285,9 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
       // 2. Process Dividends
       const dateKey = point.date.substring(0, 10)
       if (accountForDividends && dividendMap.has(dateKey)) {
-          const divAmount = dividendMap.get(dateKey)!
-          const payout = totalShares * divAmount
+          const rawDivAmount = dividendMap.get(dateKey)!
+          const postTaxDivAmount = rawDivAmount * (1 - (dividendTax / 100))
+          const payout = totalShares * postTaxDivAmount
           totalDividendsCollected += payout
 
           if (reinvestDividends) {
@@ -340,14 +346,14 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
       percentageReturn,
       avgCost,
       totalShares,
-      avgPE,
+      medianPE,
       stdDevPE,
       cagr,
       totalDividendsCollected,
       cashBalance,
       purchases
     }
-  }, [filteredData, amount, frequency, strategy, dynamicAggression, accountForDividends, reinvestDividends, dividends])
+  }, [filteredData, amount, frequency, strategy, dynamicAggression, accountForDividends, reinvestDividends, dividendTax, dividends])
 
   if (!results) {
     return (
@@ -482,9 +488,25 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
                     <Switch id="account-dividends" checked={accountForDividends} onCheckedChange={handleAccountForDividendsChange} />
                   </div>
                   {accountForDividends && (
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="reinvest-dividends" className="text-xs font-medium cursor-pointer text-primary">Reinvest Dividends</Label>
-                      <Switch id="reinvest-dividends" checked={reinvestDividends} onCheckedChange={setReinvestDividends} />
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="reinvest-dividends" className="text-xs font-medium cursor-pointer text-primary">Reinvest Dividends</Label>
+                        <Switch id="reinvest-dividends" checked={reinvestDividends} onCheckedChange={setReinvestDividends} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="dividend-tax" className="text-xs font-medium cursor-pointer">Dividend Tax (%)</Label>
+                        <div className="relative w-16">
+                          <input 
+                            id="dividend-tax"
+                            type="number" 
+                            min="0" max="100"
+                            value={dividendTax} 
+                            onChange={(e) => setDividendTax(Number(e.target.value))}
+                            className="w-full pl-2 pr-6 py-1 text-xs rounded border bg-background text-right focus:ring-1 focus:ring-primary outline-none"
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">%</span>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -673,9 +695,9 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
                 {strategy === 'dynamic' && (
                   <>
                     <div>
-                      <div className="text-[10px] text-primary font-bold uppercase">Avg Hist P/E</div>
+                      <div className="text-[10px] text-primary font-bold uppercase">Median Hist P/E</div>
                       <div className="text-sm font-semibold">
-                        {results.avgPE > 0 ? `${results.avgPE.toFixed(1)}x` : 'N/A'}
+                        {results.medianPE > 0 ? `${results.medianPE.toFixed(1)}x` : 'N/A'}
                       </div>
                     </div>
                     <div>
