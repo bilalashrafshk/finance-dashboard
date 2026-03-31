@@ -253,19 +253,36 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
           if (strategy === 'dynamic' && point.pe !== null && medianPE > 0 && stdDevPE > 0) {
             const pe = point.pe
             const zScore = (pe - medianPE) / stdDevPE
+            let multiplier = 1.0
+
             if (zScore <= -2) {
-              currentInvestAmount = amount * Math.min(4, dynamicAggression * 2)
-            } else if (zScore <= -1) {
-              currentInvestAmount = amount * dynamicAggression
-            } else if (zScore >= 2) {
-              currentInvestAmount = amount * 0.25
-            } else if (zScore >= 1) {
-              currentInvestAmount = amount * 0.5
+              multiplier = dynamicAggression * 2
+            } else if (zScore <= 0) {
+              if (zScore <= -1) {
+                // Interpolate from -1 to -2: map to [dynamicAggression, dynamicAggression * 2]
+                const fraction = Math.abs(zScore) - 1.0
+                multiplier = dynamicAggression + fraction * dynamicAggression
+              } else {
+                // Interpolate from 0 to -1: map to [1.0, dynamicAggression]
+                const fraction = Math.abs(zScore)
+                multiplier = 1.0 + fraction * (dynamicAggression - 1.0)
+              }
             } else {
-              const undervaluationFactor = medianPE / pe
-              const multiplier = Math.min(Math.max(undervaluationFactor, 0.5), dynamicAggression)
-              currentInvestAmount = amount * multiplier
+              // zScore > 0
+              if (zScore >= 2) {
+                multiplier = 0.25
+              } else if (zScore >= 1) {
+                // Interpolate from 1 to 2: map to [0.5, 0.25]
+                const fraction = zScore - 1.0
+                multiplier = 0.5 - fraction * 0.25
+              } else {
+                // Interpolate from 0 to 1: map to [1.0, 0.5]
+                const fraction = zScore
+                multiplier = 1.0 - fraction * 0.5
+              }
             }
+            
+            currentInvestAmount = amount * multiplier
           }
 
           totalInvested += currentInvestAmount
