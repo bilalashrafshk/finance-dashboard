@@ -17,11 +17,14 @@ import {
   Settings2, 
   BarChart3, 
   Scale,
-  Loader2
+  Loader2,
+  Percent
 } from 'lucide-react'
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import type { TrackedAsset } from './add-asset-dialog'
 import type { PriceDataPoint } from '@/lib/asset-screener/metrics-calculations'
-import { formatCurrency } from '@/lib/asset-screener/metrics-calculations'
+import { formatCurrency, formatPercentage } from '@/lib/asset-screener/metrics-calculations'
 
 interface DCASimulatorProps {
   asset: TrackedAsset
@@ -33,16 +36,48 @@ interface FinancialPeriod {
   eps_diluted: string
 }
 
+interface DividendRecord {
+  date: string
+  dividend_amount: number
+}
+
 export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
   const [amount, setAmount] = useState(1000)
   const [frequency, setFrequency] = useState('monthly') 
   const [timeframe, setTimeframe] = useState('5y') 
   const [strategy, setStrategy] = useState('standard') 
   const [dynamicAggression, setDynamicAggression] = useState(2) 
+
+  const [accountForDividends, setAccountForDividends] = useState(false)
+  const [reinvestDividends, setReinvestDividends] = useState(false)
   
   const [financials, setFinancials] = useState<FinancialPeriod[]>([])
   const [loadingFinancials, setLoadingFinancials] = useState(false)
   const [financialsError, setFinancialsError] = useState<string | null>(null)
+
+  const [dividends, setDividends] = useState<DividendRecord[]>([])
+
+  // Fetch dividends on mount for PK Equities
+  useEffect(() => {
+    if (asset.assetType === 'pk-equity') {
+      fetch(`/api/pk-equity/dividend?ticker=${encodeURIComponent(asset.symbol)}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data && data.dividends) {
+                setDividends(data.dividends)
+            }
+        })
+        .catch(err => console.error("Failed to fetch dividends", err))
+    }
+  }, [asset])
+
+  // Handle toggle logic
+  const handleAccountForDividendsChange = (checked: boolean) => {
+    setAccountForDividends(checked)
+    if (!checked) {
+        setReinvestDividends(false)
+    }
+  }
 
   // Fetch financials when dynamic strategy is selected for the first time
   useEffect(() => {
@@ -50,7 +85,6 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
       const fetchFinancials = async () => {
         setLoadingFinancials(true)
         try {
-          // Attempt to fetch quarterly financials. If there are none, we can't do dynamic DCA.
           const res = await fetch(`/api/financials?symbol=${asset.symbol}&period=quarterly`)
           if (res.ok) {
             const data = await res.json()
@@ -79,7 +113,6 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
   const dataWithPE = useMemo(() => {
     if (!historicalData.length) return []
     
-    // Default data shape without PE
     if (strategy === 'standard' || financials.length === 0) {
       return historicalData.map(d => ({
         date: d.date,
@@ -88,8 +121,6 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
       }))
     }
 
-    // If dynamic, we need to map EPS to each point. This is an approximation.
-    // Calculate TTM EPS for every day
     const sortedFinancials = [...financials].sort((a, b) => 
       new Date(a.period_end_date).getTime() - new Date(b.period_end_date).getTime()
     )
@@ -98,11 +129,9 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
       const pointDate = new Date(d.date)
       let ttmEps = 0
       
-      // Find the last 4 quarters available *before* this date
       const availableQuarters = sortedFinancials.filter(f => new Date(f.period_end_date) <= pointDate)
       
       if (availableQuarters.length >= 4) {
-        // Sum the last 4
         const last4 = availableQuarters.slice(-4)
         ttmEps = last4.reduce((sum, q) => sum + (parseFloat(q.eps_diluted) || 0), 0)
       }
@@ -110,7 +139,6 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
       let pe: number | null = null
       if (ttmEps > 0 && d.close > 0) {
         pe = d.close / ttmEps
-        // Remove outliers for cleaner averages
         if (pe > 200 || pe < 0) pe = null; 
       }
 
@@ -143,6 +171,8 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
 
     let totalInvested = 0
     let totalShares = 0
+    let cashBalance = 0
+    let totalDividendsCollected = 0
     const history: { date: string, invested: number, value: number, price: number, shares: number }[] = []
     
     // Only consider rows that have valid PE for avg calculation
@@ -152,66 +182,91 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
 
     if (pointsWithPE.length > 0) {
       avgPE = pointsWithPE.reduce((acc, curr) => acc + (curr.pe as number), 0) / pointsWithPE.length
-      
-      // Std Dev calculation
       const variance = pointsWithPE.reduce((acc, curr) => acc + Math.pow((curr.pe as number) - avgPE, 2), 0) / pointsWithPE.length
       stdDevPE = Math.sqrt(variance)
     }
 
-    // Determine the interval step
-    let step = 1 // default daily
-    if (frequency === 'weekly') step = 5 // ~5 trading days
-    if (frequency === 'monthly') step = 21 // ~21 trading days
+    let step = 1
+    if (frequency === 'weekly') step = 5
+    if (frequency === 'monthly') step = 21
 
-    const investmentPoints = filteredData.filter((d, i) => i % step === 0)
+    const dividendMap = new Map<string, number>()
+    if (accountForDividends) {
+      dividends.forEach(d => dividendMap.set(d.date.substring(0, 10), d.dividend_amount))
+    }
 
-    investmentPoints.forEach((point) => {
-      let currentInvestAmount = amount
+    filteredData.forEach((point, i) => {
+      // 1. Execute DCA Investment on scheduled days
+      if (i % step === 0) {
+          let currentInvestAmount = amount
 
-      if (strategy === 'dynamic' && point.pe !== null && avgPE > 0 && stdDevPE > 0) {
-        const pe = point.pe
-        const zScore = (pe - avgPE) / stdDevPE
-        
-        // Z-score logic mimicking standard industry practice
-        if (zScore <= -2) {
-          // Extremely cheap
-          currentInvestAmount = amount * Math.min(4, dynamicAggression * 2)
-        } else if (zScore <= -1) {
-          // Cheap
-          currentInvestAmount = amount * dynamicAggression
-        } else if (zScore >= 2) {
-          // Extremely expensive
-          currentInvestAmount = amount * 0.25
-        } else if (zScore >= 1) {
-          // Expensive
-          currentInvestAmount = amount * 0.5
-        } else {
-          // Normal roughly (-1 to 1) -> don't alter amount heavily, but we can do a smooth scaling if we wanted
-          // The user's original formula: multiplier = Math.min(Math.max(undervaluationFactor, 0.5), dynamicAggression);
-          const undervaluationFactor = avgPE / pe
-          const multiplier = Math.min(Math.max(undervaluationFactor, 0.5), dynamicAggression)
-          currentInvestAmount = amount * multiplier
-        }
+          if (strategy === 'dynamic' && point.pe !== null && avgPE > 0 && stdDevPE > 0) {
+            const pe = point.pe
+            const zScore = (pe - avgPE) / stdDevPE
+            if (zScore <= -2) {
+              currentInvestAmount = amount * Math.min(4, dynamicAggression * 2)
+            } else if (zScore <= -1) {
+              currentInvestAmount = amount * dynamicAggression
+            } else if (zScore >= 2) {
+              currentInvestAmount = amount * 0.25
+            } else if (zScore >= 1) {
+              currentInvestAmount = amount * 0.5
+            } else {
+              const undervaluationFactor = avgPE / pe
+              const multiplier = Math.min(Math.max(undervaluationFactor, 0.5), dynamicAggression)
+              currentInvestAmount = amount * multiplier
+            }
+          }
+
+          totalInvested += currentInvestAmount
+          const sharesBought = currentInvestAmount / point.price
+          totalShares += sharesBought
       }
 
-      totalInvested += currentInvestAmount
-      const sharesBought = currentInvestAmount / point.price
-      totalShares += sharesBought
+      // 2. Process Dividends
+      const dateKey = point.date.substring(0, 10)
+      if (accountForDividends && dividendMap.has(dateKey)) {
+          const divAmount = dividendMap.get(dateKey)!
+          const payout = totalShares * divAmount
+          totalDividendsCollected += payout
+
+          if (reinvestDividends) {
+              // Buy more shares immediately at current price
+              totalShares += payout / point.price
+          } else {
+              // Cash sits in the account
+              cashBalance += payout
+          }
+      }
+
+      const portfolioValue = (totalShares * point.price) + cashBalance
 
       history.push({
         date: point.date,
         invested: parseFloat(totalInvested.toFixed(2)),
-        value: parseFloat((totalShares * point.price).toFixed(2)),
+        value: parseFloat(portfolioValue.toFixed(2)),
         price: point.price,
         shares: totalShares
       })
     })
 
     const finalPrice = filteredData[filteredData.length - 1].price
-    const finalValue = totalShares * finalPrice
+    const finalValue = (totalShares * finalPrice) + cashBalance
     const totalReturn = finalValue - totalInvested
     const percentageReturn = totalInvested > 0 ? (totalReturn / totalInvested) * 100 : 0
-    const avgCost = totalShares > 0 ? totalInvested / totalShares : 0
+    const avgCost = totalShares > 0 ? (totalInvested - cashBalance) / totalShares : 0
+
+    // Calculate Approximate CAGR
+    // Using (Final / Invested) ^ (365 / DurationDays) - 1
+    const startDate = new Date(filteredData[0].date)
+    const endDate = new Date(filteredData[filteredData.length - 1].date)
+    const daysInvested = (endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24)
+    const yearsInvested = daysInvested / 365.25
+    
+    let cagr = 0
+    if (yearsInvested > 0 && totalInvested > 0) {
+        cagr = (Math.pow(finalValue / totalInvested, 1 / yearsInvested) - 1) * 100
+    }
 
     return {
       history,
@@ -221,9 +276,12 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
       percentageReturn,
       avgCost,
       totalShares,
-      avgPE
+      avgPE,
+      cagr,
+      totalDividendsCollected,
+      cashBalance
     }
-  }, [filteredData, amount, frequency, strategy, dynamicAggression])
+  }, [filteredData, amount, frequency, strategy, dynamicAggression, accountForDividends, reinvestDividends, dividends])
 
   if (!results) {
     return (
@@ -244,7 +302,7 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
             DCA Simulator
           </h2>
           <p className="text-muted-foreground text-sm">
-            Backtest your {asset.name} investment strategy.
+            Backtest your {asset.symbol} investment strategy.
           </p>
         </div>
         <div className="flex bg-muted p-1 rounded-lg border shadow-sm">
@@ -315,6 +373,21 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
                 </div>
               </div>
 
+              {asset.assetType === 'pk-equity' && dividends.length > 0 && (
+                <div className="pt-4 border-t space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="account-dividends" className="text-xs font-medium cursor-pointer">Account for Dividends</Label>
+                    <Switch id="account-dividends" checked={accountForDividends} onCheckedChange={handleAccountForDividendsChange} />
+                  </div>
+                  {accountForDividends && (
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="reinvest-dividends" className="text-xs font-medium cursor-pointer text-primary">Reinvest Dividends</Label>
+                      <Switch id="reinvest-dividends" checked={reinvestDividends} onCheckedChange={setReinvestDividends} />
+                    </div>
+                  )}
+                </div>
+              )}
+
               {strategy === 'dynamic' && (
                 <div className="pt-4 border-t">
                   {loadingFinancials ? (
@@ -359,8 +432,8 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
         </div>
 
         <div className="lg:col-span-3 flex flex-col gap-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-card p-4 rounded-xl border shadow-sm">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="bg-card p-4 rounded-xl border shadow-sm col-span-2 md:col-span-1">
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Total Invested</span>
               <div className="text-lg font-bold mt-1">{formatCurrency(results.totalInvested, asset.currency, 2)}</div>
             </div>
@@ -373,6 +446,13 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
               <div className={`text-lg font-bold mt-1 flex items-center gap-1 ${results.totalReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                 {results.totalReturn >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
                 {results.percentageReturn.toFixed(1)}%
+              </div>
+            </div>
+            <div className="bg-card p-4 rounded-xl border shadow-sm">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Est. CAGR</span>
+              <div className={`text-lg font-bold mt-1 flex items-center gap-1 ${results.cagr >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {results.cagr >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+                {results.cagr.toFixed(1)}%
               </div>
             </div>
             <div className="bg-card p-4 rounded-xl border shadow-sm">
@@ -428,7 +508,7 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
                     tick={{fontSize: 10}} 
                     axisLine={false} 
                     tickLine={false} 
-                    tickFormatter={(val) => val >= 1000 ? (val/1000).toFixed(1) + 'k' : val}
+                    tickFormatter={(val) => val >= 1000 ? (val/1000).toFixed(1) + 'k' : val.toString()}
                     stroke="#64748b"
                   />
                   <Tooltip 
@@ -482,6 +562,12 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
                   <div className="text-[10px] text-muted-foreground font-bold uppercase">Total Shares/Coins</div>
                   <div className="text-sm font-semibold">{results.totalShares.toFixed(4)}</div>
                 </div>
+                {accountForDividends && (
+                  <div>
+                    <div className="text-[10px] text-green-600 font-bold uppercase">Dividends Collected</div>
+                    <div className="text-sm font-semibold text-green-600">{formatCurrency(results.totalDividendsCollected, asset.currency, 2)}</div>
+                  </div>
+                )}
                 {strategy === 'dynamic' && (
                   <div>
                     <div className="text-[10px] text-primary font-bold uppercase">Avg Hist P/E</div>
