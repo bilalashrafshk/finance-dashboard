@@ -403,11 +403,11 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
                 <AreaChart data={results.history} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--theme-primary)" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="var(--theme-primary)" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.5} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
                   <XAxis 
                     dataKey="date" 
                     tick={{fontSize: 10}} 
@@ -422,22 +422,22 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
                     axisLine={false}
                     tickLine={false}
                     minTickGap={30}
-                    stroke="hsl(var(--muted-foreground))"
+                    stroke="#64748b"
                   />
                   <YAxis 
                     tick={{fontSize: 10}} 
                     axisLine={false} 
                     tickLine={false} 
                     tickFormatter={(val) => val >= 1000 ? (val/1000).toFixed(1) + 'k' : val}
-                    stroke="hsl(var(--muted-foreground))"
+                    stroke="#64748b"
                   />
                   <Tooltip 
                     contentStyle={{ 
                       borderRadius: '12px', 
-                      border: '1px solid hsl(var(--border))', 
+                      border: '1px solid #e2e8f0', 
                       boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-                      backgroundColor: 'hsl(var(--background))',
-                      color: 'hsl(var(--foreground))'
+                      backgroundColor: '#ffffff',
+                      color: '#0f172a'
                     }}
                     labelFormatter={(label) => {
                       try {
@@ -454,7 +454,7 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
                     type="monotone" 
                     dataKey="value" 
                     name="Portfolio Value"
-                    stroke="hsl(var(--primary))" 
+                    stroke="#2563eb" 
                     strokeWidth={2}
                     fillOpacity={1} 
                     fill="url(#colorValue)" 
@@ -463,7 +463,7 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
                     type="monotone" 
                     dataKey="invested" 
                     name="Total Invested"
-                    stroke="hsl(var(--muted-foreground))" 
+                    stroke="#94a3b8" 
                     strokeWidth={1.5}
                     fill="transparent"
                     strokeDasharray="5 5"

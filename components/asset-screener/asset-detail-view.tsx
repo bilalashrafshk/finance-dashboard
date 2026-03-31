@@ -138,7 +138,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
             // Convert API response to PriceDataPoint format
             historicalData = historicalDataResponse.data.map((record: any) => ({
               date: record.date,
-              close: parseFloat(record.close)
+              close: parseFloat(record.adjusted_close ?? record.close)
             })).filter((point: PriceDataPoint) => !isNaN(point.close))
               .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
 
@@ -157,7 +157,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
             // Convert API response to PriceDataPoint format
             benchmarkData = benchmarkDataResponse.data.map((record: any) => ({
               date: record.date,
-              close: parseFloat(record.close)
+              close: parseFloat(record.adjusted_close ?? record.close)
             })).filter((point: PriceDataPoint) => !isNaN(point.close))
 
             setFullBenchmarkData(benchmarkData)
@@ -192,7 +192,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
               fullHistoricalData = fullResponseData.data
                 .map((record: any) => ({
                   date: record.date,
-                  close: parseFloat(record.close)
+                  close: parseFloat(record.adjusted_close ?? record.close)
                 }))
                 .filter((point: PriceDataPoint) => !isNaN(point.close))
                 .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
