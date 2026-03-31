@@ -44,6 +44,7 @@ interface DividendRecord {
 export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
   const [amount, setAmount] = useState(1000)
   const [frequency, setFrequency] = useState('monthly') 
+  const [calendarAlign, setCalendarAlign] = useState(true)
   const [timeframe, setTimeframe] = useState('5y') 
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
@@ -203,14 +204,45 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
     if (frequency === 'weekly') step = 5
     if (frequency === 'monthly') step = 21
 
+    let currentMonth = ''
+    let prevDateObj: Date | null = null
+
     const dividendMap = new Map<string, number>()
     if (accountForDividends) {
       dividends.forEach(d => dividendMap.set(d.date.substring(0, 10), d.dividend_amount))
     }
 
     filteredData.forEach((point, i) => {
+      let executeBuy = false
+      const dObj = new Date(point.date)
+      const yrMonth = point.date.substring(0, 7) // "YYYY-MM"
+
+      if (calendarAlign && frequency === 'monthly') {
+        if (yrMonth !== currentMonth) {
+            executeBuy = true
+            currentMonth = yrMonth
+        }
+      } else if (calendarAlign && frequency === 'weekly') {
+        // A new week usually starts if day gets smaller (e.g. Friday 5 -> Monday 1)
+        if (i === 0) {
+            executeBuy = true
+        } else if (prevDateObj) {
+            const currentDay = dObj.getDay()
+            const prevDay = prevDateObj.getDay()
+            // If we transition from Fri/Sat/Sun to Mon/Tue, the week has ticked over
+            // Or if gap is > 5 days between trading days
+            const daysGap = (dObj.getTime() - prevDateObj.getTime()) / (1000 * 3600 * 24)
+            if (currentDay < prevDay || daysGap > 5) executeBuy = true
+        }
+      } else {
+        // Strict trading day mathematical interval
+        if (i % step === 0) executeBuy = true
+      }
+      
+      prevDateObj = dObj
+
       // 1. Execute DCA Investment on scheduled days
-      if (i % step === 0) {
+      if (executeBuy) {
           let currentInvestAmount = amount
 
           if (strategy === 'dynamic' && point.pe !== null && avgPE > 0 && stdDevPE > 0) {
@@ -380,7 +412,21 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Frequency</label>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="block text-xs font-medium text-muted-foreground">Frequency</label>
+                  {(frequency === 'monthly' || frequency === 'weekly') && (
+                    <div className="flex items-center gap-1.5 border px-2 py-0.5 rounded-md hover:bg-muted/50 transition-colors">
+                      <input 
+                        type="checkbox" 
+                        id="calendarAlign" 
+                        checked={calendarAlign} 
+                        onChange={(e) => setCalendarAlign(e.target.checked)} 
+                        className="rounded text-primary focus:ring-primary h-3 w-3 cursor-pointer" 
+                      />
+                      <label htmlFor="calendarAlign" className="text-[10px] text-muted-foreground cursor-pointer font-medium select-none">Calendar Sync</label>
+                    </div>
+                  )}
+                </div>
                 <select 
                   value={frequency}
                   onChange={(e) => setFrequency(e.target.value)}
