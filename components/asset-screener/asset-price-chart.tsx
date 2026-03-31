@@ -182,7 +182,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
             assetData = responseData.data
               .map((record: any) => ({
                 date: record.date,
-                close: parseFloat(record.close)
+                close: parseFloat(record.adjusted_close ?? record.close)
               }))
               .filter((point: PriceDataPoint) => !isNaN(point.close))
               .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
@@ -244,7 +244,7 @@ export function AssetPriceChart({ asset }: AssetPriceChartProps) {
               comparisonData = comparisonResponseData.data
                 .map((record: any) => ({
                   date: record.date,
-                  close: parseFloat(record.close)
+                  close: parseFloat(record.adjusted_close ?? record.close)
                 }))
                 .filter((point: PriceDataPoint) => !isNaN(point.close))
                 .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))

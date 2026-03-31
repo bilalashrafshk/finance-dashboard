@@ -80,6 +80,15 @@ export function AssetTableRow({ asset, metrics, onDelete }: AssetTableRowProps) 
                     </span>
                 )}
             </TableCell>
+            <TableCell className="hidden md:table-cell">
+                {isLoading ? (
+                    <div className="h-4 w-10 bg-muted animate-pulse rounded" />
+                ) : (
+                    <span className="font-mono text-green-600 dark:text-green-400">
+                        {metrics?.avgDividendYield !== null && metrics?.avgDividendYield !== undefined ? Number(metrics.avgDividendYield).toFixed(2) + '%' : '-'}
+                    </span>
+                )}
+            </TableCell>
             <TableCell className="hidden lg:table-cell">
                 {isLoading ? (
                     <div className="h-4 w-10 bg-muted animate-pulse rounded" />

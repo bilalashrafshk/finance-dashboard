@@ -28,6 +28,7 @@ export async function getAssetMetrics(asset: TrackedAsset, baseUrl?: string) {
                 ps_ratio,
                 peg_ratio,
                 dividend_yield,
+                avg_dividend_yield,
                 dividend_payout_ratio,
                 roe,
                 net_margin,
@@ -60,6 +61,7 @@ export async function getAssetMetrics(asset: TrackedAsset, baseUrl?: string) {
 
                 // Dividends
                 dividendYield: row.dividend_yield,
+                avgDividendYield: row.avg_dividend_yield,
                 payoutRatio: row.dividend_payout_ratio,
 
                 // Profitability

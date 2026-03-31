@@ -267,6 +267,7 @@ CREATE TABLE IF NOT EXISTS screener_metrics (
   pe_ratio DECIMAL(10, 2),             -- Price / EPS (TTM)
   pb_ratio DECIMAL(10, 2),             -- Price / Book Value
   dividend_yield DECIMAL(10, 2),       -- Annual Dividend / Price %
+  avg_dividend_yield DECIMAL(10, 2),   -- 5-Year Average Dividend Yield
   
   -- Relative Metrics (Pre-calculated for speed)
   sector_pe DECIMAL(10, 2),            -- Average P/E of the sector

@@ -494,7 +494,7 @@ async function insertChunk(
       record.low,
       record.close,
       record.volume,
-      record.adjusted_close,
+      record.adjusted_close ?? record.close,
       record.change_pct,
       source,
     )
@@ -511,7 +511,7 @@ async function insertChunk(
        low = EXCLUDED.low,
        close = EXCLUDED.close,
        volume = EXCLUDED.volume,
-       adjusted_close = EXCLUDED.adjusted_close,
+       adjusted_close = COALESCE(EXCLUDED.adjusted_close, EXCLUDED.close),
        change_pct = EXCLUDED.change_pct,
        updated_at = NOW()`,
     values

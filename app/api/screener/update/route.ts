@@ -86,12 +86,12 @@ export async function GET(request: Request) {
       // Direct DB fetch for KSE100 is better
       const kseRes = await getHistoricalDataBatch('indices', ['KSE100'], startDate, endDate)
       if (kseRes['KSE100']) {
-        benchmarkData = kseRes['KSE100'].map(d => ({ date: d.date, close: d.close }))
+        benchmarkData = kseRes['KSE100'].map(d => ({ date: d.date, close: d.adjusted_close ?? d.close }))
       } else {
         // Fallback to API if not in DB yet
         const kseData = await fetchHistoricalData('indices', 'KSE100', startDate, endDate, baseUrl)
         if (kseData && kseData.data) {
-          benchmarkData = kseData.data.map(d => ({ date: d.date, close: d.close }))
+          benchmarkData = kseData.data.map((d: any) => ({ date: d.date, close: d.adjusted_close ?? d.close }))
         }
       }
     } catch (e) {
@@ -192,7 +192,12 @@ export async function GET(request: Request) {
             let ytdReturn = null
 
             if (historicalData.length > 0) {
-              const histPoints: PriceDataPoint[] = historicalData.map(h => ({ date: h.date, close: h.close }))
+              // Create price points for calculations, using adjusted_close to handle stock splits
+              const histPoints: PriceDataPoint[] = historicalData.map(h => ({ date: h.date, close: h.adjusted_close ?? h.close }))
+              
+              // Sort by date ascending for calculations
+              histPoints.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
               const metricsFull = calculateAllMetrics(
                 price.price,
                 histPoints,
@@ -306,6 +311,59 @@ export async function GET(request: Request) {
       console.log(`[Screener Update] Optimized: Updated all Sector PE and Relative PE values via single SQL query.`)
     } catch (sectorErr) {
       console.error('[Screener Update] Sector PE aggregation failed:', sectorErr)
+    }
+
+    // --- NEW: Calculate 5-Year Average Dividend Yield ---
+    // Matches the asset page calculation: Average of (Yearly Dividend / Yearly Closing Price)
+    try {
+      await client.query(`
+        WITH yearly_dividends AS (
+          SELECT 
+            asset_type,
+            symbol,
+            EXTRACT(YEAR FROM date) as year,
+            SUM(dividend_amount) AS total_dividend
+          FROM dividend_data
+          WHERE date >= NOW() - INTERVAL '5 years'
+          GROUP BY asset_type, symbol, EXTRACT(YEAR FROM date)
+        ),
+        yearly_prices AS (
+          SELECT DISTINCT ON (asset_type, symbol, EXTRACT(YEAR FROM date))
+            asset_type,
+            symbol,
+            EXTRACT(YEAR FROM date) as year,
+            close as last_price
+          FROM historical_price_data
+          WHERE date >= NOW() - INTERVAL '5 years'
+          ORDER BY asset_type, symbol, EXTRACT(YEAR FROM date), date DESC
+        ),
+        yearly_yields AS (
+          SELECT
+            d.asset_type,
+            d.symbol,
+            d.year,
+            (d.total_dividend / NULLIF(p.last_price, 0)) * 100 as yield
+          FROM yearly_dividends d
+          JOIN yearly_prices p USING (asset_type, symbol, year)
+        ),
+        avg_yields AS (
+          SELECT
+            asset_type,
+            symbol,
+            AVG(yield) as avg_dividend_yield
+          FROM yearly_yields
+          GROUP BY asset_type, symbol
+        )
+        UPDATE screener_metrics m
+        SET 
+          avg_dividend_yield = a.avg_dividend_yield,
+          updated_at = NOW()
+        FROM avg_yields a
+        WHERE m.asset_type = a.asset_type AND m.symbol = a.symbol AND m.asset_type = 'pk-equity'
+      `)
+      console.log(`[Screener Update] Optimized: Updated all 5-Year Average Dividend Yields via single SQL query.`)
+    } catch (divErr) {
+      console.error('[Screener Update] Average Dividend Yield aggregation failed:', divErr)
     }
 
     const duration = Date.now() - startTime

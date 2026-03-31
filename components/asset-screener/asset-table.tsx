@@ -54,6 +54,7 @@ export interface AssetMetrics {
 
     // Dividends
     dividendYield: number | null
+    avgDividendYield: number | null
     payoutRatio: number | null
 
     // Profitability
@@ -77,7 +78,7 @@ interface AssetTableProps {
     loading?: boolean
 }
 
-type SortKey = 'symbol' | 'name' | 'price' | 'ytdReturn' | 'beta' | 'sharpeRatio' | 'maxDrawdown' | 'peRatio' | 'dividendYield' | 'roe'
+type SortKey = 'symbol' | 'name' | 'price' | 'ytdReturn' | 'beta' | 'sharpeRatio' | 'maxDrawdown' | 'peRatio' | 'dividendYield' | 'avgDividendYield' | 'roe'
 type SortOrder = 'asc' | 'desc'
 
 export function AssetTable({ assets, onDelete, loading }: AssetTableProps) {
@@ -112,6 +113,7 @@ export function AssetTable({ assets, onDelete, loading }: AssetTableProps) {
                             psRatio: null,
                             pegRatio: null,
                             dividendYield: null,
+                            avgDividendYield: null,
                             payoutRatio: null,
                             roe: null,
                             netMargin: null,
@@ -329,6 +331,12 @@ export function AssetTable({ assets, onDelete, loading }: AssetTableProps) {
                             <TableHead className="hidden md:table-cell">
                                 <Button variant="ghost" onClick={() => handleSort('dividendYield')} className="-ml-4 h-8">
                                     Yield
+                                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                                </Button>
+                            </TableHead>
+                            <TableHead className="hidden md:table-cell">
+                                <Button variant="ghost" onClick={() => handleSort('avgDividendYield')} className="-ml-4 h-8">
+                                    Avg Yield
                                     <ArrowUpDown className="ml-2 h-4 w-4" />
                                 </Button>
                             </TableHead>

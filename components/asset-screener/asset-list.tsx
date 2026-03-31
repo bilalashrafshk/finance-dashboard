@@ -56,6 +56,7 @@ export function AssetList({ assets, onDelete, loading }: AssetListProps) {
               psRatio: null,
               pegRatio: null,
               dividendYield: null,
+              avgDividendYield: null,
               payoutRatio: null,
               roe: null,
               netMargin: null,
@@ -220,6 +221,15 @@ export function AssetList({ assets, onDelete, loading }: AssetListProps) {
                               <span className="text-muted-foreground">Yield: </span>
                               <span className="font-semibold text-green-600 dark:text-green-400">
                                 {Number(m.dividendYield).toFixed(2)}%
+                              </span>
+                            </div>
+                          )}
+
+                          {m.avgDividendYield !== null && (
+                            <div>
+                              <span className="text-muted-foreground">Avg Yield: </span>
+                              <span className="font-semibold text-green-600 dark:text-green-400">
+                                {Number(m.avgDividendYield).toFixed(2)}%
                               </span>
                             </div>
                           )}
