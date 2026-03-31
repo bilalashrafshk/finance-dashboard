@@ -45,6 +45,8 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
   const [amount, setAmount] = useState(1000)
   const [frequency, setFrequency] = useState('monthly') 
   const [timeframe, setTimeframe] = useState('5y') 
+  const [customStartDate, setCustomStartDate] = useState('')
+  const [customEndDate, setCustomEndDate] = useState('')
   const [strategy, setStrategy] = useState('standard') 
   const [dynamicAggression, setDynamicAggression] = useState(2) 
 
@@ -154,6 +156,7 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
     if (!dataWithPE.length) return []
     const lastDate = new Date(dataWithPE[dataWithPE.length - 1].date)
     let startDate = new Date(lastDate)
+    let endDate = new Date(lastDate)
 
     if (timeframe === '1y') startDate.setFullYear(lastDate.getFullYear() - 1)
     else if (timeframe === '3y') startDate.setFullYear(lastDate.getFullYear() - 3)
@@ -162,9 +165,18 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
       startDate = new Date(lastDate.getFullYear(), 0, 1)
     }
     else if (timeframe === 'max') startDate = new Date(dataWithPE[0].date)
+    else if (timeframe === 'custom') {
+      if (customStartDate) startDate = new Date(customStartDate)
+      else startDate = new Date(dataWithPE[0].date)
+      
+      if (customEndDate) endDate = new Date(customEndDate)
+    }
 
-    return dataWithPE.filter(d => new Date(d.date) >= startDate)
-  }, [timeframe, dataWithPE])
+    return dataWithPE.filter(d => {
+      const dDate = new Date(d.date)
+      return dDate >= startDate && dDate <= endDate
+    })
+  }, [timeframe, dataWithPE, customStartDate, customEndDate])
 
   const results = useMemo(() => {
     if (!filteredData.length) return null
@@ -382,8 +394,8 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
 
               <div>
                 <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Timeframe</label>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {['1y', '3y', '5y', 'ytd', 'max'].map((tf) => (
+                <div className="grid grid-cols-3 gap-1.5">
+                  {['1y', '3y', '5y', 'ytd', 'max', 'custom'].map((tf) => (
                     <button
                       key={tf}
                       onClick={() => setTimeframe(tf)}
@@ -393,6 +405,28 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
                     </button>
                   ))}
                 </div>
+                {timeframe === 'custom' && (
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <div>
+                      <label className="block text-[10px] text-muted-foreground mb-1">Start Date</label>
+                      <input 
+                        type="date" 
+                        value={customStartDate} 
+                        onChange={(e) => setCustomStartDate(e.target.value)}
+                        className="w-full px-2 py-1 text-xs rounded border bg-background focus:ring-1 focus:ring-primary outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-muted-foreground mb-1">End Date</label>
+                      <input 
+                        type="date" 
+                        value={customEndDate} 
+                        onChange={(e) => setCustomEndDate(e.target.value)}
+                        className="w-full px-2 py-1 text-xs rounded border bg-background focus:ring-1 focus:ring-primary outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {asset.assetType === 'pk-equity' && dividends.length > 0 && (
