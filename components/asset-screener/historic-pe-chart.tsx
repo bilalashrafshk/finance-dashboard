@@ -92,7 +92,7 @@ export function HistoricPEChart({ asset }: HistoricPEChartProps) {
 
       const historicalPrices: PriceDataPoint[] = priceData.data?.map((record: any) => ({
         date: record.date,
-        close: parseFloat(record.close)
+        close: parseFloat(record.adjusted_close ?? record.close)
       })).filter((point: PriceDataPoint) => !isNaN(point.close))
         .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date)) || []
 

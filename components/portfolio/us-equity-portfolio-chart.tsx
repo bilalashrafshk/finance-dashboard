@@ -226,7 +226,7 @@ export function USEquityPortfolioChart({ holdings, currency }: USEquityPortfolio
                 const spx500Historical = comparisonResponseData.data
                   .map((record: any) => ({
                     date: record.date,
-                    close: parseFloat(record.close)
+                    close: parseFloat(record.adjusted_close ?? record.close)
                   }))
                   .filter((point: any) => !isNaN(point.close))
                   .sort((a: any, b: any) => a.date.localeCompare(b.date))
