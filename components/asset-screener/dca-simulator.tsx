@@ -174,6 +174,7 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
     let cashBalance = 0
     let totalDividendsCollected = 0
     const history: { date: string, invested: number, value: number, price: number, shares: number }[] = []
+    const purchases: { date: string, amount: number, price: number, sharesBought: number, pe: number | null, type: string }[] = []
     
     // Only consider rows that have valid PE for avg calculation
     const pointsWithPE = filteredData.filter(d => d.pe !== null)
@@ -221,6 +222,15 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
           totalInvested += currentInvestAmount
           const sharesBought = currentInvestAmount / point.price
           totalShares += sharesBought
+
+          purchases.push({
+            date: point.date,
+            amount: currentInvestAmount,
+            price: point.price,
+            sharesBought,
+            pe: point.pe,
+            type: 'Fiat'
+          })
       }
 
       // 2. Process Dividends
@@ -232,7 +242,17 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
 
           if (reinvestDividends) {
               // Buy more shares immediately at current price
-              totalShares += payout / point.price
+              const sharesBought = payout / point.price
+              totalShares += sharesBought
+              
+              purchases.push({
+                date: point.date,
+                amount: payout,
+                price: point.price,
+                sharesBought,
+                pe: point.pe,
+                type: 'Dividend'
+              })
           } else {
               // Cash sits in the account
               cashBalance += payout
@@ -277,9 +297,11 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
       avgCost,
       totalShares,
       avgPE,
+      stdDevPE,
       cagr,
       totalDividendsCollected,
-      cashBalance
+      cashBalance,
+      purchases
     }
   }, [filteredData, amount, frequency, strategy, dynamicAggression, accountForDividends, reinvestDividends, dividends])
 
@@ -569,16 +591,66 @@ export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
                   </div>
                 )}
                 {strategy === 'dynamic' && (
-                  <div>
-                    <div className="text-[10px] text-primary font-bold uppercase">Avg Hist P/E</div>
-                    <div className="text-sm font-semibold">
-                      {results.avgPE > 0 ? `${results.avgPE.toFixed(1)}x` : 'N/A'}
+                  <>
+                    <div>
+                      <div className="text-[10px] text-primary font-bold uppercase">Avg Hist P/E</div>
+                      <div className="text-sm font-semibold">
+                        {results.avgPE > 0 ? `${results.avgPE.toFixed(1)}x` : 'N/A'}
+                      </div>
                     </div>
-                  </div>
+                    <div>
+                      <div className="text-[10px] text-primary font-bold uppercase">Std Dev P/E</div>
+                      <div className="text-sm font-semibold">
+                        {results.stdDevPE > 0 ? results.stdDevPE.toFixed(2) : 'N/A'}
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
           </div>
+          
+          <div className="bg-card p-6 rounded-2xl border shadow-sm flex-1">
+            <h3 className="font-semibold mb-4">Transaction History</h3>
+            <div className="max-h-[400px] overflow-y-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="text-xs text-muted-foreground uppercase bg-muted/50 sticky top-0">
+                  <tr>
+                    <th className="px-4 py-2">Date</th>
+                    <th className="px-4 py-2">Type</th>
+                    <th className="px-4 py-2 text-right">Price</th>
+                    <th className="px-4 py-2 text-right">Amount</th>
+                    <th className="px-4 py-2 text-right">Shares</th>
+                    {strategy === 'dynamic' && <th className="px-4 py-2 text-right">P/E</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {results.purchases.slice().reverse().map((p, i) => (
+                    <tr key={i} className="border-b last:border-0 hover:bg-muted/20">
+                      <td className="px-4 py-3">{new Date(p.date).toLocaleDateString()}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 rounded text-[10px] font-medium border ${p.type === 'Dividend' ? 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800' : 'bg-primary/10 text-primary border-primary/20'}`}>
+                          {p.type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">{formatCurrency(p.price, asset.currency, asset.assetType === 'crypto' ? 4 : 2)}</td>
+                      <td className="px-4 py-3 text-right">{formatCurrency(p.amount, asset.currency, 2)}</td>
+                      <td className="px-4 py-3 text-right">{p.sharesBought.toFixed(4)}</td>
+                      {strategy === 'dynamic' && (
+                        <td className="px-4 py-3 text-right">{p.pe !== null ? p.pe.toFixed(2) : '-'}</td>
+                      )}
+                    </tr>
+                  ))}
+                  {results.purchases.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No transactions recorded.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          
         </div>
       </div>
     </div>
