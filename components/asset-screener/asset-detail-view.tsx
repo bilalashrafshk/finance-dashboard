@@ -22,6 +22,7 @@ import { AssetFinancialsView } from "./asset-financials-view"
 import { HistoricPEChart } from "./historic-pe-chart"
 import { RiskMetricsDisplay } from "./risk-metrics-display"
 import { AssetAnalysisTab } from "./asset-analysis-tab"
+import { DCASimulator } from "./dca-simulator"
 
 interface AssetDetailViewProps {
   asset: TrackedAsset
@@ -391,6 +392,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
         <TabsTrigger value="prices">Prices & Ratios</TabsTrigger>
         <TabsTrigger value="seasonality">Seasonality</TabsTrigger>
         <TabsTrigger value="analysis">Analysis</TabsTrigger>
+        <TabsTrigger value="dca-simulator">DCA Simulation</TabsTrigger>
       </TabsList>
 
       <TabsContent value="analytics" className="space-y-4">
@@ -537,6 +539,13 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
 
       <TabsContent value="analysis" className="space-y-4">
         <AssetAnalysisTab symbol={asset.symbol} />
+      </TabsContent>
+
+      <TabsContent value="dca-simulator" className="space-y-4">
+        <DCASimulator 
+          asset={asset} 
+          historicalData={fullHistoricalDataForMaxDD.length > 0 ? fullHistoricalDataForMaxDD : []} 
+        />
       </TabsContent>
     </Tabs>
   )

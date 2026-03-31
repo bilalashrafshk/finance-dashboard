@@ -1,0 +1,500 @@
+"use client"
+
+import React, { useState, useMemo, useEffect } from 'react'
+import { 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer, 
+  AreaChart, 
+  Area 
+} from 'recharts'
+import { 
+  TrendingUp, 
+  TrendingDown, 
+  Info, 
+  Settings2, 
+  BarChart3, 
+  Scale,
+  Loader2
+} from 'lucide-react'
+import type { TrackedAsset } from './add-asset-dialog'
+import type { PriceDataPoint } from '@/lib/asset-screener/metrics-calculations'
+import { formatCurrency } from '@/lib/asset-screener/metrics-calculations'
+
+interface DCASimulatorProps {
+  asset: TrackedAsset
+  historicalData: PriceDataPoint[]
+}
+
+interface FinancialPeriod {
+  period_end_date: string
+  eps_diluted: string
+}
+
+export function DCASimulator({ asset, historicalData }: DCASimulatorProps) {
+  const [amount, setAmount] = useState(1000)
+  const [frequency, setFrequency] = useState('monthly') 
+  const [timeframe, setTimeframe] = useState('5y') 
+  const [strategy, setStrategy] = useState('standard') 
+  const [dynamicAggression, setDynamicAggression] = useState(2) 
+  
+  const [financials, setFinancials] = useState<FinancialPeriod[]>([])
+  const [loadingFinancials, setLoadingFinancials] = useState(false)
+  const [financialsError, setFinancialsError] = useState<string | null>(null)
+
+  // Fetch financials when dynamic strategy is selected for the first time
+  useEffect(() => {
+    if (strategy === 'dynamic' && financials.length === 0 && !loadingFinancials && !financialsError) {
+      const fetchFinancials = async () => {
+        setLoadingFinancials(true)
+        try {
+          // Attempt to fetch quarterly financials. If there are none, we can't do dynamic DCA.
+          const res = await fetch(`/api/financials?symbol=${asset.symbol}&period=quarterly`)
+          if (res.ok) {
+            const data = await res.json()
+            if (data.financials && data.financials.length > 0) {
+              setFinancials(data.financials)
+            } else {
+              setFinancialsError("No historical financial data available for this asset to calculate P/E ratios.")
+              setStrategy('standard')
+            }
+          } else {
+            setFinancialsError("Failed to fetch financial data.")
+            setStrategy('standard')
+          }
+        } catch (e) {
+          setFinancialsError("Error fetching financial data.")
+          setStrategy('standard')
+        } finally {
+          setLoadingFinancials(false)
+        }
+      }
+      fetchFinancials()
+    }
+  }, [strategy, asset.symbol, financials.length, loadingFinancials, financialsError])
+
+  // Process historical data and merge with PE if dynamic
+  const dataWithPE = useMemo(() => {
+    if (!historicalData.length) return []
+    
+    // Default data shape without PE
+    if (strategy === 'standard' || financials.length === 0) {
+      return historicalData.map(d => ({
+        date: d.date,
+        price: d.close,
+        pe: null
+      }))
+    }
+
+    // If dynamic, we need to map EPS to each point. This is an approximation.
+    // Calculate TTM EPS for every day
+    const sortedFinancials = [...financials].sort((a, b) => 
+      new Date(a.period_end_date).getTime() - new Date(b.period_end_date).getTime()
+    )
+
+    return historicalData.map(d => {
+      const pointDate = new Date(d.date)
+      let ttmEps = 0
+      
+      // Find the last 4 quarters available *before* this date
+      const availableQuarters = sortedFinancials.filter(f => new Date(f.period_end_date) <= pointDate)
+      
+      if (availableQuarters.length >= 4) {
+        // Sum the last 4
+        const last4 = availableQuarters.slice(-4)
+        ttmEps = last4.reduce((sum, q) => sum + (parseFloat(q.eps_diluted) || 0), 0)
+      }
+
+      let pe: number | null = null
+      if (ttmEps > 0 && d.close > 0) {
+        pe = d.close / ttmEps
+        // Remove outliers for cleaner averages
+        if (pe > 200 || pe < 0) pe = null; 
+      }
+
+      return {
+        date: d.date,
+        price: d.close,
+        pe
+      }
+    })
+  }, [historicalData, financials, strategy])
+
+  const filteredData = useMemo(() => {
+    if (!dataWithPE.length) return []
+    const lastDate = new Date(dataWithPE[dataWithPE.length - 1].date)
+    let startDate = new Date(lastDate)
+
+    if (timeframe === '1y') startDate.setFullYear(lastDate.getFullYear() - 1)
+    else if (timeframe === '3y') startDate.setFullYear(lastDate.getFullYear() - 3)
+    else if (timeframe === '5y') startDate.setFullYear(lastDate.getFullYear() - 5)
+    else if (timeframe === 'ytd') {
+      startDate = new Date(lastDate.getFullYear(), 0, 1)
+    }
+    else if (timeframe === 'max') startDate = new Date(dataWithPE[0].date)
+
+    return dataWithPE.filter(d => new Date(d.date) >= startDate)
+  }, [timeframe, dataWithPE])
+
+  const results = useMemo(() => {
+    if (!filteredData.length) return null
+
+    let totalInvested = 0
+    let totalShares = 0
+    const history: { date: string, invested: number, value: number, price: number, shares: number }[] = []
+    
+    // Only consider rows that have valid PE for avg calculation
+    const pointsWithPE = filteredData.filter(d => d.pe !== null)
+    let avgPE = 0
+    let stdDevPE = 0
+
+    if (pointsWithPE.length > 0) {
+      avgPE = pointsWithPE.reduce((acc, curr) => acc + (curr.pe as number), 0) / pointsWithPE.length
+      
+      // Std Dev calculation
+      const variance = pointsWithPE.reduce((acc, curr) => acc + Math.pow((curr.pe as number) - avgPE, 2), 0) / pointsWithPE.length
+      stdDevPE = Math.sqrt(variance)
+    }
+
+    // Determine the interval step
+    let step = 1 // default daily
+    if (frequency === 'weekly') step = 5 // ~5 trading days
+    if (frequency === 'monthly') step = 21 // ~21 trading days
+
+    const investmentPoints = filteredData.filter((d, i) => i % step === 0)
+
+    investmentPoints.forEach((point) => {
+      let currentInvestAmount = amount
+
+      if (strategy === 'dynamic' && point.pe !== null && avgPE > 0 && stdDevPE > 0) {
+        const pe = point.pe
+        const zScore = (pe - avgPE) / stdDevPE
+        
+        // Z-score logic mimicking standard industry practice
+        if (zScore <= -2) {
+          // Extremely cheap
+          currentInvestAmount = amount * Math.min(4, dynamicAggression * 2)
+        } else if (zScore <= -1) {
+          // Cheap
+          currentInvestAmount = amount * dynamicAggression
+        } else if (zScore >= 2) {
+          // Extremely expensive
+          currentInvestAmount = amount * 0.25
+        } else if (zScore >= 1) {
+          // Expensive
+          currentInvestAmount = amount * 0.5
+        } else {
+          // Normal roughly (-1 to 1) -> don't alter amount heavily, but we can do a smooth scaling if we wanted
+          // The user's original formula: multiplier = Math.min(Math.max(undervaluationFactor, 0.5), dynamicAggression);
+          const undervaluationFactor = avgPE / pe
+          const multiplier = Math.min(Math.max(undervaluationFactor, 0.5), dynamicAggression)
+          currentInvestAmount = amount * multiplier
+        }
+      }
+
+      totalInvested += currentInvestAmount
+      const sharesBought = currentInvestAmount / point.price
+      totalShares += sharesBought
+
+      history.push({
+        date: point.date,
+        invested: parseFloat(totalInvested.toFixed(2)),
+        value: parseFloat((totalShares * point.price).toFixed(2)),
+        price: point.price,
+        shares: totalShares
+      })
+    })
+
+    const finalPrice = filteredData[filteredData.length - 1].price
+    const finalValue = totalShares * finalPrice
+    const totalReturn = finalValue - totalInvested
+    const percentageReturn = totalInvested > 0 ? (totalReturn / totalInvested) * 100 : 0
+    const avgCost = totalShares > 0 ? totalInvested / totalShares : 0
+
+    return {
+      history,
+      totalInvested,
+      finalValue,
+      totalReturn,
+      percentageReturn,
+      avgCost,
+      totalShares,
+      avgPE
+    }
+  }, [filteredData, amount, frequency, strategy, dynamicAggression])
+
+  if (!results) {
+    return (
+      <div className="p-12 text-center flex flex-col items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground mb-4" />
+        <p className="text-muted-foreground">Processing historical data...</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-6 py-4">
+      
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <Scale className="text-primary" />
+            DCA Simulator
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            Backtest your {asset.name} investment strategy.
+          </p>
+        </div>
+        <div className="flex bg-muted p-1 rounded-lg border shadow-sm">
+          <button 
+            onClick={() => setStrategy('standard')}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${strategy === 'standard' ? 'bg-primary text-primary-foreground shadow-md' : 'text-muted-foreground'}`}
+          >
+            Standard DCA
+          </button>
+          <button 
+            onClick={() => setStrategy('dynamic')}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${strategy === 'dynamic' ? 'bg-primary text-primary-foreground shadow-md' : 'text-muted-foreground'}`}
+          >
+            Dynamic DCA
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        
+        <div className="lg:col-span-1 flex flex-col gap-4">
+          <div className="bg-card p-5 rounded-xl border shadow-sm">
+            <h3 className="text-sm font-semibold mb-4 flex items-center gap-2 text-muted-foreground uppercase tracking-wider">
+              <Settings2 size={16} /> Parameters
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Investment Amount</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                    {asset.currency === 'PKR' ? 'Rs' : '$'}
+                  </span>
+                  <input 
+                    type="number" 
+                    value={amount}
+                    onChange={(e) => setAmount(Number(e.target.value))}
+                    className="w-full pl-8 pr-3 py-2 rounded-lg border bg-background focus:ring-2 focus:ring-primary outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Frequency</label>
+                <select 
+                  value={frequency}
+                  onChange={(e) => setFrequency(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border bg-background focus:ring-2 focus:ring-primary outline-none transition-all"
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1.5 text-muted-foreground">Timeframe</label>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {['1y', '3y', '5y', 'ytd', 'max'].map((tf) => (
+                    <button
+                      key={tf}
+                      onClick={() => setTimeframe(tf)}
+                      className={`py-1.5 rounded-md text-xs font-medium uppercase border ${timeframe === tf ? 'bg-primary text-primary-foreground border-transparent' : 'border-border hover:border-primary'}`}
+                    >
+                      {tf}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {strategy === 'dynamic' && (
+                <div className="pt-4 border-t">
+                  {loadingFinancials ? (
+                    <div className="text-xs text-muted-foreground flex items-center gap-2">
+                      <Loader2 className="w-3 h-3 animate-spin"/> Loading financials...
+                    </div>
+                  ) : financialsError ? (
+                    <div className="text-xs text-destructive">{financialsError}</div>
+                  ) : (
+                    <>
+                      <div className="flex justify-between items-center mb-1.5">
+                        <label className="block text-xs font-medium text-primary">Aggression Factor</label>
+                        <span className="text-xs font-bold">{dynamicAggression}x</span>
+                      </div>
+                      <input 
+                        type="range" min="1" max="5" step="0.5"
+                        value={dynamicAggression}
+                        onChange={(e) => setDynamicAggression(Number(e.target.value))}
+                        className="w-full h-1.5 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+                      />
+                      <p className="text-[10px] text-muted-foreground mt-2 italic">
+                        Increases investment by up to {dynamicAggression}x when P/E is cheap relative to its historical mean, and reduces it when expensive.
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-primary/10 p-4 rounded-xl border border-primary/20">
+            <h4 className="text-xs font-bold text-primary mb-2 flex items-center gap-1.5 uppercase">
+              <Info size={14} /> 
+              {strategy === 'standard' ? 'Standard DCA' : 'Valuation DCA'}
+            </h4>
+            <p className="text-xs leading-relaxed text-primary/80">
+              {strategy === 'standard' 
+                ? "Investing a fixed amount regularly. Lowers average cost by buying more when prices are low."
+                : "Uses historical P/E Ratios to adjust volume. Invests more when the asset is 'cheap' relative to its history and builds a cash buffer when expensive."}
+            </p>
+          </div>
+        </div>
+
+        <div className="lg:col-span-3 flex flex-col gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-card p-4 rounded-xl border shadow-sm">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Total Invested</span>
+              <div className="text-lg font-bold mt-1">{formatCurrency(results.totalInvested, asset.currency, 2)}</div>
+            </div>
+            <div className="bg-card p-4 rounded-xl border shadow-sm">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Portfolio Value</span>
+              <div className="text-lg font-bold mt-1 text-primary">{formatCurrency(results.finalValue, asset.currency, 2)}</div>
+            </div>
+            <div className="bg-card p-4 rounded-xl border shadow-sm">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Total Return</span>
+              <div className={`text-lg font-bold mt-1 flex items-center gap-1 ${results.totalReturn >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {results.totalReturn >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+                {results.percentageReturn.toFixed(1)}%
+              </div>
+            </div>
+            <div className="bg-card p-4 rounded-xl border shadow-sm">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Avg. Cost</span>
+              <div className="text-lg font-bold mt-1">{formatCurrency(results.avgCost, asset.currency, asset.assetType === 'crypto' ? 4 : 2)}</div>
+            </div>
+          </div>
+
+          <div className="bg-card p-6 rounded-2xl border shadow-sm flex-1">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-semibold flex items-center gap-2">
+                <BarChart3 size={18} /> Growth Performance
+              </h3>
+              <div className="flex items-center gap-4 text-xs font-medium">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-border"></div>
+                  <span className="text-muted-foreground">Invested</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-primary"></div>
+                  <span className="text-muted-foreground">Value</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="h-[400px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={results.history} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--theme-primary)" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="var(--theme-primary)" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.5} />
+                  <XAxis 
+                    dataKey="date" 
+                    tick={{fontSize: 10}} 
+                    tickFormatter={(str) => {
+                      try {
+                        const d = new Date(str);
+                        return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                      } catch (e) {
+                        return str;
+                      }
+                    }}
+                    axisLine={false}
+                    tickLine={false}
+                    minTickGap={30}
+                    stroke="hsl(var(--muted-foreground))"
+                  />
+                  <YAxis 
+                    tick={{fontSize: 10}} 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tickFormatter={(val) => val >= 1000 ? (val/1000).toFixed(1) + 'k' : val}
+                    stroke="hsl(var(--muted-foreground))"
+                  />
+                  <Tooltip 
+                    contentStyle={{ 
+                      borderRadius: '12px', 
+                      border: '1px solid hsl(var(--border))', 
+                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                      backgroundColor: 'hsl(var(--background))',
+                      color: 'hsl(var(--foreground))'
+                    }}
+                    labelFormatter={(label) => {
+                      try {
+                        return new Date(label).toLocaleDateString();
+                      } catch (e) {
+                        return String(label);
+                      }
+                    }}
+                    formatter={(value: number, name: string) => {
+                      return [formatCurrency(value, asset.currency, 2), name === 'investing' ? 'Total Invested' : name]
+                    }}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="value" 
+                    name="Portfolio Value"
+                    stroke="hsl(var(--primary))" 
+                    strokeWidth={2}
+                    fillOpacity={1} 
+                    fill="url(#colorValue)" 
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="invested" 
+                    name="Total Invested"
+                    stroke="hsl(var(--muted-foreground))" 
+                    strokeWidth={1.5}
+                    fill="transparent"
+                    strokeDasharray="5 5"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            
+            <div className="mt-6 flex flex-wrap gap-4 items-center justify-between p-4 bg-muted/50 rounded-xl">
+              <div className="flex items-center gap-6">
+                <div>
+                  <div className="text-[10px] text-muted-foreground font-bold uppercase">End Price</div>
+                  <div className="text-sm font-semibold">{formatCurrency(filteredData[filteredData.length - 1]?.price || 0, asset.currency, asset.assetType === 'crypto' ? 4 : 2)}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-muted-foreground font-bold uppercase">Total Shares/Coins</div>
+                  <div className="text-sm font-semibold">{results.totalShares.toFixed(4)}</div>
+                </div>
+                {strategy === 'dynamic' && (
+                  <div>
+                    <div className="text-[10px] text-primary font-bold uppercase">Avg Hist P/E</div>
+                    <div className="text-sm font-semibold">
+                      {results.avgPE > 0 ? `${results.avgPE.toFixed(1)}x` : 'N/A'}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
