@@ -121,51 +121,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
           benchmarkDataUrl = `/api/historical-data?assetType=kse100&symbol=KSE100`
         }
 
-        // Fetch historical data and benchmark data in parallel
-        const fetchPromises = [
-          historicalDataUrl ? fetch(historicalDataUrl) : Promise.resolve(null),
-          benchmarkDataUrl ? fetch(benchmarkDataUrl) : Promise.resolve(null)
-        ]
-
-        const [historicalResponse, benchmarkResponse] = await Promise.all(fetchPromises)
-
-        let historicalData: PriceDataPoint[] = []
-        let benchmarkData: PriceDataPoint[] = []
-
-        if (historicalResponse && historicalResponse.ok) {
-          const historicalDataResponse = await historicalResponse.json()
-          if (historicalDataResponse.data && Array.isArray(historicalDataResponse.data)) {
-            // Convert API response to PriceDataPoint format
-            historicalData = historicalDataResponse.data.map((record: any) => ({
-              date: record.date,
-              close: parseFloat(record.adjusted_close ?? record.close)
-            })).filter((point: PriceDataPoint) => !isNaN(point.close))
-              .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
-
-            // Fallback: Use latest historical price if current price is not available
-            if (currentPrice === undefined && historicalData.length > 0) {
-              const latestDataPoint = historicalData[historicalData.length - 1]
-              currentPrice = latestDataPoint.close
-
-            }
-          }
-        }
-
-        if (benchmarkResponse && benchmarkResponse.ok) {
-          const benchmarkDataResponse = await benchmarkResponse.json()
-          if (benchmarkDataResponse.data && Array.isArray(benchmarkDataResponse.data)) {
-            // Convert API response to PriceDataPoint format
-            benchmarkData = benchmarkDataResponse.data.map((record: any) => ({
-              date: record.date,
-              close: parseFloat(record.adjusted_close ?? record.close)
-            })).filter((point: PriceDataPoint) => !isNaN(point.close))
-
-            setFullBenchmarkData(benchmarkData)
-          }
-        }
-
-        // For seasonality, we need ALL historical data, not just 5 years
-        // Fetch all available data for seasonality calculations
+        // For seasonality and max DD, we need ALL historical data, not just 5 years
         let fullHistoricalDataUrl = ''
         if (asset.assetType === 'crypto') {
           const { parseSymbolToBinance } = await import('@/lib/portfolio/binance-api')
@@ -182,24 +138,68 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
           fullHistoricalDataUrl = `/api/historical-data?assetType=${apiAssetType}&symbol=${encodeURIComponent(asset.symbol)}`
         }
 
-        // Fetch full historical data for seasonality and max drawdown (no limit)
-        let fullHistoricalData: PriceDataPoint[] = []
-        if (fullHistoricalDataUrl) {
-          const fullHistoricalResponse = await fetch(fullHistoricalDataUrl)
-          if (fullHistoricalResponse.ok) {
-            const fullResponseData = await fullHistoricalResponse.json()
-            if (fullResponseData.data && Array.isArray(fullResponseData.data)) {
-              fullHistoricalData = fullResponseData.data
-                .map((record: any) => ({
-                  date: record.date,
-                  close: parseFloat(record.adjusted_close ?? record.close)
-                }))
-                .filter((point: PriceDataPoint) => !isNaN(point.close))
-                .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
+        // Parallelize all three major network requests to prevent waterfall latency
+        const fetchPromises = [
+          historicalDataUrl ? fetch(historicalDataUrl) : Promise.resolve(null),
+          benchmarkDataUrl ? fetch(benchmarkDataUrl) : Promise.resolve(null),
+          fullHistoricalDataUrl ? fetch(fullHistoricalDataUrl) : Promise.resolve(null)
+        ]
 
-              // Store full historical data for max drawdown calculations
-              setFullHistoricalDataForMaxDD(fullHistoricalData)
+        const [historicalResponse, benchmarkResponse, fullHistoricalResponse] = await Promise.all(fetchPromises)
+
+        let historicalData: PriceDataPoint[] = []
+        let benchmarkData: PriceDataPoint[] = []
+        let fullHistoricalData: PriceDataPoint[] = []
+
+        // Parse Full Historical Data First (most comprehensive)
+        if (fullHistoricalResponse && fullHistoricalResponse.ok) {
+          const fullResponseData = await fullHistoricalResponse.json()
+          if (fullResponseData.data && Array.isArray(fullResponseData.data)) {
+            fullHistoricalData = fullResponseData.data
+              .map((record: any) => ({
+                date: record.date,
+                close: parseFloat(record.adjusted_close ?? record.close)
+              }))
+              .filter((point: PriceDataPoint) => !isNaN(point.close))
+              .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
+
+            // Store full historical data immediately
+            setFullHistoricalDataForMaxDD(fullHistoricalData)
+
+            // Derive 5-year limit automatically without needing to parse the second array
+            historicalData = fullHistoricalData.slice(-dataLimitForCAGR)
+
+            if (currentPrice === undefined && fullHistoricalData.length > 0) {
+              const latestDataPoint = fullHistoricalData[fullHistoricalData.length - 1]
+              currentPrice = latestDataPoint.close
             }
+          }
+        } else if (historicalResponse && historicalResponse.ok) {
+          // Fallback if full historical doesn't exist
+          const historicalDataResponse = await historicalResponse.json()
+          if (historicalDataResponse.data && Array.isArray(historicalDataResponse.data)) {
+            historicalData = historicalDataResponse.data.map((record: any) => ({
+              date: record.date,
+              close: parseFloat(record.adjusted_close ?? record.close)
+            })).filter((point: PriceDataPoint) => !isNaN(point.close))
+              .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
+
+            if (currentPrice === undefined && historicalData.length > 0) {
+              const latestDataPoint = historicalData[historicalData.length - 1]
+              currentPrice = latestDataPoint.close
+            }
+          }
+        }
+
+        if (benchmarkResponse && benchmarkResponse.ok) {
+          const benchmarkDataResponse = await benchmarkResponse.json()
+          if (benchmarkDataResponse.data && Array.isArray(benchmarkDataResponse.data)) {
+            benchmarkData = benchmarkDataResponse.data.map((record: any) => ({
+              date: record.date,
+              close: parseFloat(record.adjusted_close ?? record.close)
+            })).filter((point: PriceDataPoint) => !isNaN(point.close))
+
+            setFullBenchmarkData(benchmarkData)
           }
         }
 
@@ -283,7 +283,7 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
               }
 
               // Fetch Company Profile for ATH/52W High
-              const profileRes = await fetch(`/api/screener/stocks`, { cache: 'no-store' }) // We reused this endpoint as it returns all with stats
+              const profileRes = await fetch(`/api/screener/stocks`, { next: { revalidate: 300 } }) // Cache heavy payload for 5 minutes
               if (profileRes.ok) {
                 const data = await profileRes.json()
                 const stockProfile = data.stocks?.find((s: any) => s.symbol === asset.symbol)
