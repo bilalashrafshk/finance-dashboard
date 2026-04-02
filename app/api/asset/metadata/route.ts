@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCompanyProfileName } from '@/lib/portfolio/db-client'
+import { getCompanyProfileData } from '@/lib/portfolio/db-client'
 
 /**
  * GET /api/asset/metadata
@@ -15,6 +15,8 @@ import { getCompanyProfileName } from '@/lib/portfolio/db-client'
  * {
  *   success: boolean
  *   name?: string
+ *   all_time_high?: number
+ *   fifty_two_week_high?: number
  *   symbol: string
  *   assetType: string
  * }
@@ -33,9 +35,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Try to fetch name from database (only works for pk-equity currently)
-    let name: string | null = null
+    let metaData: { name: string | null, all_time_high: number | null, fifty_two_week_high: number | null } | null = null
     if (assetType === 'pk-equity') {
-      name = await getCompanyProfileName(symbol, assetType)
+      metaData = await getCompanyProfileData(symbol, assetType)
     }
 
     // If no name found in database, return null (client can use symbol as fallback)
@@ -43,7 +45,9 @@ export async function GET(request: NextRequest) {
       success: true,
       symbol: symbol.toUpperCase(),
       assetType,
-      name: name || null,
+      name: metaData?.name || null,
+      all_time_high: metaData?.all_time_high || null,
+      fifty_two_week_high: metaData?.fifty_two_week_high || null
     })
   } catch (error: any) {
     console.error('Error fetching asset metadata:', error)

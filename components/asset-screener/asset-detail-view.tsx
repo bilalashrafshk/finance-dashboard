@@ -57,71 +57,39 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
       setError(null)
 
       try {
-        // Fetch current price using unified API
-        const market = asset.assetType === 'pk-equity' ? 'PSX' : asset.assetType === 'us-equity' ? 'US' : null
-        let historicalDataUrl = ''
-
-        // For detailed view, fetch enough data for 5-year CAGR (approx 1260 trading days)
-        // But we'll use only the most recent 1 year (252 days) for Beta, Sharpe Ratio, and Sortino Ratio calculations
-        // This ensures consistency: summary uses 1 year, detailed uses 1 year for 1-year metrics
-        // But detailed can still calculate 3-year and 5-year CAGR
+        // Define data limits
         const dataLimitForCAGR = 1260 // ~5 years of trading days
         const dataLimitForBetaSharpe = 252 // 1 year for consistency with summary
 
-        // Fetch current price using unified price API (handles client-side fetch for indices)
-        let currentPrice: number | undefined
-        if (asset.assetType === 'crypto') {
-          const { parseSymbolToBinance } = await import('@/lib/portfolio/binance-api')
-          const binanceSymbol = parseSymbolToBinance(asset.symbol)
-          const { fetchCryptoPrice } = await import('@/lib/portfolio/unified-price-api')
-          const priceData = await fetchCryptoPrice(binanceSymbol)
-          if (priceData && priceData.price) {
-            currentPrice = priceData.price
+        // A. Setup parallel fetches
+        const fetchCurrentPriceFunc = async () => {
+          let price: number | undefined
+          if (asset.assetType === 'crypto') {
+            const { parseSymbolToBinance } = await import('@/lib/portfolio/binance-api')
+            const binanceSymbol = parseSymbolToBinance(asset.symbol)
+            const { fetchCryptoPrice } = await import('@/lib/portfolio/unified-price-api')
+            const priceData = await fetchCryptoPrice(binanceSymbol)
+            price = priceData?.price
+          } else if (asset.assetType === 'pk-equity') {
+            const { fetchPKEquityPrice } = await import('@/lib/portfolio/unified-price-api')
+            const priceData = await fetchPKEquityPrice(asset.symbol)
+            price = priceData?.price
+          } else if (asset.assetType === 'us-equity') {
+            const { fetchUSEquityPrice } = await import('@/lib/portfolio/unified-price-api')
+            const priceData = await fetchUSEquityPrice(asset.symbol)
+            price = priceData?.price
+          } else if (asset.assetType === 'metals') {
+            const { fetchMetalsPrice } = await import('@/lib/portfolio/unified-price-api')
+            const priceData = await fetchMetalsPrice(asset.symbol)
+            price = priceData?.price
+          } else if (asset.assetType === 'kse100' || asset.assetType === 'spx500') {
+            const { fetchIndicesPrice } = await import('@/lib/portfolio/unified-price-api')
+            const priceData = await fetchIndicesPrice(asset.symbol)
+            price = priceData?.price
           }
-          historicalDataUrl = `/api/historical-data?assetType=crypto&symbol=${encodeURIComponent(binanceSymbol)}&limit=${dataLimitForCAGR}`
-        } else if (asset.assetType === 'pk-equity') {
-          const { fetchPKEquityPrice } = await import('@/lib/portfolio/unified-price-api')
-          const priceData = await fetchPKEquityPrice(asset.symbol)
-          if (priceData && priceData.price) {
-            currentPrice = priceData.price
-          }
-          historicalDataUrl = `/api/historical-data?assetType=pk-equity&symbol=${encodeURIComponent(asset.symbol)}&market=PSX&limit=${dataLimitForCAGR}`
-        } else if (asset.assetType === 'us-equity') {
-          const { fetchUSEquityPrice } = await import('@/lib/portfolio/unified-price-api')
-          const priceData = await fetchUSEquityPrice(asset.symbol)
-          if (priceData && priceData.price) {
-            currentPrice = priceData.price
-          }
-          historicalDataUrl = `/api/historical-data?assetType=us-equity&symbol=${encodeURIComponent(asset.symbol)}&market=US&limit=${dataLimitForCAGR}`
-        } else if (asset.assetType === 'metals') {
-          const { fetchMetalsPrice } = await import('@/lib/portfolio/unified-price-api')
-          const priceData = await fetchMetalsPrice(asset.symbol)
-          if (priceData && priceData.price) {
-            currentPrice = priceData.price
-          }
-          historicalDataUrl = `/api/historical-data?assetType=metals&symbol=${encodeURIComponent(asset.symbol)}&limit=${dataLimitForCAGR}`
-        } else if (asset.assetType === 'kse100' || asset.assetType === 'spx500') {
-          // Use unified price API for indices (handles client-side fetch automatically)
-          const { fetchIndicesPrice } = await import('@/lib/portfolio/unified-price-api')
-          const priceData = await fetchIndicesPrice(asset.symbol)
-          if (priceData && priceData.price) {
-            currentPrice = priceData.price
-          }
-          const apiAssetType = asset.assetType === 'kse100' ? 'kse100' : 'spx500'
-          historicalDataUrl = `/api/historical-data?assetType=${apiAssetType}&symbol=${encodeURIComponent(asset.symbol)}&limit=${dataLimitForCAGR}`
+          return price
         }
 
-        // Determine benchmark for Beta calculation (fetch full history for dynamic timeframes)
-        let benchmarkDataUrl = ''
-        if (asset.assetType === 'us-equity') {
-          // Use SPX500 as benchmark for US equities
-          benchmarkDataUrl = `/api/historical-data?assetType=spx500&symbol=SPX500`
-        } else if (asset.assetType === 'pk-equity') {
-          // Use KSE100 as benchmark for PK equities
-          benchmarkDataUrl = `/api/historical-data?assetType=kse100&symbol=KSE100`
-        }
-
-        // For seasonality and max DD, we need ALL historical data, not just 5 years
         let fullHistoricalDataUrl = ''
         if (asset.assetType === 'crypto') {
           const { parseSymbolToBinance } = await import('@/lib/portfolio/binance-api')
@@ -138,105 +106,108 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
           fullHistoricalDataUrl = `/api/historical-data?assetType=${apiAssetType}&symbol=${encodeURIComponent(asset.symbol)}`
         }
 
-        // Parallelize all three major network requests to prevent waterfall latency
-        const fetchPromises = [
-          historicalDataUrl ? fetch(historicalDataUrl) : Promise.resolve(null),
-          benchmarkDataUrl ? fetch(benchmarkDataUrl) : Promise.resolve(null),
-          fullHistoricalDataUrl ? fetch(fullHistoricalDataUrl) : Promise.resolve(null)
-        ]
+        let benchmarkDataUrl = ''
+        if (asset.assetType === 'us-equity') {
+          benchmarkDataUrl = `/api/historical-data?assetType=spx500&symbol=SPX500`
+        } else if (asset.assetType === 'pk-equity') {
+          benchmarkDataUrl = `/api/historical-data?assetType=kse100&symbol=KSE100`
+        }
 
-        const [historicalResponse, benchmarkResponse, fullHistoricalResponse] = await Promise.all(fetchPromises)
+        let financialsUrl = ''
+        if (asset.assetType === 'pk-equity') {
+          financialsUrl = `/api/financials?symbol=${asset.symbol}&period=quarterly`
+        }
 
-        let historicalData: PriceDataPoint[] = []
-        let benchmarkData: PriceDataPoint[] = []
+        const metadataUrl = `/api/asset/metadata?symbol=${encodeURIComponent(asset.symbol)}&assetType=${encodeURIComponent(asset.assetType)}`
+
+        // B. FIRE PARALLEL FETCHES
+        const [
+          priceRes,
+          histRes,
+          benchRes,
+          finRes,
+          metaRes
+        ] = await Promise.allSettled([
+          fetchCurrentPriceFunc(),
+          fullHistoricalDataUrl ? fetch(fullHistoricalDataUrl).then(r => r.ok ? r.json() : null) : Promise.resolve(null),
+          benchmarkDataUrl ? fetch(benchmarkDataUrl).then(r => r.ok ? r.json() : null) : Promise.resolve(null),
+          financialsUrl ? fetch(financialsUrl).then(r => r.ok ? r.json() : null) : Promise.resolve(null),
+          fetch(metadataUrl).then(r => r.ok ? r.json() : null)
+        ])
+
+        // C. Process Results
+        let currentPrice = priceRes.status === 'fulfilled' ? priceRes.value : undefined
+
         let fullHistoricalData: PriceDataPoint[] = []
-
-        // Parse Full Historical Data First (most comprehensive)
-        if (fullHistoricalResponse && fullHistoricalResponse.ok) {
-          const fullResponseData = await fullHistoricalResponse.json()
-          if (fullResponseData.data && Array.isArray(fullResponseData.data)) {
-            fullHistoricalData = fullResponseData.data
-              .map((record: any) => ({
-                date: record.date,
-                close: parseFloat(record.adjusted_close ?? record.close)
-              }))
-              .filter((point: PriceDataPoint) => !isNaN(point.close))
-              .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
-
-            // Store full historical data immediately
-            setFullHistoricalDataForMaxDD(fullHistoricalData)
-
-            // Derive 5-year limit automatically without needing to parse the second array
-            historicalData = fullHistoricalData.slice(-dataLimitForCAGR)
-
-            if (currentPrice === undefined && fullHistoricalData.length > 0) {
-              const latestDataPoint = fullHistoricalData[fullHistoricalData.length - 1]
-              currentPrice = latestDataPoint.close
-            }
-          }
-        } else if (historicalResponse && historicalResponse.ok) {
-          // Fallback if full historical doesn't exist
-          const historicalDataResponse = await historicalResponse.json()
-          if (historicalDataResponse.data && Array.isArray(historicalDataResponse.data)) {
-            historicalData = historicalDataResponse.data.map((record: any) => ({
+        if (histRes.status === 'fulfilled' && histRes.value?.data) {
+          fullHistoricalData = histRes.value.data
+            .map((record: any) => ({
               date: record.date,
               close: parseFloat(record.adjusted_close ?? record.close)
-            })).filter((point: PriceDataPoint) => !isNaN(point.close))
-              .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
+            }))
+            .filter((point: PriceDataPoint) => !isNaN(point.close))
+            .sort((a: PriceDataPoint, b: PriceDataPoint) => a.date.localeCompare(b.date))
 
-            if (currentPrice === undefined && historicalData.length > 0) {
-              const latestDataPoint = historicalData[historicalData.length - 1]
-              currentPrice = latestDataPoint.close
-            }
+          setFullHistoricalDataForMaxDD(fullHistoricalData)
+
+          // Fallback currentPrice
+          if (currentPrice === undefined && fullHistoricalData.length > 0) {
+            currentPrice = fullHistoricalData[fullHistoricalData.length - 1].close
           }
         }
 
-        if (benchmarkResponse && benchmarkResponse.ok) {
-          const benchmarkDataResponse = await benchmarkResponse.json()
-          if (benchmarkDataResponse.data && Array.isArray(benchmarkDataResponse.data)) {
-            benchmarkData = benchmarkDataResponse.data.map((record: any) => ({
+        // Slice 5Yr equivalent out of full array dynamically
+        const historicalData = fullHistoricalData.slice(-dataLimitForCAGR)
+
+        let benchmarkData: PriceDataPoint[] = []
+        if (benchRes.status === 'fulfilled' && benchRes.value?.data) {
+          benchmarkData = benchRes.value.data
+            .map((record: any) => ({
               date: record.date,
               close: parseFloat(record.adjusted_close ?? record.close)
-            })).filter((point: PriceDataPoint) => !isNaN(point.close))
+            }))
+            .filter((point: PriceDataPoint) => !isNaN(point.close))
+          setFullBenchmarkData(benchmarkData)
+        }
 
-            setFullBenchmarkData(benchmarkData)
+        // Calculate PE
+        let peRatio: number | undefined
+        if (finRes.status === 'fulfilled' && finRes.value?.financials && currentPrice) {
+          const financials = finRes.value.financials
+          if (financials.length >= 4) {
+            const ttmEps = financials.slice(0, 4).reduce((sum: number, f: any) => sum + (parseFloat(f.eps_diluted) || 0), 0)
+            if (ttmEps !== 0) peRatio = currentPrice / ttmEps
           }
         }
 
-        // Calculate metrics if we have both current price and historical data
+        // Isolate Meta
+        let allTimeHigh: number | undefined
+        let fiftyTwoWeekHigh: number | undefined
+        if (metaRes.status === 'fulfilled' && metaRes.value?.success) {
+          allTimeHigh = metaRes.value.all_time_high ? parseFloat(metaRes.value.all_time_high) : undefined
+          fiftyTwoWeekHigh = metaRes.value.fifty_two_week_high ? parseFloat(metaRes.value.fifty_two_week_high) : undefined
+        }
+
         if (currentPrice !== undefined && historicalData.length > 0) {
-          // For Beta, Sharpe Ratio, and Sortino Ratio, use only the most recent 1 year of data (252 records)
-          // This ensures consistency with summary metrics
-          // For CAGR, use all available data
-          // Note: historicalData is already in ascending order (oldest to newest)
-          // So slice(-252) gives us the most recent 252 records
           const historicalDataForBetaSharpe = historicalData.slice(-dataLimitForBetaSharpe)
-          // Benchmark data is already fetched with limit=252, so it's already the most recent year
-
-          // Use full historical data for seasonality, but limited data for other metrics
           const dataForSeasonality = fullHistoricalData.length > 0 ? fullHistoricalData : historicalData
 
-          // Calculate metrics with full data for CAGR, but use 1-year subset for Beta/Sharpe/Sortino
-          // Use full historical data for seasonality calculations
-          // Note: We'll calculate max drawdown separately based on selected timeframe
           const calculatedMetrics = calculateAllMetrics(
             currentPrice,
-            historicalData, // Full data for CAGR calculations (limited to 5 years)
+            historicalData, 
             asset.assetType,
             benchmarkData.length > 0 ? benchmarkData : undefined,
             effectiveRiskFreeRates,
-            historicalDataForBetaSharpe, // 1-year subset for Beta and Sharpe
-            undefined, // 3-year subset (not used here, we calculate max drawdown separately)
-            dataForSeasonality // Full historical data for seasonality
+            historicalDataForBetaSharpe,
+            undefined,
+            dataForSeasonality
           )
 
-          // Calculate max drawdown based on selected timeframe
           const { calculateMaxDrawdown } = await import('@/lib/asset-screener/metrics-calculations')
           const dataForMaxDD = fullHistoricalData.length > 0 ? fullHistoricalData : historicalData
           let maxDD: number | null = null
 
           if (dataForMaxDD.length > 0) {
-            // Filter data based on selected timeframe
             let filteredData = dataForMaxDD
             const now = new Date()
             if (maxDrawdownTimeframe === '1Y') {
@@ -249,52 +220,9 @@ export function AssetDetailView({ asset, riskFreeRates }: AssetDetailViewProps) 
               const fiveYearsAgo = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate())
               filteredData = dataForMaxDD.filter(point => new Date(point.date) >= fiveYearsAgo)
             }
-            // 'All' uses all data, no filtering needed
 
             if (filteredData.length > 0) {
               maxDD = calculateMaxDrawdown(filteredData)
-            }
-          }
-
-          // Calculate P/E Ratio for PK Equities
-
-
-
-          // Calculate P/E Ratio for PK Equities
-          let peRatio: number | undefined
-          let allTimeHigh: number | undefined
-          let fiftyTwoWeekHigh: number | undefined
-
-          if (asset.assetType === 'pk-equity') {
-            try {
-              // Fetch Financials
-              if (currentPrice) {
-                const financialsRes = await fetch(`/api/financials?symbol=${asset.symbol}&period=quarterly`)
-                if (financialsRes.ok) {
-                  const data = await financialsRes.json()
-                  const financials = data.financials
-                  if (financials && financials.length >= 4) {
-                    const ttmEps = financials.slice(0, 4).reduce((sum: number, f: any) => sum + (parseFloat(f.eps_diluted) || 0), 0)
-                    if (ttmEps !== 0) {
-                      peRatio = currentPrice / ttmEps
-                    }
-                  }
-                }
-              }
-
-              // Fetch Company Profile for ATH/52W High
-              const profileRes = await fetch(`/api/screener/stocks`, { next: { revalidate: 300 } }) // Cache heavy payload for 5 minutes
-              if (profileRes.ok) {
-                const data = await profileRes.json()
-                const stockProfile = data.stocks?.find((s: any) => s.symbol === asset.symbol)
-                if (stockProfile) {
-                  allTimeHigh = stockProfile.all_time_high ? parseFloat(stockProfile.all_time_high) : undefined
-                  fiftyTwoWeekHigh = stockProfile.fifty_two_week_high ? parseFloat(stockProfile.fifty_two_week_high) : undefined
-                }
-              }
-
-            } catch (e) {
-              console.error('Error fetching supplementary data:', e)
             }
           }
 

@@ -1062,6 +1062,43 @@ export async function getCompanyProfileName(
 }
 
 /**
+ * Get company profile metrics (name, all_time_high, fifty_two_week_high)
+ */
+export async function getCompanyProfileData(
+  symbol: string,
+  assetType: string = 'pk-equity'
+): Promise<{ name: string | null, all_time_high: number | null, fifty_two_week_high: number | null } | null> {
+  try {
+    const client = await getPool().connect()
+
+    try {
+      const result = await client.query(
+        `SELECT name, all_time_high, fifty_two_week_high
+         FROM company_profiles
+         WHERE symbol = $1 AND asset_type = $2
+         LIMIT 1`,
+        [symbol.toUpperCase(), assetType]
+      )
+
+      if (result.rows.length > 0) {
+        return {
+          name: result.rows[0].name || null,
+          all_time_high: result.rows[0].all_time_high ? parseFloat(result.rows[0].all_time_high) : null,
+          fifty_two_week_high: result.rows[0].fifty_two_week_high ? parseFloat(result.rows[0].fifty_two_week_high) : null
+        }
+      }
+
+      return null
+    } finally {
+      client.release()
+    }
+  } catch (error) {
+    console.error(`Error getting company profile for ${assetType}-${symbol}:`, error)
+    return null
+  }
+}
+
+/**
  * Update market cap based on latest price and shares outstanding
  * Only updates for pk-equity and us-equity assets
  * Uses caching to avoid unnecessary updates
