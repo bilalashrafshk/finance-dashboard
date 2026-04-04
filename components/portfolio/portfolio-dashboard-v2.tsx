@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
 import {
@@ -47,8 +48,7 @@ import {
   calculateInvestedPerAsset,
 } from "@/lib/portfolio/portfolio-utils"
 import { useAuth } from "@/lib/auth/auth-context"
-import { LoginDialog } from "@/components/auth/login-dialog"
-import { RegisterDialog } from "@/components/auth/register-dialog"
+import { AuthDialog } from "@/components/auth/auth-dialog"
 import { Loader2 } from "lucide-react"
 import { ASSET_TYPE_LABELS } from "@/lib/portfolio/types"
 import { Switch } from "@/components/ui/switch"
@@ -78,6 +78,9 @@ export function PortfolioDashboardV2() {
     mutate: mutateHoldings,
     pricesValidating
   } = usePortfolio()
+
+  const [authDialogOpen, setAuthDialogOpen] = useState(false)
+  const [authMode, setAuthMode] = useState<"login" | "register">("login")
 
   const [todayChange, setTodayChange] = useState<{ value: number; percent: number } | null>(null)
   const [activeTab, setActiveTab] = useState('overview')
@@ -549,13 +552,29 @@ export function PortfolioDashboardV2() {
               Please login or create an account to track your portfolio
             </p>
             <div className="flex gap-2">
-              <LoginDialog>
-                <button className="px-4 py-2 bg-primary text-primary-foreground rounded-md">Login</button>
-              </LoginDialog>
-              <RegisterDialog>
-                <button className="px-4 py-2 border rounded-md">Create Account</button>
-              </RegisterDialog>
+              <Button 
+                onClick={() => {
+                  setAuthMode("login")
+                  setAuthDialogOpen(true)
+                }}
+              >
+                Login
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={() => {
+                  setAuthMode("register")
+                  setAuthDialogOpen(true)
+                }}
+              >
+                Create Account
+              </Button>
             </div>
+            <AuthDialog 
+              open={authDialogOpen} 
+              onOpenChange={setAuthDialogOpen} 
+              initialMode={authMode} 
+            />
           </CardContent>
         </Card>
       </div>

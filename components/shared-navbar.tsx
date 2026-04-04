@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation'
 import { TrendingUp, Menu, X, LogOut, BarChart3, Wallet, Search, User, Settings, Crown, Filter, Grid3x3, Bell, Bot, MessageCircle } from 'lucide-react'
 import { Logo } from '@/components/logo'
 import { useAuth } from '@/lib/auth/auth-context'
-import LoginModal from '@/components/landing/login-modal'
+import { AuthDialog } from '@/components/auth/auth-dialog'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useTheme } from 'next-themes'
 import {
@@ -22,7 +22,8 @@ import { GlobalSearch } from '@/components/global-search'
 
 export function SharedNavbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [loginModalOpen, setLoginModalOpen] = useState(false)
+  const [authDialogOpen, setAuthDialogOpen] = useState(false)
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
   const { user, logout } = useAuth()
   const pathname = usePathname()
@@ -229,13 +230,19 @@ export function SharedNavbar() {
               ) : (
                 <>
                   <button
-                    onClick={() => setLoginModalOpen(true)}
+                    onClick={() => {
+                      setAuthMode('login')
+                      setAuthDialogOpen(true)
+                    }}
                     className="text-sm font-medium text-foreground hover:text-primary transition-colors"
                   >
                     Log In
                   </button>
                   <button
-                    onClick={() => setLoginModalOpen(true)}
+                    onClick={() => {
+                      setAuthMode('register')
+                      setAuthDialogOpen(true)
+                    }}
                     className="bg-primary text-primary-foreground hover:bg-primary/90 px-5 py-2.5 rounded-full text-sm font-bold transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0"
                   >
                     Get Started
@@ -437,13 +444,19 @@ export function SharedNavbar() {
                 ) : (
                   <>
                     <button
-                      onClick={() => setLoginModalOpen(true)}
-                      className="block w-full px-4 py-2 text-foreground border border-border rounded-lg hover:bg-muted transition-colors"
-                    >
-                      Sign In
-                    </button>
-                    <button
-                      onClick={() => setLoginModalOpen(true)}
+                    onClick={() => {
+                      setAuthMode('login')
+                      setAuthDialogOpen(true)
+                    }}
+                    className="block w-full px-4 py-2 text-foreground border border-border rounded-lg hover:bg-muted transition-colors"
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAuthMode('register')
+                      setAuthDialogOpen(true)
+                    }}
                       className="block w-full px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-lg"
                     >
                       Sign Up
@@ -456,9 +469,10 @@ export function SharedNavbar() {
         </div >
       </nav >
 
-      <LoginModal
-        isOpen={loginModalOpen}
-        onClose={() => setLoginModalOpen(false)}
+      <AuthDialog
+        open={authDialogOpen}
+        onOpenChange={setAuthDialogOpen}
+        initialMode={authMode}
       />
 
       <SettingsDialog
