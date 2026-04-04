@@ -9,6 +9,7 @@ interface AuthContextType {
   token: string | null
   loading: boolean
   login: (email: string, password: string) => Promise<void>
+  loginWithGoogle: (idToken: string) => Promise<void>
   register: (email: string, password: string, name?: string) => Promise<void>
   logout: () => void
   refreshUser: () => Promise<void>
@@ -109,6 +110,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const loginWithGoogle = async (idToken: string) => {
+    const data = await apiClient.post<{ success: boolean; token: string; user: UserDTO }>(
+      '/auth/google',
+      { idToken }
+    )
+
+    if (data.success && data.token && data.user) {
+      setUser(data.user)
+      setToken(data.token)
+      localStorage.setItem(TOKEN_KEY, data.token)
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user))
+    } else {
+      throw new Error((data as any).message || 'Google login failed')
+    }
+  }
+
   const register = async (email: string, password: string, name?: string) => {
     const data = await apiClient.post<{ success: boolean; token: string; user: UserDTO }>(
       '/auth/register',
@@ -135,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, refreshUser, updateUser }}>
+    <AuthContext.Provider value={{ user, token, loading, login, loginWithGoogle, register, logout, refreshUser, updateUser }}>
       {children}
     </AuthContext.Provider>
   )

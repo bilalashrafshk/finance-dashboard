@@ -85,6 +85,7 @@ html {
             <Toaster />
           </AuthProvider>
         </ThemeProvider>
+        <script src="https://accounts.google.com/gsi/client" async defer></script>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
