@@ -7,8 +7,7 @@ import { RiskFreeRateSettings, loadRiskFreeRates, type RiskFreeRates } from "@/c
 import type { TrackedAsset } from "@/components/asset-screener/add-asset-dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Loader2, Plus, Trash2 } from "lucide-react"
-import { LoginDialog } from "@/components/auth/login-dialog"
-import { RegisterDialog } from "@/components/auth/register-dialog"
+import { AuthDialog } from "@/components/auth/auth-dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { MPTAssetSelector } from "./mpt-asset-selector"
@@ -20,6 +19,8 @@ export function MPTSection() {
   const [loading, setLoading] = useState(true)
   const [riskFreeRates, setRiskFreeRates] = useState<RiskFreeRates>(loadRiskFreeRates())
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [authDialogOpen, setAuthDialogOpen] = useState(false)
+  const [authMode, setAuthMode] = useState<"login" | "register">("login")
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -110,13 +111,29 @@ export function MPTSection() {
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-2">
-            <LoginDialog>
-              <Button>Login</Button>
-            </LoginDialog>
-            <RegisterDialog>
-              <Button variant="outline">Sign Up</Button>
-            </RegisterDialog>
+            <Button 
+              onClick={() => {
+                setAuthMode("login")
+                setAuthDialogOpen(true)
+              }}
+            >
+              Login
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => {
+                setAuthMode("register")
+                setAuthDialogOpen(true)
+              }}
+            >
+              Sign Up
+            </Button>
           </div>
+          <AuthDialog 
+            open={authDialogOpen}
+            onOpenChange={setAuthDialogOpen}
+            initialMode={authMode}
+          />
         </CardContent>
       </Card>
     )

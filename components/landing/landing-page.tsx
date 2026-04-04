@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import LoginModal from '@/components/landing/login-modal';
+import { AuthDialog } from '@/components/auth/auth-dialog';
 // Combined imports from existing and new requirements
 import {
   TrendingUp,
@@ -251,9 +251,13 @@ const MacroDashboard = () => {
 
 const LandingPage = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
-  const handleOpenAuth = () => setLoginModalOpen(true);
+  const handleOpenAuth = () => {
+    setAuthMode('login');
+    setAuthDialogOpen(true);
+  };
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -696,7 +700,11 @@ const LandingPage = () => {
         </div>
       </section>
 
-      <LoginModal isOpen={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
+      <AuthDialog 
+        open={authDialogOpen} 
+        onOpenChange={setAuthDialogOpen} 
+        initialMode={authMode} 
+      />
     </div>
   );
 };
