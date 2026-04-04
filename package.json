@@ -93,13 +93,10 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.9",
     "@types/node": "^22.19.1",
-    "@types/puppeteer": "^7.0.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "canvas": "^3.2.0",
     "docx": "^9.5.1",
     "postcss": "^8.5",
-    "puppeteer": "^21.11.0",
     "tailwindcss": "^4.1.9",
     "ts-node": "^10.9.2",
     "tsx": "^4.7.0",
