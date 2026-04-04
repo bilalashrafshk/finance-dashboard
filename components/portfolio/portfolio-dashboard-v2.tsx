@@ -569,10 +569,10 @@ export function PortfolioDashboardV2() {
         {/* Tabs Navigation */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="pkr">PKR Portfolio</TabsTrigger>
-            <TabsTrigger value="usd">USD Portfolio</TabsTrigger>
-            <TabsTrigger value="transactions">Transactions</TabsTrigger>
+            <TabsTrigger value="overview">All Assets</TabsTrigger>
+            <TabsTrigger value="pkr">Pakistan</TabsTrigger>
+            <TabsTrigger value="usd">International</TabsTrigger>
+            <TabsTrigger value="transactions">History</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -804,131 +804,178 @@ export function PortfolioDashboardV2() {
 
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">
-      {/* Top Summary Cards */}
-      <div className={`grid gap-4 ${hasDividends ? 'md:grid-cols-2 lg:grid-cols-6' : 'md:grid-cols-2 lg:grid-cols-5'}`}>
-        {/* Total Portfolio */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Portfolio</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold mb-1">{formatCurrency(totalPortfolioValue, displayCurrency)}</div>
-            <p className="text-xs text-muted-foreground mb-2">
-              {selectedCurrencies.length > 1 ? `${selectedCurrencies.join(' + ')} combined` : selectedCurrencies[0] || displayCurrency}
-            </p>
-            <div className={`flex items-center gap-1 ${(includeDividends ? totalReturnWithDividends : totalPortfolioChange) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-              {(includeDividends ? totalReturnWithDividends : totalPortfolioChange) >= 0 ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
-              <span className="text-sm font-semibold">{formatPercent(includeDividends ? totalReturnPercentWithDividends : totalPortfolioChangePercent)}</span>
-            </div>
-            {includeDividends && hasDividends && (
-              <p className="text-xs text-muted-foreground mt-1">• With dividends</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Total Return - Always shown */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Return</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold mb-1 ${totalReturn >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-              {formatCurrency(totalReturn, displayCurrency)}
-            </div>
-            <p className="text-xs text-muted-foreground mb-2">
-              {includeDividends && hasDividends ? 'Price + Dividends' : 'Price only'}
-            </p>
-            <div className={`flex items-center gap-1 ${totalReturn >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-              {totalReturn >= 0 ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
-              <span className="text-sm font-semibold">{formatPercent(totalReturnPercent)}</span>
-            </div>
-            {hasDividends && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {includeDividends ? '• Includes dividends' : '• Dividends available (toggle to include)'}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Today's Change */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Today's Change</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold mb-1 ${todayChange && todayChange.value >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-              {todayChange ? (todayChange.value >= 0 ? '+' : '') + formatCurrency(todayChange.value, displayCurrency) : '—'}
-            </div>
-            <p className="text-xs text-muted-foreground mb-2">Day P&L</p>
-            {todayChange && (
-              <div className={`flex items-center gap-1 ${todayChange.percent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                {todayChange.percent >= 0 ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
-                <span className="text-sm font-semibold">{formatPercent(todayChange.percent)}</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Best Performer */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Best Performer</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {insights?.bestPerformer ? (
-              <>
-                <div className="text-2xl font-bold mb-1">{insights.bestPerformer.symbol}</div>
-                <p className="text-xs text-muted-foreground mb-2">+{formatPercent(insights.bestPerformer.gainPercent)} all time</p>
-                <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                  <ArrowUpRight className="h-4 w-4" />
-                  <span className="text-sm font-semibold">+{formatCurrency(insights.bestPerformer.gainValue, displayCurrency)}</span>
+      {/* Hero Portfolio Card + Secondary Metrics */}
+      <div className="space-y-4">
+        {/* Hero Card — Primary focal point */}
+        <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/[0.03]">
+          <CardContent className="pt-6 pb-5">
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+              {/* Main Value */}
+              <div>
+                <p className="text-sm font-medium text-muted-foreground mb-1">Total Portfolio Value</p>
+                <div className="text-4xl md:text-5xl font-bold tracking-tight mb-2">
+                  {formatCurrency(totalPortfolioValue, displayCurrency)}
                 </div>
-              </>
-            ) : (
-              <div className="text-2xl font-bold text-muted-foreground">—</div>
-            )}
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Total Return Pill */}
+                  <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold ${(includeDividends ? totalReturnWithDividends : totalPortfolioChange) >= 0 ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-red-500/10 text-red-600 dark:text-red-400'}`}>
+                    {(includeDividends ? totalReturnWithDividends : totalPortfolioChange) >= 0 ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
+                    <span>{formatCurrency(includeDividends ? totalReturnWithDividends : totalPortfolioChange, displayCurrency)}</span>
+                    <span className="opacity-70">({formatPercent(includeDividends ? totalReturnPercentWithDividends : totalPortfolioChangePercent)})</span>
+                  </div>
+                  {/* Today's Change Mini Pill */}
+                  {todayChange && (
+                    <div className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${todayChange.value >= 0 ? 'border-green-500/20 text-green-600 dark:text-green-400' : 'border-red-500/20 text-red-600 dark:text-red-400'}`}>
+                      {todayChange.value >= 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                      <span>Today {todayChange.value >= 0 ? '+' : ''}{formatPercent(todayChange.percent)}</span>
+                    </div>
+                  )}
+                </div>
+                {includeDividends && hasDividends && (
+                  <p className="text-xs text-muted-foreground mt-2">Including dividends</p>
+                )}
+              </div>
+              {/* Right side — Quick stats */}
+              <div className="flex gap-6 text-sm">
+                <div>
+                  <p className="text-muted-foreground text-xs mb-0.5">Assets</p>
+                  <p className="font-semibold text-lg">{totalAssets}</p>
+                </div>
+                {insights?.bestPerformer && (
+                  <div>
+                    <p className="text-muted-foreground text-xs mb-0.5">Best Performer</p>
+                    <p className="font-semibold text-lg">{insights.bestPerformer.symbol} <span className="text-green-600 dark:text-green-400 text-sm">+{formatPercent(insights.bestPerformer.gainPercent)}</span></p>
+                  </div>
+                )}
+                {hasDividends && (
+                  <div>
+                    <p className="text-muted-foreground text-xs mb-0.5">Dividends</p>
+                    <p className="font-semibold text-lg text-green-600 dark:text-green-400">{formatCurrency(totalDividends, displayCurrency)}</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Total Assets */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Assets</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold mb-1">{totalAssets}</div>
-            <p className="text-xs text-muted-foreground">Across {selectedCurrencies.length} {selectedCurrencies.length === 1 ? 'portfolio' : 'portfolios'}</p>
-          </CardContent>
-        </Card>
-
-        {/* Dividends Collected - Only show if dividends exist */}
-        {hasDividends && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Dividends Collected</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold mb-1 text-green-600 dark:text-green-400">
-                {formatCurrency(totalDividends, displayCurrency)}
+        {/* Secondary Metrics Row — Scrollable on mobile */}
+        <div className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-4 scrollbar-none">
+          {/* Total Return */}
+          <Card className="min-w-[200px] md:min-w-0 flex-shrink-0">
+            <CardContent className="pt-4 pb-3">
+              <p className="text-xs font-medium text-muted-foreground mb-1">Total Return</p>
+              <div className={`text-xl font-bold ${totalReturn >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {formatCurrency(totalReturn, displayCurrency)}
               </div>
-              <p className="text-xs text-muted-foreground mb-2">Total dividends</p>
-              <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                <ArrowUpRight className="h-4 w-4" />
-                <span className="text-sm font-semibold">{formatPercent(dividendsCollectedPercent)}</span>
+              <div className={`flex items-center gap-1 text-xs mt-1 ${totalReturn >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {totalReturn >= 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                <span className="font-medium">{formatPercent(totalReturnPercent)}</span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">of total invested</p>
             </CardContent>
           </Card>
+
+          {/* Today's Change */}
+          <Card className="min-w-[200px] md:min-w-0 flex-shrink-0">
+            <CardContent className="pt-4 pb-3">
+              <p className="text-xs font-medium text-muted-foreground mb-1">Today&apos;s Change</p>
+              <div className={`text-xl font-bold ${todayChange && todayChange.value >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {todayChange ? (todayChange.value >= 0 ? '+' : '') + formatCurrency(todayChange.value, displayCurrency) : '—'}
+              </div>
+              {todayChange && (
+                <div className={`flex items-center gap-1 text-xs mt-1 ${todayChange.percent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                  {todayChange.percent >= 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                  <span className="font-medium">{formatPercent(todayChange.percent)}</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Invested */}
+          <Card className="min-w-[200px] md:min-w-0 flex-shrink-0">
+            <CardContent className="pt-4 pb-3">
+              <p className="text-xs font-medium text-muted-foreground mb-1">Total Invested</p>
+              <div className="text-xl font-bold">
+                {formatCurrency(totalInvested, displayCurrency)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{selectedCurrencies.length > 1 ? `${selectedCurrencies.join(' + ')} combined` : selectedCurrencies[0] || displayCurrency}</p>
+            </CardContent>
+          </Card>
+
+          {/* Dividends or Assets Count */}
+          {hasDividends ? (
+            <Card className="min-w-[200px] md:min-w-0 flex-shrink-0">
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Dividends Collected</p>
+                <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                  {formatCurrency(totalDividends, displayCurrency)}
+                </div>
+                <div className="flex items-center gap-1 text-xs mt-1 text-green-600 dark:text-green-400">
+                  <ArrowUpRight className="h-3 w-3" />
+                  <span className="font-medium">{formatPercent(dividendsCollectedPercent)} of invested</span>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="min-w-[200px] md:min-w-0 flex-shrink-0">
+              <CardContent className="pt-4 pb-3">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Total Assets</p>
+                <div className="text-xl font-bold">{totalAssets}</div>
+                <p className="text-xs text-muted-foreground mt-1">Across {selectedCurrencies.length} {selectedCurrencies.length === 1 ? 'portfolio' : 'portfolios'}</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Dividend Return Toggle — Segmented Control Style */}
+        {hasDividends && (
+          <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit">
+            <button
+              onClick={() => setIncludeDividends(false)}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                !includeDividends
+                  ? 'bg-background shadow-sm text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Price Return
+            </button>
+            <button
+              onClick={() => setIncludeDividends(true)}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                includeDividends
+                  ? 'bg-background shadow-sm text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Total Return <span className="text-xs opacity-70">(+ Dividends)</span>
+            </button>
+          </div>
         )}
       </div>
 
       {/* Tabs Navigation */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          {currencies.includes('PKR') && <TabsTrigger value="pkr">PKR Portfolio</TabsTrigger>}
-          {currencies.includes('USD') && <TabsTrigger value="usd">USD Portfolio</TabsTrigger>}
-          <TabsTrigger value="transactions">Transactions</TabsTrigger>
+          <TabsTrigger value="overview" className="flex flex-col items-center gap-0.5">
+            <span>All Assets</span>
+            <span className="text-[10px] font-normal text-muted-foreground hidden sm:block">Combined Net Worth</span>
+          </TabsTrigger>
+          {currencies.includes('PKR') && (
+            <TabsTrigger value="pkr" className="flex flex-col items-center gap-0.5">
+              <span>Pakistan</span>
+              <span className="text-[10px] font-normal text-muted-foreground hidden sm:block">PSX Holdings (PKR)</span>
+            </TabsTrigger>
+          )}
+          {currencies.includes('USD') && (
+            <TabsTrigger value="usd" className="flex flex-col items-center gap-0.5">
+              <span>International</span>
+              <span className="text-[10px] font-normal text-muted-foreground hidden sm:block">Crypto, US & Metals (USD)</span>
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="transactions" className="flex flex-col items-center gap-0.5">
+            <span>History</span>
+            <span className="text-[10px] font-normal text-muted-foreground hidden sm:block">All Transactions</span>
+          </TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}

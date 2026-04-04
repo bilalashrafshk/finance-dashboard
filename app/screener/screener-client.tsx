@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { SharedNavbar } from "@/components/shared-navbar"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Loader2, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { Loader2, Search, ArrowUpDown, ArrowUp, ArrowDown, X, ChevronDown, ChevronUp, Sparkles, TrendingUp, Building2, DollarSign } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,42 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
 import { generateAssetSlug } from "@/lib/asset-screener/url-utils"
+
+// Quick filter presets
+const FILTER_PRESETS = [
+  {
+    id: 'undervalued',
+    label: 'Undervalued',
+    icon: Sparkles,
+    description: 'P/E below sector avg',
+    filters: { maxRelativePE: 0.8, minPE: 0, maxPE: 30 },
+    color: 'text-emerald-600 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10',
+  },
+  {
+    id: 'high-dividend',
+    label: 'High Dividend',
+    icon: DollarSign,
+    description: 'Yield > 5%',
+    filters: { minDividendYield: 5 },
+    color: 'text-blue-600 dark:text-blue-400 border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10',
+  },
+  {
+    id: 'large-cap',
+    label: 'Large Cap',
+    icon: Building2,
+    description: 'Market cap > 50B PKR',
+    filters: { minMarketCap: 50 },
+    color: 'text-purple-600 dark:text-purple-400 border-purple-500/30 bg-purple-500/5 hover:bg-purple-500/10',
+  },
+  {
+    id: 'growth',
+    label: 'Growth',
+    icon: TrendingUp,
+    description: 'Low P/E + Large Cap',
+    filters: { maxPE: 15, minMarketCap: 20 },
+    color: 'text-amber-600 dark:text-amber-400 border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10',
+  },
+] as const
 
 export default function ScreenerPage() {
   const [loading, setLoading] = useState(true)
@@ -61,6 +97,13 @@ export default function ScreenerPage() {
   const [maxMarketCap, setMaxMarketCap] = useState<number | "">("")
   const [minPrice, setMinPrice] = useState<number | "">("")
   const [maxPrice, setMaxPrice] = useState<number | "">("")
+  const [minDividendYield, setMinDividendYield] = useState<number | "">("")
+
+  // Advanced filters toggle
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
+  
+  // Active preset
+  const [activePreset, setActivePreset] = useState<string | null>(null)
 
   useEffect(() => {
     loadAllStocks()
@@ -146,10 +189,91 @@ export default function ScreenerPage() {
     }
   }
 
+  // Apply a preset
+  const applyPreset = (presetId: string) => {
+    if (activePreset === presetId) {
+      // Toggle off — clear all filters
+      clearAllFilters()
+      return
+    }
+    
+    const preset = FILTER_PRESETS.find(p => p.id === presetId)
+    if (!preset) return
+
+    // Clear existing filters first
+    setMinPE("")
+    setMaxPE("")
+    setMinRelativePE("")
+    setMaxRelativePE("")
+    setMinMarketCap(0)
+    setMaxMarketCap("")
+    setMinPrice("")
+    setMaxPrice("")
+    setMinDividendYield("")
+    setFilterSector("all")
+    setFilterIndustry("all")
+    setSearchQuery("")
+
+    // Apply preset filters
+    const f = preset.filters as any
+    if (f.maxRelativePE !== undefined) setMaxRelativePE(f.maxRelativePE)
+    if (f.minPE !== undefined) setMinPE(f.minPE)
+    if (f.maxPE !== undefined) setMaxPE(f.maxPE)
+    if (f.minMarketCap !== undefined) setMinMarketCap(f.minMarketCap)
+    if (f.minDividendYield !== undefined) setMinDividendYield(f.minDividendYield)
+    
+    setActivePreset(presetId)
+  }
+
+  const clearAllFilters = () => {
+    setSearchQuery("")
+    setFilterSector("all")
+    setFilterIndustry("all")
+    setMinPE("")
+    setMaxPE("")
+    setMinRelativePE("")
+    setMaxRelativePE("")
+    setMinMarketCap(0)
+    setMaxMarketCap("")
+    setMinPrice("")
+    setMaxPrice("")
+    setMinDividendYield("")
+    setActivePreset(null)
+  }
 
   // Get unique sectors and industries for filters
   const uniqueSectors = Array.from(new Set(allStocks.map(s => s.sector).filter(Boolean))).sort()
   const uniqueIndustries = Array.from(new Set(allStocks.map(s => s.industry).filter(Boolean))).sort()
+
+  // Count active filters
+  const activeFilterCount = [
+    searchQuery !== "",
+    filterSector !== "all",
+    filterIndustry !== "all",
+    minPE !== "",
+    maxPE !== "",
+    minRelativePE !== "",
+    maxRelativePE !== "",
+    minMarketCap > 0,
+    maxMarketCap !== "",
+    minPrice !== "",
+    maxPrice !== "",
+    minDividendYield !== "",
+  ].filter(Boolean).length
+
+  // Build active filter chips
+  const activeFilters: { label: string; onRemove: () => void }[] = []
+  if (filterSector !== "all") activeFilters.push({ label: `Sector: ${filterSector}`, onRemove: () => setFilterSector("all") })
+  if (filterIndustry !== "all") activeFilters.push({ label: `Industry: ${filterIndustry}`, onRemove: () => setFilterIndustry("all") })
+  if (minPE !== "") activeFilters.push({ label: `P/E ≥ ${minPE}`, onRemove: () => setMinPE("") })
+  if (maxPE !== "") activeFilters.push({ label: `P/E ≤ ${maxPE}`, onRemove: () => setMaxPE("") })
+  if (minRelativePE !== "") activeFilters.push({ label: `Rel P/E ≥ ${minRelativePE}`, onRemove: () => setMinRelativePE("") })
+  if (maxRelativePE !== "") activeFilters.push({ label: `Rel P/E ≤ ${maxRelativePE}`, onRemove: () => setMaxRelativePE("") })
+  if (minMarketCap > 0) activeFilters.push({ label: `Mkt Cap ≥ ${minMarketCap}B`, onRemove: () => setMinMarketCap(0) })
+  if (maxMarketCap !== "") activeFilters.push({ label: `Mkt Cap ≤ ${maxMarketCap}B`, onRemove: () => setMaxMarketCap("") })
+  if (minPrice !== "") activeFilters.push({ label: `Price ≥ ${minPrice}`, onRemove: () => setMinPrice("") })
+  if (maxPrice !== "") activeFilters.push({ label: `Price ≤ ${maxPrice}`, onRemove: () => setMaxPrice("") })
+  if (minDividendYield !== "") activeFilters.push({ label: `Div Yield ≥ ${minDividendYield}%`, onRemove: () => setMinDividendYield("") })
 
   // Filter and sort stocks
   const filteredAndSortedStocks = stocksWithMetrics
@@ -190,8 +314,12 @@ export default function ScreenerPage() {
       const matchesPrice = (minPrice === "" || price === null || price >= minPrice) &&
         (maxPrice === "" || price === null || price <= maxPrice)
 
+      // Dividend yield filter
+      const divYield = typeof stock.dividend_yield === 'number' ? stock.dividend_yield : null
+      const matchesDividendYield = minDividendYield === "" || (divYield !== null && divYield >= minDividendYield)
+
       return matchesAssetClass && matchesSearch && matchesSector && matchesIndustry && matchesPE &&
-        matchesRelativePE && matchesMarketCap && matchesPrice
+        matchesRelativePE && matchesMarketCap && matchesPrice && matchesDividendYield
     })
     .sort((a, b) => {
       let aVal = a[sortField]
@@ -226,7 +354,7 @@ export default function ScreenerPage() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, filterSector, filterIndustry, assetClassFilter, minPE, maxPE, minRelativePE, maxRelativePE, minMarketCap, maxMarketCap, minPrice, maxPrice])
+  }, [searchQuery, filterSector, filterIndustry, assetClassFilter, minPE, maxPE, minRelativePE, maxRelativePE, minMarketCap, maxMarketCap, minPrice, maxPrice, minDividendYield])
 
   const handleSort = (field: keyof StockWithMetrics) => {
     if (sortField === field) {
@@ -258,6 +386,21 @@ export default function ScreenerPage() {
     return numValue.toFixed(decimals)
   }
 
+  // Color coding for Relative P/E
+  const getRelativePEColor = (value: number | undefined) => {
+    if (value === undefined || isNaN(value)) return ""
+    if (value < 0.8) return "text-green-600 dark:text-green-400 font-semibold"
+    if (value <= 1.2) return "text-amber-600 dark:text-amber-400"
+    return "text-red-600 dark:text-red-400"
+  }
+
+  const getRelativePEBg = (value: number | undefined) => {
+    if (value === undefined || isNaN(value)) return ""
+    if (value < 0.8) return "bg-green-500/5"
+    if (value <= 1.2) return "bg-amber-500/5"
+    return "bg-red-500/5"
+  }
+
   const SortButton = ({ field, children }: { field: keyof StockWithMetrics, children: React.ReactNode }) => (
     <button
       onClick={() => handleSort(field)}
@@ -285,39 +428,55 @@ export default function ScreenerPage() {
 
         <div className="space-y-4">
 
-          {/* Search and Filter Controls */}
+          {/* Quick Filter Presets */}
+          <div className="flex flex-wrap gap-2">
+            {FILTER_PRESETS.map(preset => (
+              <button
+                key={preset.id}
+                onClick={() => applyPreset(preset.id)}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-all ${
+                  activePreset === preset.id
+                    ? `${preset.color} ring-2 ring-offset-1 ring-offset-background ring-current`
+                    : `border-border text-muted-foreground hover:text-foreground hover:border-foreground/20`
+                }`}
+              >
+                <preset.icon className="h-4 w-4" />
+                <span>{preset.label}</span>
+                <span className="text-xs opacity-60 hidden sm:inline">{preset.description}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Search and Basic Filters */}
           <Card>
             <CardContent className="pt-6">
-              <div className="space-y-6">
+              <div className="space-y-4">
                 {/* Search and Basic Filters */}
                 <div className="flex flex-col md:flex-row gap-4">
                   <div className="flex-1">
-                    <Label className="flex items-center gap-2 mb-2">
-                      <Search className="h-4 w-4" />
-                      Search
-                    </Label>
-                    <Input
-                      placeholder="Search by symbol, name, sector, or industry..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search by symbol, name, sector, or industry..."
+                        value={searchQuery}
+                        onChange={(e) => { setSearchQuery(e.target.value); setActivePreset(null) }}
+                        className="pl-10"
+                      />
+                    </div>
                   </div>
                   <div className="w-full md:w-48">
-                    <Label className="mb-2 block">Asset Class</Label>
                     <Select value={assetClassFilter} onValueChange={(value) => setAssetClassFilter(value as 'all' | 'pk-equity' | 'us-equity')}>
                       <SelectTrigger>
                         <SelectValue placeholder="All Asset Classes" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="pk-equity">PK Equities</SelectItem>
-
                         <SelectItem value="all">All Asset Classes</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="w-full md:w-48">
-                    <Label className="mb-2 block">Filter by Sector</Label>
-                    <Select value={filterSector} onValueChange={setFilterSector}>
+                    <Select value={filterSector} onValueChange={(v) => { setFilterSector(v); setActivePreset(null) }}>
                       <SelectTrigger>
                         <SelectValue placeholder="All Sectors" />
                       </SelectTrigger>
@@ -329,139 +488,116 @@ export default function ScreenerPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="w-full md:w-48">
-                    <Label className="mb-2 block">Filter by Industry</Label>
-                    <Select value={filterIndustry} onValueChange={setFilterIndustry}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="All Industries" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Industries</SelectItem>
-                        {uniqueIndustries.map(industry => (
-                          <SelectItem key={industry} value={industry}>{industry}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <Button
+                    variant={showAdvancedFilters ? "secondary" : "outline"}
+                    onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                    className="gap-2"
+                  >
+                    {showAdvancedFilters ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    Advanced
+                    {activeFilterCount > 0 && (
+                      <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 flex items-center justify-center rounded-full text-xs">
+                        {activeFilterCount}
+                      </Badge>
+                    )}
+                  </Button>
                 </div>
 
-                {/* Valuation Filters */}
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div>
-                      <Label className="mb-2 block">P/E Ratio</Label>
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground w-12">Min:</span>
-                          <Input
-                            type="number"
-                            placeholder="More than..."
-                            value={minPE}
-                            onChange={(e) => setMinPE(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                            className="flex-1"
-                          />
+                {/* Advanced Filters — Collapsible */}
+                {showAdvancedFilters && (
+                  <div className="space-y-4 pt-4 border-t">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-semibold">Advanced Filters</Label>
+                      {activeFilterCount > 0 && (
+                        <Button variant="ghost" size="sm" onClick={clearAllFilters} className="text-xs h-7">
+                          Clear all filters
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div>
+                        <Label className="mb-2 block text-xs text-muted-foreground">P/E Ratio</Label>
+                        <div className="flex gap-2">
+                          <Input type="number" placeholder="Min" value={minPE} onChange={(e) => { setMinPE(e.target.value === "" ? "" : parseFloat(e.target.value)); setActivePreset(null) }} className="flex-1" />
+                          <Input type="number" placeholder="Max" value={maxPE} onChange={(e) => { setMaxPE(e.target.value === "" ? "" : parseFloat(e.target.value)); setActivePreset(null) }} className="flex-1" />
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground w-12">Max:</span>
-                          <Input
-                            type="number"
-                            placeholder="Less than..."
-                            value={maxPE}
-                            onChange={(e) => setMaxPE(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                            className="flex-1"
-                          />
+                      </div>
+                      <div>
+                        <Label className="mb-2 block text-xs text-muted-foreground">Relative P/E</Label>
+                        <div className="flex gap-2">
+                          <Input type="number" step="0.1" placeholder="Min" value={minRelativePE} onChange={(e) => { setMinRelativePE(e.target.value === "" ? "" : parseFloat(e.target.value)); setActivePreset(null) }} className="flex-1" />
+                          <Input type="number" step="0.1" placeholder="Max" value={maxRelativePE} onChange={(e) => { setMaxRelativePE(e.target.value === "" ? "" : parseFloat(e.target.value)); setActivePreset(null) }} className="flex-1" />
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="mb-2 block text-xs text-muted-foreground">Market Cap (Billion PKR)</Label>
+                        <div className="flex gap-2">
+                          <Input type="number" step="0.1" placeholder="Min" value={minMarketCap || ""} onChange={(e) => { setMinMarketCap(parseFloat(e.target.value) || 0); setActivePreset(null) }} className="flex-1" />
+                          <Input type="number" step="0.1" placeholder="Max" value={maxMarketCap} onChange={(e) => { setMaxMarketCap(e.target.value === "" ? "" : parseFloat(e.target.value)); setActivePreset(null) }} className="flex-1" />
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="mb-2 block text-xs text-muted-foreground">Price (PKR)</Label>
+                        <div className="flex gap-2">
+                          <Input type="number" step="0.01" placeholder="Min" value={minPrice} onChange={(e) => { setMinPrice(e.target.value === "" ? "" : parseFloat(e.target.value)); setActivePreset(null) }} className="flex-1" />
+                          <Input type="number" step="0.01" placeholder="Max" value={maxPrice} onChange={(e) => { setMaxPrice(e.target.value === "" ? "" : parseFloat(e.target.value)); setActivePreset(null) }} className="flex-1" />
                         </div>
                       </div>
                     </div>
-                    <div>
-                      <Label className="mb-2 block">Relative P/E</Label>
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground w-12">Min:</span>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="More than..."
-                            value={minRelativePE}
-                            onChange={(e) => setMinRelativePE(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                            className="flex-1"
-                          />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground w-12">Max:</span>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="Less than..."
-                            value={maxRelativePE}
-                            onChange={(e) => setMaxRelativePE(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                            className="flex-1"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="mb-2 block">Market Cap (Billion PKR)</Label>
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground w-12">Min:</span>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="More than..."
-                            value={minMarketCap}
-                            onChange={(e) => setMinMarketCap(parseFloat(e.target.value) || 0)}
-                            className="flex-1"
-                          />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground w-12">Max:</span>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="Less than..."
-                            value={maxMarketCap}
-                            onChange={(e) => setMaxMarketCap(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                            className="flex-1"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="mb-2 block">Price (PKR)</Label>
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground w-12">Min:</span>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="More than..."
-                            value={minPrice}
-                            onChange={(e) => setMinPrice(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                            className="flex-1"
-                          />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground w-12">Max:</span>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="Less than..."
-                            value={maxPrice}
-                            onChange={(e) => setMaxPrice(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                            className="flex-1"
-                          />
-                        </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div>
+                        <Label className="mb-2 block text-xs text-muted-foreground">Industry</Label>
+                        <Select value={filterIndustry} onValueChange={(v) => { setFilterIndustry(v); setActivePreset(null) }}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="All Industries" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Industries</SelectItem>
+                            {uniqueIndustries.map(industry => (
+                              <SelectItem key={industry} value={industry}>{industry}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    💡 Tip: Leave Min empty for "less than" filter, or leave Max empty for "more than" filter
-                  </div>
-                </div>
+                )}
               </div>
             </CardContent>
           </Card>
+
+          {/* Active Filter Chips */}
+          {activeFilters.length > 0 && (
+            <div className="flex flex-wrap gap-2 items-center">
+              <span className="text-xs text-muted-foreground font-medium">Active filters:</span>
+              {activeFilters.map((filter, i) => (
+                <Badge key={i} variant="secondary" className="gap-1 pl-2.5 pr-1.5 py-1 text-xs">
+                  {filter.label}
+                  <button
+                    onClick={() => { filter.onRemove(); setActivePreset(null) }}
+                    className="ml-1 hover:bg-foreground/10 rounded-full p-0.5"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+              <Button variant="ghost" size="sm" onClick={clearAllFilters} className="text-xs h-6 px-2">
+                Clear all
+              </Button>
+            </div>
+          )}
+
+          {/* Results count */}
+          {!loading && !loadingStocks && allStocks.length > 0 && (
+            <div className="text-sm text-muted-foreground">
+              Showing <strong className="text-foreground">{filteredAndSortedStocks.length}</strong> of {stocksWithMetrics.length} stocks
+              {activePreset && (
+                <span className="ml-2">
+                  — preset: <strong className="text-foreground">{FILTER_PRESETS.find(p => p.id === activePreset)?.label}</strong>
+                </span>
+              )}
+            </div>
+          )}
 
           {loadingStocks || loading ? (
             <div className="flex justify-center py-12">
@@ -481,6 +617,7 @@ export default function ScreenerPage() {
                 <p className="text-muted-foreground mb-4">
                   No stocks match your search criteria.
                 </p>
+                <Button variant="outline" onClick={clearAllFilters}>Clear all filters</Button>
               </CardContent>
             </Card>
           ) : (
@@ -488,72 +625,76 @@ export default function ScreenerPage() {
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="px-2 py-2 text-xs">
+                    <TableHeader className="sticky top-0 bg-card z-10">
+                      <TableRow className="border-b-2">
+                        <TableHead className="px-3 py-3 text-xs font-semibold">
                           <SortButton field="symbol">Symbol</SortButton>
                         </TableHead>
-                        <TableHead className="px-2 py-2 text-xs">
+                        <TableHead className="px-3 py-3 text-xs font-semibold">
                           <SortButton field="name">Name</SortButton>
                         </TableHead>
-                        <TableHead className="px-2 py-2 text-xs">
+                        <TableHead className="px-3 py-3 text-xs font-semibold">
                           <SortButton field="sector">Sector</SortButton>
                         </TableHead>
-                        <TableHead className="px-2 py-2 text-xs">
-                          <SortButton field="industry">Industry</SortButton>
-                        </TableHead>
-                        <TableHead className="text-right px-2 py-2 text-xs">
+                        <TableHead className="text-right px-3 py-3 text-xs font-semibold">
                           <SortButton field="price">Price</SortButton>
                         </TableHead>
-                        <TableHead className="text-right px-2 py-2 text-xs">
+                        <TableHead className="text-right px-3 py-3 text-xs font-semibold">
                           <SortButton field="pe_ratio">P/E</SortButton>
                         </TableHead>
-                        <TableHead className="text-right px-2 py-2 text-xs">
+                        <TableHead className="text-right px-3 py-3 text-xs font-semibold">
                           <SortButton field="relative_pe">Rel P/E</SortButton>
                         </TableHead>
-                        <TableHead className="text-right px-2 py-2 text-xs">
+                        <TableHead className="text-right px-3 py-3 text-xs font-semibold">
                           <SortButton field="sector_pe">Sector P/E</SortButton>
                         </TableHead>
-                        <TableHead className="text-right px-2 py-2 text-xs">
+                        <TableHead className="text-right px-3 py-3 text-xs font-semibold">
+                          <SortButton field="dividend_yield">Div Yield</SortButton>
+                        </TableHead>
+                        <TableHead className="text-right px-3 py-3 text-xs font-semibold">
                           <SortButton field="market_cap">Mkt Cap</SortButton>
                         </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {paginatedStocks.map((stock) => {
+                      {paginatedStocks.map((stock, idx) => {
                         const assetType = stock.assetType || 'pk-equity'
                         const assetSlug = generateAssetSlug(assetType, stock.symbol)
                         return (
-                          <TableRow key={stock.symbol} className="hover:bg-muted/50">
-                            <TableCell className="px-2 py-1.5 text-xs">
+                          <TableRow key={stock.symbol} className={`hover:bg-muted/50 transition-colors ${idx % 2 === 0 ? 'bg-background' : 'bg-muted/20'}`}>
+                            <TableCell className="px-3 py-2.5 text-sm">
                               <Link
                                 href={`/asset/${assetSlug}`}
-                                className="font-mono font-medium hover:text-primary hover:underline"
+                                className="font-mono font-semibold hover:text-primary hover:underline"
                               >
                                 {stock.symbol}
                               </Link>
                             </TableCell>
-                            <TableCell className="px-2 py-1.5 text-xs">
+                            <TableCell className="px-3 py-2.5 text-sm">
                               <Link
                                 href={`/asset/${assetSlug}`}
-                                className="hover:text-primary hover:underline"
+                                className="hover:text-primary hover:underline text-muted-foreground"
                               >
                                 {stock.name}
                               </Link>
                             </TableCell>
-                            <TableCell className="px-2 py-1.5 text-xs">{stock.sector || "N/A"}</TableCell>
-                            <TableCell className="px-2 py-1.5 text-xs">{stock.industry && stock.industry !== "Unknown" ? stock.industry : "N/A"}</TableCell>
-                            <TableCell className="text-right px-2 py-1.5 text-xs">{formatCurrency(stock.price)}</TableCell>
-                            <TableCell className="text-right px-2 py-1.5 text-xs">{formatNumber(stock.pe_ratio)}</TableCell>
-                            <TableCell className="text-right px-2 py-1.5 text-xs">
+                            <TableCell className="px-3 py-2.5 text-sm text-muted-foreground">{stock.sector || "N/A"}</TableCell>
+                            <TableCell className="text-right px-3 py-2.5 text-sm font-medium">{formatCurrency(stock.price)}</TableCell>
+                            <TableCell className="text-right px-3 py-2.5 text-sm">{formatNumber(stock.pe_ratio)}</TableCell>
+                            <TableCell className={`text-right px-3 py-2.5 text-sm ${getRelativePEColor(stock.relative_pe)} ${getRelativePEBg(stock.relative_pe)}`}>
                               {stock.relative_pe !== null && stock.relative_pe !== undefined && !isNaN(stock.relative_pe) ? (
-                                <span className={typeof stock.relative_pe === 'number' && stock.relative_pe < 1 ? "text-green-600 dark:text-green-400 font-medium" : ""}>
+                                <span>
                                   {formatNumber(stock.relative_pe)}
                                 </span>
                               ) : "N/A"}
                             </TableCell>
-                            <TableCell className="text-right px-2 py-1.5 text-xs">{formatNumber(stock.sector_pe)}</TableCell>
-                            <TableCell className="text-right px-2 py-1.5 text-xs">{formatCurrency(stock.market_cap)}</TableCell>
+                            <TableCell className="text-right px-3 py-2.5 text-sm text-muted-foreground">{formatNumber(stock.sector_pe)}</TableCell>
+                            <TableCell className="text-right px-3 py-2.5 text-sm">
+                              {stock.dividend_yield !== null && stock.dividend_yield !== undefined && !isNaN(stock.dividend_yield)
+                                ? <span className={stock.dividend_yield >= 5 ? 'text-green-600 dark:text-green-400 font-medium' : ''}>{formatNumber(stock.dividend_yield)}%</span>
+                                : "N/A"}
+                            </TableCell>
+                            <TableCell className="text-right px-3 py-2.5 text-sm text-muted-foreground">{formatCurrency(stock.market_cap)}</TableCell>
                           </TableRow>
                         )
                       })}

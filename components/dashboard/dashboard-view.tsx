@@ -32,7 +32,7 @@ export const DashboardView = () => {
             visual: (
                 <div className="grid grid-cols-4 gap-1 w-full h-full p-2 opacity-60">
                     {[...Array(16)].map((_, i) => (
-                        <div key={i} className={`rounded-[2px] ${i % 3 === 0 ? 'bg-emerald-500/40' : i % 5 === 0 ? 'bg-rose-500/40' : 'bg-slate-700/20'}`}></div>
+                        <div key={i} className={`rounded-[2px] ${i % 3 === 0 ? 'bg-emerald-500/40' : i % 5 === 0 ? 'bg-rose-500/40' : 'bg-muted'}`}></div>
                     ))}
                 </div>
             )
@@ -61,7 +61,7 @@ export const DashboardView = () => {
             visual: (
                 <div className="flex flex-col justify-center gap-1.5 w-full px-4">
                     <div className="w-[80%] h-1.5 bg-emerald-500/40 rounded-full"></div>
-                    <div className="w-[60%] h-1.5 bg-slate-600/40 rounded-full"></div>
+                    <div className="w-[60%] h-1.5 bg-muted-foreground/20 rounded-full"></div>
                     <div className="w-[40%] h-1.5 bg-rose-500/40 rounded-full"></div>
                     <div className="w-[70%] h-1.5 bg-emerald-500/30 rounded-full"></div>
                 </div>
@@ -143,10 +143,10 @@ export const DashboardView = () => {
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20 p-6 md:p-8 max-w-7xl mx-auto">
 
             {/* Hero / Welcome */}
-            <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b border-slate-800/60 pb-6">
+            <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b border-border pb-6">
                 <div>
-                    <h1 className="text-3xl font-bold text-white tracking-tight">Market Analytics Hub</h1>
-                    <p className="text-slate-400 mt-2 max-w-2xl">
+                    <h1 className="text-3xl font-bold text-foreground tracking-tight">Market Analytics Hub</h1>
+                    <p className="text-muted-foreground mt-2 max-w-2xl">
                         Deep dive into Pakistan's equity market structure, macro-economic indicators, and liquidity flows.
                         Select a module to begin your analysis.
                     </p>
@@ -155,7 +155,7 @@ export const DashboardView = () => {
 
             {/* Grid Sections */}
             <div>
-                <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-4 flex items-center gap-2">
                     <Layers className="w-4 h-4" /> Market Structure & Technicals
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -170,7 +170,7 @@ export const DashboardView = () => {
             </div>
 
             <div>
-                <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-4 flex items-center gap-2">
                     <Globe className="w-4 h-4" /> Macro Economics
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">

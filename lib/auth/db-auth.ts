@@ -6,23 +6,7 @@
 
 import { Pool } from 'pg'
 import { hashPassword, verifyPassword, generateToken, UserPayload } from './auth-utils'
-
-function getPool(): Pool {
-  const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL
-
-  if (!connectionString) {
-    throw new Error('DATABASE_URL or POSTGRES_URL environment variable is required')
-  }
-
-  // Create a new pool for auth operations
-  return new Pool({
-    connectionString,
-    ssl: connectionString.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
-    max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-  })
-}
+import { getPool } from '@/lib/db'
 
 export interface User {
   id: number
@@ -54,12 +38,10 @@ export interface LoginInput {
  * Register a new user
  */
 export async function registerUser(input: RegisterInput): Promise<{ user: User; token: string }> {
-  let pool: Pool | null = null
   let client: any = null
 
   try {
-    pool = getPool()
-    client = await pool.connect()
+    client = await getPool().connect()
 
     // Check if user already exists
     const existingUser = await client.query(
@@ -140,8 +122,7 @@ export async function registerUser(input: RegisterInput): Promise<{ user: User; 
  * Login a user
  */
 export async function loginUser(input: LoginInput): Promise<{ user: User; token: string }> {
-  const pool = getPool()
-  const client = await pool.connect()
+  const client = await getPool().connect()
 
   try {
     // Find user by email
@@ -200,8 +181,7 @@ export async function loginUser(input: LoginInput): Promise<{ user: User; token:
  * Get user by ID
  */
 export async function getUserById(userId: number): Promise<User | null> {
-  const pool = getPool()
-  const client = await pool.connect()
+  const client = await getPool().connect()
 
   try {
     const result = await client.query(
@@ -235,8 +215,7 @@ export async function getUserById(userId: number): Promise<User | null> {
  * Get user by email
  */
 export async function getUserByEmail(email: string): Promise<User | null> {
-  const pool = getPool()
-  const client = await pool.connect()
+  const client = await getPool().connect()
 
   try {
     const result = await client.query(
@@ -270,8 +249,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
  * Get all users (with pagination)
  */
 export async function getAllUsers(limit: number = 20, offset: number = 0): Promise<{ users: User[], total: number }> {
-  const pool = getPool()
-  const client = await pool.connect()
+  const client = await getPool().connect()
 
   try {
     // Get total count
@@ -322,8 +300,7 @@ export async function updateUser(userId: number, updates: {
   accountStatus?: string;
   permissions?: string[];
 }): Promise<User> {
-  const pool = getPool()
-  const client = await pool.connect()
+  const client = await getPool().connect()
 
   try {
     // Build query dynamically based on provided updates
@@ -395,8 +372,7 @@ export async function updateUser(userId: number, updates: {
  * Delete user (Admin function)
  */
 export async function deleteUser(userId: number): Promise<void> {
-  const pool = getPool()
-  const client = await pool.connect()
+  const client = await getPool().connect()
 
   try {
     const result = await client.query(
