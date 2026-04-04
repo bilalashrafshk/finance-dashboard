@@ -34,7 +34,11 @@ export async function GET() {
         symbol ASC
     `)
     
-    return NextResponse.json({ data: res.rows })
+    return NextResponse.json({ data: res.rows }, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+      }
+    })
   } catch (error) {
     console.error('Failed to fetch screener metrics', error)
     return NextResponse.json({ error: 'Failed to fetch data' }, { status: 500 })

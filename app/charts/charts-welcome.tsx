@@ -1,11 +1,21 @@
 
-import { CHART_CATEGORIES } from "@/lib/config/charts-registry"
+import { CHART_CATEGORIES, getChartById } from "@/lib/config/charts-registry"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ArrowRight, BarChart3 } from "lucide-react"
+import { ArrowRight, BarChart3, Clock } from "lucide-react"
 import Link from "next/link"
 
-export function ChartsWelcome() {
+interface ChartsWelcomeProps {
+    recentChartIds?: string[]
+    onChartSelect?: (chartId: string) => void
+}
+
+export function ChartsWelcome({ recentChartIds = [], onChartSelect }: ChartsWelcomeProps) {
+    // Resolve recent chart IDs to actual chart definitions
+    const recentCharts = recentChartIds
+        .map(id => getChartById(id as any))
+        .filter(Boolean)
+
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
             <div className="space-y-4">
@@ -15,6 +25,33 @@ export function ChartsWelcome() {
                     Select a category below to get started.
                 </p>
             </div>
+
+            {/* Recently Viewed */}
+            {recentCharts.length > 0 && (
+                <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                        <Clock className="w-4 h-4" />
+                        Recently Viewed
+                    </div>
+                    <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                        {recentCharts.map((chart) => chart && (
+                            <button
+                                key={chart.id}
+                                onClick={() => onChartSelect?.(chart.id)}
+                                className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors text-left group"
+                            >
+                                <div className="p-1.5 bg-primary/10 rounded-md shrink-0">
+                                    <chart.icon className="w-4 h-4 text-primary" />
+                                </div>
+                                <span className="text-sm font-medium truncate group-hover:text-primary transition-colors">
+                                    {chart.title}
+                                </span>
+                                <ArrowRight className="w-3 h-3 ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-primary shrink-0" />
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {CHART_CATEGORIES.map((category) => (
@@ -30,16 +67,16 @@ export function ChartsWelcome() {
                         <CardContent className="flex-1 flex flex-col gap-4">
                             <div className="space-y-1">
                                 {category.charts.slice(0, 5).map((chart) => (
-                                    <Link
+                                    <button
                                         key={chart.id}
-                                        href={`/charts?chart=${chart.id}`}
-                                        className="flex items-center justify-between p-2 rounded-md hover:bg-muted text-sm group transition-colors"
+                                        onClick={() => onChartSelect?.(chart.id)}
+                                        className="flex items-center justify-between p-2 rounded-md hover:bg-muted text-sm group transition-colors w-full text-left"
                                     >
                                         <span className="text-muted-foreground group-hover:text-foreground transition-colors">
                                             {chart.title}
                                         </span>
                                         <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-primary" />
-                                    </Link>
+                                    </button>
                                 ))}
                                 {category.charts.length > 5 && (
                                     <div className="pt-2 text-xs text-muted-foreground pl-2">

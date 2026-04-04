@@ -14,6 +14,8 @@ const pool = new Pool({
  * Returns all PK equity symbols that have price data in the database.
  * This matches what the screener update route processes.
  */
+export const revalidate = 3600 // ISR: revalidate every 1 hour
+
 export async function GET() {
   const client = await pool.connect()
   try {
@@ -43,6 +45,10 @@ export async function GET() {
         all_time_high: row.all_time_high,
         fifty_two_week_high: row.fifty_two_week_high
       }))
+    }, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200',
+      }
     })
   } catch (error: any) {
     console.error('[Screener Stocks] Error:', error)

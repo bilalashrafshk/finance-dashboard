@@ -74,18 +74,6 @@ export function SharedNavbar() {
                     </div>
                   </Link>
                   <Link
-                    href="/my-list"
-                    className={`px-3 py-2 rounded-lg transition-colors text-sm ${isActive('/my-list')
-                      ? 'bg-primary/10 text-primary border border-primary/30'
-                      : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Search className="w-4 h-4" />
-                      <span>My List</span>
-                    </div>
-                  </Link>
-                  <Link
                     href="/screener"
                     className={`px-3 py-2 rounded-lg transition-colors text-sm ${isActive('/screener')
                       ? 'bg-primary/10 text-primary border border-primary/30'
@@ -290,18 +278,6 @@ export function SharedNavbar() {
                     </div>
                   </Link>
                   <Link
-                    href="/my-list"
-                    className={`block px-4 py-2 rounded-lg transition-colors ${isActive('/my-list')
-                      ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
-                      : 'text-foreground hover:bg-muted'
-                      }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Search className="w-4 h-4" />
-                      <span>My List</span>
-                    </div>
-                  </Link>
-                  <Link
                     href="/screener"
                     className={`block px-4 py-2 rounded-lg transition-colors ${isActive('/screener')
                       ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-600/30'
@@ -337,6 +313,10 @@ export function SharedNavbar() {
                       <span>Events</span>
                     </div>
                   </Link>
+                  {/* Mobile Search */}
+                  <div className="px-4 py-2">
+                    <GlobalSearch />
+                  </div>
                   <a
                     href="https://discord.gg/TKxquPQf3V"
                     target="_blank"

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, Suspense } from "react"
+import { useState, useMemo, useEffect, useCallback, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { SharedNavbar } from "@/components/shared-navbar"
 import { Search, ChevronRight, LayoutGrid } from "lucide-react"
@@ -51,7 +51,32 @@ function ChartsContent() {
     const handleChartSelect = (chartId: string) => {
         router.push(`/charts?chart=${chartId}`)
         if (window.innerWidth < 768) setIsSidebarOpen(false)
+        // Track recently viewed
+        trackRecentChart(chartId)
     }
+
+    // Recently viewed charts (localStorage)
+    const [recentChartIds, setRecentChartIds] = useState<string[]>([])
+
+    useEffect(() => {
+        try {
+            const stored = localStorage.getItem('recentCharts')
+            if (stored) setRecentChartIds(JSON.parse(stored))
+        } catch {}
+    }, [])
+
+    const trackRecentChart = useCallback((chartId: string) => {
+        setRecentChartIds(prev => {
+            const next = [chartId, ...prev.filter(id => id !== chartId)].slice(0, 6)
+            try { localStorage.setItem('recentCharts', JSON.stringify(next)) } catch {}
+            return next
+        })
+    }, [])
+
+    // Also track on mount if we have a selected chart
+    useEffect(() => {
+        if (selectedChartId) trackRecentChart(selectedChartId)
+    }, [selectedChartId, trackRecentChart])
 
     return (
         <div className="h-screen bg-background flex flex-col">
@@ -180,7 +205,7 @@ function ChartsContent() {
                                 {selectedChart.component}
                             </div>
                         ) : (
-                            <ChartsWelcome />
+                            <ChartsWelcome recentChartIds={recentChartIds} onChartSelect={handleChartSelect} />
                         )}
                     </div>
                 </main>
