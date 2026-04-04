@@ -72,13 +72,14 @@ export function AuthDialog({ open, onOpenChange, initialMode = "login" }: AuthDi
 
     const initGoogle = () => {
       try {
-        if (typeof window !== "undefined" && (window as any).google && googleBtnRef.current) {
-          (window as any).google.accounts.id.initialize({
+        const google = (window as any).google
+        if (google?.accounts?.id?.initialize && googleBtnRef.current) {
+          google.accounts.id.initialize({
             client_id: clientId,
             callback: handleGoogleResponse,
           })
           
-          (window as any).google.accounts.id.renderButton(googleBtnRef.current, {
+          google.accounts.id.renderButton(googleBtnRef.current, {
             theme: "outline",
             size: "large",
             width: googleBtnRef.current.offsetWidth || 350,
@@ -91,12 +92,17 @@ export function AuthDialog({ open, onOpenChange, initialMode = "login" }: AuthDi
       }
     }
 
-    // Check if script is loaded, otherwise wait
-    if ((window as any).google) {
+    // Check if script is loaded and initialize function is available, otherwise wait
+    const checkGoogle = () => {
+      const google = (window as any).google
+      return !!(google?.accounts?.id?.initialize)
+    }
+
+    if (checkGoogle()) {
       initGoogle()
     } else {
       const interval = setInterval(() => {
-        if ((window as any).google) {
+        if (checkGoogle()) {
           clearInterval(interval)
           initGoogle()
         }
