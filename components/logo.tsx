@@ -16,7 +16,7 @@ export const Logo = ({ className = "" }: LogoProps) => {
                     <TrendingUp className="w-5 h-5 text-white" />
                 </div>
             </div>
-            <div className="font-bold text-xl tracking-tight text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-slate-400 transition-all">
+            <div className="font-bold text-xl tracking-tight text-foreground group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-foreground group-hover:to-muted-foreground transition-all">
                 Conviction<span className="text-cyan-400">Pays</span>
             </div>
         </div>

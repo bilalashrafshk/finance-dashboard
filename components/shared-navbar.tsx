@@ -37,7 +37,7 @@ export function SharedNavbar() {
 
   return (
     <>
-      <nav className="sticky top-0 z-50 bg-[#020617]/80 backdrop-blur-xl border-b border-white/5 transition-all duration-300">
+      <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border transition-all duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="flex items-center gap-2 group">
@@ -51,8 +51,8 @@ export function SharedNavbar() {
                   <Link
                     href="/charts"
                     className={`px-3 py-2 rounded-lg transition-colors text-sm ${isActive('/charts')
-                      ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-primary/10 text-primary border border-primary/30'
+                      : 'text-muted-foreground hover:text-foreground'
                       }`}
                   >
                     <div className="flex items-center gap-2">
@@ -63,8 +63,8 @@ export function SharedNavbar() {
                   <Link
                     href="/portfolio"
                     className={`px-3 py-2 rounded-lg transition-colors text-sm ${isActive('/portfolio')
-                      ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-primary/10 text-primary border border-primary/30'
+                      : 'text-muted-foreground hover:text-foreground'
                       }`}
                   >
                     <div className="flex items-center gap-2">
@@ -75,8 +75,8 @@ export function SharedNavbar() {
                   <Link
                     href="/my-list"
                     className={`px-3 py-2 rounded-lg transition-colors text-sm ${isActive('/my-list')
-                      ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-primary/10 text-primary border border-primary/30'
+                      : 'text-muted-foreground hover:text-foreground'
                       }`}
                   >
                     <div className="flex items-center gap-2">
@@ -87,8 +87,8 @@ export function SharedNavbar() {
                   <Link
                     href="/screener"
                     className={`px-3 py-2 rounded-lg transition-colors text-sm ${isActive('/screener')
-                      ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-primary/10 text-primary border border-primary/30'
+                      : 'text-muted-foreground hover:text-foreground'
                       }`}
                   >
                     <div className="flex items-center gap-2">
@@ -99,8 +99,8 @@ export function SharedNavbar() {
                   <Link
                     href="/analysis"
                     className={`px-3 py-2 rounded-lg transition-colors text-sm ${isActive('/analysis')
-                      ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-primary/10 text-primary border border-primary/30'
+                      : 'text-muted-foreground hover:text-foreground'
                       }`}
                   >
                     <div className="flex items-center gap-2">
@@ -111,8 +111,8 @@ export function SharedNavbar() {
                   <Link
                     href="/events"
                     className={`px-3 py-2 rounded-lg transition-colors text-sm ${isActive('/events')
-                      ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-primary/10 text-primary border border-primary/30'
+                      : 'text-muted-foreground hover:text-foreground'
                       }`}
                   >
                     <div className="flex items-center gap-2">
@@ -124,7 +124,7 @@ export function SharedNavbar() {
                     href="https://discord.gg/TKxquPQf3V"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-3 py-2 rounded-lg transition-colors text-slate-400 hover:text-white text-sm"
+                    className="px-3 py-2 rounded-lg transition-colors text-muted-foreground hover:text-foreground text-sm"
                   >
                     <div className="flex items-center gap-2">
                       <MessageCircle className="w-4 h-4" />
@@ -230,13 +230,13 @@ export function SharedNavbar() {
                 <>
                   <button
                     onClick={() => setLoginModalOpen(true)}
-                    className="text-sm font-medium text-white hover:text-cyan-400 transition-colors"
+                    className="text-sm font-medium text-foreground hover:text-primary transition-colors"
                   >
                     Log In
                   </button>
                   <button
                     onClick={() => setLoginModalOpen(true)}
-                    className="bg-white text-black hover:bg-cyan-50 px-5 py-2.5 rounded-full text-sm font-bold transition-all shadow-[0_0_20px_-5px_rgba(255,255,255,0.3)] hover:shadow-[0_0_25px_-5px_rgba(6,182,212,0.5)] hover:-translate-y-0.5 active:translate-y-0"
+                    className="bg-primary text-primary-foreground hover:bg-primary/90 px-5 py-2.5 rounded-full text-sm font-bold transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0"
                   >
                     Get Started
                   </button>
