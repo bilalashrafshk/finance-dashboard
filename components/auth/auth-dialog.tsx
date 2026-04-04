@@ -66,50 +66,62 @@ export function AuthDialog({ open, onOpenChange, initialMode = "login" }: AuthDi
     fetchConfig()
   }, [])
 
-  // Initialize Google Button
+  // 1. Initialize Google Identity Services (One-time)
   useEffect(() => {
-    if (!open || !clientId || !googleBtnRef.current) return
+    if (!clientId) return;
 
-    const initGoogle = () => {
-      try {
-        const google = (window as any).google
-        if (google?.accounts?.id?.initialize && googleBtnRef.current) {
-          google.accounts.id.initialize({
-            client_id: clientId,
-            callback: handleGoogleResponse,
-          })
-          
+    const initGSI = () => {
+      const google = (window as any).google;
+      if (google?.accounts?.id?.initialize) {
+        google.accounts.id.initialize({
+          client_id: clientId,
+          callback: handleGoogleResponse,
+        });
+      }
+    };
+
+    const checkAndInit = () => {
+      if ((window as any).google?.accounts?.id?.initialize) {
+        initGSI();
+      } else {
+        const interval = setInterval(() => {
+          if ((window as any).google?.accounts?.id?.initialize) {
+            clearInterval(interval);
+            initGSI();
+          }
+        }, 100);
+        return () => clearInterval(interval);
+      }
+    };
+
+    checkAndInit();
+  }, [clientId]);
+
+  // 2. Render the Button whenever the container is ready and dialog is open
+  useEffect(() => {
+    if (!open || !clientId || !googleBtnRef.current) return;
+
+    const renderButton = () => {
+      const google = (window as any).google;
+      if (google?.accounts?.id?.renderButton && googleBtnRef.current) {
+        try {
           google.accounts.id.renderButton(googleBtnRef.current, {
             theme: "outline",
             size: "large",
             width: googleBtnRef.current.offsetWidth || 350,
             text: mode === "login" ? "signin_with" : "signup_with",
             shape: "rectangular",
-          })
+          });
+        } catch (err) {
+          console.error("Google render error:", err);
         }
-      } catch (err) {
-        console.error("Google button error:", err)
       }
-    }
+    };
 
-    // Check if script is loaded and initialize function is available, otherwise wait
-    const checkGoogle = () => {
-      const google = (window as any).google
-      return !!(google?.accounts?.id?.initialize)
-    }
-
-    if (checkGoogle()) {
-      initGoogle()
-    } else {
-      const interval = setInterval(() => {
-        if (checkGoogle()) {
-          clearInterval(interval)
-          initGoogle()
-        }
-      }, 100)
-      return () => clearInterval(interval)
-    }
-  }, [open, clientId, mode])
+    // Use a small timeout to ensure Dialog animation is finished and DOM is stable
+    const timer = setTimeout(renderButton, 100);
+    return () => clearTimeout(timer);
+  }, [open, mode, clientId]);
 
   const handleGoogleResponse = async (response: any) => {
     setLoading(true)
