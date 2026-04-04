@@ -80,48 +80,37 @@ export function AuthDialog({ open, onOpenChange, initialMode = "login" }: AuthDi
       }
     };
 
-    const checkAndInit = () => {
-      if ((window as any).google?.accounts?.id?.initialize) {
-        initGSI();
-      } else {
-        const interval = setInterval(() => {
-          if ((window as any).google?.accounts?.id?.initialize) {
-            clearInterval(interval);
-            initGSI();
-          }
-        }, 100);
-        return () => clearInterval(interval);
-      }
-    };
-
-    checkAndInit();
+    if ((window as any).google?.accounts?.id?.initialize) {
+      initGSI();
+    } else {
+      const interval = setInterval(() => {
+        if ((window as any).google?.accounts?.id?.initialize) {
+          clearInterval(interval);
+          initGSI();
+        }
+      }, 100);
+      return () => clearInterval(interval);
+    }
   }, [clientId]);
 
-  // 2. Render the Button whenever the container is ready and dialog is open
-  useEffect(() => {
-    if (!open || !clientId || !googleBtnRef.current) return;
-
-    const renderButton = () => {
-      const google = (window as any).google;
-      if (google?.accounts?.id?.renderButton && googleBtnRef.current) {
-        try {
-          google.accounts.id.renderButton(googleBtnRef.current, {
-            theme: "outline",
-            size: "large",
-            width: googleBtnRef.current.offsetWidth || 350,
-            text: mode === "login" ? "signin_with" : "signup_with",
-            shape: "rectangular",
-          });
-        } catch (err) {
-          console.error("Google render error:", err);
-        }
+  // 2. High-precision Rendering using a Callback Ref
+  // This triggers as soon as the element is "printed" to the DOM,
+  // bypassing any Dialog animation/portal delays.
+  const googleBtnCallback = (node: HTMLDivElement | null) => {
+    if (node && clientId && (window as any).google?.accounts?.id?.renderButton) {
+      try {
+        (window as any).google.accounts.id.renderButton(node, {
+          theme: "outline",
+          size: "large",
+          width: node.offsetWidth || 350,
+          text: mode === "login" ? "signin_with" : "signup_with",
+          shape: "rectangular",
+        });
+      } catch (err) {
+        console.error("Google render error:", err);
       }
-    };
-
-    // Use a small timeout to ensure Dialog animation is finished and DOM is stable
-    const timer = setTimeout(renderButton, 100);
-    return () => clearTimeout(timer);
-  }, [open, mode, clientId]);
+    }
+  };
 
   const handleGoogleResponse = async (response: any) => {
     setLoading(true)
@@ -275,7 +264,7 @@ export function AuthDialog({ open, onOpenChange, initialMode = "login" }: AuthDi
           </div>
 
           {/* This is where Google will render the REAL button */}
-          <div ref={googleBtnRef} className="w-full min-h-[44px] flex justify-center overflow-hidden" />
+          <div ref={googleBtnCallback} className="w-full min-h-[44px] flex justify-center overflow-hidden" />
           {!clientId && (
             <p className="text-center text-[10px] text-slate-600">
               Loading Google Sign-In...
