@@ -200,6 +200,29 @@ export async function scrapeFinancials(symbol: string, period: 'quarterly' | 'an
     const dateColumnIndices: number[] = [];
     let ttmOffset = 0;
 
+    const parseDateFromTh = (th: string): string | null => {
+      const idMatch = th.match(/id="(\d{4}-\d{2}-\d{2})"/);
+      if (idMatch) return idMatch[1];
+
+      const monthMap: Record<string, string> = {
+        Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+        Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12'
+      };
+      const text = th.replace(/<[^>]+>/g, ' ').trim();
+      const textMatch = text.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),?\s+(\d{4})/i);
+      if (textMatch) {
+        const month = monthMap[textMatch[1].slice(0, 3)];
+        const day = textMatch[2].padStart(2, '0');
+        const year = textMatch[3];
+        if (month && day && year) return `${year}-${month}-${day}`;
+      }
+
+      const yyyyMatch = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+      if (yyyyMatch) return yyyyMatch[0];
+
+      return null;
+    };
+
     // Find thead section
     const theadMatch = html.match(/<thead>([\s\S]*?)<\/thead>/);
     if (!theadMatch) return { dates, fiscalQuarters, dateColumnIndices, ttmOffset };
@@ -208,15 +231,14 @@ export async function scrapeFinancials(symbol: string, period: 'quarterly' | 'an
     const allRows = theadMatch[0].match(/<tr[^>]*>([\s\S]*?)<\/tr>/g);
     if (!allRows || allRows.length === 0) return { dates, fiscalQuarters, dateColumnIndices, ttmOffset };
 
-    // First, find the row with date IDs (usually first or second row)
+    // First, find the row with dates
     let dateRowIndex = -1;
     let dateRowThs: string[] = [];
     for (let i = 0; i < allRows.length; i++) {
       const thMatches = allRows[i].match(/<th[^>]*>([\s\S]*?)<\/th>/g);
       if (thMatches) {
-        // Check if this row has date IDs
-        const hasDateId = thMatches.some(th => th.match(/id="\d{4}-\d{2}-\d{2}"/));
-        if (hasDateId) {
+        const hasDate = thMatches.some(th => parseDateFromTh(th) !== null);
+        if (hasDate) {
           dateRowIndex = i;
           dateRowThs = thMatches;
           break;
@@ -231,7 +253,6 @@ export async function scrapeFinancials(symbol: string, period: 'quarterly' | 'an
     for (let i = 0; i < allRows.length; i++) {
       const thMatches = allRows[i].match(/<th[^>]*>([\s\S]*?)<\/th>/g);
       if (thMatches && thMatches.length === dateRowThs.length) {
-        // Check if this row has quarter labels
         const hasQuarter = thMatches.some(th => {
           const text = th.replace(/<[^>]+>/g, '').trim();
           return /Q[1-4]\s+\d{4}/i.test(text);
@@ -245,9 +266,9 @@ export async function scrapeFinancials(symbol: string, period: 'quarterly' | 'an
 
     // Extract dates and map to quarter labels
     dateRowThs.forEach((th, index) => {
-      const dateMatch = th.match(/id="(\d{4}-\d{2}-\d{2})"/);
-      if (dateMatch) {
-        dates.push(dateMatch[1]);
+      const dateVal = parseDateFromTh(th);
+      if (dateVal) {
+        dates.push(dateVal);
         dateColumnIndices.push(index);
 
         // Try to find quarter label from the quarter row at the same index
@@ -523,6 +544,17 @@ export async function scrapeFinancials(symbol: string, period: 'quarterly' | 'an
 
       // EPS
       extractRowWithVariants(['EPS (Diluted)', 'EPS'], 'epsDiluted', 1);
+
+      // Fallback derivation for Cost of Revenue & Operating Expenses if missing from overview table
+      Object.keys(statements).forEach(date => {
+        const stmt = statements[date];
+        if (stmt.costOfRevenue === undefined && stmt.revenue !== undefined && stmt.grossProfit !== undefined) {
+          stmt.costOfRevenue = stmt.revenue - stmt.grossProfit;
+        }
+        if (stmt.operatingExpenses === undefined && stmt.grossProfit !== undefined && stmt.operatingIncome !== undefined) {
+          stmt.operatingExpenses = stmt.grossProfit - stmt.operatingIncome;
+        }
+      });
     } else if (type === 'balance') {
       // Assets
       extractRowWithVariants(['Cash & Equivalents', 'Cash and Cash Equivalents'], 'cashAndEquivalents');
