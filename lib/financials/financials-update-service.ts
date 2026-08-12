@@ -18,6 +18,19 @@ function getPool(): Pool {
     return pool;
 }
 
+function parseFiscalQuarter(fq: any): number | null {
+    if (typeof fq === 'number') return isNaN(fq) ? null : fq;
+    if (!fq) return null;
+    const match = String(fq).match(/Q([1-4])/i);
+    if (match) return parseInt(match[1], 10);
+    const parsed = parseInt(String(fq), 10);
+    return isNaN(parsed) ? null : parsed;
+}
+
+function cleanParam(v: any): any {
+    return v === undefined ? null : v;
+}
+
 export interface UpdateFinancialsResult {
     success: boolean;
     status?: string;
@@ -74,6 +87,13 @@ export async function updateFinancials(symbol: string, force: boolean = false): 
         });
 
         if (!profile) {
+            // Touch last_updated on company_profiles so non-equity symbols (funds, ETFs) don't clog the cron queue
+            await client.query(`
+                INSERT INTO company_profiles (symbol, asset_type, name, sector, industry, last_updated)
+                VALUES ($1, 'pk-equity', $1, 'Unknown', 'Unknown', NOW())
+                ON CONFLICT (asset_type, symbol) DO UPDATE SET last_updated = NOW()
+            `, [symbol]);
+
             return {
                 success: false,
                 error: `StockAnalysis returned 404 for ${symbol}`
@@ -203,18 +223,18 @@ export async function updateFinancials(symbol: string, force: boolean = false): 
           change_in_working_capital = EXCLUDED.change_in_working_capital,
           updated_at = NOW()
         `, [
-                    stat.symbol, 'pk-equity', stat.periodEndDate, stat.periodType, stat.fiscalQuarter || null,
-                    stat.revenue, stat.costOfRevenue, stat.grossProfit, stat.operatingExpenses, stat.operatingIncome,
-                    stat.interestExpense, stat.interestIncome, stat.currencyGainLoss,
-                    stat.pretaxIncome, stat.incomeTaxExpense, stat.netIncome, stat.epsDiluted,
-                    stat.cashAndEquivalents, stat.shortTermInvestments, stat.accountsReceivable, stat.accruedInterestReceivable, stat.otherReceivables, stat.restrictedCash, stat.otherCurrentAssets, stat.inventory,
-                    stat.totalCurrentAssets, stat.propertyPlantEquipment, stat.goodwill, stat.otherIntangibleAssets, stat.longTermDeferredTaxAssets, stat.otherLongTermAssets, stat.totalAssets,
-                    stat.accountsPayable, stat.accruedExpenses, stat.accruedInterestPayable, stat.interestBearingDeposits, stat.nonInterestBearingDeposits, stat.totalDeposits,
-                    stat.shortTermBorrowings, stat.currentPortionLongTermDebt, stat.currentPortionLeases, stat.currentIncomeTaxesPayable, stat.otherCurrentLiabilities,
-                    stat.totalCurrentLiabilities, stat.totalDebt, stat.longTermDebt, stat.longTermLeases, stat.longTermUnearnedRevenue,
-                    stat.pensionPostRetirementBenefits, stat.longTermDeferredTaxLiabilities, stat.otherLongTermLiabilities, stat.totalLiabilities,
-                    stat.totalEquity, stat.retainedEarnings,
-                    stat.operatingCashFlow, stat.capitalExpenditures, stat.freeCashFlow, stat.dividendsPaid, stat.changeInWorkingCapital
+                    stat.symbol, 'pk-equity', stat.periodEndDate, stat.periodType, parseFiscalQuarter(stat.fiscalQuarter),
+                    cleanParam(stat.revenue), cleanParam(stat.costOfRevenue), cleanParam(stat.grossProfit), cleanParam(stat.operatingExpenses), cleanParam(stat.operatingIncome),
+                    cleanParam(stat.interestExpense), cleanParam(stat.interestIncome), cleanParam(stat.currencyGainLoss),
+                    cleanParam(stat.pretaxIncome), cleanParam(stat.incomeTaxExpense), cleanParam(stat.netIncome), cleanParam(stat.epsDiluted),
+                    cleanParam(stat.cashAndEquivalents), cleanParam(stat.shortTermInvestments), cleanParam(stat.accountsReceivable), cleanParam(stat.accruedInterestReceivable), cleanParam(stat.otherReceivables), cleanParam(stat.restrictedCash), cleanParam(stat.otherCurrentAssets), cleanParam(stat.inventory),
+                    cleanParam(stat.totalCurrentAssets), cleanParam(stat.propertyPlantEquipment), cleanParam(stat.goodwill), cleanParam(stat.otherIntangibleAssets), cleanParam(stat.longTermDeferredTaxAssets), cleanParam(stat.otherLongTermAssets), cleanParam(stat.totalAssets),
+                    cleanParam(stat.accountsPayable), cleanParam(stat.accruedExpenses), cleanParam(stat.accruedInterestPayable), cleanParam(stat.interestBearingDeposits), cleanParam(stat.nonInterestBearingDeposits), cleanParam(stat.totalDeposits),
+                    cleanParam(stat.shortTermBorrowings), cleanParam(stat.currentPortionLongTermDebt), cleanParam(stat.currentPortionLeases), cleanParam(stat.currentIncomeTaxesPayable), cleanParam(stat.otherCurrentLiabilities),
+                    cleanParam(stat.totalCurrentLiabilities), cleanParam(stat.totalDebt), cleanParam(stat.longTermDebt), cleanParam(stat.longTermLeases), cleanParam(stat.longTermUnearnedRevenue),
+                    cleanParam(stat.pensionPostRetirementBenefits), cleanParam(stat.longTermDeferredTaxLiabilities), cleanParam(stat.otherLongTermLiabilities), cleanParam(stat.totalLiabilities),
+                    cleanParam(stat.totalEquity), cleanParam(stat.retainedEarnings),
+                    cleanParam(stat.operatingCashFlow), cleanParam(stat.capitalExpenditures), cleanParam(stat.freeCashFlow), cleanParam(stat.dividendsPaid), cleanParam(stat.changeInWorkingCapital)
                 ]);
             } catch (err: any) {
                 console.error(`Error inserting period ${stat.periodEndDate} (${stat.periodType}):`, err.message);
@@ -319,18 +339,18 @@ export async function updateFinancials(symbol: string, force: boolean = false): 
           change_in_working_capital = EXCLUDED.change_in_working_capital,
           updated_at = NOW()
         `, [
-                    stat.symbol, 'pk-equity', stat.periodEndDate, stat.periodType, stat.fiscalQuarter || null,
-                    stat.revenue, stat.costOfRevenue, stat.grossProfit, stat.operatingExpenses, stat.operatingIncome,
-                    stat.interestExpense, stat.interestIncome, stat.currencyGainLoss,
-                    stat.pretaxIncome, stat.incomeTaxExpense, stat.netIncome, stat.epsDiluted,
-                    stat.cashAndEquivalents, stat.shortTermInvestments, stat.accountsReceivable, stat.accruedInterestReceivable, stat.otherReceivables, stat.restrictedCash, stat.otherCurrentAssets, stat.inventory,
-                    stat.totalCurrentAssets, stat.propertyPlantEquipment, stat.goodwill, stat.otherIntangibleAssets, stat.longTermDeferredTaxAssets, stat.otherLongTermAssets, stat.totalAssets,
-                    stat.accountsPayable, stat.accruedExpenses, stat.accruedInterestPayable, stat.interestBearingDeposits, stat.nonInterestBearingDeposits, stat.totalDeposits,
-                    stat.shortTermBorrowings, stat.currentPortionLongTermDebt, stat.currentPortionLeases, stat.currentIncomeTaxesPayable, stat.otherCurrentLiabilities,
-                    stat.totalCurrentLiabilities, stat.totalDebt, stat.longTermDebt, stat.longTermLeases, stat.longTermUnearnedRevenue,
-                    stat.pensionPostRetirementBenefits, stat.longTermDeferredTaxLiabilities, stat.otherLongTermLiabilities, stat.totalLiabilities,
-                    stat.totalEquity, stat.retainedEarnings,
-                    stat.operatingCashFlow, stat.capitalExpenditures, stat.freeCashFlow, stat.dividendsPaid, stat.changeInWorkingCapital
+                    stat.symbol, 'pk-equity', stat.periodEndDate, stat.periodType, parseFiscalQuarter(stat.fiscalQuarter),
+                    cleanParam(stat.revenue), cleanParam(stat.costOfRevenue), cleanParam(stat.grossProfit), cleanParam(stat.operatingExpenses), cleanParam(stat.operatingIncome),
+                    cleanParam(stat.interestExpense), cleanParam(stat.interestIncome), cleanParam(stat.currencyGainLoss),
+                    cleanParam(stat.pretaxIncome), cleanParam(stat.incomeTaxExpense), cleanParam(stat.netIncome), cleanParam(stat.epsDiluted),
+                    cleanParam(stat.cashAndEquivalents), cleanParam(stat.shortTermInvestments), cleanParam(stat.accountsReceivable), cleanParam(stat.accruedInterestReceivable), cleanParam(stat.otherReceivables), cleanParam(stat.restrictedCash), cleanParam(stat.otherCurrentAssets), cleanParam(stat.inventory),
+                    cleanParam(stat.totalCurrentAssets), cleanParam(stat.propertyPlantEquipment), cleanParam(stat.goodwill), cleanParam(stat.otherIntangibleAssets), cleanParam(stat.longTermDeferredTaxAssets), cleanParam(stat.otherLongTermAssets), cleanParam(stat.totalAssets),
+                    cleanParam(stat.accountsPayable), cleanParam(stat.accruedExpenses), cleanParam(stat.accruedInterestPayable), cleanParam(stat.interestBearingDeposits), cleanParam(stat.nonInterestBearingDeposits), cleanParam(stat.totalDeposits),
+                    cleanParam(stat.shortTermBorrowings), cleanParam(stat.currentPortionLongTermDebt), cleanParam(stat.currentPortionLeases), cleanParam(stat.currentIncomeTaxesPayable), cleanParam(stat.otherCurrentLiabilities),
+                    cleanParam(stat.totalCurrentLiabilities), cleanParam(stat.totalDebt), cleanParam(stat.longTermDebt), cleanParam(stat.longTermLeases), cleanParam(stat.longTermUnearnedRevenue),
+                    cleanParam(stat.pensionPostRetirementBenefits), cleanParam(stat.longTermDeferredTaxLiabilities), cleanParam(stat.otherLongTermLiabilities), cleanParam(stat.totalLiabilities),
+                    cleanParam(stat.totalEquity), cleanParam(stat.retainedEarnings),
+                    cleanParam(stat.operatingCashFlow), cleanParam(stat.capitalExpenditures), cleanParam(stat.freeCashFlow), cleanParam(stat.dividendsPaid), cleanParam(stat.changeInWorkingCapital)
                 ]);
             } catch (err: any) {
                 console.error(`Error inserting period ${stat.periodEndDate} (${stat.periodType}):`, err.message);
