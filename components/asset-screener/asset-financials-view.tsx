@@ -46,16 +46,16 @@ interface FinancialStatement {
  * Q3: Jan-Mar (months 1-3), Q4: Apr-Jun (months 4-6)
  */
 function formatFiscalQuarter(financial: FinancialStatement): string {
-  // Use stored fiscal_quarter if available (preferred - comes directly from source)
-  if (financial.fiscal_quarter) {
+  // Use stored fiscal_quarter if it's already a formatted string like "Q1 2026"
+  if (financial.fiscal_quarter && typeof financial.fiscal_quarter === 'string' && financial.fiscal_quarter.startsWith('Q')) {
     return financial.fiscal_quarter;
   }
 
-  // Fallback: calculate from date if fiscal_quarter not available
+  // Fallback: calculate from date (using UTC to prevent timezone shifts)
   const dateStr = financial.period_end_date;
   const date = new Date(dateStr)
-  const month = date.getMonth() + 1 // 1-12
-  const calendarYear = date.getFullYear()
+  const month = date.getUTCMonth() + 1 // 1-12
+  const calendarYear = date.getUTCFullYear()
 
   let quarter: number
   let fiscalYear: number

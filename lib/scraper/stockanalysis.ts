@@ -543,7 +543,7 @@ export async function scrapeFinancials(symbol: string, period: 'quarterly' | 'an
       extractRowWithVariants(['Net Income', 'Net Income to Common'], 'netIncome');
 
       // EPS
-      extractRowWithVariants(['EPS (Diluted)', 'EPS'], 'epsDiluted', 1);
+      extractRowWithVariants(['Earnings Per Share', 'EPS (Diluted)', 'EPS', 'Basic EPS'], 'epsDiluted', 1);
 
       // Fallback derivation for Cost of Revenue & Operating Expenses if missing from overview table
       Object.keys(statements).forEach(date => {

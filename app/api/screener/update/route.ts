@@ -173,7 +173,8 @@ export async function GET(request: Request) {
             let ttmEps = 0
             let peRatio = null
             if (financials && financials.length > 0) {
-              const last4 = financials.slice(0, 4)
+              const validFinancials = financials.filter(row => (row.eps_diluted !== null && row.eps_diluted !== undefined) || (row.eps_basic !== null && row.eps_basic !== undefined))
+              const last4 = (validFinancials.length > 0 ? validFinancials : financials).slice(0, 4)
               ttmEps = last4.reduce((sum, row) => sum + (row.eps_diluted || row.eps_basic || 0), 0)
               if (ttmEps !== 0) {
                 peRatio = price.price / ttmEps
