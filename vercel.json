@@ -1,5 +1,15 @@
 {
   "installCommand": "npm install --legacy-peer-deps",
+  "functions": {
+    "app/api/**/*.ts": {
+      "memory": 512,
+      "maxDuration": 60
+    },
+    "app/api/**/*.tsx": {
+      "memory": 512,
+      "maxDuration": 60
+    }
+  },
   "crons": [
     {
       "path": "/api/screener/update",
