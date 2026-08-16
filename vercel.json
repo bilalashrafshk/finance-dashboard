@@ -13,23 +13,23 @@
   "crons": [
     {
       "path": "/api/screener/update",
-      "schedule": "*/5 4-12 * * 1-5"
+      "schedule": "*/10 4-12 * * 1-5"
     },
     {
       "path": "/api/events/process",
-      "schedule": "*/5 4-12 * * 1-5"
+      "schedule": "*/10 4-12 * * 1-5"
     },
     {
       "path": "/api/events/discovery",
-      "schedule": "*/5 4-12 * * 1-5"
+      "schedule": "*/10 4-12 * * 1-5"
     },
     {
       "path": "/api/sbp/macros/update",
-      "schedule": "*/5 4-12 * * 1-5"
+      "schedule": "*/30 4-12 * * 1-5"
     },
     {
       "path": "/api/financials/update",
-      "schedule": "*/15 4-12 * * 1-5"
+      "schedule": "*/30 4-12 * * 1-5"
     }
   ]
 }
