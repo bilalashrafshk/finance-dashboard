@@ -218,7 +218,11 @@ export async function getHistoricalDataBatch(
   assetType: string,
   symbols: string[],
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  // Optional: fetch only a subset of OHLCV columns (plus symbol/date, always included).
+  // Defaults to all columns to keep existing callers' behavior identical. Fields not
+  // selected come back as `null` on each record, same as when the DB value itself is null.
+  columns?: Array<'open' | 'high' | 'low' | 'close' | 'volume' | 'adjusted_close' | 'change_pct'>
 ): Promise<Record<string, HistoricalPriceRecord[]>> {
   if (!symbols || symbols.length === 0) {
     return {}
@@ -245,8 +249,14 @@ export async function getHistoricalDataBatch(
         paramIndex++
       }
 
+      // `close` is non-nullable on HistoricalPriceRecord, so always include it even if the
+      // caller didn't ask for it explicitly.
+      const selectedColumns = columns && columns.length > 0
+        ? Array.from(new Set(['close', ...columns]))
+        : ['open', 'high', 'low', 'close', 'volume', 'adjusted_close', 'change_pct']
+
       const query = `
-        SELECT symbol, date, open, high, low, close, volume, adjusted_close, change_pct
+        SELECT symbol, date, ${selectedColumns.join(', ')}
         FROM historical_price_data
         ${whereClause}
         ORDER BY symbol, date ASC

@@ -49,103 +49,53 @@ export async function GET(request: Request) {
     const limitParams = url.searchParams.get('limit')
     const limit = limitParams ? parseInt(limitParams) : 30 // Default 30 symbols per run (reduced to prevent timeout)
 
-    // 1. Get Stale Symbols (Prioritize oldest updated)
-    //    Gated to ~once/day per symbol: the 3-year history refetch below is expensive
-    //    (600+ rows/symbol) and beta/sharpe/sortino barely move within a day, so there's
-    //    no value in recomputing them every 10 minutes. This is the dominant source of
-    //    DB egress (was cycling all symbols every ~3 hours = ~8x/day).
-    const staleQuery = `
+    // Determine base URL
+    const baseUrl = url.origin ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+
+    let processedCount = 0
+    let skippedCount = 0
+
+    // ============================================================
+    // PASS 1 (cheap, every run): price / PE / dividend yield / market cap.
+    // No 3-year history fetch involved, so this is safe to run at the
+    // original cadence (cycles all symbols roughly every ~3 hours).
+    // ============================================================
+    const cheapQuery = `
       WITH symbols AS (
         SELECT DISTINCT symbol FROM historical_price_data WHERE asset_type = 'pk-equity'
       )
       SELECT sy.symbol
       FROM symbols sy
       LEFT JOIN screener_metrics s ON sy.symbol = s.symbol AND s.asset_type = 'pk-equity'
-      WHERE s.updated_at IS NULL OR s.updated_at < NOW() - INTERVAL '20 hours'
       ORDER BY s.updated_at ASC NULLS FIRST, sy.symbol ASC
       LIMIT $1
     `
-    const { rows: priceSymbols } = await client.query(staleQuery, [limit])
-    const allSymbols = priceSymbols.map(p => p.symbol)
+    const { rows: cheapRows } = await client.query(cheapQuery, [limit])
+    const cheapSymbols = cheapRows.map(p => p.symbol)
 
-    if (allSymbols.length === 0) {
-      return NextResponse.json({ success: true, count: 0, message: 'No symbols found or all up to date' })
-    }
-
-
-
-    // Determine base URL
-    const baseUrl = url.origin ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-
-    // 2. Fetch Benchmark Data (KSE100) for Beta Calculation (3 Years)
-    const endDate = new Date().toISOString().split('T')[0]
-    const threeYearsAgo = new Date()
-    threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3)
-    const startDate = threeYearsAgo.toISOString().split('T')[0]
-
-    // We still fetch KSE100 via API or DB once (it's fast)
-    let benchmarkData: PriceDataPoint[] = []
-    try {
-      // Direct DB fetch for KSE100 is better
-      const kseRes = await getHistoricalDataBatch('indices', ['KSE100'], startDate, endDate)
-      if (kseRes['KSE100']) {
-        benchmarkData = kseRes['KSE100'].map(d => ({ date: d.date, close: d.adjusted_close ?? d.close }))
-      } else {
-        // Fallback to API if not in DB yet
-        const kseData = await fetchHistoricalData('indices', 'KSE100', startDate, endDate, baseUrl)
-        if (kseData && kseData.data) {
-          benchmarkData = kseData.data.map((d: any) => ({ date: d.date, close: d.adjusted_close ?? d.close }))
-        }
-      }
-    } catch (e) {
-      console.error('[Screener Update] Failed to fetch KSE100 benchmark:', e)
-    }
-
-    // 3. Process Symbols in Batches
-    // Optimized: Increased batch size since heavy calculation moved out of loop
-    const BATCH_SIZE = 20
-    let processedCount = 0
-    let skippedCount = 0
-
-    for (let i = 0; i < allSymbols.length; i += BATCH_SIZE) {
-      // TIME CHECK: Stop if we are running out of time
+    const CHEAP_BATCH_SIZE = 20
+    for (let i = 0; i < cheapSymbols.length; i += CHEAP_BATCH_SIZE) {
       const elapsedTime = Date.now() - startTime
-      if (elapsedTime > TIME_LIMIT_MS) {
+      if (elapsedTime > TIME_LIMIT_MS) break
 
-        break
-      }
-
-      const batchSymbols = allSymbols.slice(i, i + BATCH_SIZE)
-
-      const batchStart = Date.now()
+      const batchSymbols = cheapSymbols.slice(i, i + CHEAP_BATCH_SIZE)
 
       try {
-        // A. Batch Fetch Basic Data (Price, Profile, Financials)
-        console.time(`Batch ${i} Basic Data`)
+        console.time(`Cheap Batch ${i} Basic Data`)
         const batchDataPromise = fetchScreenerBatchData(batchSymbols, 'pk-equity', baseUrl)
-          .then(res => { console.timeEnd(`Batch ${i} Basic Data`); return res; })
+          .then(res => { console.timeEnd(`Cheap Batch ${i} Basic Data`); return res; })
 
-        // B. Batch Fetch Historical Price (3 Years) -> DIRECT DB QUERY
-        console.time(`Batch ${i} History`)
-        const historyPromise = getHistoricalDataBatch('pk-equity', batchSymbols, startDate, endDate)
-          .then(res => { console.timeEnd(`Batch ${i} History`); return res; })
-
-        // C. Batch Fetch Dividend History -> DIRECT DB QUERY
-        console.time(`Batch ${i} Dividends`)
+        console.time(`Cheap Batch ${i} Dividends`)
         const dividendPromise = getDividendDataBatch('pk-equity', batchSymbols)
-          .then(res => { console.timeEnd(`Batch ${i} Dividends`); return res; })
+          .then(res => { console.timeEnd(`Cheap Batch ${i} Dividends`); return res; })
 
-        // Execute all fetches in parallel
-        const [batchBasicData, batchHistory, batchDividends] = await Promise.all([
+        const [batchBasicData, batchDividends] = await Promise.all([
           batchDataPromise,
-          historyPromise,
           dividendPromise
         ])
 
-
-        // Process each symbol in memory (CPU bound, fast)
         const batchUpsertData: any[] = []
 
         batchSymbols.forEach((symbol) => {
@@ -155,7 +105,6 @@ export async function GET(request: Request) {
             if (!data || !data.price) return
 
             const { price, profile, financials } = data
-            const historicalData = batchHistory[symbol] || []
             let dividends = (batchDividends[symbol] || []).map(d => ({ ...d, dividend_amount: d.dividend_amount || 0 }))
 
             // Calculate Dividend Metrics
@@ -190,36 +139,6 @@ export async function GET(request: Request) {
               }
             }
 
-            // Calculate Technical Metrics (3-Year)
-            let beta3y = null
-            let sharpe3y = null
-            let sortino3y = null
-            let maxDrawdown3y = null
-            let ytdReturn = null
-
-            if (historicalData.length > 0) {
-              // Create price points for calculations, using adjusted_close to handle stock splits
-              const histPoints: PriceDataPoint[] = historicalData.map(h => ({ date: h.date, close: h.adjusted_close ?? h.close }))
-              
-              // Sort by date ascending for calculations
-              histPoints.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-              const metricsFull = calculateAllMetrics(
-                price.price,
-                histPoints,
-                'pk-equity',
-                benchmarkData,
-                { us: 2.5, pk: 15.0 },
-                undefined,
-                histPoints
-              )
-              beta3y = metricsFull.beta3Year || null
-              sharpe3y = metricsFull.sharpeRatio3Year || null
-              sortino3y = metricsFull.sortinoRatio3Year || null
-              maxDrawdown3y = metricsFull.maxDrawdown3Year || null
-              ytdReturn = metricsFull.ytdReturn || null
-            }
-
             batchUpsertData.push({
               symbol,
               sector: profile?.sector || 'Unknown',
@@ -229,62 +148,216 @@ export async function GET(request: Request) {
               peRatio,
               dividendYield,
               dividendPayoutRatio,
-              beta3y,
-              sharpe3y,
-              sortino3y,
-              maxDrawdown3y,
-              ytdReturn,
               marketCap: profile?.market_cap
             })
 
             processedCount++
           } catch (err) {
-            console.error(`Error calculating metrics for ${symbol}`, err)
+            console.error(`Error calculating cheap metrics for ${symbol}`, err)
             skippedCount++
           }
         })
 
-        // BATCH UPSERT: One query instead of N
+        // BATCH UPSERT: One query instead of N. Only touches cheap-tier columns -
+        // beta_3y/sharpe_3y/etc are left untouched on conflict (not in SET clause).
         if (batchUpsertData.length > 0) {
           const values = batchUpsertData.flatMap(d => [
             'pk-equity', d.symbol, d.sector, d.industry, d.price, d.price_date,
-            d.peRatio, d.dividendYield, d.dividendPayoutRatio,
-            d.beta3y, d.sharpe3y, d.sortino3y, d.maxDrawdown3y, d.ytdReturn,
-            d.marketCap
+            d.peRatio, d.dividendYield, d.dividendPayoutRatio, d.marketCap
           ]);
 
           const placeholders = batchUpsertData.map((_, idx) => {
-            const offset = idx * 15;
-            return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, NOW())`;
+            const offset = idx * 10;
+            return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, NOW())`;
           }).join(',');
 
           await client.query(`
-            INSERT INTO screener_metrics 
+            INSERT INTO screener_metrics
             (
-              asset_type, symbol, sector, industry, price, price_date, 
-              pe_ratio, dividend_yield, dividend_payout_ratio,
-              beta_3y, sharpe_3y, sortino_3y, max_drawdown_3y, ytd_return,
-              market_cap, updated_at
+              asset_type, symbol, sector, industry, price, price_date,
+              pe_ratio, dividend_yield, dividend_payout_ratio, market_cap, updated_at
             )
             VALUES ${placeholders}
             ON CONFLICT (asset_type, symbol)
             DO UPDATE SET
+              sector = EXCLUDED.sector,
+              industry = EXCLUDED.industry,
               price = EXCLUDED.price,
               price_date = EXCLUDED.price_date,
               pe_ratio = EXCLUDED.pe_ratio,
               dividend_yield = EXCLUDED.dividend_yield,
               dividend_payout_ratio = EXCLUDED.dividend_payout_ratio,
-              beta_3y = EXCLUDED.beta_3y,
-              sharpe_3y = EXCLUDED.sharpe_3y,
-              sortino_3y = EXCLUDED.sortino_3y,
-              max_drawdown_3y = EXCLUDED.max_drawdown_3y,
-              ytd_return = EXCLUDED.ytd_return,
               market_cap = EXCLUDED.market_cap,
               updated_at = NOW()
           `, values);
         }
       } catch (err) {
-        console.error(`Batch failed`, err)
+        console.error(`Cheap batch failed`, err)
+      }
+    }
+
+    // ============================================================
+    // PASS 2 (expensive, gated to ~once/day per symbol): beta/sharpe/
+    // sortino/max-drawdown/YTD. Requires the 3-year history refetch
+    // (600+ rows/symbol), which barely moves within a day - this gate
+    // is the dominant fix for DB egress (was cycling all symbols every
+    // ~3 hours = ~8x/day).
+    // ============================================================
+    const expensiveQuery = `
+      WITH symbols AS (
+        SELECT DISTINCT symbol FROM historical_price_data WHERE asset_type = 'pk-equity'
+      )
+      SELECT sy.symbol
+      FROM symbols sy
+      LEFT JOIN screener_metrics s ON sy.symbol = s.symbol AND s.asset_type = 'pk-equity'
+      WHERE s.metrics_updated_at IS NULL OR s.metrics_updated_at < NOW() - INTERVAL '20 hours'
+      ORDER BY s.metrics_updated_at ASC NULLS FIRST, sy.symbol ASC
+      LIMIT $1
+    `
+    const { rows: expensiveRows } = await client.query(expensiveQuery, [limit])
+    const expensiveSymbols = expensiveRows.map(p => p.symbol)
+
+    if (expensiveSymbols.length > 0) {
+      // Fetch Benchmark Data (KSE100) for Beta Calculation (3 Years)
+      const endDate = new Date().toISOString().split('T')[0]
+      const threeYearsAgo = new Date()
+      threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3)
+      const startDate = threeYearsAgo.toISOString().split('T')[0]
+
+      let benchmarkData: PriceDataPoint[] = []
+      try {
+        // Direct DB fetch for KSE100 is better
+        const kseRes = await getHistoricalDataBatch('indices', ['KSE100'], startDate, endDate, ['close', 'adjusted_close'])
+        if (kseRes['KSE100']) {
+          benchmarkData = kseRes['KSE100'].map(d => ({ date: d.date, close: d.adjusted_close ?? d.close }))
+        } else {
+          // Fallback to API if not in DB yet
+          const kseData = await fetchHistoricalData('indices', 'KSE100', startDate, endDate, baseUrl)
+          if (kseData && kseData.data) {
+            benchmarkData = kseData.data.map((d: any) => ({ date: d.date, close: d.adjusted_close ?? d.close }))
+          }
+        }
+      } catch (e) {
+        console.error('[Screener Update] Failed to fetch KSE100 benchmark:', e)
+      }
+
+      const BATCH_SIZE = 20
+      for (let i = 0; i < expensiveSymbols.length; i += BATCH_SIZE) {
+        // TIME CHECK: Stop if we are running out of time
+        const elapsedTime = Date.now() - startTime
+        if (elapsedTime > TIME_LIMIT_MS) break
+
+        const batchSymbols = expensiveSymbols.slice(i, i + BATCH_SIZE)
+
+        try {
+          // A. Batch Fetch Basic Data (Price) - needed as the calc's current-price input
+          console.time(`Batch ${i} Basic Data`)
+          const batchDataPromise = fetchScreenerBatchData(batchSymbols, 'pk-equity', baseUrl)
+            .then(res => { console.timeEnd(`Batch ${i} Basic Data`); return res; })
+
+          // B. Batch Fetch Historical Price (3 Years) -> DIRECT DB QUERY
+          console.time(`Batch ${i} History`)
+          const historyPromise = getHistoricalDataBatch('pk-equity', batchSymbols, startDate, endDate, ['close', 'adjusted_close'])
+            .then(res => { console.timeEnd(`Batch ${i} History`); return res; })
+
+          // Execute all fetches in parallel
+          const [batchBasicData, batchHistory] = await Promise.all([
+            batchDataPromise,
+            historyPromise
+          ])
+
+          // Process each symbol in memory (CPU bound, fast)
+          const batchUpsertData: any[] = []
+
+          batchSymbols.forEach((symbol) => {
+            try {
+              const data = batchBasicData[symbol]
+              // Skip if critical price data missing
+              if (!data || !data.price) return
+
+              const { price } = data
+              const historicalData = batchHistory[symbol] || []
+
+              // Calculate Technical Metrics (3-Year)
+              let beta3y = null
+              let sharpe3y = null
+              let sortino3y = null
+              let maxDrawdown3y = null
+              let ytdReturn = null
+
+              if (historicalData.length > 0) {
+                // Create price points for calculations, using adjusted_close to handle stock splits
+                const histPoints: PriceDataPoint[] = historicalData.map(h => ({ date: h.date, close: h.adjusted_close ?? h.close }))
+
+                // Sort by date ascending for calculations
+                histPoints.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                const metricsFull = calculateAllMetrics(
+                  price.price,
+                  histPoints,
+                  'pk-equity',
+                  benchmarkData,
+                  { us: 2.5, pk: 15.0 },
+                  undefined,
+                  histPoints
+                )
+                beta3y = metricsFull.beta3Year || null
+                sharpe3y = metricsFull.sharpeRatio3Year || null
+                sortino3y = metricsFull.sortinoRatio3Year || null
+                maxDrawdown3y = metricsFull.maxDrawdown3Year || null
+                ytdReturn = metricsFull.ytdReturn || null
+              }
+
+              batchUpsertData.push({
+                symbol,
+                beta3y,
+                sharpe3y,
+                sortino3y,
+                maxDrawdown3y,
+                ytdReturn
+              })
+
+              processedCount++
+            } catch (err) {
+              console.error(`Error calculating metrics for ${symbol}`, err)
+              skippedCount++
+            }
+          })
+
+          // BATCH UPSERT: One query instead of N. Only touches expensive-tier columns -
+          // price/pe_ratio/dividend_yield/updated_at are left untouched on conflict.
+          if (batchUpsertData.length > 0) {
+            const values = batchUpsertData.flatMap(d => [
+              'pk-equity', d.symbol,
+              d.beta3y, d.sharpe3y, d.sortino3y, d.maxDrawdown3y, d.ytdReturn
+            ]);
+
+            const placeholders = batchUpsertData.map((_, idx) => {
+              const offset = idx * 7;
+              return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, NOW())`;
+            }).join(',');
+
+            await client.query(`
+              INSERT INTO screener_metrics
+              (
+                asset_type, symbol,
+                beta_3y, sharpe_3y, sortino_3y, max_drawdown_3y, ytd_return,
+                metrics_updated_at
+              )
+              VALUES ${placeholders}
+              ON CONFLICT (asset_type, symbol)
+              DO UPDATE SET
+                beta_3y = EXCLUDED.beta_3y,
+                sharpe_3y = EXCLUDED.sharpe_3y,
+                sortino_3y = EXCLUDED.sortino_3y,
+                max_drawdown_3y = EXCLUDED.max_drawdown_3y,
+                ytd_return = EXCLUDED.ytd_return,
+                metrics_updated_at = EXCLUDED.metrics_updated_at
+            `, values);
+          }
+        } catch (err) {
+          console.error(`Batch failed`, err)
+        }
       }
     }
 
@@ -380,7 +453,9 @@ export async function GET(request: Request) {
       processed: processedCount,
       skipped: skippedCount,
       duration_ms: duration,
-      partial_update: processedCount < allSymbols.length
+      cheap_symbols: cheapSymbols.length,
+      expensive_symbols: expensiveSymbols.length,
+      partial_update: processedCount < (cheapSymbols.length + expensiveSymbols.length)
     })
 
   } catch (error: any) {

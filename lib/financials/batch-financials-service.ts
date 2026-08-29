@@ -53,21 +53,26 @@ export async function fetchBatchFinancials(
         }]))
 
         // 2. Fetch Financials from DB
+        // Only the last 4 quarters per symbol are ever used (TTM calc below), so filter to
+        // that in SQL via a window function instead of transferring every historical
+        // quarter and slicing client-side - identical result, less data over the wire.
         const financialsQuery = `
-      SELECT 
-        symbol,
-        period_end_date,
-        eps_basic,
-        eps_diluted
-      FROM financial_statements
-      WHERE asset_type = $1 
-        AND symbol = ANY($2)
-        AND period_type = 'quarterly'
+      SELECT symbol, period_end_date, eps_basic, eps_diluted
+      FROM (
+        SELECT
+          symbol, period_end_date, eps_basic, eps_diluted,
+          ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY period_end_date DESC) AS rn
+        FROM financial_statements
+        WHERE asset_type = $1
+          AND symbol = ANY($2)
+          AND period_type = 'quarterly'
+      ) ranked
+      WHERE rn <= 4
       ORDER BY symbol, period_end_date DESC
     `
         const { rows: financialRows } = await client.query(financialsQuery, [assetType, symbolsUpper])
 
-        // Group financials by symbol and take last 4 quarters
+        // Group financials by symbol (already limited to last 4 quarters by the query above)
         const financialsMap = new Map<string, Array<{ period_end_date: string; eps_basic: number | null; eps_diluted: number | null }>>()
         const symbolFinancials = new Map<string, typeof financialRows>()
 
@@ -79,7 +84,7 @@ export async function fetchBatchFinancials(
         })
 
         symbolFinancials.forEach((rows, symbol) => {
-            const last4 = rows.slice(0, 4).map(r => ({
+            const last4 = rows.map(r => ({
                 period_end_date: r.period_end_date,
                 eps_basic: r.eps_basic ? parseFloat(r.eps_basic) : null,
                 eps_diluted: r.eps_diluted ? parseFloat(r.eps_diluted) : null
