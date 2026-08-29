@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
 import { getDbClient } from "@/lib/portfolio/db-client"
 
+// Stats are a slow-changing display widget - cache for 1 hour to avoid re-querying on every page load
+export const revalidate = 3600
+
 export async function GET() {
   let client = null
   try {
@@ -22,10 +25,15 @@ export async function GET() {
     )
     const usCompanies = parseInt(usCompaniesResult.rows[0]?.count || "0", 10)
 
-    // Get total data points from historical_price_data
+    // Get total data points from historical_price_data.
+    // Use the planner's row estimate (pg_class.reltuples) instead of COUNT(*) - a full
+    // COUNT(*) requires scanning every one of the ~1M rows on every request; the estimate
+    // is near-instant and accurate to within autovacuum's last ANALYZE, which is plenty
+    // for a display stat that's now also cached for an hour.
     const dataPointsResult = await client.query(
-      `SELECT COUNT(*) as count 
-       FROM historical_price_data`
+      `SELECT reltuples::bigint as count
+       FROM pg_class
+       WHERE relname = 'historical_price_data'`
     )
     const dataPoints = parseInt(dataPointsResult.rows[0]?.count || "0", 10)
 

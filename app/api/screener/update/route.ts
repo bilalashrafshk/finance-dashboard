@@ -50,14 +50,19 @@ export async function GET(request: Request) {
     const limit = limitParams ? parseInt(limitParams) : 30 // Default 30 symbols per run (reduced to prevent timeout)
 
     // 1. Get Stale Symbols (Prioritize oldest updated)
-    //    Use GROUP BY instead of DISTINCT to allow ordering by joined column
+    //    Gated to ~once/day per symbol: the 3-year history refetch below is expensive
+    //    (600+ rows/symbol) and beta/sharpe/sortino barely move within a day, so there's
+    //    no value in recomputing them every 10 minutes. This is the dominant source of
+    //    DB egress (was cycling all symbols every ~3 hours = ~8x/day).
     const staleQuery = `
-      SELECT h.symbol
-      FROM historical_price_data h
-      LEFT JOIN screener_metrics s ON h.symbol = s.symbol AND s.asset_type = 'pk-equity'
-      WHERE h.asset_type = 'pk-equity'
-      GROUP BY h.symbol, s.updated_at
-      ORDER BY s.updated_at ASC NULLS FIRST, h.symbol ASC
+      WITH symbols AS (
+        SELECT DISTINCT symbol FROM historical_price_data WHERE asset_type = 'pk-equity'
+      )
+      SELECT sy.symbol
+      FROM symbols sy
+      LEFT JOIN screener_metrics s ON sy.symbol = s.symbol AND s.asset_type = 'pk-equity'
+      WHERE s.updated_at IS NULL OR s.updated_at < NOW() - INTERVAL '20 hours'
+      ORDER BY s.updated_at ASC NULLS FIRST, sy.symbol ASC
       LIMIT $1
     `
     const { rows: priceSymbols } = await client.query(staleQuery, [limit])

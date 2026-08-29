@@ -504,8 +504,8 @@ async function insertChunk(
     `INSERT INTO historical_price_data 
      (asset_type, symbol, date, open, high, low, close, volume, adjusted_close, change_pct, source, updated_at)
      VALUES ${placeholders.map(p => p.slice(0, -1) + ', NOW())').join(', ')}
-     ON CONFLICT (asset_type, symbol, date) 
-     DO UPDATE SET 
+     ON CONFLICT (asset_type, symbol, date)
+     DO UPDATE SET
        open = EXCLUDED.open,
        high = EXCLUDED.high,
        low = EXCLUDED.low,
@@ -513,7 +513,10 @@ async function insertChunk(
        volume = EXCLUDED.volume,
        adjusted_close = COALESCE(EXCLUDED.adjusted_close, EXCLUDED.close),
        change_pct = EXCLUDED.change_pct,
-       updated_at = NOW()`,
+       updated_at = NOW()
+     WHERE historical_price_data.close IS DISTINCT FROM EXCLUDED.close
+        OR historical_price_data.volume IS DISTINCT FROM EXCLUDED.volume
+        OR historical_price_data.adjusted_close IS DISTINCT FROM COALESCE(EXCLUDED.adjusted_close, EXCLUDED.close)`,
     values
   )
 

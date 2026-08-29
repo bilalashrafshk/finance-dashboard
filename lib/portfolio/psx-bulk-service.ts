@@ -147,15 +147,19 @@ export async function syncAllPSXLivePrices(): Promise<number> {
                     INSERT INTO historical_price_data 
                     (symbol, asset_type, date, open, high, low, close, volume, source)
                     VALUES ${rows.map((_, i) => `($${i * 9 + 1}, $${i * 9 + 2}, $${i * 9 + 3}, $${i * 9 + 4}, $${i * 9 + 5}, $${i * 9 + 6}, $${i * 9 + 7}, $${i * 9 + 8}, $${i * 9 + 9})`).join(',')}
-                    ON CONFLICT (asset_type, symbol, date) 
-                    DO UPDATE SET 
+                    ON CONFLICT (asset_type, symbol, date)
+                    DO UPDATE SET
                       open = EXCLUDED.open,
                       high = EXCLUDED.high,
                       low = EXCLUDED.low,
-                      close = EXCLUDED.close, 
+                      close = EXCLUDED.close,
                       volume = EXCLUDED.volume,
                       source = EXCLUDED.source,
                       updated_at = NOW()
+                    WHERE historical_price_data.close IS DISTINCT FROM EXCLUDED.close
+                       OR historical_price_data.high IS DISTINCT FROM EXCLUDED.high
+                       OR historical_price_data.low IS DISTINCT FROM EXCLUDED.low
+                       OR historical_price_data.volume IS DISTINCT FROM EXCLUDED.volume
                 `;
 
                 const values = rows.flatMap(r => [
