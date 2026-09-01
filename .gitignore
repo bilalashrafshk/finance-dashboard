@@ -44,4 +44,7 @@ next-env.d.ts
 data/
 *.parquet
 
-
+# Credentials & Service Accounts
+upcoming.json
+*credentials*.json
+*service_account*.json

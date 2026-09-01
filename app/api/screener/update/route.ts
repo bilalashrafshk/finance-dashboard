@@ -5,6 +5,7 @@ import { calculateAllMetrics, PriceDataPoint } from '@/lib/asset-screener/metric
 import { fetchHistoricalData } from '@/lib/portfolio/unified-price-api'
 import { getHistoricalDataBatch, getDividendDataBatch, insertDividendData, DividendRecord } from '@/lib/portfolio/db-client'
 import { syncAllPSXLivePrices } from '@/lib/portfolio/psx-bulk-service'
+import { syncAllDataToGoogleSheets } from '@/lib/google-sheets/sync-engine'
 
 // Re-use existing DB connection logic or create new for this batch job
 const pool = new Pool({
@@ -445,8 +446,23 @@ export async function GET(request: Request) {
       console.error('[Screener Update] Average Dividend Yield aggregation failed:', divErr)
     }
 
-    const duration = Date.now() - startTime
+    // 4. Auto-Sync to Google Sheets (Zero extra Vercel cron invocation / Zero extra Neon DB cost)
+    // Runs once per hour during market hours (or on demand with ?sync_sheets=true)
+    const currentMinute = new Date().getMinutes()
+    const shouldSyncSheets = url.searchParams.get('sync_sheets') === 'true' || currentMinute < 12
 
+    let sheetsSyncStatus: any = null
+    if (shouldSyncSheets && (Date.now() - startTime) < 40000) {
+      try {
+        console.log('[Screener Update] Auto-syncing updated data to Google Sheets...')
+        sheetsSyncStatus = await syncAllDataToGoogleSheets({ includeFormatting: false })
+        console.log(`[Screener Update] Google Sheets Sync Completed: ${sheetsSyncStatus.totalRowsSynced} rows.`)
+      } catch (sheetsErr: any) {
+        console.warn('[Screener Update] Google Sheets Sync non-fatal warning:', sheetsErr.message)
+      }
+    }
+
+    const duration = Date.now() - startTime
 
     return NextResponse.json({
       success: true,
@@ -455,7 +471,9 @@ export async function GET(request: Request) {
       duration_ms: duration,
       cheap_symbols: cheapSymbols.length,
       expensive_symbols: expensiveSymbols.length,
-      partial_update: processedCount < (cheapSymbols.length + expensiveSymbols.length)
+      partial_update: processedCount < (cheapSymbols.length + expensiveSymbols.length),
+      google_sheets_synced: sheetsSyncStatus?.success || false,
+      google_sheets_rows: sheetsSyncStatus?.totalRowsSynced || 0
     })
 
   } catch (error: any) {
