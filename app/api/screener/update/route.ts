@@ -447,16 +447,20 @@ export async function GET(request: Request) {
     }
 
     // 4. Auto-Sync to Google Sheets (Zero extra Vercel cron invocation / Zero extra Neon DB cost)
-    // Runs once per hour during market hours (or on demand with ?sync_sheets=true)
-    const currentMinute = new Date().getMinutes()
-    const shouldSyncSheets = url.searchParams.get('sync_sheets') === 'true' || currentMinute < 12
+    // Runs ONCE per day at Market Close (~5:30 PM PKT / 12:30 PM UTC) or on demand (?sync_sheets=true)
+    const nowUtc = new Date()
+    const currentHourUTC = nowUtc.getUTCHours()
+    const currentMinuteUTC = nowUtc.getUTCMinutes()
+    // 12:30 UTC corresponds to 5:30 PM PKT (Pakistan Standard Time)
+    const is530PMPKT = currentHourUTC === 12 && currentMinuteUTC >= 25 && currentMinuteUTC <= 35
+    const shouldSyncSheets = url.searchParams.get('sync_sheets') === 'true' || is530PMPKT
 
     let sheetsSyncStatus: any = null
     if (shouldSyncSheets && (Date.now() - startTime) < 40000) {
       try {
-        console.log('[Screener Update] Auto-syncing updated data to Google Sheets...')
+        console.log('[Screener Update] Daily 5:30 PM PKT Market Close: Syncing master data to Google Sheets...')
         sheetsSyncStatus = await syncAllDataToGoogleSheets({ includeFormatting: false })
-        console.log(`[Screener Update] Google Sheets Sync Completed: ${sheetsSyncStatus.totalRowsSynced} rows.`)
+        console.log(`[Screener Update] Google Sheets Daily Sync Completed: ${sheetsSyncStatus.totalRowsSynced} rows.`)
       } catch (sheetsErr: any) {
         console.warn('[Screener Update] Google Sheets Sync non-fatal warning:', sheetsErr.message)
       }
