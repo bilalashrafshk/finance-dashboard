@@ -15,6 +15,7 @@ import {
   extractGlobalAssets,
   extractNotableEvents,
   extractMarketCycles,
+  extractKSE100Daily,
   extractSyncOverview,
   TabExtractionResult,
 } from './data-extractors'
@@ -49,11 +50,12 @@ export async function syncAllDataToGoogleSheets(
   try {
     client = await getPostgresClient()
 
-    // 1. Extract all 7 core datasets in parallel
+    // 1. Extract all core datasets in parallel
     console.time('[Google Sheets Sync] DB Extraction Time')
     const [
       psxResult,
       finResult,
+      kse100Result,
       flowsResult,
       macroResult,
       globalResult,
@@ -62,6 +64,7 @@ export async function syncAllDataToGoogleSheets(
     ] = await Promise.all([
       extractPSXScreener(client),
       extractFinancialFundamentals(client),
+      extractKSE100Daily(client),
       extractInstitutionalFlows(client),
       extractMacroSBPData(client),
       extractGlobalAssets(client),
@@ -76,6 +79,7 @@ export async function syncAllDataToGoogleSheets(
     const allTabs: TabExtractionResult[] = [
       overviewResult,
       psxResult,
+      kse100Result,
       finResult,
       flowsResult,
       macroResult,

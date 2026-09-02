@@ -738,6 +738,84 @@ export async function extractMarketCycles(client: PoolClient): Promise<TabExtrac
 }
 
 /**
+ * TAB: KSE-100 Daily Index History
+ */
+export async function extractKSE100Daily(client: PoolClient): Promise<TabExtractionResult> {
+  const query = `
+    SELECT 
+      date,
+      open,
+      high,
+      low,
+      close,
+      volume,
+      change_pct
+    FROM historical_price_data
+    WHERE symbol = 'KSE100'
+    ORDER BY date DESC
+    LIMIT 2000
+  `
+
+  const { rows } = await client.query(query)
+
+  const headers = [
+    'Date',
+    'KSE-100 Index (Close Points)',
+    'Daily Change (Points)',
+    'Daily Change %',
+    'Index Open',
+    'Intraday High',
+    'Intraday Low',
+    'Intraday Range (Pts)',
+    'Trading Volume',
+  ]
+
+  let ath = 0
+  rows.forEach((r) => {
+    const c = parseFloat(r.close) || 0
+    if (c > ath) ath = c
+  })
+
+  const outputRows = rows.map((r, i) => {
+    const close = parseFloat(r.close) || 0
+    const open = parseFloat(r.open) || close
+    const high = parseFloat(r.high) || close
+    const low = parseFloat(r.low) || close
+    const rangePts = high && low ? Number((high - low).toFixed(2)) : ''
+
+    // Calculate daily point difference against next row (which is previous calendar day)
+    let changePts: number | string = ''
+    let changePct: number | string = ''
+
+    if (i < rows.length - 1) {
+      const prevClose = parseFloat(rows[i + 1].close) || 0
+      if (prevClose > 0) {
+        changePts = Number((close - prevClose).toFixed(2))
+        changePct = Number((((close - prevClose) / prevClose) * 100).toFixed(2))
+      }
+    }
+
+    return [
+      formatDate(r.date),
+      num(r.close, 2),
+      changePts,
+      changePct,
+      num(r.open, 2),
+      num(r.high, 2),
+      num(r.low, 2),
+      rangePts,
+      num(r.volume, 0),
+    ]
+  })
+
+  return {
+    tabName: 'KSE100_Daily_Index',
+    headers,
+    rows: outputRows,
+  }
+}
+
+/**
  * TAB 8: Sync Overview & Executive KPI Summary
  */
 export async function extractSyncOverview(
