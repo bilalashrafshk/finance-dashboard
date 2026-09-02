@@ -271,46 +271,59 @@ export async function extractPSXScreener(client: PoolClient): Promise<TabExtract
  */
 export async function extractFinancialFundamentals(client: PoolClient): Promise<TabExtractionResult> {
   const query = `
+    WITH ranked AS (
+      SELECT 
+        f.*,
+        COALESCE(cp.name, f.symbol) as name,
+        COALESCE(cp.sector, 'Other') as sector,
+        cp.market_cap as cp_market_cap,
+        ROW_NUMBER() OVER (PARTITION BY f.symbol ORDER BY f.period_end_date DESC) as rn
+      FROM financial_statements f
+      LEFT JOIN company_profiles cp ON cp.symbol = f.symbol AND cp.asset_type = 'pk-equity'
+      WHERE f.asset_type = 'pk-equity'
+    )
     SELECT 
-      f.symbol,
-      COALESCE(cp.name, f.symbol) as name,
-      COALESCE(cp.sector, 'Other') as sector,
-      f.period_end_date,
-      f.period_type,
-      f.fiscal_quarter,
-      f.revenue,
-      f.cost_of_revenue,
-      f.gross_profit,
-      f.operating_expenses,
-      f.operating_income,
-      f.interest_expense,
-      f.interest_income,
-      f.pretax_income,
-      f.income_tax_expense,
-      f.net_income,
-      f.eps_diluted,
-      f.operating_cash_flow,
-      f.capital_expenditures,
-      f.free_cash_flow,
-      f.dividends_paid,
-      f.cash_and_equivalents,
-      f.short_term_investments,
-      f.accounts_receivable,
-      f.inventory,
-      f.total_current_assets,
-      f.property_plant_equipment,
-      f.total_assets,
-      f.accounts_payable,
-      f.total_current_liabilities,
-      f.total_debt,
-      f.total_liabilities,
-      f.total_equity,
-      f.retained_earnings
-    FROM financial_statements f
-    LEFT JOIN company_profiles cp ON cp.symbol = f.symbol AND cp.asset_type = 'pk-equity'
-    WHERE f.asset_type = 'pk-equity'
-    ORDER BY f.symbol ASC, f.period_end_date DESC
-    LIMIT 3000
+      symbol,
+      name,
+      sector,
+      period_end_date,
+      period_type,
+      fiscal_quarter,
+      revenue,
+      cost_of_revenue,
+      gross_profit,
+      operating_expenses,
+      operating_income,
+      interest_expense,
+      interest_income,
+      pretax_income,
+      income_tax_expense,
+      net_income,
+      eps_diluted,
+      operating_cash_flow,
+      capital_expenditures,
+      free_cash_flow,
+      dividends_paid,
+      cash_and_equivalents,
+      short_term_investments,
+      accounts_receivable,
+      inventory,
+      total_current_assets,
+      property_plant_equipment,
+      total_assets,
+      accounts_payable,
+      total_current_liabilities,
+      total_debt,
+      total_liabilities,
+      total_equity,
+      retained_earnings
+    FROM ranked
+    WHERE rn <= 8 -- Top 8 most recent periods (quarterly & annual) per stock to guarantee 100% stock coverage
+    ORDER BY 
+      CASE WHEN cp_market_cap IS NOT NULL AND cp_market_cap > 0 THEN 0 ELSE 1 END,
+      cp_market_cap DESC NULLS LAST,
+      symbol ASC,
+      period_end_date DESC
   `
 
   const { rows } = await client.query(query)

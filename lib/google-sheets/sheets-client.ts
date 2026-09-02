@@ -75,17 +75,40 @@ export async function getAccessToken(): Promise<string> {
 }
 
 /**
+ * Helper with exponential backoff retry for transient Google 500/503 errors
+ */
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1000): Promise<T> {
+  let lastError: any
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn()
+    } catch (err: any) {
+      lastError = err
+      const status = err.response?.status
+      if (status === 500 || status === 503 || status === 429 || err.code === 'ECONNRESET') {
+        await new Promise((r) => setTimeout(r, delayMs * (i + 1)))
+        continue
+      }
+      throw err
+    }
+  }
+  throw lastError
+}
+
+/**
  * Fetch spreadsheet metadata including sheet tabs
  */
 export async function getSpreadsheet(spreadsheetId: string = DEFAULT_SPREADSHEET_ID) {
-  const token = await getAccessToken()
-  const res = await axios.get(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  )
-  return res.data
+  return withRetry(async () => {
+    const token = await getAccessToken()
+    const res = await axios.get(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    )
+    return res.data
+  })
 }
 
 /**
@@ -175,25 +198,27 @@ export async function batchUpdateSheetValues(
   spreadsheetId: string,
   data: ValueRangePayload[]
 ) {
-  const token = await getAccessToken()
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`
+  return withRetry(async () => {
+    const token = await getAccessToken()
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`
 
-  const payload = {
-    valueInputOption: 'USER_ENTERED', // Allows numbers, dates, formulas to be properly parsed
-    data: data.map((d) => ({
-      range: d.range,
-      values: d.values,
-    })),
-  }
+    const payload = {
+      valueInputOption: 'USER_ENTERED', // Allows numbers, dates, formulas to be properly parsed
+      data: data.map((d) => ({
+        range: d.range,
+        values: d.values,
+      })),
+    }
 
-  const res = await axios.post(url, payload, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    const res = await axios.post(url, payload, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    })
+
+    return res.data
   })
-
-  return res.data
 }
 
 /**
@@ -203,21 +228,23 @@ export async function batchClearSheetValues(
   spreadsheetId: string,
   ranges: string[]
 ) {
-  const token = await getAccessToken()
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchClear`
+  return withRetry(async () => {
+    const token = await getAccessToken()
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchClear`
 
-  const res = await axios.post(
-    url,
-    { ranges },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  )
+    const res = await axios.post(
+      url,
+      { ranges },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    )
 
-  return res.data
+    return res.data
+  })
 }
 
 /**
