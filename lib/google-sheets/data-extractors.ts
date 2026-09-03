@@ -43,9 +43,13 @@ export async function extractPSXScreener(client: PoolClient): Promise<TabExtract
       COALESCE(cp.name, s.symbol) as name,
       COALESCE(cp.sector, s.sector, 'Other') as sector,
       COALESCE(cp.industry, s.industry, 'Other') as industry,
-      s.price,
-      s.price_date,
-      s.market_cap,
+      COALESCE(lp.latest_price, s.price) as price,
+      COALESCE(lp.latest_price_date, s.price_date) as price_date,
+      CASE 
+        WHEN cp.shares_outstanding IS NOT NULL AND cp.shares_outstanding > 0 AND lp.latest_price IS NOT NULL
+        THEN (lp.latest_price * cp.shares_outstanding)
+        ELSE COALESCE(s.market_cap, cp.market_cap)
+      END as market_cap,
       s.pe_ratio,
       s.sector_pe,
       s.relative_pe,
@@ -88,10 +92,26 @@ export async function extractPSXScreener(client: PoolClient): Promise<TabExtract
       s.updated_at
     FROM screener_metrics s
     LEFT JOIN company_profiles cp ON cp.symbol = s.symbol AND cp.asset_type = 'pk-equity'
+    LEFT JOIN LATERAL (
+      SELECT date as latest_price_date, close as latest_price
+      FROM historical_price_data h
+      WHERE h.asset_type = 'pk-equity' AND h.symbol = s.symbol
+      ORDER BY h.date DESC
+      LIMIT 1
+    ) lp ON true
     WHERE s.asset_type = 'pk-equity'
     ORDER BY 
-      CASE WHEN s.market_cap IS NOT NULL AND s.market_cap > 0 THEN 0 ELSE 1 END,
-      s.market_cap DESC NULLS LAST,
+      CASE 
+        WHEN cp.shares_outstanding IS NOT NULL AND cp.shares_outstanding > 0 AND lp.latest_price IS NOT NULL
+        THEN 0
+        WHEN s.market_cap IS NOT NULL AND s.market_cap > 0 THEN 0
+        ELSE 1 
+      END,
+      CASE 
+        WHEN cp.shares_outstanding IS NOT NULL AND cp.shares_outstanding > 0 AND lp.latest_price IS NOT NULL
+        THEN (lp.latest_price * cp.shares_outstanding)
+        ELSE s.market_cap 
+      END DESC NULLS LAST,
       s.symbol ASC
   `
 
@@ -566,9 +586,13 @@ export async function extractGlobalAssets(client: PoolClient): Promise<TabExtrac
       s.asset_type,
       COALESCE(cp.name, s.symbol) as name,
       COALESCE(cp.sector, s.sector, 'Global') as sector,
-      s.price,
-      s.price_date,
-      s.market_cap,
+      COALESCE(lp.latest_price, s.price) as price,
+      COALESCE(lp.latest_price_date, s.price_date) as price_date,
+      CASE 
+        WHEN cp.shares_outstanding IS NOT NULL AND cp.shares_outstanding > 0 AND lp.latest_price IS NOT NULL
+        THEN (lp.latest_price * cp.shares_outstanding)
+        ELSE COALESCE(s.market_cap, cp.market_cap)
+      END as market_cap,
       s.pe_ratio,
       s.pb_ratio,
       s.rsi_14,
@@ -579,6 +603,13 @@ export async function extractGlobalAssets(client: PoolClient): Promise<TabExtrac
       s.updated_at
     FROM screener_metrics s
     LEFT JOIN company_profiles cp ON cp.symbol = s.symbol AND cp.asset_type = s.asset_type
+    LEFT JOIN LATERAL (
+      SELECT date as latest_price_date, close as latest_price
+      FROM historical_price_data h
+      WHERE h.asset_type = s.asset_type AND h.symbol = s.symbol
+      ORDER BY h.date DESC
+      LIMIT 1
+    ) lp ON true
     WHERE s.asset_type IN ('us-equity', 'crypto', 'metals', 'commodity', 'eth', 'btc')
     ORDER BY s.asset_type ASC, s.market_cap DESC NULLS LAST
   `
