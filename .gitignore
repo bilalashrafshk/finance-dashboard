@@ -48,3 +48,6 @@ data/
 upcoming.json
 *credentials*.json
 *service_account*.json
+
+# Scratch scripts
+scratch/
